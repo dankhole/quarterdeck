@@ -4,6 +4,10 @@ import { dirname, isAbsolute } from "node:path";
 import { Readable } from "node:stream";
 
 import { stopRuntimeOwnedProcessTrees } from "../../src/server/owned-process-shutdown.js";
+import {
+	type DesktopExecutableDiscoveryDependencies,
+	discoverDesktopExecutableDirectories,
+} from "./executable-path-discovery.js";
 
 const LOGIN_SHELLS = new Set([
 	"/bin/zsh",
@@ -64,6 +68,7 @@ export interface DesktopLaunchEnvironmentOptions {
 	captureTimeoutMs?: number;
 	maxCaptureBytes?: number;
 	cleanupTimeoutMs?: number;
+	executableDiscovery?: DesktopExecutableDiscoveryDependencies;
 	/** Main-process dependencies only; no renderer can provide commands or arguments. */
 	getLoginShell?: () => string | null;
 	spawnCapture?: (executable: string, args: string[], options: SpawnOptions) => ChildProcess;
@@ -74,6 +79,7 @@ export interface DesktopLaunchEnvironmentOptions {
 export function sanitizeDesktopHelperEnvironment(
 	environment: Readonly<NodeJS.ProcessEnv>,
 	nodePath: string,
+	discoveredDirectories: readonly string[] = [],
 ): NodeJS.ProcessEnv {
 	if (!isAbsolute(nodePath) || /[\0\r\n]/u.test(nodePath)) {
 		throw new Error("The bundled Node executable must have a valid absolute path.");
@@ -90,13 +96,9 @@ export function sanitizeDesktopHelperEnvironment(
 		entries.push([name, value]);
 	}
 	const sanitized: NodeJS.ProcessEnv = Object.fromEntries(entries);
-	const paths = [dirname(nodePath), ...(sanitized.PATH ?? "").split(":"), ...SAFE_PATH];
+	const paths = [dirname(nodePath), ...(sanitized.PATH ?? "").split(":"), ...discoveredDirectories, ...SAFE_PATH];
 	sanitized.PATH = Array.from(new Set(paths.filter((path) => isAbsolute(path) && !/[\0\r\n]/u.test(path)))).join(":");
 	return sanitized;
-}
-
-function hasTerminalEnvironment(environment: Readonly<NodeJS.ProcessEnv>): boolean {
-	return Boolean(environment.TERM_PROGRAM || environment.TERM_SESSION_ID || environment.SSH_TTY);
 }
 
 function parseEnvironment(bytes: Buffer): NodeJS.ProcessEnv | null {
@@ -132,7 +134,7 @@ async function captureLoginEnvironment(
 ): Promise<CaptureResult> {
 	let child: ChildProcess;
 	try {
-		// Agent managers commonly initialize PATH in interactive startup files such as .zshrc.
+		// Explicit import includes agent-manager setup in interactive files such as .zshrc.
 		child = (options.spawnCapture ?? spawn)(shell, ["-i", "-l", "-c", ENVIRONMENT_CAPTURE_COMMAND], {
 			env: environment,
 			stdio: ["ignore", "ignore", "ignore", "pipe"],
@@ -216,10 +218,16 @@ async function resolveLaunchEnvironment(
 		(options.platform ?? process.platform) !== "darwin" ||
 		options.isolatedLab ||
 		options.inheritedEnvironment.QUARTERDECK_AGENT_LAB === "1" ||
-		options.mode === "inherit" ||
-		((options.mode ?? "auto") === "auto" && hasTerminalEnvironment(options.inheritedEnvironment))
+		options.mode === "inherit"
 	)
 		return { source: "inherited", environment };
+	if ((options.mode ?? "auto") === "auto") {
+		const directories = await discoverDesktopExecutableDirectories(environment, options.executableDiscovery);
+		return {
+			source: "inherited",
+			environment: sanitizeDesktopHelperEnvironment(options.inheritedEnvironment, options.nodePath, directories),
+		};
+	}
 	let shell: string | null;
 	try {
 		shell = options.getLoginShell ? options.getLoginShell() : userInfo().shell;

@@ -5,6 +5,7 @@
 ## [0.12.9]
 
 - Silence harmless upstream `node-pty` aggregate-initialization warnings during desktop native builds while preserving other compiler diagnostics.
+- Resolve desktop executable folders without loading shell startup files by default, discover common user and nvm installations, and offer explicit login-shell import through Runtime Environment for shell-defined variables.
 
 - Fix desktop startup rejecting a valid installed app because Electron presents its archive as a virtual directory.
 

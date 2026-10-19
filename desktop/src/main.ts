@@ -32,10 +32,9 @@ import { createDesktopWindow, restoreDesktopWindow } from "./desktop-window.js";
 import { createDesktopDiagnosticExporter } from "./diagnostic-export.js";
 import { installEditorDraftSave } from "./editor-draft-save.js";
 import { DesktopEnvironmentController, type DesktopEnvironmentRefreshResult } from "./environment-controller.js";
-import { applyDesktopExecutableDirectories, readDesktopEnvironmentPreferences } from "./environment-preferences.js";
 import { type DesktopInstallationPreflight, preflightDesktopInstallation } from "./installation-preflight.js";
 import { type DesktopLaunchConfig, readDesktopLaunchConfig, validateDesktopLaunchRequest } from "./launch-config.js";
-import { createDesktopLaunchEnvironmentResolver, type DesktopLaunchEnvironmentResult } from "./launch-environment.js";
+import type { DesktopLaunchEnvironmentResult } from "./launch-environment.js";
 import { desktopMenuTemplate } from "./native-menus.js";
 import { DesktopNotificationSubscription } from "./notification-subscription.js";
 import { proxyRuntimeRequest } from "./protocol-proxy.js";
@@ -49,6 +48,7 @@ import {
 } from "./renderer-admission.js";
 import { DesktopRendererCommands } from "./renderer-commands.js";
 import { type RuntimeBundle, readRuntimeBundle } from "./runtime-bundle.js";
+import { resolveDesktopRuntimeEnvironment } from "./runtime-environment.js";
 import { RuntimeSelection } from "./runtime-selection.js";
 import {
 	RuntimeStartupError,
@@ -109,6 +109,7 @@ async function launchDesktop(
 	let executableEnvironment: NodeJS.ProcessEnv | null = null;
 	let updates: DesktopUpdateController | null = null;
 	let appliedDirectories: string[] = [];
+	let appliedImportLoginShellEnvironment: boolean | undefined;
 	let currentProjectId: string | null = null;
 	let runtimeEvidence: RuntimeSupervisorEvidence = {
 		phase: "stopped",
@@ -239,6 +240,7 @@ async function launchDesktop(
 			source: environment?.source ?? "unresolved",
 			failureReason: environment?.source === "fallback" ? environment.failureReason : undefined,
 			appliedDirectories,
+			appliedImportLoginShellEnvironment,
 		}),
 		showMessage: (options) => dialogs.message(options),
 		showFolders: (options) => dialogs.chooseFolders(options),
@@ -651,14 +653,15 @@ async function launchDesktop(
 	};
 	const resolveEnvironment = async (): Promise<NodeJS.ProcessEnv> => {
 		if (!bundle) throw new Error("Runtime bundle is unavailable.");
-		const preferences = await readDesktopEnvironmentPreferences(launch.userDataPath);
-		const resolver = createDesktopLaunchEnvironmentResolver({
+		const resolved = await resolveDesktopRuntimeEnvironment({
+			userDataPath: launch.userDataPath,
 			nodePath: bundle.nodePath,
 			inheritedEnvironment: process.env,
 			isolatedLab: launch.synthetic,
 		});
-		environment = await resolver();
-		appliedDirectories = preferences.extraExecutableDirectories;
+		environment = resolved;
+		appliedDirectories = resolved.preferences.extraExecutableDirectories;
+		appliedImportLoginShellEnvironment = resolved.preferences.importLoginShellEnvironment;
 		environmentCleanupUnconfirmed = environment.source === "fallback" && environment.processCleanup === "unconfirmed";
 		record({
 			kind: "startup",
@@ -666,11 +669,7 @@ async function launchDesktop(
 			environmentSource: environment.source,
 			failureCode: environment.source === "fallback" ? "environment_fallback" : undefined,
 		});
-		executableEnvironment = applyDesktopExecutableDirectories(
-			environment.environment,
-			bundle.nodePath,
-			appliedDirectories,
-		);
+		executableEnvironment = environment.environment;
 		return executableEnvironment;
 	};
 	const refreshEnvironment = async (): Promise<DesktopEnvironmentRefreshResult> => {

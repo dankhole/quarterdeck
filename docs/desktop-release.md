@@ -59,6 +59,19 @@ Apple Developer membership, an authorized certificate custodian, and a functioni
 
 The signed lane verifies the app and each bundled Mach-O helper/native module, validates the application's stapled ticket, and checks Gatekeeper assessment. Electron app/process executables and bundled Node receive only the JIT entitlement; native libraries receive an empty entitlement dictionary. The audit checks actual signatures, team identity, hardened-runtime flags, and exact entitlements on every Mach-O file. Library-validation exceptions and unsigned executable-memory allowances are not enabled. Signed native compatibility still requires the provisioned signing and clean-user gates. It then separately signs, notarizes, staples, and verifies the final DMG, recreates the ZIP from the stapled app, and finalizes checksums. Release fuses disable Electron run-as-Node, Node options, and CLI inspection. Unsigned lab inspection is not evidence that these release fuses work. [Electron notarization tooling](https://github.com/electron/notarize)
 
+## Keychain continuity
+
+Normal launches retain Chromium cookie encryption (`EnableCookieEncryption`). A **Quarterdeck Safe Storage** permission prompt belongs to Electron's macOS Keychain-backed encryption; shell environment import is independent. Ad-hoc development builds may prompt again after replacement because their identity is not stable across builds. Keep encryption enabled and use the existing protected Developer ID signing lane for distribution. [Electron signing requirements](https://www.electronjs.org/docs/latest/tutorial/code-signing#macos-apis-that-require-code-signing)
+
+Before claiming repeated prompts are resolved, test signed N-to-N+1 builds on a clean user profile:
+
+1. Verify both installed builds have the expected bundle identifier, Developer ID team and consistent signing identity, plus the required encrypted-cookie fuse and hardened-runtime settings.
+2. Launch N normally, grant ordinary Keychain consent if requested, and create synthetic persisted authentication/cookie state.
+3. Quit cleanly, replace through the normal verified installer, and launch N+1 from Finder/Dock. Confirm the existing encrypted state remains usable and there is no renewed identity-related Keychain prompt.
+4. Record artifact identities, macOS version/architecture, consent observations and retained-state result in the [validation ledger](./desktop-validation.md). Test a fresh install separately from continuity across replacement.
+
+These checks require provisioned credentials and actual signed installations. An unsigned Agent Lab run uses a mock keychain and cannot establish prompt elimination, Keychain access continuity, or Gatekeeper acceptance. Never reset the user's Keychain, broaden an item's access list, or disable encryption to make the test pass.
+
 ## Coordinated publication
 
 The desktop lane is mandatory for releases using unified installation. Provision and validate signing before publishing; a repository toggle must not produce a package whose required app is unavailable. Root and desktop versions and lockfiles must agree. Preserve the squash-merge, immutable-tag, and OIDC rules in the main release runbook.

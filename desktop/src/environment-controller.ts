@@ -11,6 +11,7 @@ export interface DesktopEnvironmentStatus {
 	source: "inherited" | "login-shell" | "fallback" | "unresolved";
 	failureReason?: DesktopEnvironmentFailureReason;
 	appliedDirectories: readonly string[];
+	appliedImportLoginShellEnvironment?: boolean;
 }
 
 export type DesktopEnvironmentRefreshResult = "refreshed" | "cancelled" | "incomplete" | "failed";
@@ -74,17 +75,25 @@ export class DesktopEnvironmentController {
 				const choice = await this.options.showMessage({
 					type: "warning",
 					title: "Runtime Environment",
-					buttons: ["Close", "Reset Saved Folders"],
+					buttons: ["Close", "Reset Saved Settings"],
 					defaultId: 0,
 					cancelId: 0,
-					message: "Saved executable folders could not be read",
+					message: "Saved environment settings could not be read",
 					detail:
-						"Reset the saved folders to continue setup. Your running runtime's environment stays in effect until Refresh Environment completes.",
+						"Reset the saved folders and disable login-shell import to continue setup. Your running runtime's environment stays in effect until Refresh Environment completes.",
 				});
 				if (choice !== 1 || (await this.attached())) return;
-				if (!(await this.save({ version: 1, extraExecutableDirectories: [] }))) return;
+				if (
+					!(await this.save({
+						version: 1,
+						extraExecutableDirectories: [],
+						importLoginShellEnvironment: false,
+					}))
+				)
+					return;
 				continue;
 			}
+			if (await this.attached()) return;
 			const status = this.options.getStatus();
 			const source = {
 				inherited: "Inherited from app launch",
@@ -93,22 +102,34 @@ export class DesktopEnvironmentController {
 				unresolved: "Not resolved yet",
 			}[status.source];
 			const changed =
-				JSON.stringify(status.appliedDirectories) !== JSON.stringify(preferences.extraExecutableDirectories);
+				JSON.stringify(status.appliedDirectories) !== JSON.stringify(preferences.extraExecutableDirectories) ||
+				status.appliedImportLoginShellEnvironment !== preferences.importLoginShellEnvironment;
 			const choice = await this.options.showMessage({
 				type: status.failureReason ? "warning" : "info",
 				title: "Runtime Environment",
-				message: "Runtime executable folders",
-				buttons: ["Close", "Add Folders…", "Reset Override", "Refresh Environment"],
+				message: "Runtime environment settings",
+				buttons: [
+					"Close",
+					"Add Folders…",
+					"Reset Override",
+					"Refresh Environment",
+					preferences.importLoginShellEnvironment ? "Disable Login-Shell Import" : "Enable Login-Shell Import",
+				],
 				defaultId: 0,
 				cancelId: 0,
 				detail: [
 					`Environment source: ${source}.`,
+					`Current login-shell import: ${status.appliedImportLoginShellEnvironment === undefined ? "Not applied yet" : status.appliedImportLoginShellEnvironment ? "Enabled" : "Disabled"}.`,
+					`Saved login-shell import: ${preferences.importLoginShellEnvironment ? "Enabled" : "Disabled"}.`,
 					status.failureReason
 						? FAILURE_GUIDANCE[status.failureReason]
 						: "Git and task agents are installed separately from Quarterdeck.",
 					`Extra executable folders:\n${preferences.extraExecutableDirectories.join("\n") || "None"}`,
-					changed ? "Saved folders have unapplied changes." : "Saved folders match the current app configuration.",
-					"Folders take precedence over discovered executables; bundled Node remains first. Refresh rechecks the login shell and safely restarts an app-owned runtime after protecting drafts and confirming live sessions.",
+					changed
+						? "Saved settings have unapplied changes."
+						: "Saved settings match the current app configuration.",
+					"Folders take precedence over discovered executables; bundled Node remains first. Refresh Environment applies saved settings and safely restarts an app-owned runtime after protecting drafts and confirming live sessions.",
+					"Login-shell import is optional. When enabled, app startup and Refresh Environment run shell startup files, which can run commands and access Keychain. Imported environment values stay in memory and are never saved.",
 				].join("\n\n"),
 			});
 			if (choice === 0) return;
@@ -122,12 +143,12 @@ export class DesktopEnvironmentController {
 				if (folders) {
 					if (await this.attached()) return;
 					await this.save({
-						version: 1,
+						...preferences,
 						extraExecutableDirectories: [...preferences.extraExecutableDirectories, ...folders],
 					});
 				}
 			} else if (choice === 2) {
-				await this.save({ version: 1, extraExecutableDirectories: [] });
+				await this.save({ ...preferences, extraExecutableDirectories: [] });
 			} else if (choice === 3) {
 				let result: DesktopEnvironmentRefreshResult;
 				try {
@@ -146,10 +167,15 @@ export class DesktopEnvironmentController {
 							: "Runtime environment could not be refreshed",
 					detail:
 						result === "refreshed"
-							? "The new app-owned runtime uses the saved executable folders."
-							: "The app could not confirm a safe restart. Resolve drafts, live-session cleanup, or startup setup before retrying. Saved folders remain available for the next successful refresh.",
+							? "The new app-owned runtime uses the saved environment settings."
+							: "The app could not confirm a safe restart. Resolve drafts, live-session cleanup, or startup setup before retrying. Saved settings remain available for the next successful refresh.",
 				});
 				return;
+			} else if (choice === 4) {
+				await this.save({
+					...preferences,
+					importLoginShellEnvironment: !preferences.importLoginShellEnvironment,
+				});
 			} else return;
 		}
 	}
@@ -162,7 +188,7 @@ export class DesktopEnvironmentController {
 			await this.options.showMessage({
 				type: "warning",
 				buttons: ["Close"],
-				message: "Executable folders could not be saved",
+				message: "Environment settings could not be saved",
 				detail:
 					"Choose at most 16 absolute folders with a combined size under 32 KB, and check that Quarterdeck's app storage is writable. The current runtime environment has not changed.",
 			});

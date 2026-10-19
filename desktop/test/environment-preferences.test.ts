@@ -19,10 +19,14 @@ async function root(): Promise<string> {
 afterEach(async () => {
 	await Promise.all(roots.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
-const prefs = (directories: string[]) => ({ version: 1 as const, extraExecutableDirectories: directories });
+const prefs = (directories: string[], importLoginShellEnvironment = false) => ({
+	version: 1 as const,
+	extraExecutableDirectories: directories,
+	importLoginShellEnvironment,
+});
 
-describe("desktop executable folder preferences", () => {
-	it("defaults without creating storage, then privately persists only normalized folders", async () => {
+describe("desktop environment preferences", () => {
+	it("defaults without creating storage, then privately persists normalized folders and the import opt-in", async () => {
 		const directory = await root();
 		await expect(readDesktopEnvironmentPreferences(directory)).resolves.toEqual(prefs([]));
 		await expect(stat(join(directory, "environment-preferences"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -37,11 +41,37 @@ describe("desktop executable folder preferences", () => {
 		}
 	});
 
+	it("reads existing version 1 folder preferences with login-shell import disabled", async () => {
+		const directory = await root();
+		const folder = join(directory, "tools");
+		const legacy = JSON.stringify({ version: 1, extraExecutableDirectories: [folder] });
+		await mkdir(join(directory, "environment-preferences"));
+		const file = join(directory, "environment-preferences", "folders.json");
+		await writeFile(file, legacy);
+		await expect(readDesktopEnvironmentPreferences(directory)).resolves.toEqual(prefs([folder]));
+		expect(await readFile(file, "utf8")).toBe(legacy);
+	});
+
+	it.each([false, true])("round-trips an explicit login-shell import opt-in of %s", async (enabled) => {
+		const directory = await root();
+		const preferences = prefs([join(directory, "tools")], enabled);
+		await writeDesktopEnvironmentPreferences(directory, preferences);
+		await expect(readDesktopEnvironmentPreferences(directory)).resolves.toEqual(preferences);
+		expect(JSON.parse(await readFile(join(directory, "environment-preferences", "folders.json"), "utf8"))).toEqual(
+			preferences,
+		);
+	});
+
 	it.each([
 		null,
 		{},
 		{ version: 2, extraExecutableDirectories: [] },
 		{ ...prefs([]), PATH: "secret" },
+		{ ...prefs([]), importLoginShellEnvironment: "true" },
+		{ ...prefs([]), importLoginShellEnvironment: 1 },
+		{ ...prefs([]), importLoginShellEnvironment: null },
+		{ ...prefs([]), importLoginShellEnvironment: undefined },
+		{ ...prefs([], true), environment: { TOKEN: "secret" } },
 		prefs(["relative"]),
 		prefs(["~/bin"]),
 		prefs([`${resolve("/tools")}\nother`]),
@@ -55,7 +85,7 @@ describe("desktop executable folder preferences", () => {
 
 	it("bounds combined bytes and preserves existing preferences when a write is rejected", async () => {
 		const directory = await root();
-		const old = prefs([join(directory, "tools")]);
+		const old = prefs([join(directory, "tools")], true);
 		await writeDesktopEnvironmentPreferences(directory, old);
 		await expect(
 			writeDesktopEnvironmentPreferences(

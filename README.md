@@ -14,6 +14,8 @@ Quarterdeck detects installed agent CLIs from your `PATH` and opens your project
 
 The macOS app packages the shared interface and a bundled Node runtime. Both modes use the same projects, tasks, settings, and agent integrations. Global npm installation installs the matching app at `~/Applications/Quarterdeck.app`; the Dock icon and CLI use that same copy. Public distribution still requires the gates in the [validation status](docs/desktop-validation.md). See the [desktop guide](docs/desktop.md).
 
+The macOS desktop app is experimental. Current local builds are ad-hoc signed, without an Apple Developer ID signature, so macOS may ask for “Quarterdeck Safe Storage” Keychain access again after app updates.
+
 ## Install via npm
 
 Quarterdeck is available on [npm](https://www.npmjs.com/package/quarterdeck). With Node.js 22.22.2 or newer and Git installed, install the CLI globally and launch it from your project:

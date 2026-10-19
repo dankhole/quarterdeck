@@ -15,7 +15,12 @@ afterEach(async () => {
 });
 async function setup(
 	choices: number[],
-	status: DesktopEnvironmentStatus = { ownership: "owned", source: "login-shell", appliedDirectories: [] },
+	status: DesktopEnvironmentStatus = {
+		ownership: "owned",
+		source: "inherited",
+		appliedDirectories: [],
+		appliedImportLoginShellEnvironment: false,
+	},
 ) {
 	const userDataPath = await mkdtemp(join(tmpdir(), "quarterdeck-environment-dialog-"));
 	roots.push(userDataPath);
@@ -31,12 +36,33 @@ async function setup(
 }
 
 describe("native runtime environment controller", () => {
-	it("explains CLI attachment without exposing changes or refresh", async () => {
-		const fixture = await setup([3], { ownership: "attached", source: "inherited", appliedDirectories: [] });
+	it.each([1, 2, 3, 4])("explains CLI attachment without exposing action %s", async (choice) => {
+		const fixture = await setup([choice], { ownership: "attached", source: "inherited", appliedDirectories: [] });
 		await fixture.controller.open();
 		expect(fixture.messages[0]?.buttons).toEqual(["Close"]);
 		expect(fixture.messages[0]?.detail).toContain("running Quarterdeck CLI");
 		expect(fixture.options.showFolders).not.toHaveBeenCalled();
+		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
+	});
+
+	it("shows shell-free defaults and discloses what enabling login-shell import allows", async () => {
+		const fixture = await setup([0]);
+		await fixture.controller.open();
+		expect(fixture.messages[0]?.buttons).toEqual([
+			"Close",
+			"Add Folders…",
+			"Reset Override",
+			"Refresh Environment",
+			"Enable Login-Shell Import",
+		]);
+		expect(fixture.messages[0]?.detail).toContain("Current login-shell import: Disabled");
+		expect(fixture.messages[0]?.detail).toContain("Saved login-shell import: Disabled");
+		expect(fixture.messages[0]?.detail).toContain("Saved settings match");
+		expect(fixture.messages[0]?.detail).toContain(
+			"When enabled, app startup and Refresh Environment run shell startup files",
+		);
+		expect(fixture.messages[0]?.detail).toContain("run commands and access Keychain");
+		expect(fixture.messages[0]?.detail).toContain("stay in memory and are never saved");
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
 	});
 
@@ -46,6 +72,7 @@ describe("native runtime environment controller", () => {
 			source: "fallback",
 			failureReason: "capture_timeout",
 			appliedDirectories: [],
+			appliedImportLoginShellEnvironment: true,
 		});
 		await fixture.controller.open();
 		expect(fixture.messages[0]?.detail).toContain("timed out");
@@ -57,33 +84,103 @@ describe("native runtime environment controller", () => {
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [join(fixture.options.userDataPath, "agent tools")],
+			importLoginShellEnvironment: false,
 		});
 		expect(fixture.messages.at(-1)?.message).toBe("Runtime environment refreshed");
 	});
 
-	it("reset removes only desktop folders and does not refresh implicitly", async () => {
+	it("reset removes only desktop folders, preserving login-shell import without refreshing", async () => {
 		const fixture = await setup([2, 0]);
 		await writeDesktopEnvironmentPreferences(fixture.options.userDataPath, {
 			version: 1,
 			extraExecutableDirectories: [join(fixture.options.userDataPath, "old")],
+			importLoginShellEnvironment: true,
 		});
 		await fixture.controller.open();
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [],
+			importLoginShellEnvironment: true,
 		});
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
 	});
 
-	it("allows explicit recovery of malformed saved folders", async () => {
+	it("adding folders preserves the saved login-shell import opt-in", async () => {
+		const fixture = await setup([1, 0]);
+		const oldFolder = join(fixture.options.userDataPath, "old");
+		await writeDesktopEnvironmentPreferences(fixture.options.userDataPath, {
+			version: 1,
+			extraExecutableDirectories: [oldFolder],
+			importLoginShellEnvironment: true,
+		});
+		await fixture.controller.open();
+		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
+			version: 1,
+			extraExecutableDirectories: [oldFolder, join(fixture.options.userDataPath, "agent tools")],
+			importLoginShellEnvironment: true,
+		});
+		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
+	});
+
+	it.each([false, true])(
+		"toggles saved login-shell import from %s without changing folders or refreshing",
+		async (enabled) => {
+			const fixture = await setup([4, 0]);
+			const folder = join(fixture.options.userDataPath, "tools");
+			await writeDesktopEnvironmentPreferences(fixture.options.userDataPath, {
+				version: 1,
+				extraExecutableDirectories: [folder],
+				importLoginShellEnvironment: enabled,
+			});
+			await fixture.controller.open();
+			await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
+				version: 1,
+				extraExecutableDirectories: [folder],
+				importLoginShellEnvironment: !enabled,
+			});
+			expect(fixture.messages[1]?.detail).toContain(`Saved login-shell import: ${enabled ? "Disabled" : "Enabled"}`);
+			expect(fixture.status.appliedImportLoginShellEnvironment).toBe(false);
+			expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
+		},
+	);
+
+	it("reports an enabled import independently from inherited fallback after a capture failure", async () => {
+		const fixture = await setup([0], {
+			ownership: "owned",
+			source: "fallback",
+			failureReason: "capture_timeout",
+			appliedDirectories: [],
+			appliedImportLoginShellEnvironment: true,
+		});
+		await writeDesktopEnvironmentPreferences(fixture.options.userDataPath, {
+			version: 1,
+			extraExecutableDirectories: [],
+			importLoginShellEnvironment: true,
+		});
+		await fixture.controller.open();
+		expect(fixture.messages[0]?.detail).toContain("Environment source: Inherited fallback");
+		expect(fixture.messages[0]?.detail).toContain("Current login-shell import: Enabled");
+		expect(fixture.messages[0]?.detail).toContain("Saved settings match");
+	});
+
+	it("does not claim saved settings match before the current mode is applied", async () => {
+		const fixture = await setup([0], { ownership: "none", source: "unresolved", appliedDirectories: [] });
+		await fixture.controller.open();
+		expect(fixture.messages[0]?.detail).toContain("Current login-shell import: Not applied yet");
+		expect(fixture.messages[0]?.detail).toContain("unapplied changes");
+	});
+
+	it("allows explicit recovery of malformed saved settings with login-shell import disabled", async () => {
 		const fixture = await setup([1, 0]);
 		await mkdir(join(fixture.options.userDataPath, "environment-preferences"));
 		await writeFile(join(fixture.options.userDataPath, "environment-preferences", "folders.json"), "malformed");
 		await fixture.controller.open();
-		expect(fixture.messages[0]?.buttons).toEqual(["Close", "Reset Saved Folders"]);
+		expect(fixture.messages[0]?.buttons).toEqual(["Close", "Reset Saved Settings"]);
+		expect(fixture.messages[0]?.detail).toContain("disable login-shell import");
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [],
+			importLoginShellEnvironment: false,
 		});
 	});
 
@@ -97,8 +194,45 @@ describe("native runtime environment controller", () => {
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [],
+			importLoginShellEnvironment: false,
 		});
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
+	});
+
+	it("does not toggle saved login-shell import after ownership changes while the dialog is open", async () => {
+		const fixture = await setup([]);
+		fixture.options.showMessage.mockImplementation(async (options) => {
+			fixture.messages.push(options);
+			fixture.status.ownership = "attached";
+			return 4;
+		});
+		await fixture.controller.open();
+		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
+			version: 1,
+			extraExecutableDirectories: [],
+			importLoginShellEnvironment: false,
+		});
+		expect(fixture.messages.at(-1)?.message).toBe("This runtime belongs to the CLI");
+		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
+	});
+
+	it("keeps the applied mode and saved pending mode separate after refresh is cancelled", async () => {
+		const fixture = await setup([4, 3, 0]);
+		const requestRefresh = vi.fn(async () => "cancelled" as const);
+		const controller = new DesktopEnvironmentController({ ...fixture.options, requestRefresh });
+		await controller.open();
+		expect(requestRefresh).toHaveBeenCalledOnce();
+		expect(fixture.status.appliedImportLoginShellEnvironment).toBe(false);
+		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
+			version: 1,
+			extraExecutableDirectories: [],
+			importLoginShellEnvironment: true,
+		});
+		await controller.open();
+		expect(fixture.messages.at(-1)?.detail).toContain("Current login-shell import: Disabled");
+		expect(fixture.messages.at(-1)?.detail).toContain("Saved login-shell import: Enabled");
+		expect(fixture.messages.at(-1)?.detail).toContain("unapplied changes");
+		expect(fixture.messages.some((message) => message.message === "Runtime environment refreshed")).toBe(false);
 	});
 
 	it("does not claim refresh succeeded after cancellation or failure", async () => {

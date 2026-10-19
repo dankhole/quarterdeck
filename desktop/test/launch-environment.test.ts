@@ -57,6 +57,7 @@ function environmentOptions(overrides: Partial<DesktopLaunchEnvironmentOptions> 
 			SECRET_TEST_TOKEN: "synthetic-secret",
 		},
 		platform: "darwin",
+		mode: "login-shell",
 		getLoginShell: () => "/bin/zsh",
 		captureTimeoutMs: 1_000,
 		cleanupTimeoutMs: 2_000,
@@ -115,17 +116,46 @@ describe("desktop launch environment", () => {
 		{ isolatedLab: true, mode: "login-shell" as const },
 		{ mode: "inherit" as const },
 		{ inheritedEnvironment: { QUARTERDECK_AGENT_LAB: "1", PATH: "/synthetic/fake-agent" } },
-		{ inheritedEnvironment: { TERM_PROGRAM: "Apple_Terminal", PATH: "/synthetic/terminal/bin" } },
-	])("reuses explicit, lab, and terminal launch environments without a shell", async (override) => {
+		{ platform: "linux" as const },
+	])("reuses explicit, lab, and nonmac launch environments without discovery or a shell", async (override) => {
 		const getLoginShell = vi.fn(() => "/bin/zsh");
 		const spawnCapture = vi.fn(() => {
 			throw new Error("shell must not run");
 		});
-		const options = environmentOptions({ ...override, getLoginShell, spawnCapture });
+		const isDirectory = vi.fn(async () => false);
+		const isExecutableFile = vi.fn(async () => false);
+		const readDirectory = vi.fn(async () => null);
+		const readRegularFile = vi.fn(async () => null);
+		const options = environmentOptions({
+			...override,
+			getLoginShell,
+			spawnCapture,
+			executableDiscovery: { fileSystem: { isDirectory, isExecutableFile, readDirectory, readRegularFile } },
+		});
 		const resolveEnvironment = createDesktopLaunchEnvironmentResolver(options);
 		const result = await resolveEnvironment();
 		expect(result.source).toBe("inherited");
 		expect(result.environment.PATH).toContain(options.inheritedEnvironment.PATH);
+		expect(getLoginShell).not.toHaveBeenCalled();
+		expect(spawnCapture).not.toHaveBeenCalled();
+		expect(isDirectory).not.toHaveBeenCalled();
+		expect(isExecutableFile).not.toHaveBeenCalled();
+		expect(readDirectory).not.toHaveBeenCalled();
+		expect(readRegularFile).not.toHaveBeenCalled();
+	});
+
+	it.each([undefined, "auto"] as const)("never captures a shell in default/auto mode (%s)", async (mode) => {
+		const getLoginShell = vi.fn(() => "/bin/zsh");
+		const spawnCapture = vi.fn(() => {
+			throw new Error("shell must not run");
+		});
+		const options = environmentOptions({ mode, getLoginShell, spawnCapture });
+		const result = await createDesktopLaunchEnvironmentResolver(options)();
+		expect(result.source).toBe("inherited");
+		expect(result.environment.PATH?.split(":").slice(0, 2)).toEqual([
+			"/Applications/Quarterdeck Test.app/runtime/bin",
+			"/synthetic/agents/bin",
+		]);
 		expect(getLoginShell).not.toHaveBeenCalled();
 		expect(spawnCapture).not.toHaveBeenCalled();
 	});

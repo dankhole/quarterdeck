@@ -2,6 +2,17 @@
 
 This ledger separates completed checks from acceptance gates still requiring access, execution, or elapsed daily use. It is evidence, not the project task tracker; execution work remains in the primary checkout's Chit backlog. Follow [testing scope](./testing.md), [desktop release procedure](./desktop-release.md), and the repo-owned functional-testing skill for isolated lab runs.
 
+## Shell-free desktop environment validation
+
+On 2026-10-19, source `d610693d09b1ab82a5601b646fb5360ca5dfd35e` plus the uncommitted desktop environment changes produced ARM64 candidate build `47a28202-bd85-4183-bc7e-439461bbc1c4` (`sourceDirty: true`), version 0.12.8, Electron 44.5.1, Node 22.22.2 ABI 127. The final packaged `app.asar` SHA-256 is `15d160e6d21c7be264cc8e1b66cb6848c3db4b8a413730e2ab0be3df06750e2a`.
+
+- Desktop Biome, TypeScript, and all 385 tests passed. Six production-composition cases cover ordinary non-synthetic startup with absent, legacy and disabled preferences; explicit opt-in capture and subsequent disabling; failure fallback; and isolated lab bypass. Filesystem cases cover nvm alias resolution, stable numeric selection, incomplete installations, cycles, unreadable/oversized/symlink/FIFO metadata, directory bounds, PATH precedence, and malformed inherited PATH. Process-cleanup tests ran with scoped process-inspection permission.
+- Concurrent plan review and parallel behavior/security reviews found two final P3 corrections: report unresolved import status accurately, and qualify the documented PATH priority as the default shell-free contract. Both findings were closed. The status-only source correction passed scoped Biome and TypeScript after the aggregate test gate.
+- The production build passed, including web TypeScript and bundled browser/runtime identity. A fresh package after all source corrections passed signature integrity, real bundled Node and native PTY verification without system Node.
+- Hidden synthetic run `shellfree-desktop-startup-20261019T174459Z-20f373` passed packaged startup, private npm-installation identity, typed initial/second-project handoff, stable document/runtime identity, and alternate-installation refusal. Its three runtime WebSockets closed without errors. Normal SDK Quit completed without fallback, `remainingPids` was empty, the temporary fixture was removed, and the forbidden-host-launch log was empty. Evidence is under `test-results/agent-lab/<run-id>/`.
+
+The packaged lane deliberately skips ambient discovery and shell capture; real-filesystem production-composition tests establish the default no-shell behavior. This run started no provider task and did not prove visible native dialog layout, actual Finder/Dock presentation, or behavior of a signed app. Cookie encryption remains enabled. Signed N-to-N+1 Keychain consent and encrypted-state continuity require provisioned Developer ID builds and the [release acceptance procedure](./desktop-release.md#keychain-continuity). The user's installed app and Keychain were not changed. Chit was unavailable, so the primary-checkout task list was not updated.
+
 ## npm update discovery and handoff validation
 
 The update changes are based on `d36a3e636a37d40c9b2d87f8cacb488dc35595b5`. The paired runtime/browser production build is `978ae455-d252-4d06-b909-593e498ee41f`, version 0.12.8, with uncommitted development changes. These checks do not establish a signed public upgrade or change the installed app.

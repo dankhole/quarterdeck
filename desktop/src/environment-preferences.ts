@@ -10,23 +10,27 @@ const MAX_PREFERENCES_BYTES = 32_768;
 export interface DesktopEnvironmentPreferences {
 	version: 1;
 	extraExecutableDirectories: string[];
+	importLoginShellEnvironment: boolean;
 }
 
 export class DesktopEnvironmentPreferencesError extends Error {
 	readonly code = "DesktopEnvironmentPreferencesInvalid";
 	constructor() {
-		super("Saved executable folders could not be read or saved. Reset them in Runtime Environment and try again.");
+		super("Saved environment settings could not be read or saved. Reset them in Runtime Environment and try again.");
 		this.name = "DesktopEnvironmentPreferencesError";
 	}
 }
 
-/** Only directories are persisted. Environment values, commands, and credentials are never accepted. */
+/** Only directories and the import opt-in are persisted. Environment values and commands are never accepted. */
 export function validateDesktopEnvironmentPreferences(value: unknown): DesktopEnvironmentPreferences {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new DesktopEnvironmentPreferencesError();
 	const record = value as Record<string, unknown>;
 	if (
-		Object.keys(record).some((key) => key !== "version" && key !== "extraExecutableDirectories") ||
+		Object.keys(record).some(
+			(key) => key !== "version" && key !== "extraExecutableDirectories" && key !== "importLoginShellEnvironment",
+		) ||
 		record.version !== 1 ||
+		("importLoginShellEnvironment" in record && typeof record.importLoginShellEnvironment !== "boolean") ||
 		!Array.isArray(record.extraExecutableDirectories) ||
 		record.extraExecutableDirectories.length > MAX_DIRECTORIES
 	)
@@ -45,7 +49,11 @@ export function validateDesktopEnvironmentPreferences(value: unknown): DesktopEn
 		const directory = normalize(entry);
 		if (!directories.includes(directory)) directories.push(directory);
 	}
-	const preferences: DesktopEnvironmentPreferences = { version: 1, extraExecutableDirectories: directories };
+	const preferences: DesktopEnvironmentPreferences = {
+		version: 1,
+		extraExecutableDirectories: directories,
+		importLoginShellEnvironment: record.importLoginShellEnvironment === true,
+	};
 	if (Buffer.byteLength(JSON.stringify(preferences)) > MAX_PREFERENCES_BYTES)
 		throw new DesktopEnvironmentPreferencesError();
 	return preferences;
@@ -76,7 +84,7 @@ export async function readDesktopEnvironmentPreferences(userDataPath: string): P
 		}
 	} catch (error) {
 		if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-			return { version: 1, extraExecutableDirectories: [] };
+			return { version: 1, extraExecutableDirectories: [], importLoginShellEnvironment: false };
 		throw new DesktopEnvironmentPreferencesError();
 	}
 }
