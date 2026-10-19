@@ -163,4 +163,12 @@ if (resolve(process.argv[1] ?? "") === import.meta.filename) {
 			? "Installed PTY cleanup confirmed."
 			: "Installed PTY cleanup unconfirmed; retain the isolated fixture.",
 	);
+	// node-pty's Windows output worker can remain referenced after the child has
+	// exited. This one-shot owner must finish after the probe and PID check, without
+	// killing an already-exited terminal or reaching into the library's internals.
+	await Promise.all([
+		new Promise((resolveFlush) => process.stdout.write("", resolveFlush)),
+		new Promise((resolveFlush) => process.stderr.write("", resolveFlush)),
+	]);
+	process.exit(process.exitCode ?? 0);
 }

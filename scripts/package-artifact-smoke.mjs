@@ -208,8 +208,16 @@ try {
 	);
 	retainSmokeRoot = !ptyResult.stdout?.split(/\r?\n/u).includes("Installed PTY cleanup confirmed.");
 	if (ptyResult.error || ptyResult.status !== 0 || retainSmokeRoot) {
+		const diagnostics = [
+			`Probe status=${String(ptyResult.status)}, signal=${String(ptyResult.signal)}.`,
+			ptyResult.error?.message,
+			ptyResult.stdout?.trim() && `Probe stdout:\n${ptyResult.stdout.trim()}`,
+			ptyResult.stderr?.trim() && `Probe stderr:\n${ptyResult.stderr.trim()}`,
+		]
+			.filter(Boolean)
+			.join("\n");
 		throw new Error(
-			`The default isolated npm install cannot launch a usable native PTY. Check npm's blocked-script report and the installed node-pty assets; if script approval is required, approve only node-pty for the consumer's npm version and repeat this gate. The smoke test never automatically approves or bypasses lifecycle policy.\n${ptyResult.error?.message ?? String(ptyResult.stderr).trim()}`,
+			`The default isolated npm install did not finish its native PTY probe successfully. Check npm's blocked-script report and the installed node-pty assets; if script approval is required, approve only node-pty for the consumer's npm version and repeat this gate. The smoke test never automatically approves or bypasses lifecycle policy.\n${diagnostics}`,
 		);
 	}
 	console.log(ptyResult.stdout.trim());
