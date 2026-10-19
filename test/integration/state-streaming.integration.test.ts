@@ -182,14 +182,10 @@ describe("state streaming integration", { concurrent: false }, () => {
 				projectUpdateB.projectState.board.columns.find((column) => column.id === "review")?.cards[0]?.prompt,
 			).toBe("Realtime Task");
 
-			const streamAMessages = await streamA.collectFor(500);
-			expect(
-				streamAMessages.some(
-					(message) => message.type === "project_state_updated" && message.projectId === projectBId,
-				),
-			).toBe(false);
-			const projectsUpdateForB = streamAMessages.find(
-				(message) =>
+			// Cross-project summaries await registry reads after the project state is
+			// sent. Wait for delivery before checking the separate isolation window.
+			const projectsUpdateForB = await streamA.waitForMessage(
+				(message): message is RuntimeStateStreamProjectsMessage =>
 					message.type === "projects_updated" &&
 					message.projects.some(
 						(project) => project.id === projectBId && project.boardRevision === previousRevision + 1,
@@ -205,6 +201,12 @@ describe("state streaming integration", { concurrent: false }, () => {
 					}),
 				]),
 			});
+			const streamAMessages = await streamA.collectFor(500);
+			expect(
+				streamAMessages.some(
+					(message) => message.type === "project_state_updated" && message.projectId === projectBId,
+				),
+			).toBe(false);
 
 			const projectsAfterUpdate = await requestJson<RuntimeProjectsResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
