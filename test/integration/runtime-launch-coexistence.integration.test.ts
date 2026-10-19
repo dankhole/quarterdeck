@@ -97,6 +97,8 @@ describe("actual CLI and desktop relay coexistence", () => {
 		return { child, startupId, ready: await ready };
 	}
 
+	// Three real CLI processes load source and verify native process identity.
+	// The complete scenario must outlive each subprocess's own startup budget.
 	it("attaches a second CLI and desktop relay to the same owner without starting another runtime", async () => {
 		server = await startQuarterdeckServer({
 			cwd: projectPath,
@@ -133,7 +135,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 			headers: server.browserHeaders,
 		});
 		expect(response.status).toBe(200);
-	});
+	}, 60_000);
 
 	it("refuses an incompatible live owner before runtime startup cleanup", async () => {
 		const admission = await acquireRuntimeOwnership({
@@ -152,7 +154,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 		});
 		expect(await readFile(marker, "utf8")).toBe("preserve");
 		await expect(readdir(join(stateHome, "diagnostics"))).rejects.toMatchObject({ code: "ENOENT" });
-	});
+	}, 30_000);
 
 	it("keeps the live owner's simulation ledger intact when an attached CLI requests auto-open", async () => {
 		const ledgerPath = join(directory, "host-events.json");
@@ -222,7 +224,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 			events: [{ kind: "clipboard_write", sequence: 1, characterCount: 7 }],
 		});
 		expect((await readFile(ledgerPath)).equals(beforeLedger)).toBe(true);
-	});
+	}, 45_000);
 
 	it("refuses a live legacy descriptor before touching existing state", async () => {
 		const instance = join(stateHome, "diagnostics", "instances", "legacy");
@@ -236,5 +238,5 @@ describe("actual CLI and desktop relay coexistence", () => {
 		});
 		expect(await readFile(marker, "utf8")).toBe("preserve");
 		expect(await readdir(join(stateHome, "diagnostics", "instances"))).toEqual(["legacy"]);
-	});
+	}, 30_000);
 });

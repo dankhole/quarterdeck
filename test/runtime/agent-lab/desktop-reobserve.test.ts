@@ -34,7 +34,8 @@ describe("owned Electron renderer reobservation", () => {
 		await writeFile(join(userDataPath, "DevToolsActivePort"), contents);
 		await expect(readDesktopDebugEndpoint(userDataPath)).rejects.toThrow();
 	});
-	it("rejects a symlink endpoint", async () => {
+	// O_NOFOLLOW is the macOS/POSIX endpoint guard and is unavailable on Windows.
+	it.skipIf(process.platform === "win32")("rejects a symlink endpoint", async () => {
 		await rm(join(userDataPath, "DevToolsActivePort"));
 		await writeFile(join(root, "foreign"), valid);
 		await symlink(join(root, "foreign"), join(userDataPath, "DevToolsActivePort"));

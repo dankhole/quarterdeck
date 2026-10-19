@@ -134,7 +134,8 @@ function scenario(input: DesktopLabFixture, behavior: "success" | "no-ack" | "ru
 	return { child, originals, second, evidence, options, kill, launched: () => launched, alive: () => alive };
 }
 
-describe("isolated packaged desktop second launch", () => {
+// Packaged macOS admission requires private POSIX file modes, unavailable on Windows.
+describe.skipIf(process.platform === "win32")("isolated packaged desktop second launch", () => {
 	function request(input: DesktopLabFixture): DesktopLaunchRequest {
 		return {
 			schemaVersion: 1,

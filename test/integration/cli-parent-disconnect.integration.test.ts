@@ -68,7 +68,7 @@ describe("CLI parent disconnect integration", { concurrent: false }, () => {
 			if (!stopped) await server.stop().catch(() => undefined);
 			cleanup();
 		}
-	});
+	}, 30_000);
 
 	it("propagates parent disconnect through the source-watching development wrapper", async () => {
 		const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-dev-parent-disconnect-");
@@ -89,9 +89,13 @@ describe("CLI parent disconnect integration", { concurrent: false }, () => {
 		);
 		let stopped = false;
 		try {
-			await waitForProcessStart(child);
+			// This wrapper deliberately loads the source graph, even in the compiled
+			// integration lane. Allow cold TSX startup and native identity probes.
+			await waitForProcessStart(child, 30_000);
 			await requestGracefulShutdown(child);
-			stopped = await waitForExit(child, 5_000);
+			// Exceed both the runtime's 8s/10s deadline and the wrapper's 9s/11s
+			// fallback; an early test kill must not masquerade as graceful shutdown.
+			stopped = await waitForExit(child, 12_000);
 			expect(stopped).toBe(true);
 			await expectStoppedRuntimeDescriptor(stateHome);
 		} finally {
@@ -101,5 +105,5 @@ describe("CLI parent disconnect integration", { concurrent: false }, () => {
 			}
 			cleanup();
 		}
-	});
+	}, 45_000);
 });

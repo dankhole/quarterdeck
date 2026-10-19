@@ -270,7 +270,8 @@ function recovered(input: DesktopLabFixture, before: DesktopMainLossProof): Desk
 	};
 }
 
-describe("exact owned packaged main process loss", () => {
+// Packaged macOS admission requires private POSIX file modes, unavailable on Windows.
+describe.skipIf(process.platform === "win32")("exact owned packaged main process loss", () => {
 	it("signals only the captured SDK-parented main and requires clean lease release plus natural forest drain", async () => {
 		const input = await fixture();
 		const test = scenario(input);
@@ -466,7 +467,9 @@ describe("exact owned packaged main process loss", () => {
 		await symlink(external, historyPath(input));
 		await expect(readDesktopMainLossHistory(input, "task")).rejects.toThrow("symlink");
 	});
+});
 
+describe("packaged owner evidence projection", () => {
 	it("projects ownership metadata without returning its authenticated descriptor", async () => {
 		vi.mocked(discoverRuntimeOwner).mockResolvedValue({
 			claim: {
@@ -489,7 +492,8 @@ describe("exact owned packaged main process loss", () => {
 	});
 });
 
-describe("packaged fake recovery after main process loss", () => {
+// Packaged macOS admission requires private POSIX file modes, unavailable on Windows.
+describe.skipIf(process.platform === "win32")("packaged fake recovery after main process loss", () => {
 	it("retains a copied fixture identity and rejects rewritten valid userData config at the same state home", async () => {
 		const input = await fixture();
 		const test = scenario(input);
