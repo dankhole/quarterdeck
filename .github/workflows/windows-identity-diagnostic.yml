@@ -28,9 +28,9 @@ jobs:
           const script="[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-ItemPropertyValue -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography' -Name MachineGuid -ErrorAction Stop";
           const appdata={APPDATA:join(home,'AppData','Roaming'),LOCALAPPDATA:join(home,'AppData','Local')};
           Object.values(appdata).forEach(p=>mkdirSync(p,{recursive:true}));
-          for(const [label,env] of [['supervisor',base],['with-appdata',{...base,...appdata}],['with-module-path',{...base,PSModulePath:get('PSModulePath')}]]) {
+          for(const [label,env] of [['supervisor',base],['with-appdata',{...base,...appdata}],['with-module-path',{...base,PSModulePath:get('PSModulePath')}],['direct-registry',base]]) {
             const start=Date.now();
-            try {const out=execFileSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{env,encoding:'utf8',timeout:20000,windowsHide:true});console.log(JSON.stringify({label,elapsed:Date.now()-start,valid:/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(out.trim()),length:out.trim().length}));}
+            try {const out=execFileSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-Command',label==='direct-registry'?"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography','MachineGuid',$null)":script],{env,encoding:'utf8',timeout:20000,windowsHide:true});console.log(JSON.stringify({label,elapsed:Date.now()-start,valid:/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(out.trim()),length:out.trim().length}));}
             catch(e){console.log(JSON.stringify({label,elapsed:Date.now()-start,status:e.status,signal:e.signal,code:e.code,stderr:String(e.stderr)}));}
           }
           '@ | Set-Content diagnostic.cjs
