@@ -56,6 +56,8 @@ jobs:
         run: |
           npm --prefix desktop run make -- --arch="$TARGET_ARCH"
           npm --prefix desktop run verify -- --manifest "$PWD/desktop/out/artifact-manifest-darwin-$TARGET_ARCH.json"
+      - name: Install managed Chromium for desktop/browser coexistence
+        run: npm run agent:browser -- install-browser chromium
       - name: Exercise isolated packaged app with a fake provider
         env:
           TARGET_ARCH: ${{ matrix.arch }}
