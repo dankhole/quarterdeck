@@ -1,0 +1,37 @@
+name: Windows identity diagnostic
+on:
+  push:
+    branches: [ci/windows-identity-diagnostic]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.2
+      - name: Probe isolated PowerShell environment
+        shell: pwsh
+        run: |
+          @'
+          const {execFileSync}=require('node:child_process');
+          const {mkdtempSync,mkdirSync}=require('node:fs');
+          const {join}=require('node:path');
+          const root=mkdtempSync(join(require('node:os').tmpdir(),'qd-identity-diagnostic-'));
+          const home=join(root,'home');mkdirSync(home);
+          const get=k=>Object.entries(process.env).find(([n])=>n.toLowerCase()===k.toLowerCase())?.[1];
+          const base=Object.fromEntries(['PATH','SystemRoot','WINDIR','ComSpec','PATHEXT'].flatMap(k=>get(k)?[[k,get(k)]]:[]));
+          Object.assign(base,{HOME:home,USERPROFILE:home,TEMP:root,TMP:root,TMPDIR:root,NO_COLOR:'1',LC_ALL:'C',TZ:'UTC'});
+          const exe=join(get('SystemRoot'),'System32','WindowsPowerShell','v1.0','powershell.exe');
+          const script="[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-ItemPropertyValue -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography' -Name MachineGuid -ErrorAction Stop";
+          const appdata={APPDATA:join(home,'AppData','Roaming'),LOCALAPPDATA:join(home,'AppData','Local')};
+          Object.values(appdata).forEach(p=>mkdirSync(p,{recursive:true}));
+          for(const [label,env] of [['supervisor',base],['with-appdata',{...base,...appdata}],['with-module-path',{...base,PSModulePath:get('PSModulePath')}]]) {
+            const start=Date.now();
+            try {const out=execFileSync(exe,['-NoLogo','-NoProfile','-NonInteractive','-Command',script],{env,encoding:'utf8',timeout:20000,windowsHide:true});console.log(JSON.stringify({label,elapsed:Date.now()-start,valid:/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(out.trim()),length:out.trim().length}));}
+            catch(e){console.log(JSON.stringify({label,elapsed:Date.now()-start,status:e.status,signal:e.signal,code:e.code,stderr:String(e.stderr)}));}
+          }
+          '@ | Set-Content diagnostic.cjs
+          node diagnostic.cjs
