@@ -43,8 +43,8 @@ npm run typecheck        # Runtime typecheck
 npm run lint             # Biome lint
 npm run format           # Biome check --write
 npm run dogfood          # Build and launch against a target project
-npm run link             # Prepare deps, build, and link the CLI
-npm run link -- --desktop # Also prepare and install the macOS app
+npm run link             # Build/link and install the app on supported Macs
+npm run link -- --browser # Build and link only the CLI/browser mode
 ```
 
 ## Repo orientation
@@ -248,7 +248,7 @@ After cloning, prepare dependencies and create/update the global CLI link from t
 npm run link
 ```
 
-`npm run link` checks installed direct and transitive dependencies against their lockfile versions and runs `npm ci` for missing or outdated root/web UI trees before building and updating the development symlink. Use `npm run link -- --desktop` on macOS to also prepare desktop dependencies and Electron, build and install the native app, and link the CLI. Existing independent dependency directories are reused when they match; shared dependency symlinks are rejected. If the globally linked runtime is currently running from this checkout, stop it before relinking.
+`npm run link` checks dependency trees against their lockfiles, prepares the required independent trees, builds once, and updates the global CLI link. On supported Macs it packages and installs the same build at `~/Applications/Quarterdeck.app`. `-- --desktop` remains a redundant compatibility option; use `-- --browser` to link only the CLI. Shared dependency symlinks are rejected. Stop a linked runtime before rebuilding its checkout and quit the installed app before replacement. If either global linking or app installation fails, resolve the reported incomplete pairing before launching the app.
 
 Verify:
 
@@ -264,7 +264,7 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-After local code changes, run `npm run build` again before using the linked command.
+After local code changes, run `npm run link` again to update both the linked command and installed app. `npm run build` updates only runtime/UI assets; a desktop launch will reject stale pairing until the matching app is installed.
 
 When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `quarterdeck` binary points at the right `dist/cli.js`.
 

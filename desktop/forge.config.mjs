@@ -5,6 +5,7 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { finalizeLocalAppSignature } from "./scripts/app-signature.mjs";
 import { recordMakeArtifacts, recordPackagedApp } from "./scripts/artifact-manifest.mjs";
 import { MakerDMG } from "./scripts/maker-dmg.mjs";
+import { installDesktopNativeAdmission } from "./scripts/native-admission.mjs";
 import { desktopRoot, requireNativeMacTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
 import { releaseBuildSettings } from "./scripts/release-policy.mjs";
 import { copyRuntimeResource } from "./scripts/runtime-resources.mjs";
@@ -37,6 +38,12 @@ export default {
 		icon: join(desktopRoot, "assets", "quarterdeck.icns"),
 		asar: true,
 		afterCopy: [async ({ buildPath }) => copyRuntimeResource(runtimePath, buildPath)],
+		// Packager renames Electron and applies fuses before this hook, then signs
+		// the completed app. An empty extraResource list still enables the hook.
+		extraResource: [],
+		afterCopyExtraResources: [
+			async ({ buildPath }) => installDesktopNativeAdmission(join(buildPath, "Quarterdeck.app")),
+		],
 		ignore: [/^\/(?!dist(?:\/|$)|package\.json$)/u],
 		download: { cacheRoot: join(desktopRoot, ".cache", "electron") },
 		extendInfo: { LSMinimumSystemVersion: desktopPackage.quarterdeckDesktop.minimumMacOSVersion },

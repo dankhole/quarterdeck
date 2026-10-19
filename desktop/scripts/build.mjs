@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { build } from "esbuild";
-import { mainBuildOptions, preloadBuildOptions } from "./build-options.mjs";
+import { mainBuildOptions, npmUpdateWorkerBuildOptions, preloadBuildOptions } from "./build-options.mjs";
 import { desktopRoot, repoRoot } from "./paths.mjs";
 
 const [desktopPackage, runtimePackage] = await Promise.all([
@@ -13,5 +13,5 @@ if (desktopPackage.version !== runtimePackage.version) {
 }
 await rm(join(desktopRoot, "dist"), { recursive: true, force: true });
 await mkdir(join(desktopRoot, "dist"), { recursive: true });
-await Promise.all([build(mainBuildOptions), build(preloadBuildOptions)]);
+await Promise.all([build(mainBuildOptions), build(preloadBuildOptions), build(npmUpdateWorkerBuildOptions)]);
 console.log(`Built Quarterdeck desktop shell ${desktopPackage.version}.`);

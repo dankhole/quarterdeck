@@ -1,189 +1,245 @@
-import { chmod, lstat, mkdtemp, readdir, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { desktopAppTreeSha256 } from "../../../src/desktop-install/files.js";
 import { createDesktopInstallationService } from "../../../src/desktop-install/index.js";
 import { managedDesktopInstallationReceiptSchema } from "../../../src/desktop-install/receipt.js";
 import { createDesktopAppFixture, createInstallerDependencies } from "./fixture.js";
 
 let root: string;
 beforeEach(async () => {
-	root = await mkdtemp(join(tmpdir(), "quarterdeck-desktop-install-test-"));
+	root = await mkdtemp(join(tmpdir(), "quarterdeck-install-test-"));
 });
 afterEach(async () => {
-	// Owned synthetic trees only; installed copies intentionally retain read-only directories.
-	async function writable(path: string): Promise<void> {
-		const info = await lstat(path);
-		if (info.isSymbolicLink()) return;
-		await chmod(path, info.mode | 0o700);
-		if (info.isDirectory()) for (const child of await readdir(path)) await writable(join(path, child));
-	}
-	await writable(root);
 	await rm(root, { recursive: true, force: true });
 });
 
-describe("managed desktop installation", () => {
-	it("imports a local app, preserves its source, and revalidates it offline before reuse", async () => {
+describe("one owned desktop installation", () => {
+	it("imports into one stable path, preserves the source, and validates offline", async () => {
 		const fixture = await createDesktopAppFixture(root);
-		const { dependencies, commands } = createInstallerDependencies(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
 		const service = createDesktopInstallationService(dependencies);
 		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
-		expect(installed).toMatchObject({
-			version: "0.12.8",
-			arch: "arm64",
-			source: "local",
-			buildId: fixture.bundle.buildId,
-		});
-		expect(installed.appPath).toBe(
-			await realpath(join(dependencies.managedRoot, "installations", installed.installId, "Quarterdeck.app")),
-		);
-		const receipt = managedDesktopInstallationReceiptSchema.parse(
-			JSON.parse(await readFile(installed.receiptPath, "utf8")),
-		);
-		expect(receipt).toMatchObject({
-			updatesEnabled: false,
-			signing: { verified: false, teamId: null },
-			release: null,
-		});
-		expect((await lstat(join(installed.appPath, "Contents/Resources/app.asar"))).mode & 0o222).toBe(0);
-		expect((await lstat(fixture.appPath)).mode & 0o200).not.toBe(0);
+		expect(installed.appPath).toBe(dependencies.appPath);
+		expect(installed.owner).toEqual(dependencies.owner);
+		expect(await service.validateDesktopInstallation()).toEqual(installed);
 		expect(await service.ensureDesktopInstallation({ version: "0.12.8" })).toEqual(installed);
+		expect(await desktopAppTreeSha256(fixture.appPath)).toBe(await desktopAppTreeSha256(installed.appPath));
+		expect(await readdir(dependencies.managedRoot)).toEqual(["managed-installation.json"]);
+		expect(await readdir(join(root, "Applications"))).toEqual(["Quarterdeck.app"]);
 		expect(dependencies.download).not.toHaveBeenCalled();
-		expect(commands.some((call) => call.command.includes("codesign"))).toBe(false);
-		expect(await readdir(dependencies.managedRoot)).toEqual(["installations", "selections"]);
 	});
-
-	it("selects a new same-version local build without mutating the old installation", async () => {
+	it("replaces a same-version paired local build and removes its temporary backup", async () => {
 		const first = await createDesktopAppFixture(root);
-		const second = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
+		const { dependencies } = await createInstallerDependencies(root, first);
 		const service = createDesktopInstallationService(dependencies);
 		const a = await service.ensureDesktopInstallation({ version: "0.12.8", from: first.appPath });
-		const b = await service.ensureDesktopInstallation({ version: "0.12.8", from: second.appPath });
-		expect(b.installId).not.toBe(a.installId);
-		expect(b.appAsarSha256).not.toBe(a.appAsarSha256);
-		expect(await service.ensureDesktopInstallation({ version: "0.12.8" })).toEqual(b);
-		expect(await readFile(join(a.appPath, "Contents/Resources/app.asar"), "utf8")).toBe(
-			`shell-${first.bundle.buildId}`,
+		const next = await createDesktopAppFixture(root);
+		dependencies.owner.identity.buildId = next.bundle.buildId;
+		await writeFile(
+			join(dependencies.owner.packageRoot, "dist/build-manifest.json"),
+			JSON.stringify(dependencies.owner.identity),
 		);
-		expect(await readdir(join(dependencies.managedRoot, "installations"))).toHaveLength(2);
+		const b = await service.ensureDesktopInstallation({ version: "0.12.8", from: next.appPath });
+		expect(a.appPath).toBe(b.appPath);
+		expect(a.installId).not.toBe(b.installId);
+		expect(await readFile(join(b.appPath, "Contents/Resources/app.asar"), "utf8")).toBe(
+			`shell-${next.bundle.buildId}`,
+		);
+		expect(await readdir(join(root, "Applications"))).toEqual(["Quarterdeck.app"]);
 	});
-
-	it("leaves the prior selection and all apps intact when copying a replacement fails", async () => {
+	it("refuses an unpaired same-version local build before copying", async () => {
+		const first = await createDesktopAppFixture(root);
+		const other = await createDesktopAppFixture(root);
+		const { dependencies, commands } = await createInstallerDependencies(root, first);
+		await expect(
+			createDesktopInstallationService(dependencies).ensureDesktopInstallation({
+				version: "0.12.8",
+				from: other.appPath,
+			}),
+		).rejects.toThrow("different source or local build");
+		expect(commands.some((c) => c.command === "/usr/bin/ditto")).toBe(false);
+	});
+	it("downloads and verifies before in-use admission, preserving the installed pair on refusal", async () => {
 		const fixture = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
 		const service = createDesktopInstallationService(dependencies);
-		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
-		const original = dependencies.runCommand;
-		dependencies.runCommand = vi.fn(async (command, args) => {
-			if (command === "/usr/bin/ditto") throw new Error("copy denied");
-			return original(command, args);
+		const first = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		const before = await readFile(first.receiptPath, "utf8");
+		dependencies.acquireMutation = vi.fn(async () => {
+			throw new Error("in use");
 		});
-		await expect(service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath })).rejects.toThrow(
-			"copy denied",
-		);
-		expect(await service.ensureDesktopInstallation({ version: "0.12.8" })).toEqual(installed);
-		expect(await readdir(dependencies.managedRoot)).toEqual(["installations", "selections"]);
+		await expect(
+			createDesktopInstallationService(dependencies).ensureDesktopInstallation({
+				version: "0.12.8",
+				from: fixture.appPath,
+			}),
+		).rejects.toThrow("in use");
+		expect(await readFile(first.receiptPath, "utf8")).toBe(before);
+		expect(await service.validateDesktopInstallation()).toEqual(first);
+		expect(await readdir(join(root, "Applications"))).toEqual(["Quarterdeck.app"]);
 	});
-
-	it("allows concurrent complete imports and publishes a pointer to a validated winner", async () => {
-		const a = await createDesktopAppFixture(root);
-		const b = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
-		const service = createDesktopInstallationService(dependencies);
-		const results = await Promise.all([
-			service.ensureDesktopInstallation({ version: "0.12.8", from: a.appPath }),
-			service.ensureDesktopInstallation({ version: "0.12.8", from: b.appPath }),
-		]);
-		const selected = await service.ensureDesktopInstallation({ version: "0.12.8" });
-		expect(results).toContainEqual(selected);
-		expect(await readdir(join(dependencies.managedRoot, "installations"))).toHaveLength(2);
-		expect(await readdir(dependencies.managedRoot)).toEqual(["installations", "selections"]);
-	});
-
-	it("refuses a changed selected app instead of executing, replacing, or downloading around it", async () => {
+	it("requires explicit ownership transfer between npm slots", async () => {
 		const fixture = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
-		const service = createDesktopInstallationService(dependencies);
-		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
-		const file = join(installed.appPath, "Contents/Resources/app.asar");
-		await chmod(file, 0o600);
-		await writeFile(file, "mutated by updater");
-		await expect(service.ensureDesktopInstallation({ version: "0.12.8" })).rejects.toThrow(
-			"changed after installation",
-		);
-		expect(dependencies.download).not.toHaveBeenCalled();
-		expect(await readFile(file, "utf8")).toBe("mutated by updater");
-	});
-
-	it("rejects a forged pointer path and retains its bytes", async () => {
-		const fixture = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
 		const service = createDesktopInstallationService(dependencies);
 		await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
-		const pointer = join(dependencies.managedRoot, "selections/0.12.8-darwin-arm64.json");
-		const content = JSON.stringify({ schemaVersion: 1, installId: "../../unrelated" });
-		await writeFile(pointer, content);
-		await expect(service.ensureDesktopInstallation({ version: "0.12.8" })).rejects.toThrow(
-			"selected desktop installation is invalid",
-		);
-		expect(await readFile(pointer, "utf8")).toBe(content);
+		const prefix = join(root, "other-prefix");
+		const slot = join(prefix, "lib/node_modules/quarterdeck");
+		await mkdir(join(prefix, "lib/node_modules"), { recursive: true });
+		await symlink(dependencies.owner.packageRoot, slot);
+		const owner = { ...dependencies.owner, prefix, packageSlot: slot };
+		await expect(
+			service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath, owner }),
+		).rejects.toMatchObject({ code: "owner_conflict" });
+		const moved = await service.ensureDesktopInstallation({
+			version: "0.12.8",
+			from: fixture.appPath,
+			owner,
+			replaceOwner: true,
+		});
+		expect(moved.owner.packageSlot).toBe(slot);
 	});
-
-	it.each([{ version: "0.12.9" }, { arch: "x64" as const }, { launchProtocol: false }])(
-		"rejects mismatched or old local app identity before copying: %s",
-		async (options) => {
-			const fixture = await createDesktopAppFixture(root, options);
-			const { dependencies, commands } = createInstallerDependencies(root);
+	it("detects npm-first partial updates and missing linked checkouts without writing", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const service = createDesktopInstallationService(dependencies);
+		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		const before = await readFile(installed.receiptPath, "utf8");
+		await writeFile(
+			join(dependencies.owner.packageRoot, "dist/build-manifest.json"),
+			JSON.stringify({ ...dependencies.owner.identity, buildId: randomUUID() }),
+		);
+		expect((await service.getDesktopInstallationStatus()).state).toBe("changed");
+		await expect(service.validateDesktopInstallation()).rejects.toThrow("owning npm CLI");
+		expect(await readFile(installed.receiptPath, "utf8")).toBe(before);
+		await rm(dependencies.owner.packageSlot);
+		await expect(service.validateDesktopInstallation()).rejects.toThrow("owning npm CLI");
+	});
+	it("repairs an externally removed managed app using its recorded owner", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const service = createDesktopInstallationService(dependencies);
+		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		await rm(installed.appPath, { recursive: true });
+		expect((await service.getDesktopInstallationStatus()).state).toBe("changed");
+		const repaired = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		expect(repaired.installId).not.toBe(installed.installId);
+		expect((await service.getDesktopInstallationStatus()).state).toBe("ready");
+	});
+	it("rejects metadata and Applications ancestors redirected by a user symbolic link", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const outside = join(root, "outside");
+		await mkdir(outside);
+		const alias = join(root, "alias");
+		await symlink(outside, alias);
+		for (const changes of [
+			{ managedRoot: join(alias, "installation") },
+			{ appPath: join(alias, "Applications/Quarterdeck.app") },
+		]) {
 			await expect(
-				createDesktopInstallationService(dependencies).ensureDesktopInstallation({
+				createDesktopInstallationService({ ...dependencies, ...changes }).ensureDesktopInstallation({
 					version: "0.12.8",
 					from: fixture.appPath,
 				}),
-			).rejects.toThrow();
-			expect(commands.some((call) => call.command === "/usr/bin/ditto")).toBe(false);
-			expect(await readdir(join(dependencies.managedRoot, "installations"))).toEqual([]);
-		},
-	);
-
-	it("rejects external app symlinks without copying or traversing the target", async () => {
+			).rejects.toThrow("path ancestor");
+		}
+		expect(await readdir(outside)).toEqual([]);
+		expect(dependencies.acquireMutation).not.toHaveBeenCalled();
+	});
+	it("retains changed and unmanaged apps instead of replacing them", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const service = createDesktopInstallationService(dependencies);
+		const first = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		const file = join(first.appPath, "Contents/Resources/app.asar");
+		await writeFile(file, "external mutation");
+		await expect(service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath })).rejects.toThrow(
+			"current app changed",
+		);
+		expect(await readFile(file, "utf8")).toBe("external mutation");
+		await rm(first.receiptPath);
+		await expect(service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath })).rejects.toThrow(
+			"unmanaged app",
+		);
+	});
+	it("restores an interrupted pre-promotion backup before retrying", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const service = createDesktopInstallationService(dependencies);
+		const first = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		const receipt = managedDesktopInstallationReceiptSchema.parse(
+			JSON.parse(await readFile(first.receiptPath, "utf8")),
+		);
+		const id = randomUUID();
+		const stage = join(root, "Applications", `.Quarterdeck-install-${id}`);
+		await mkdir(stage, { mode: 0o700 });
+		await rename(first.appPath, join(stage, "backup.app"));
+		await writeFile(
+			join(dependencies.managedRoot, "transaction.json"),
+			JSON.stringify({
+				schemaVersion: 1,
+				id,
+				stage,
+				oldReceipt: receipt,
+				newReceipt: { ...receipt, installId: randomUUID() },
+			}),
+		);
+		expect((await service.getDesktopInstallationStatus()).state).toBe("incomplete");
+		const next = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		expect(await service.validateDesktopInstallation()).toEqual(next);
+		expect(await readdir(join(root, "Applications"))).toEqual(["Quarterdeck.app"]);
+	});
+	it("adopts an exact promoted app after interruption before receipt publication", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const service = createDesktopInstallationService(dependencies);
+		const first = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		const receipt = managedDesktopInstallationReceiptSchema.parse(
+			JSON.parse(await readFile(first.receiptPath, "utf8")),
+		);
+		const id = randomUUID();
+		const stage = join(root, "Applications", `.Quarterdeck-install-${id}`);
+		await mkdir(stage, { mode: 0o700 });
+		await cp(first.appPath, join(stage, "backup.app"), { recursive: true });
+		await rm(first.receiptPath);
+		await writeFile(
+			join(dependencies.managedRoot, "transaction.json"),
+			JSON.stringify({ schemaVersion: 1, id, stage, oldReceipt: receipt, newReceipt: receipt }),
+		);
+		await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		expect((await service.getDesktopInstallationStatus()).state).toBe("ready");
+	});
+	it("uninstalls only its verified app while preserving user state and the coordination sentinel", async () => {
+		const fixture = await createDesktopAppFixture(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
+		const service = createDesktopInstallationService(dependencies);
+		await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
+		await writeFile(join(root, "settings.json"), "user settings");
+		await writeFile(join(dependencies.managedRoot, "admission.lock"), "");
+		expect((await service.uninstallDesktopInstallation()).removed).toBe(true);
+		expect(await readFile(join(root, "settings.json"), "utf8")).toBe("user settings");
+		expect(await readdir(dependencies.managedRoot)).toEqual(["admission.lock"]);
+		expect((await service.getDesktopInstallationStatus()).state).toBe("missing");
+	});
+	it("rejects external links and unsafe app metadata before mutation", async () => {
 		const fixture = await createDesktopAppFixture(root);
 		await symlink(root, join(fixture.appPath, "escape"));
-		const { dependencies } = createInstallerDependencies(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
 		await expect(
 			createDesktopInstallationService(dependencies).ensureDesktopInstallation({
 				version: "0.12.8",
 				from: fixture.appPath,
 			}),
 		).rejects.toThrow("external or invalid symbolic link");
+		expect(dependencies.acquireMutation).not.toHaveBeenCalled();
 	});
-
-	it("preserves contained app aliases while copying and validating the managed app", async () => {
+	it("rejects unsupported hosts, unsafe versions, and translated Intel Node", async () => {
 		const fixture = await createDesktopAppFixture(root);
-		await symlink("runtime/dist/cli.js", join(fixture.appPath, "Contents/Resources/runtime-alias"));
-		const { dependencies } = createInstallerDependencies(root);
-		const service = createDesktopInstallationService(dependencies);
-		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
-		expect((await lstat(join(installed.appPath, "Contents/Resources/runtime-alias"))).isSymbolicLink()).toBe(true);
-		expect(await service.ensureDesktopInstallation({ version: "0.12.8" })).toEqual(installed);
-	});
-
-	it("refuses a selected app replaced with a symlink, even to matching app content", async () => {
-		const fixture = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
-		const service = createDesktopInstallationService(dependencies);
-		const installed = await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
-		const slot = join(dependencies.managedRoot, "installations", installed.installId);
-		await chmod(slot, 0o700);
-		await chmod(installed.appPath, 0o700);
-		await rename(installed.appPath, join(slot, "retained.app"));
-		await symlink(fixture.appPath, installed.appPath);
-		await expect(service.ensureDesktopInstallation({ version: "0.12.8" })).rejects.toThrow("replaced by a link");
-		expect(dependencies.download).not.toHaveBeenCalled();
-	});
-
-	it("rejects unsupported hosts and unsafe version inputs before filesystem effects", async () => {
-		const { dependencies } = createInstallerDependencies(root);
+		const { dependencies } = await createInstallerDependencies(root, fixture);
 		await expect(
 			createDesktopInstallationService({ ...dependencies, platform: "linux" }).ensureDesktopInstallation({
 				version: "0.12.8",
@@ -192,20 +248,11 @@ describe("managed desktop installation", () => {
 		await expect(
 			createDesktopInstallationService(dependencies).ensureDesktopInstallation({ version: "../latest" }),
 		).rejects.toThrow("exact npm version");
-		expect(await readdir(root)).toEqual([]);
-	});
-
-	it("does not let a throwing progress observer change a completed installation", async () => {
-		const fixture = await createDesktopAppFixture(root);
-		const { dependencies } = createInstallerDependencies(root);
-		const service = createDesktopInstallationService(dependencies);
-		const result = await service.ensureDesktopInstallation({
-			version: "0.12.8",
-			from: fixture.appPath,
-			onProgress: () => {
-				throw new Error("UI observer failed");
-			},
-		});
-		expect(await service.ensureDesktopInstallation({ version: "0.12.8" })).toEqual(result);
+		dependencies.runCommand = vi.fn(async () => ({ stdout: "1", stderr: "" }));
+		await expect(
+			createDesktopInstallationService({ ...dependencies, arch: "x64" }).ensureDesktopInstallation({
+				version: "0.12.8",
+			}),
+		).rejects.toThrow("native arm64 Node");
 	});
 });

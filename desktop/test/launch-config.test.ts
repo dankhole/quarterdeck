@@ -94,7 +94,7 @@ describe("ordinary desktop profile preparation", () => {
 			projectPath: lab.projectPath,
 		};
 		const launch = await readDesktopLaunchConfig(configPath, join(outside, "unused-profile"), request);
-		expect(launch).toEqual({ ...lab, synthetic: true, lab, request });
+		expect(launch).toEqual({ ...lab, synthetic: true, labConfigPath: configPath, lab, request });
 		expect(existsSync(join(outside, "unused-profile"))).toBe(false);
 		await expect(readDesktopLaunchConfig(configPath, "unused", { ...request, stateHome: outside })).rejects.toThrow(
 			"exact isolated state home",

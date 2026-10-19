@@ -1,5 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
+import { mkdtemp, open, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopRecoveryHelper, type DesktopRecoveryHelperOptions } from "../src/recovery-helper.js";
@@ -19,18 +22,29 @@ afterEach(async () => {
 
 function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOptions> = {}) {
 	const spawnChild = vi.fn((executable, args, options) => {
+		expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(
+			overrides.launch?.synthetic ? overrides.launch.labConfigPath : undefined,
+		);
 		expect(executable).toBe("/synthetic/bin/node");
 		expect(args).toEqual(["/synthetic/dist/cli.js", "recover", "--confirm-stopped"]);
 		expect(options).toMatchObject({
 			cwd: "/synthetic",
-			stdio: ["ignore", "ignore", "ignore"],
+			stdio: overrides.installationAdmission
+				? ["ignore", "ignore", "ignore", "ignore", overrides.installationAdmission.fd]
+				: ["ignore", "ignore", "ignore"],
 			shell: false,
 			detached: false,
 			env: { QUARTERDECK_STATE_HOME: "/synthetic/state", PROVIDER_SETTING: "retained" },
 		});
+		if (overrides.installationAdmission) {
+			expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_FD).toBe("4");
+			expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_PATH).toBe(overrides.installationAdmission.path);
+		} else {
+			expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_FD).toBeUndefined();
+			expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_PATH).toBeUndefined();
+		}
 		for (const name of [
 			"QUARTERDECK_DESKTOP_CHILD",
-			"QUARTERDECK_DESKTOP_LAB_CONFIG",
 			"QUARTERDECK_AGENT_LAB",
 			"NODE_OPTIONS",
 			"NODE_PATH",
@@ -72,6 +86,8 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 			NODE_OPTIONS: "--require /untrusted/inject.js",
 			NODE_PATH: "/untrusted/modules",
 			DYLD_INSERT_LIBRARIES: "/untrusted/inject.dylib",
+			QUARTERDECK_INSTALLATION_LOCK_FD: "99",
+			QUARTERDECK_INSTALLATION_LOCK_PATH: "/untrusted/inherited.lock",
 		},
 		deadlineMs: 1000,
 		terminationDeadlineMs: 100,
@@ -82,6 +98,40 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 }
 
 describe("trusted desktop recovery helper", () => {
+	it("passes validated synthetic admission without trusting the inherited lab path", async () => {
+		const { owner } = helper("recovered", {
+			launch: {
+				synthetic: true,
+				stateHome: "/synthetic/state",
+				projectPath: "/synthetic/project",
+				labConfigPath: "/synthetic/validated-lab.json",
+			},
+		});
+		expect(await owner.run()).toBe("recovered");
+	});
+	it("does not grant native lab admission to a production launch", async () => {
+		const { owner } = helper("recovered", {
+			launch: {
+				synthetic: false,
+				stateHome: "/synthetic/state",
+				projectPath: "/synthetic/project",
+				labConfigPath: "/synthetic/ignored-lab.json",
+			},
+		});
+		expect(await owner.run()).toBe("recovered");
+	});
+	it("inherits bundle admission before the maintenance command starts", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-recovery-admission-"));
+		const path = join(root, "admission.lock");
+		const file = await open(path, "wx", 0o600);
+		try {
+			const { owner } = helper("recovered", { installationAdmission: { fd: file.fd, path } });
+			expect(await owner.run()).toBe("recovered");
+		} finally {
+			await file.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
 	it("uses fixed bundled commands, trusted state home, sanitized environment, and actual exit", async () => {
 		const { owner, spawnChild } = helper();
 		const result = owner.run();

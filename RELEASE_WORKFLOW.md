@@ -88,16 +88,11 @@ Open the workflow in Firefox if desired:
 open -a Firefox "https://github.com/dankhole/quarterdeck/actions/workflows/publish.yml"
 ```
 
-Both triggers share a per-tag concurrency group. The workflow validates the tag format, resolves the tag to a commit SHA, and runs the reusable release test matrix against that exact SHA on Linux, macOS, and Windows. When the repository variable `QUARTERDECK_DESKTOP_RELEASES` is `1`, the workflow first builds and signs both native macOS architectures, verifies their source SHA/version/manifests/checksums, and uploads the complete asset set to a draft GitHub Release. Only then can npm publication run. A missing signing environment or architecture gate fails the release before publication. With the variable disabled, npm/browser releases remain independent. See the [desktop release runbook](docs/desktop-release.md) for the protected `desktop-signing` environment, temporary keychain, notarization, and candidate build setup. Do not enable desktop releases until the [validation ledger](docs/desktop-validation.md) gates are complete.
+Both triggers share a per-tag concurrency group and resolve one immutable source SHA. The Linux/macOS/Windows matrix validates that exact source, including the packed npm build stamp. Unified releases require matching signed desktop assets; signing cannot be disabled to bypass a failure. See the [desktop release runbook](docs/desktop-release.md) for provisioning and remaining [validation gates](docs/desktop-validation.md).
 
-Its publish job then:
+The workflow inspects publication state before signing. For a new release, it builds and verifies both native architectures, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. A retry of an already-public release reuses its exact bytes and skips rebuilding; public assets are immutable.
 
-1. Checks out the same resolved commit that passed the test matrix.
-2. Validates the tag's match with `package.json`.
-3. Requires a non-empty matching changelog section.
-4. Checks whether npm already accepted the immutable version and verifies its `gitHead` against the resolved release SHA. If absent, runs `npm publish --access public`; npm's `prepublishOnly` lifecycle builds and checks the package before upload, and the workflow then verifies the published identity. If present with the same source, skips republishing and completes the remaining release steps. Missing or different source identity fails closed; use a new version rather than pairing unrelated assets.
-5. Publishes with npm provenance through the configured OIDC trusted publisher.
-6. Finalizes the complete desktop draft, or creates the browser-only GitHub Release, from the changelog entry and adds a comparison link when a previous tag exists.
+The npm job validates the version, changelog, and source stamp. It publishes through OIDC only if the version is absent. An existing version is accepted only when its `gitHead` equals the immutable tag SHA. Stable releases use `latest`; previews specify a prerelease tag so they cannot replace `latest`. Missing or mismatched identity fails closed and requires a new version.
 
 Monitor the run to completion:
 
@@ -106,7 +101,7 @@ gh run list --repo dankhole/quarterdeck --workflow publish.yml --limit 1
 gh run watch <run-id> --repo dankhole/quarterdeck --exit-status
 ```
 
-If the workflow fails before npm accepts the package, fix the cause and rerun it with the same immutable tag only when the tagged contents remain correct. npm versions cannot be overwritten; if npm accepted the package but a later step failed, do not republish that version. Rerun all jobs for a coordinated desktop retry so signed artifacts come from the same workflow attempt. A public release cannot accept replacement desktop assets: prepare a new version if public artifacts need repair. For browser-only releases, repair or recreate only the missing GitHub Release. Any package-content change requires a new patch version.
+If npm publication fails after desktop publication, rerun the same immutable tag and reuse the public assets. If tagged content or any public artifact needs repair, prepare a new version. Never move the tag, overwrite public desktop bytes, or republish an accepted npm version. Draft assets may be rebuilt only before publication.
 
 ## Verify the release
 
@@ -119,11 +114,11 @@ gh release view vX.Y.Z \
   --json tagName,name,url,isPrerelease,publishedAt,targetCommitish
 ```
 
-For a first-install smoke test, use an isolated temporary prefix so the maintainer's global link is untouched:
+For a browser-package smoke test, use an isolated prefix and explicitly disable desktop lifecycle installation. A temporary prefix alone does not isolate the per-user app:
 
 ```bash
 RELEASE_PREFIX="$(mktemp -d)"
-npm install --global --prefix "$RELEASE_PREFIX" quarterdeck@X.Y.Z
+QUARTERDECK_INSTALL_MODE=browser npm install --global --prefix "$RELEASE_PREFIX" quarterdeck@X.Y.Z
 "$RELEASE_PREFIX/bin/quarterdeck" --version
 ```
 
@@ -131,11 +126,11 @@ Remove the temporary directory after verification. The user-facing install paths
 
 ```bash
 npm install --global quarterdeck
-npx --yes quarterdeck@latest
+npx --yes quarterdeck@latest --browser
 ```
 
 npm does not automatically upgrade global installations. Existing users update explicitly with `npm install --global quarterdeck@latest`; the `npx` form resolves the current `latest` release and may reuse npm's download cache.
 
 ## Expected failure cases
 
-Publishing stops when the tag is missing or malformed, the tag and package version differ, the changelog entry is missing or empty, the release matrix fails, OIDC does not match the npm trusted-publisher configuration, or the complete desktop draft cannot be verified. An already accepted immutable npm version is a retry state, never permission to overwrite it.
+Publishing stops when the tag is missing or malformed, the tag and package version differ, the changelog entry is missing or empty, the release matrix fails, OIDC does not match the npm trusted-publisher configuration, or the complete public desktop asset set cannot be verified. An already accepted immutable npm version is a retry state, never permission to overwrite it.

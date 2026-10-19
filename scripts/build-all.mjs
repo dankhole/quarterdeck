@@ -2,15 +2,18 @@
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveNpmCommand } from "./npm-command.mjs";
 import { mergeProcessEnvironment } from "./process-environment.mjs";
+import { readSourceIdentity, validateBuildManifest } from "./build-manifest.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const buildId = randomUUID();
+const source = readSourceIdentity(repoRoot);
+const version = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version;
 const buildEnv = mergeProcessEnvironment(process.env, {
 	QUARTERDECK_BUILD_ID: buildId,
 });
@@ -49,5 +52,17 @@ const webBuildCommand = resolveNpmCommand(["run", "web:build"]);
 run(webBuildCommand.command, webBuildCommand.args);
 run(process.execPath, ["scripts/build.mjs"]);
 assertBuildIdentity();
+const completedSource = readSourceIdentity(repoRoot);
+if (completedSource.sourceSha !== source.sourceSha) throw new Error("Git HEAD changed during the paired build.");
+if (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version !== version)
+	throw new Error("Product version changed during the paired build.");
+const manifest = validateBuildManifest({
+	schemaVersion: 1,
+	version,
+	buildId,
+	sourceSha: source.sourceSha,
+	sourceDirty: source.sourceDirty || completedSource.sourceDirty,
+});
+writeFileSync(join(repoRoot, "dist", "build-manifest.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
 
 process.stdout.write(`[quarterdeck-build] packaged runtime and browser build ${buildId}\n`);

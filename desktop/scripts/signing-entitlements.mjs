@@ -16,8 +16,9 @@ const machOMagic = new Set([
 ]);
 
 export function entitlementClass(filePath) {
-	if (filePath.endsWith("/Contents/Resources/runtime/bin/node")) return "runtime";
-	if (filePath.endsWith(".app") || /\/Contents\/MacOS\/[^/]+$/u.test(filePath)) return "electron";
+	if (filePath.endsWith("/Contents/Resources/runtime/bin/nodeHost")) return "runtime";
+	if (/\/Contents\/MacOS\/QuarterdeckHost(?: Helper(?: \((?:GPU|Renderer|Plugin)\))?)?$/u.test(filePath))
+		return "electron";
 	return "library";
 }
 
@@ -99,7 +100,10 @@ export async function verifySignedAppEntitlements(appPath, expectedTeamId, runCo
 	}
 	if (
 		!audited.includes("Contents/Resources/runtime/bin/node") ||
-		!audited.some((path) => /^Contents\/MacOS\/[^/]+$/u.test(path))
+		!audited.includes("Contents/Resources/runtime/bin/nodeHost") ||
+		!audited.includes("Contents/Resources/runtime/installation-admission") ||
+		!audited.includes("Contents/MacOS/Quarterdeck") ||
+		!audited.includes("Contents/MacOS/QuarterdeckHost")
 	) {
 		throw new Error("Signed entitlement audit is missing the app or bundled Node executable.");
 	}

@@ -25,7 +25,7 @@ import {
 	DESKTOP_PROJECT_OPEN_CHANNEL,
 } from "./desktop-ipc-channels.js";
 
-interface PreloadIpc {
+export interface PreloadIpc {
 	on: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
 	removeListener: (channel: string, listener: (event: unknown, payload: unknown) => void) => void;
 	send: (channel: string, payload: unknown) => void;

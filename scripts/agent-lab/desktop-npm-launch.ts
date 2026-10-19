@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import { z } from "zod";
@@ -15,7 +15,13 @@ import type { DesktopLabDriver } from "./desktop-driver";
 import { type DesktopLabFixture, resolveDesktopAppExecutable } from "./desktop-fixture";
 import { writeJsonAtomic } from "./paths";
 
-const bundleSchema = z.object({ version: z.string(), arch: z.enum(["arm64", "x64"]), sourceSha: z.string() });
+const bundleSchema = z.object({
+	version: z.string(),
+	arch: z.enum(["arm64", "x64"]),
+	sourceSha: z.string(),
+	buildId: z.uuid(),
+	sourceDirty: z.boolean(),
+});
 const projectIndexSchema = z.object({
 	entries: z.record(z.string(), z.object({ projectId: z.string(), repoPath: z.string() })),
 });
@@ -66,10 +72,28 @@ export async function prepareDesktopNpmLaunch(fixture: DesktopLabFixture): Promi
 		const managedRoot = join(fixture.config.tempRoot, `npm-managed-${label}`);
 		await mkdir(managedRoot, { mode: 0o700 });
 		fixture.managedInstallationRoots.push(managedRoot);
+		const packageRoot = join(managedRoot, "checkout");
+		const prefix = join(managedRoot, "npm-prefix");
+		const packageSlot = join(prefix, "lib/node_modules/quarterdeck");
+		await mkdir(join(packageRoot, "dist"), { recursive: true });
+		await mkdir(join(prefix, "lib/node_modules"), { recursive: true });
+		await symlink(packageRoot, packageSlot, "dir");
+		const identity = {
+			schemaVersion: 1 as const,
+			version: bundle.version,
+			buildId: bundle.buildId,
+			sourceSha: bundle.sourceSha,
+			sourceDirty: bundle.sourceDirty,
+		};
+		await writeJsonAtomic(join(packageRoot, "dist/build-manifest.json"), identity);
+		await writeJsonAtomic(join(packageRoot, "package.json"), { name: "quarterdeck", version: bundle.version });
+		const owner = { kind: "link" as const, packageRoot, packageSlot, prefix, identity };
 		const service = createDesktopInstallationService({
 			platform: process.platform,
 			arch: bundle.arch,
-			managedRoot,
+			managedRoot: join(managedRoot, "installation"),
+			appPath: join(managedRoot, "Applications/Quarterdeck.app"),
+			owner,
 			runCommand: runDesktopInstallCommand,
 			download: async () => {
 				downloadAttempts += 1;
@@ -77,8 +101,8 @@ export async function prepareDesktopNpmLaunch(fixture: DesktopLabFixture): Promi
 			},
 		});
 		const imported = await service.ensureDesktopInstallation({ version: bundle.version, from: sourceAppPath });
-		const selected = await service.ensureDesktopInstallation({ version: bundle.version });
-		const identity: Array<keyof DesktopInstallation> = [
+		const selected = await service.validateDesktopInstallation({ version: bundle.version, owner });
+		const identityKeys: Array<keyof DesktopInstallation> = [
 			"appPath",
 			"installId",
 			"version",
@@ -88,7 +112,7 @@ export async function prepareDesktopNpmLaunch(fixture: DesktopLabFixture): Promi
 			"source",
 			"receiptPath",
 		];
-		if (identity.some((key) => imported[key] !== selected[key]))
+		if (identityKeys.some((key) => imported[key] !== selected[key]))
 			throw new Error("Offline selection did not reuse the actual imported installation.");
 		installations.push(selected);
 	}
@@ -238,7 +262,7 @@ export async function exerciseDesktopNpmLaunch(
 			(await readDiagnosticJournal(desktop.descriptor.journalDirectory)).records,
 		);
 		return updater?.state.update.phase === "disabled";
-	}, "native updater disabled in the isolated marked app");
+	}, "npm-owned update guidance in the isolated app");
 	const proof = {
 		initialProjectId,
 		secondProjectId,
@@ -252,7 +276,7 @@ export async function exerciseDesktopNpmLaunch(
 		sameDocument: true,
 		updater,
 		updaterScope:
-			"Synthetic launch disables updates before the managed receipt policy; focused tests prove npm_managed.",
+			"The native updater is removed; diagnostics records npm_managed update authority. This synthetic candidate does not prove production admission locking.",
 	};
 	await writeJsonAtomic(join(fixture.manifest.artifactDir, "npm-launch-proof.json"), proof);
 	await driver.inspect("npm-launch-completed");

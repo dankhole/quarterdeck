@@ -10,9 +10,9 @@ Quarterdeck currently supports:
 - OpenAI Codex
 - Pi
 
-Quarterdeck detects installed agent CLIs from your `PATH`, starts a local runtime server, and opens the browser UI for the git repository you launch it from.
+Quarterdeck detects installed agent CLIs from your `PATH` and opens your project in its desktop app on supported Macs, or in browser mode on other platforms.
 
-A macOS desktop candidate also packages the shared interface and a bundled Node runtime. Both modes use the same projects, tasks, settings, and agent integrations. The optional desktop installer and launcher are included in the CLI; Electron is downloaded only when desktop mode is explicitly requested. See the [desktop guide](docs/desktop.md) and [validation status](docs/desktop-validation.md).
+The macOS app packages the shared interface and a bundled Node runtime. Both modes use the same projects, tasks, settings, and agent integrations. Global npm installation installs the matching app at `~/Applications/Quarterdeck.app`; the Dock icon and CLI use that same copy. Public distribution still requires the gates in the [validation status](docs/desktop-validation.md). See the [desktop guide](docs/desktop.md).
 
 ## Install via npm
 
@@ -27,7 +27,7 @@ quarterdeck
 Or run the latest release from your project directory without a global installation:
 
 ```bash
-npx --yes quarterdeck@latest
+npx --yes quarterdeck@latest --browser
 ```
 
 npm does not automatically update global installations. Upgrade an installed copy explicitly when a new release is available:
@@ -38,7 +38,9 @@ npm install --global quarterdeck@latest
 
 The `npx` form resolves `@latest` for you and may reuse npm's download cache.
 
-On interactive startup, Quarterdeck checks npm at most once per day in the background and prints the explicit global update command when a newer stable release is available. It never installs an update automatically. Set `NO_UPDATE_NOTIFIER=1` or pass `--no-update-notifier` to disable the check.
+An npm-installed app checks for a newer release once at startup and through **Check for Updates**. An **Update available** button opens version details and release notes. **Update Quarterdeck** hands the exact version to npm in Terminal after the normal save/session confirmation and a clean quit. Terminal shows progress and verifies the CLI/app pair before reporting success; reopen Quarterdeck when it finishes. Local linked builds instead show `npm run link` guidance.
+
+There is no recurring checker or unattended installation. You can still run the npm command yourself; quit the app before replacement. The installer never stops sessions for you. Downloads and verification happen before replacement, and a failed replacement preserves recovery evidence and the previous app when safe.
 
 Verify and run the installed command from any git repository:
 
@@ -48,19 +50,21 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-Quarterdeck launches a local server, opens the browser UI, and stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
+Quarterdeck stores runtime state under `~/.quarterdeck` by default. Set `QUARTERDECK_STATE_HOME` to use a different state directory. Quarterdeck itself does not require a separate account; agent access comes from the agent CLIs you have installed and authenticated.
 
 Choose a launch mode with the same CLI:
 
 ```sh
-quarterdeck             # Browser mode, unchanged
+quarterdeck             # Desktop on supported local Macs; browser elsewhere
 quarterdeck --browser   # Explicit browser mode
-quarterdeck --desktop   # macOS app; installs the matching release if needed
+quarterdeck --desktop   # Explicit macOS app launch
 ```
 
-No public desktop release has been published yet. Until one is available for your CLI version, use the [local desktop build/install flow](docs/desktop-release.md#local-unsigned-candidate). A missing release produces an error with local-install guidance; it never downloads a different version. Running `npm install --global quarterdeck` alone does not download or launch the app.
+Until a matching public desktop release is available, use the [local build/install flow](docs/desktop-release.md#local-unsigned-candidate). Missing assets never cause installation of a different version. For CLI-only installation on a Mac, use `QUARTERDECK_INSTALL_MODE=browser npm install --global quarterdeck`, then launch with `--browser`. Global installation does not launch the app.
 
-The desktop launcher opens the current Git repository in the native app, or restores the app's current view when run outside a repository. Quit an older standalone candidate once before switching to an npm-managed installation. npm-managed apps use npm for updates; ordinary separately installed apps retain their signed native update flow.
+The desktop launcher opens the current Git repository in the native app, or restores its current view outside a repository. CLI and Dock launch both check that the app matches its owning npm installation or linked checkout. npm scripts can be disabled, and npm/app updates are separate operations: use `quarterdeck desktop status` to inspect an incomplete installation and `quarterdeck desktop install` to finish it. If the CLI itself is unavailable, rerun `npm install --global quarterdeck@<version> --foreground-scripts`.
+
+To remove the app, quit it and run `quarterdeck desktop uninstall` before `npm uninstall --global quarterdeck` in the owning npm prefix. npm removal alone does not remove the external app. Projects, settings, worktrees, and saved sessions are preserved. See the desktop guide before migrating old managed copies or a Dock shortcut.
 
 ## What Quarterdeck Does
 
@@ -187,7 +191,7 @@ cd quarterdeck
 npm run link
 ```
 
-`npm run bootstrap` preserves or migrates the clone-wide Agent Lab browser cache, then performs locked installs for both the runtime and the separate web UI dependency tree. `npm run link` installs missing or outdated root and web UI dependencies from their lockfiles, runs a production build, and then creates the development symlink used by the global `quarterdeck` command. To also build and install the macOS app and prepare its dependencies, run `npm run link -- --desktop`, then launch with `quarterdeck --desktop`. Stop a Quarterdeck runtime launched from this linked checkout before bootstrapping or relinking; the scripts refuse to replace files underneath that live process.
+`npm run bootstrap` prepares the runtime and web UI dependency trees. On supported Macs, `npm run link` also prepares desktop dependencies, builds one paired runtime/UI, packages the app, links the global command, and installs the app through the same installer as published releases. Use `npm run link -- --browser` for CLI-only development. Stop a runtime launched from this linked checkout before rebuilding, and quit the installed app before replacement. Neither operation forces shutdown.
 
 When you pull new Quarterdeck changes, switch worktrees, or want the global command to point at a different checkout, run `npm run link` again from that checkout. To remove the global link:
 
@@ -237,14 +241,17 @@ npm run unlink
 | --- | --- |
 | `npm run bootstrap` | Preserve the Agent Lab browser cache, then install locked root and web UI dependencies; refuses to run beneath an active linked runtime. |
 | `npm run install:all` | Backward-compatible alias for `npm run bootstrap`. |
-| `npm run link` | Prepare root/web dependencies, build, and link the local CLI globally; add `-- --desktop` to also prepare and install the macOS app. |
+| `npm run link` | Prepare dependencies, build and link the CLI, and install the matching app on supported Macs. Use `-- --browser` for CLI-only development. |
 | `npm run unlink` | Remove the global `quarterdeck` link. |
 | `npm run dev` | Run the runtime server in watch mode on port 3500. |
 | `npm run dev:full` | Run the runtime and web UI together for local development. |
 | `npm run web:dev` | Run the Vite web UI dev server on port 4173. |
 | `npm run build` | Build the packaged runtime and web UI into `dist`. |
-| `npm run desktop:build` | Prepare root/web/desktop dependencies and Electron, then build and package the optional native macOS app. |
-| `npm run desktop:install` | Prepare dependencies, build, and import the local app into managed installations, without launching it. |
+| `npm run desktop:build` | Prepare dependencies, then build and package the macOS app without installing it. |
+| `npm run desktop:install` | Build, link, and install the local app through the shared installation workflow, without launching it. |
+| `quarterdeck desktop status` | Inspect app/CLI pairing, ownership, and incomplete installation. |
+| `quarterdeck desktop install` | Complete or repair installation for this CLI. |
+| `quarterdeck desktop uninstall` | Remove the owned app while preserving user and project data. |
 | `npm run check` | Run agent-instruction checks, Biome, runtime typecheck, and root tests. |
 | `quarterdeck diagnostics --help` | Discover and inspect private local runtime diagnostics. |
 | `quarterdeck recover` | Inspect saved process evidence after an unconfirmed shutdown. |

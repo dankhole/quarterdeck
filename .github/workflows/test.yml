@@ -83,7 +83,13 @@ jobs:
           retention-days: 7
 
       - name: Published package artifact smoke
-        run: npm run test:package -- --npm-cache "$(npm config get cache)"
+        shell: bash
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.ref }}
+        run: |
+          release_args=()
+          if [[ -n "$RELEASE_SOURCE_SHA" ]]; then release_args=(--release-source-sha "$RELEASE_SOURCE_SHA"); fi
+          npm run test:package -- --npm-cache "$(npm config get cache)" "${release_args[@]}"
 
       - name: Check (agent instructions, lint, typecheck, root tests)
         run: npm run check
@@ -126,7 +132,13 @@ jobs:
 
       - name: Published package artifact smoke
         if: ${{ !inputs.focused_windows }}
-        run: npm run test:package -- --npm-cache "$(npm config get cache)"
+        shell: bash
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.ref }}
+        run: |
+          release_args=()
+          if [[ -n "$RELEASE_SOURCE_SHA" ]]; then release_args=(--release-source-sha "$RELEASE_SOURCE_SHA"); fi
+          npm run test:package -- --npm-cache "$(npm config get cache)" "${release_args[@]}"
 
       - name: Focused native Windows smoke
         if: ${{ inputs.focused_windows }}

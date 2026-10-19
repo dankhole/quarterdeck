@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { FuseState, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import { readBuildManifest } from "../../scripts/build-manifest.mjs";
 import { verifyAppSignature } from "./app-signature.mjs";
 import { readPairedBuildIdentity } from "./build-identity.mjs";
 import { sha256File } from "./checksums.mjs";
@@ -42,6 +43,17 @@ export async function verifyRuntime(runtimePath) {
 	delete env.NODE_PATH;
 	delete env.NODE_OPTIONS;
 	delete env.ELECTRON_RUN_AS_NODE;
+	// Packaged candidates intentionally live outside the canonical installed app.
+	// Enable only the native noncanonical probe path; these fixed --version/-p/-e
+	// probes never load a desktop launch configuration or start an app/runtime.
+	const wrappedNode = await lstat(join(runtimePath, "bin", "nodeHost")).catch((error) => {
+		if (error.code === "ENOENT") return null;
+		throw error;
+	});
+	if (wrappedNode) {
+		if (!wrappedNode.isFile()) throw new Error("Bundled Node host must be a real executable file.");
+		env.QUARTERDECK_DESKTOP_LAB_CONFIG = join(runtimePath, "packaging-verification-only.json");
+	}
 	const options = { cwd: runtimePath, env, encoding: "utf8", stdio: "pipe", timeout: 10_000 };
 	const nodeInfo = JSON.parse(
 		run(
@@ -63,6 +75,11 @@ export async function verifyRuntime(runtimePath) {
 	if (version !== manifest.version) throw new Error("Bundled CLI version does not match its manifest.");
 	if ((await readPairedBuildIdentity(join(runtimePath, "dist"))) !== manifest.buildId)
 		throw new Error("Bundled runtime and browser build identities differ.");
+	const build = await readBuildManifest(join(runtimePath, "dist"));
+	for (const key of ["version", "buildId", "sourceSha"]) {
+		if (build[key] !== manifest[key]) throw new Error(`Bundled root build provenance differs: ${key}.`);
+	}
+	if (build.sourceDirty && !manifest.sourceDirty) throw new Error("Dirty root build cannot claim clean provenance.");
 	const ptyOutput = run(nodeBin, ["-e", nativeSmoke], options).stdout.trim();
 	if (ptyOutput !== "quarterdeck-bundled-pty-ok") throw new Error("Bundled native PTY did not pass its smoke check.");
 	return manifest;
@@ -77,6 +94,12 @@ export async function verifyApp(appPath) {
 	const runtimePath = join(resources, "runtime");
 	if (!(await lstat(runtimePath)).isDirectory()) throw new Error("Bundled helper must be outside app.asar.");
 	const manifest = await verifyRuntime(runtimePath);
+	for (const name of ["Quarterdeck", "QuarterdeckHost"]) {
+		if (!(await lstat(join(appPath, "Contents/MacOS", name))).isFile())
+			throw new Error(`Native admission requires the real ${name} executable.`);
+	}
+	if (!(await lstat(join(runtimePath, "installation-admission"))).isFile())
+		throw new Error("Native admission installer helper must be a real executable.");
 	const appVersion = run(
 		"/usr/libexec/PlistBuddy",
 		["-c", "Print :CFBundleShortVersionString", join(appPath, "Contents", "Info.plist")],
@@ -133,7 +156,10 @@ export async function verifyArtifactManifest(manifestPath) {
 	for (const required of [
 		"app.asar",
 		"runtime/bin/node",
+		"runtime/bin/nodeHost",
 		"runtime/dist/cli.js",
+		"runtime/dist/build-manifest.json",
+		"runtime/installation-admission",
 		"runtime/dist/web-ui/index.html",
 		"runtime/bundle-manifest.json",
 		"runtime/release-policy.json",
@@ -143,6 +169,15 @@ export async function verifyArtifactManifest(manifestPath) {
 	for (const [file, expected] of Object.entries(artifactManifest.checksums)) {
 		const path = await containedArtifactPath(resources, file);
 		if ((await sha256File(path)) !== expected) throw new Error(`Packaged resource checksum mismatch: ${file}.`);
+	}
+	if (artifactManifest.nativeAdmission?.schemaVersion !== 1)
+		throw new Error("Artifact manifest lacks native admission provenance.");
+	for (const [field, name] of [
+		["bootstrapSha256", "Quarterdeck"],
+		["hostSha256", "QuarterdeckHost"],
+	]) {
+		if (artifactManifest.nativeAdmission[field] !== (await sha256File(join(appPath, "Contents/MacOS", name))))
+			throw new Error(`Native admission checksum mismatch: ${name}.`);
 	}
 	const wire = await getCurrentFuseWire(appPath);
 	for (const [name, index] of Object.entries(FuseV1Options).filter(([, value]) => typeof value === "number")) {

@@ -6,12 +6,12 @@ export interface DesktopMenuActions {
 	productReady: boolean;
 	availableCommands?: readonly DesktopAppCommand["command"][];
 	runtimeConnected?: boolean;
-	updatesAvailable: boolean;
-	updatePending: boolean;
+	updateGuidanceAvailable: boolean;
+	updateLabel?: string;
+	updateBusy?: boolean;
 	dispatch: (command: DesktopAppCommand["command"]) => void;
 	openInBrowser: () => void;
-	checkForUpdates: () => void;
-	restartToUpdate: () => void;
+	showUpdateGuidance: () => void;
 	reloadWindow: () => void;
 	runtimeFailed?: boolean;
 	restartRuntime?: () => void;
@@ -48,17 +48,10 @@ export function desktopMenuTemplate(actions: DesktopMenuActions): MenuItemConstr
 				},
 				{ type: "separator" },
 				{
-					id: "desktop.checkUpdates",
-					label: "Check for Updates…",
-					enabled: actions.updatesAvailable,
-					click: actions.checkForUpdates,
-				},
-				{
-					id: "desktop.restartUpdate",
-					label: "Restart to Update…",
-					visible: actions.updatePending,
-					enabled: actions.updatePending,
-					click: actions.restartToUpdate,
+					id: "desktop.updateGuidance",
+					label: actions.updateLabel ?? "Update Quarterdeck…",
+					enabled: actions.updateGuidanceAvailable && actions.updateBusy !== true,
+					click: actions.showUpdateGuidance,
 				},
 				{ type: "separator" },
 				{ role: "services" },

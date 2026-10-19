@@ -1,4 +1,5 @@
 import { Activity, Command, Copy, RefreshCw, Settings, Terminal, Wrench } from "lucide-react";
+import { DesktopUpdateControl } from "@/components/app/desktop-update-control";
 import { TopBarOpenProjectControl } from "@/components/app/top-bar-open-project-control";
 import { TopBarProjectShortcutControl } from "@/components/app/top-bar-project-shortcut-control";
 import { TopBarPromptShortcutControl } from "@/components/app/top-bar-prompt-shortcut-control";
@@ -239,6 +240,7 @@ export function TopBar({
 						/>
 					</Tooltip>
 				) : null}
+				<DesktopUpdateControl />
 				<Button
 					variant="ghost"
 					size="sm"

@@ -73,6 +73,8 @@ describe("desktop launch environment", () => {
 			VSCODE_INSPECTOR_OPTIONS: "synthetic-inspector",
 			NODE_CHANNEL_FD: "9",
 			DYLD_INSERT_LIBRARIES: "/synthetic/injection.dylib",
+			QUARTERDECK_INSTALLATION_LOCK_FD: "99",
+			QUARTERDECK_INSTALLATION_LOCK_PATH: "/untrusted/installation.lock",
 			"BASH_FUNC_override%%": "() { injected; }",
 			INVALID_VALUE: "invalid\0value",
 		};
@@ -96,6 +98,8 @@ describe("desktop launch environment", () => {
 			"VSCODE_INSPECTOR_OPTIONS",
 			"NODE_CHANNEL_FD",
 			"DYLD_INSERT_LIBRARIES",
+			"QUARTERDECK_INSTALLATION_LOCK_FD",
+			"QUARTERDECK_INSTALLATION_LOCK_PATH",
 			"BASH_FUNC_override%%",
 			"INVALID_VALUE",
 		]) {

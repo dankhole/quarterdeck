@@ -21,10 +21,14 @@ async function fixture() {
 	const app = join(root, "Quarterdeck.app");
 	const files = [
 		"Contents/MacOS/Quarterdeck",
+		"Contents/MacOS/QuarterdeckHost",
+		"Contents/Resources/runtime/installation-admission",
 		"Contents/Resources/runtime/bin/node",
+		"Contents/Resources/runtime/bin/nodeHost",
 		"Contents/Resources/runtime/node_modules/node-pty/build/Release/pty.node",
 		"Contents/Resources/runtime/node_modules/node-pty/build/Release/spawn-helper",
 		"Contents/Frameworks/Quarterdeck Helper (Plugin).app/Contents/MacOS/Quarterdeck Helper (Plugin)",
+		"Contents/Frameworks/Quarterdeck Helper (Plugin).app/Contents/MacOS/QuarterdeckHost Helper (Plugin)",
 		"Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
 	];
 	for (const file of files) {
@@ -54,19 +58,33 @@ function syntheticSigner(extra = {}, identity = signature) {
 describe("minimal Developer ID entitlements", () => {
 	it("overrides every signing default with JIT-only processes and empty libraries", () => {
 		for (const path of [
-			"/bundle/Quarterdeck.app",
-			"/bundle/Quarterdeck.app/Contents/MacOS/Quarterdeck",
-			"/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper (Plugin).app/Contents/MacOS/Quarterdeck Helper (Plugin)",
+			"/bundle/Quarterdeck.app/Contents/MacOS/QuarterdeckHost",
+			...["", " (GPU)", " (Renderer)", " (Plugin)"].map(
+				(suffix) =>
+					`/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper${suffix}.app/Contents/MacOS/QuarterdeckHost Helper${suffix}`,
+			),
 		]) {
 			expect(signingOptionsForFile(path)).toEqual({
 				hardenedRuntime: true,
 				entitlements: join(desktopRoot, "assets/electron-entitlements.plist"),
 			});
 		}
-		expect(signingOptionsForFile("/bundle/Quarterdeck.app/Contents/Resources/runtime/bin/node").entitlements).toBe(
-			join(desktopRoot, "assets/runtime-entitlements.plist"),
-		);
+		expect(
+			signingOptionsForFile("/bundle/Quarterdeck.app/Contents/Resources/runtime/bin/nodeHost").entitlements,
+		).toBe(join(desktopRoot, "assets/runtime-entitlements.plist"));
 		for (const path of [
+			"/bundle/Quarterdeck.app",
+			"/bundle/Quarterdeck.app/Contents/MacOS/Quarterdeck",
+			"/bundle/Quarterdeck.app/Contents/Resources/runtime/installation-admission",
+			"/bundle/Quarterdeck.app/Contents/Resources/runtime/bin/node",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper (Plugin).app",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper (Plugin).app/Contents/MacOS/Quarterdeck Helper (Plugin)",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper.app/Contents/MacOS/Quarterdeck Helper",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper (GPU).app/Contents/MacOS/Quarterdeck Helper (GPU)",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Quarterdeck Helper (Renderer).app/Contents/MacOS/Quarterdeck Helper (Renderer)",
+			"/bundle/Quarterdeck.app/Contents/MacOS/UnrelatedHost",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+			"/bundle/Quarterdeck.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handlerHost",
 			"/bundle/Quarterdeck.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
 			"/bundle/Quarterdeck.app/Contents/Resources/runtime/node_modules/node-pty/build/Release/pty.node",
 			"/bundle/Quarterdeck.app/Contents/Resources/runtime/node_modules/node-pty/build/Release/spawn-helper",
@@ -78,7 +96,7 @@ describe("minimal Developer ID entitlements", () => {
 		}
 	});
 	it("rejects inherited device grants and executable/library validation exceptions", () => {
-		const app = "/bundle/Quarterdeck.app";
+		const app = "/bundle/Quarterdeck.app/Contents/MacOS/QuarterdeckHost";
 		expect(() => verifyEntitlementDictionary(app, { [allowJit]: true })).not.toThrow();
 		for (const key of [
 			"com.apple.security.device.camera",

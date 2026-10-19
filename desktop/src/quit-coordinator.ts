@@ -2,7 +2,7 @@ import type { DesktopControlResultMessage } from "../../src/core/api/desktop-run
 import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown.js";
 import type { DesktopQuitPreflightResponse } from "../../src/shared/desktop-bridge-contract.js";
 
-export type DesktopQuitReason = "quit" | "update" | "restart";
+export type DesktopQuitReason = "quit" | "restart" | "update";
 export type DesktopQuitResult = { kind: "clean" } | { kind: "forced"; cleanup: "unconfirmed" } | { kind: "cancelled" };
 export type DesktopQuitSummary = Extract<DesktopControlResultMessage["result"], { method: "get-quit-summary" }>;
 
@@ -16,15 +16,15 @@ export interface DesktopQuitOptions {
 	stop: () => Promise<RuntimeShutdownOutcome>;
 	confirmSessions: (summary: DesktopQuitSummary, reason: DesktopQuitReason) => Promise<boolean>;
 	confirmUnconfirmedExit: () => Promise<boolean>;
-	canForceExit: () => boolean;
 	inform: (reason: "frontend_unavailable" | "runtime_unavailable" | "shutdown_incomplete") => Promise<void>;
 	onStopping: (stopping: boolean) => void;
 	finalize?: (result: Exclude<DesktopQuitResult, { kind: "cancelled" }>, reason: DesktopQuitReason) => Promise<void>;
 }
 
-/** One lease covers normal Quit and updater restart; only clean completion permits installation. */
+/** One lease protects drafts and app-owned sessions across Quit and runtime restart. */
 export class DesktopQuitCoordinator {
 	private pending: Promise<DesktopQuitResult> | null = null;
+	private pendingReason: DesktopQuitReason | null = null;
 	private normalQuitPending = false;
 	private lastSeal: DesktopQuitPreflightResponse | true | null = null;
 
@@ -42,9 +42,13 @@ export class DesktopQuitCoordinator {
 		this.normalQuitPending = false;
 	}
 
-	request(reason: DesktopQuitReason): Promise<DesktopQuitResult> {
+	request(reason: DesktopQuitReason, commitCleanUpdate?: () => Promise<void>): Promise<DesktopQuitResult> {
+		// An update owns a distinct clean-only transaction. Another transition cannot borrow its result or commit.
+		if (this.pending && (reason === "update" || this.pendingReason === "update"))
+			return Promise.resolve({ kind: "cancelled" });
 		if (reason === "quit") this.normalQuitPending = true;
 		if (this.pending) return this.pending;
+		this.pendingReason = reason;
 		this.pending = this.perform(reason)
 			.catch(async () => {
 				try {
@@ -55,6 +59,9 @@ export class DesktopQuitCoordinator {
 				return { kind: "cancelled" } as const;
 			})
 			.then(async (result) => {
+				// The clean stop is authoritative. Later seals protect drafts while the renderer is offline;
+				// the initial update preflight still requires the frontend's connected-runtime check.
+				const finalSealReason = reason === "update" && result.kind === "clean" ? "quit" : reason;
 				if (result.kind !== "cancelled" && this.options.finalize) {
 					try {
 						await this.options.finalize(result, reason);
@@ -64,16 +71,20 @@ export class DesktopQuitCoordinator {
 					if (
 						this.lastSeal !== true &&
 						(!this.lastSeal || !this.options.isSealValid(this.lastSeal)) &&
-						!(await this.sealFrontend(reason))
+						!(await this.sealFrontend(finalSealReason))
 					)
 						result = { kind: "cancelled" };
-					if (result.kind === "forced" && !this.options.canForceExit()) {
-						result = { kind: "cancelled" };
-						try {
-							await this.options.inform("shutdown_incomplete");
-						} catch {
-							/* Presentation failure cannot authorize an unsafe exit. */
+				}
+				if (reason === "update" && result.kind === "clean" && commitCleanUpdate) {
+					try {
+						// Authorization follows verified cleanup and the final draft seal, while the quit lease is held.
+						if (!(await this.sealFrontend(finalSealReason))) result = { kind: "cancelled" };
+						else {
+							await commitCleanUpdate();
+							if (!(await this.ensureSeal(finalSealReason))) result = { kind: "cancelled" };
 						}
+					} catch {
+						result = { kind: "cancelled" };
 					}
 				}
 				if (result.kind === "cancelled") this.options.releasePreflight();
@@ -82,6 +93,7 @@ export class DesktopQuitCoordinator {
 			.finally(() => {
 				this.options.onStopping(false);
 				this.pending = null;
+				this.pendingReason = null;
 			});
 		return this.pending;
 	}
@@ -102,7 +114,6 @@ export class DesktopQuitCoordinator {
 		}
 		if (cleanup === "unconfirmed") {
 			if (reason === "quit") return await this.forceQuit();
-			if (reason === "update") await this.options.inform("shutdown_incomplete");
 			return { kind: "cancelled" };
 		}
 		if (cleanup === "running") {
@@ -124,7 +135,11 @@ export class DesktopQuitCoordinator {
 		this.options.onStopping(true);
 		const outcome = await this.options.stop();
 		if (outcome.status === "clean") {
-			if (seal !== true && !this.options.isSealValid(seal) && !(await this.sealFrontend(reason)))
+			if (
+				seal !== true &&
+				!this.options.isSealValid(seal) &&
+				!(await this.sealFrontend(reason === "update" ? "quit" : reason))
+			)
 				return { kind: "cancelled" };
 			return { kind: "clean" };
 		}
@@ -135,21 +150,17 @@ export class DesktopQuitCoordinator {
 	}
 
 	private async forceQuit(): Promise<DesktopQuitResult> {
-		if (!(await this.permitsForcedExit())) return { kind: "cancelled" };
 		if (!(await this.options.confirmUnconfirmedExit())) return { kind: "cancelled" };
-		if (!(await this.permitsForcedExit()) || !(await this.sealFrontend("quit")) || !(await this.permitsForcedExit()))
-			return { kind: "cancelled" };
-		if (!this.options.canForceExit()) {
-			await this.options.inform("shutdown_incomplete");
-			return { kind: "cancelled" };
-		}
+		if (!(await this.sealFrontend("quit"))) return { kind: "cancelled" };
 		return { kind: "forced", cleanup: "unconfirmed" };
 	}
 
-	private async permitsForcedExit(): Promise<boolean> {
-		if (this.options.canForceExit()) return true;
-		await this.options.inform("shutdown_incomplete");
-		return false;
+	private async ensureSeal(reason: DesktopQuitReason): Promise<boolean> {
+		return (
+			this.lastSeal === true ||
+			(this.lastSeal !== null && this.options.isSealValid(this.lastSeal)) ||
+			Boolean(await this.sealFrontend(reason))
+		);
 	}
 
 	private async sealFrontend(reason: DesktopQuitReason): Promise<DesktopQuitPreflightResponse | true | null> {
@@ -158,12 +169,7 @@ export class DesktopQuitCoordinator {
 			return true;
 		}
 		const response = await this.options.preflight(reason, true);
-		this.lastSeal =
-			response?.decision === "ready" &&
-			(reason !== "update" || response.status.runtimeConnected || this.options.cleanupState() === "clean") &&
-			this.options.isSealValid(response)
-				? response
-				: null;
+		this.lastSeal = response?.decision === "ready" && this.options.isSealValid(response) ? response : null;
 		return this.lastSeal;
 	}
 }

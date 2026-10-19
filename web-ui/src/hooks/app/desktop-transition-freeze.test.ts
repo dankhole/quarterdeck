@@ -1,11 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopTransitionFreeze } from "./desktop-transition-freeze";
 
 describe("final native transition seal", () => {
-	afterEach(() => vi.useRealTimers());
-	it("holds a committed navigation beyond its admission deadline and refuses replacement seals", () => {
+	let freeze: DesktopTransitionFreeze;
+	beforeEach(() => {
 		vi.useFakeTimers();
-		const freeze = new DesktopTransitionFreeze(vi.fn());
+		vi.setSystemTime(new Date("2026-10-19T12:00:00Z"));
+		freeze = new DesktopTransitionFreeze(vi.fn());
+	});
+	afterEach(() => {
+		freeze.release();
+		vi.useRealTimers();
+	});
+	it("holds a committed navigation beyond its admission deadline and refuses replacement seals", () => {
 		const request = {
 			requestId: "navigation",
 			runtimeGeneration: "current",
@@ -36,7 +43,6 @@ describe("final native transition seal", () => {
 		expect(resumed.defaultPrevented).toBe(false);
 	});
 	it("refuses late or malformed navigation holds without freezing the document", () => {
-		const freeze = new DesktopTransitionFreeze(vi.fn());
 		const request = {
 			requestId: "navigation",
 			runtimeGeneration: "current",
@@ -50,8 +56,6 @@ describe("final native transition seal", () => {
 		expect(freeze.active).toBe(false);
 	});
 	it("freezes input before acknowledgement and releases only the matching request", () => {
-		const changed = vi.fn();
-		const freeze = new DesktopTransitionFreeze(changed);
 		expect(
 			freeze.seal({
 				requestId: "final",
@@ -74,8 +78,6 @@ describe("final native transition seal", () => {
 		expect(resumed.defaultPrevented).toBe(false);
 	});
 	it("expires a lost main-process seal and refuses unbounded or expired leases", () => {
-		vi.useFakeTimers();
-		const freeze = new DesktopTransitionFreeze(vi.fn());
 		const request = { requestId: "final", runtimeGeneration: "current", reason: "reload" as const };
 		expect(freeze.seal({ ...request, freezeUntil: Date.now() - 1 })).toBe(false);
 		expect(freeze.seal({ ...request, freezeUntil: Date.now() + 30_001 })).toBe(false);

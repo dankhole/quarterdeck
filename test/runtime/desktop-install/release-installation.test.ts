@@ -24,7 +24,7 @@ afterEach(async () => {
 describe("trusted desktop release installation", () => {
 	it("downloads only the exact tagged manifest and matching DMG, verifies before copy, and reuses offline", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
-		const { dependencies, commands } = createInstallerDependencies(root, fixture);
+		const { dependencies, commands } = await createInstallerDependencies(root, fixture);
 		const service = createDesktopInstallationService(dependencies);
 		const installed = await service.ensureDesktopInstallation({ version: "0.12.8" });
 		expect(installed.source).toBe("release");
@@ -58,12 +58,12 @@ describe("trusted desktop release installation", () => {
 		expect(receipt).toMatchObject({ signing: { verified: true, teamId: "ABCDE12345" }, updatesEnabled: false });
 		expect(await service.ensureDesktopInstallation({ version: "0.12.8" })).toEqual(installed);
 		expect(dependencies.download).toHaveBeenCalledTimes(2);
-		expect(await readdir(dependencies.managedRoot)).toEqual(["installations", "selections"]);
+		expect((await readdir(dependencies.managedRoot)).some((name) => name.startsWith(".install"))).toBe(false);
 	});
 
 	it("rejects corrupt containers before mounting or signature inspection", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
-		const { dependencies, commands } = createInstallerDependencies(root, fixture);
+		const { dependencies, commands } = await createInstallerDependencies(root, fixture);
 		const original = dependencies.download;
 		dependencies.download = vi.fn(async (url, destination, maximum) => {
 			await original(url, destination, maximum);
@@ -73,12 +73,12 @@ describe("trusted desktop release installation", () => {
 			createDesktopInstallationService(dependencies).ensureDesktopInstallation({ version: "0.12.8" }),
 		).rejects.toThrow("DMG checksum or byte length");
 		expect(commands).toEqual([]);
-		expect(await readdir(dependencies.managedRoot)).toEqual(["installations", "selections"]);
+		expect((await readdir(dependencies.managedRoot)).some((name) => name.startsWith(".install"))).toBe(false);
 	});
 
 	it("attempts private mount cleanup after attach fails and publishes no installation", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
-		const { dependencies, commands } = createInstallerDependencies(root, fixture);
+		const { dependencies, commands } = await createInstallerDependencies(root, fixture);
 		const original = dependencies.runCommand;
 		dependencies.runCommand = vi.fn(async (command, args) => {
 			const result = await original(command, args);
@@ -92,15 +92,15 @@ describe("trusted desktop release installation", () => {
 			1,
 		);
 		expect(commands.some((call) => call.command === "/usr/bin/ditto")).toBe(false);
-		expect(await readdir(join(dependencies.managedRoot, "installations"))).toEqual([]);
-		expect(await readdir(dependencies.managedRoot)).toEqual(["installations", "selections"]);
+		expect(await readdir(join(root, "Applications"))).toEqual([]);
+		expect((await readdir(dependencies.managedRoot)).some((name) => name.startsWith(".install"))).toBe(false);
 	});
 
 	it.each(["team", "gatekeeper"])(
 		"refuses %s failures, detaches only its mount, and selects nothing",
 		async (failure) => {
 			const fixture = await createDesktopAppFixture(root, { signed: true });
-			const { dependencies, commands } = createInstallerDependencies(root, fixture);
+			const { dependencies, commands } = await createInstallerDependencies(root, fixture);
 			const original = dependencies.runCommand;
 			dependencies.runCommand = vi.fn(async (command, args) => {
 				if (command === "/usr/sbin/spctl" && failure === "gatekeeper") throw new Error("Gatekeeper denied");
@@ -119,7 +119,7 @@ describe("trusted desktop release installation", () => {
 			expect(
 				commands.filter((call) => call.command === "/usr/bin/hdiutil" && call.args[0] === "detach"),
 			).toHaveLength(1);
-			expect(await readdir(join(dependencies.managedRoot, "selections"))).toEqual([]);
+			expect(await readdir(join(root, "Applications"))).toEqual([]);
 		},
 	);
 
@@ -131,7 +131,7 @@ describe("trusted desktop release installation", () => {
 			{ version: "0.12.9" },
 			{ arch: "x64" },
 			{ channel: "validation", validationFeedBase: "https://validation.example/" },
-			{ productionUpdatesEnabled: false },
+			{ updateAuthority: "desktop" },
 			{ desktopLaunchProtocolVersion: undefined },
 			{ fuses: { ...fixture.manifest.fuses, EnableNodeCliInspectArguments: true } },
 		])
@@ -140,22 +140,18 @@ describe("trusted desktop release installation", () => {
 			).toThrow();
 	});
 
-	it("accepts signed preview policy only with production updates disabled", async () => {
+	it("accepts signed preview policy only with npm update authority", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true, version: "0.12.9-beta.1" });
 		expect(validateDesktopReleaseManifest(fixture.manifest, "0.12.9-beta.1", "arm64").channel).toBe("preview");
 		expect(() =>
-			validateDesktopReleaseManifest(
-				{ ...fixture.manifest, productionUpdatesEnabled: true },
-				"0.12.9-beta.1",
-				"arm64",
-			),
+			validateDesktopReleaseManifest({ ...fixture.manifest, updateAuthority: "desktop" }, "0.12.9-beta.1", "arm64"),
 		).toThrow();
 	});
 
 	it("checks mounted app resource hashes against the trusted manifest before copying", async () => {
 		const fixture = await createDesktopAppFixture(root, { signed: true });
 		await writeFile(join(fixture.appPath, "Contents/Resources/runtime/dist/cli.js"), "tampered runtime");
-		const { dependencies, commands } = createInstallerDependencies(root, fixture);
+		const { dependencies, commands } = await createInstallerDependencies(root, fixture);
 		await expect(
 			createDesktopInstallationService(dependencies).ensureDesktopInstallation({ version: "0.12.8" }),
 		).rejects.toThrow("resource checksums");

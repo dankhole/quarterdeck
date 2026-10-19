@@ -209,6 +209,8 @@ export async function proveDesktopSecondLaunch(
 		if (!child.pid || child.pid === app.pid || child.pid === helper.pid)
 			throw new Error("Second launch did not identify a separate owned child.");
 		while (Date.now() < deadline) {
+			// A census begun before the exit event may still contain the child.
+			const exitedBeforeSnapshot = exited;
 			const processes = await read(list());
 			observe(processes);
 			const evidence = await read(readEvidence());
@@ -246,9 +248,11 @@ export async function proveDesktopSecondLaunch(
 			if (!Number.isSafeInteger(countAfter) || countAfter < countBefore)
 				throw new Error("Invalid single-instance notification evidence.");
 			if (countAfter > countBefore + 1) throw new Error("Multiple second-instance launches overlapped this proof.");
-			if (exited && countAfter > countBefore) {
-				if (secondProcesses.some((known) => processes.some((current) => sameDesktopProcess(known, current))))
-					throw new Error("Second launch left an owned process running.");
+			if (
+				exitedBeforeSnapshot &&
+				countAfter > countBefore &&
+				!secondProcesses.some((known) => processes.some((current) => sameDesktopProcess(known, current)))
+			) {
 				return {
 					secondPid: child.pid,
 					exitCode: 0,

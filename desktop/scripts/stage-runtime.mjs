@@ -3,6 +3,7 @@ import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, rm, writeFile } f
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { readBuildManifest, readSourceIdentity } from "../../scripts/build-manifest.mjs";
 import { readPairedBuildIdentity } from "./build-identity.mjs";
 import { rebuildRuntimePty } from "./native-runtime.mjs";
 import { desktopRoot, repoRoot, requireNativeMacTarget, stagedRuntimePath } from "./paths.mjs";
@@ -45,6 +46,16 @@ export async function stageRuntime(arch = process.arch) {
 	const distPath = join(repoRoot, "dist");
 	if ((await lstat(distPath)).isSymbolicLink()) throw new Error("Refusing to stage a symlinked runtime build.");
 	const buildId = await readPairedBuildIdentity(distPath);
+	const build = await readBuildManifest(distPath);
+	const currentSource = readSourceIdentity(repoRoot);
+	if (
+		build.buildId !== buildId ||
+		build.version !== runtimePackage.version ||
+		build.sourceSha !== currentSource.sourceSha
+	)
+		throw new Error("Root build provenance differs from the paired build or packaging checkout. Rebuild first.");
+	if (releaseSettings.signedDistribution && (build.sourceDirty || currentSource.sourceDirty))
+		throw new Error("Signed distribution requires a clean root build and packaging checkout.");
 	const runtimePath = stagedRuntimePath(arch);
 	const { archive, filename, nodeVersion } = await downloadNode(desktopPackage, arch);
 	await rm(runtimePath, { recursive: true, force: true });
@@ -100,25 +111,13 @@ export async function stageRuntime(arch = process.arch) {
 		if (entry !== "Release") await rm(join(nativeBuildPath, entry), { recursive: true, force: true });
 	}
 	await rm(join(runtimePath, "package-lock.json"));
-	const sourceSha = run("git", ["rev-parse", "HEAD"], {
-		cwd: repoRoot,
-		encoding: "utf8",
-		stdio: "pipe",
-	}).stdout.trim();
-	const sourceDirty = Boolean(
-		run("git", ["status", "--porcelain"], {
-			cwd: repoRoot,
-			encoding: "utf8",
-			stdio: "pipe",
-		}).stdout.trim(),
-	);
 	const manifest = {
 		schemaVersion: 1,
 		desktopLaunchProtocolVersion: 1,
 		...releaseSettings,
 		version: runtimePackage.version,
-		sourceSha,
-		sourceDirty,
+		sourceSha: build.sourceSha,
+		sourceDirty: build.sourceDirty || currentSource.sourceDirty,
 		buildId,
 		platform: "darwin",
 		arch,

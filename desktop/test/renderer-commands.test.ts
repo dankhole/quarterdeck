@@ -237,7 +237,7 @@ describe("typed renderer commands and quit preflight", () => {
 
 	it("fails closed for a hung renderer and immediately invalidates a changed runtime generation", async () => {
 		const first = fixture();
-		expect(await first.commands.requestPreflight("update")).toBeNull();
+		expect(await first.commands.requestPreflight("reload")).toBeNull();
 		first.commands.dispose();
 		const second = fixture();
 		const pending = second.commands.requestPreflight("quit");
@@ -250,7 +250,7 @@ describe("typed renderer commands and quit preflight", () => {
 		const { commands, sent, ipc, event } = fixture();
 		const first = commands.requestPreflight("quit");
 		const oldRequest = sent[0]?.payload as DesktopQuitPreflightRequest;
-		const second = commands.requestPreflight("update");
+		const second = commands.requestPreflight("reload");
 		const newRequest = sent[1]?.payload as DesktopQuitPreflightRequest;
 		ipc.emit(DESKTOP_PREFLIGHT_REPLY_CHANNEL, event, reply(readyReply(oldRequest)));
 		ipc.emit(DESKTOP_PREFLIGHT_REPLY_CHANNEL, event, reply(readyReply(newRequest)));

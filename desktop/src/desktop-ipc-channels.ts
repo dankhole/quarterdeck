@@ -9,3 +9,6 @@ export const DESKTOP_PREFLIGHT_RELEASE_CHANNEL = "quarterdeck:desktop-preflight-
 export const DESKTOP_AVAILABILITY_CHANNEL = "quarterdeck:desktop-command-availability:v1";
 export const DESKTOP_NOTIFICATION_CONTEXT_CHANNEL = "quarterdeck:desktop-notification-context:v1";
 export const DESKTOP_NOTIFICATION_TARGET_CHANNEL = "quarterdeck:desktop-notification-target:v1";
+export const DESKTOP_UPDATE_SNAPSHOT_CHANNEL = "quarterdeck:desktop-update-snapshot:v1";
+export const DESKTOP_UPDATE_SUBSCRIPTION_CHANNEL = "quarterdeck:desktop-update-subscription:v1";
+export const DESKTOP_UPDATE_INTENT_CHANNEL = "quarterdeck:desktop-update-intent:v1";

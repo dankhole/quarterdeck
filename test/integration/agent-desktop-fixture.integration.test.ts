@@ -14,11 +14,15 @@ async function createFakeBundle(root: string): Promise<string> {
 	const executablePath = join(executableDirectory, "Quarterdeck");
 	await writeFile(executablePath, "#!/bin/sh\nexit 0\n", "utf8");
 	await chmod(executablePath, 0o755);
+	await writeFile(
+		join(appPath, "Contents", "Info.plist"),
+		'<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Quarterdeck</string></dict></plist>',
+	);
 	return appPath;
 }
 
 describe.skipIf(process.platform !== "darwin")("isolated desktop fixture", () => {
-	it("rejects loose Electron binaries and ambiguous bundle executables", async () => {
+	it("uses the declared native bootstrap even when the bundle also contains an Electron host", async () => {
 		const root = await mkdtemp(join(tmpdir(), "quarterdeck-desktop-bundle-test-"));
 		try {
 			await expect(resolveDesktopAppExecutable(root)).rejects.toThrow("packaged macOS .app");
@@ -26,7 +30,14 @@ describe.skipIf(process.platform !== "darwin")("isolated desktop fixture", () =>
 			const extra = join(appPath, "Contents", "MacOS", "Other");
 			await writeFile(extra, "#!/bin/sh\nexit 0\n");
 			await chmod(extra, 0o755);
-			await expect(resolveDesktopAppExecutable(appPath)).rejects.toThrow("exactly one main executable");
+			expect((await resolveDesktopAppExecutable(appPath)).executablePath).toBe(
+				join(await realpath(appPath), "Contents", "MacOS", "Quarterdeck"),
+			);
+			await writeFile(
+				join(appPath, "Contents", "Info.plist"),
+				'<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>../../outside</string></dict></plist>',
+			);
+			await expect(resolveDesktopAppExecutable(appPath)).rejects.toThrow();
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}

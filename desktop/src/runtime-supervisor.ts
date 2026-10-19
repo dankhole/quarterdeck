@@ -17,6 +17,7 @@ import {
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/runtime-protocol.js";
 import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown.js";
 import type { DesktopHostEffectIdentity } from "./desktop-host-effects.js";
+import type { DesktopInstallationAdmission } from "./installation-preflight.js";
 import type { DesktopRuntimeLaunchConfig } from "./launch-config.js";
 import { sanitizeDesktopHelperEnvironment } from "./launch-environment.js";
 import { DesktopRecoveryHelper, type DesktopRecoveryHelperResult } from "./recovery-helper.js";
@@ -34,6 +35,7 @@ export interface RuntimeSupervisorOptions {
 	bundle: RuntimeBundle;
 	launch: DesktopRuntimeLaunchConfig;
 	environment: NodeJS.ProcessEnv;
+	installationAdmission?: DesktopInstallationAdmission;
 	startupDeadlineMs?: number;
 	shutdownDeadlineMs?: number;
 	spawnChild?: (executable: string, args: string[], options: SpawnOptions) => ChildProcess;
@@ -117,6 +119,7 @@ export class RuntimeSupervisor {
 			argumentsForRuntime.push("--no-native-ui", "--simulate-host-integrations", launch.hostSimulationConfigPath);
 		const environment = sanitizeDesktopHelperEnvironment(this.options.environment, bundle.nodePath);
 		delete environment.QUARTERDECK_DESKTOP_LAB_CONFIG;
+		if (launch.synthetic && launch.labConfigPath) environment.QUARTERDECK_DESKTOP_LAB_CONFIG = launch.labConfigPath;
 		delete environment.QUARTERDECK_AGENT_LAB;
 		if (launch.synthetic) environment.QUARTERDECK_AGENT_LAB = "1";
 		const child = (this.options.spawnChild ?? spawn)(bundle.nodePath, argumentsForRuntime, {
@@ -125,8 +128,17 @@ export class RuntimeSupervisor {
 				...environment,
 				QUARTERDECK_STATE_HOME: launch.stateHome,
 				QUARTERDECK_DESKTOP_CHILD: "1",
+				...(this.options.installationAdmission
+					? {
+							QUARTERDECK_INSTALLATION_LOCK_FD: "4",
+							QUARTERDECK_INSTALLATION_LOCK_PATH: this.options.installationAdmission.path,
+						}
+					: {}),
 			},
-			stdio: ["pipe", "ignore", "ignore", "ipc"],
+			// Duplicate the already admitted open file description before Node loads any bundled code.
+			stdio: this.options.installationAdmission
+				? ["pipe", "ignore", "ignore", "ipc", this.options.installationAdmission.fd]
+				: ["pipe", "ignore", "ignore", "ipc"],
 			detached: false,
 		});
 		let resolveExit: (code: number | null) => void = () => undefined;

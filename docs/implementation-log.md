@@ -1,5 +1,23 @@
 # Implementation Log
 
+## 2026-10-19 — Desktop update discovery and explicit npm handoff
+
+The native main process owns one startup/manual npm version check and publishes only a bounded update snapshot through the admitted preload bridge. Stable and preview channels match release publication tags. The shared UI shows the available version; linked and synthetic builds skip public discovery. Browser clients and older preload bridges remain compatible.
+
+An explicit update prepares a private standalone Terminal worker before invoking clean-only quit coordination. The worker uses external Node/npm and lifecycle PATH outside the app/package being replaced, waits for clean authorization and app exit, rechecks the owning installation, and installs an exact version. npm success is followed by read-only `desktop status --json` verification of the target pair. Cancellation, expired draft seals, lost authorization, changed ownership, skipped lifecycle hooks, and partial installation must never report success. A failed handoff after runtime shutdown leaves runtime restart available. The shared installer remains the sole desktop replacement owner; there is no persistent update service or automatic relaunch.
+
+Notable boundaries: `src/desktop-update/check.ts`, `desktop/src/update-controller.ts`, `desktop/src/npm-update-runner.ts`, `desktop/src/npm-update-worker.ts`, `desktop/src/quit-coordinator.ts`, `desktop/src/update-ipc.ts`, and `web-ui/src/hooks/app/use-desktop-update.ts`. Validation and outstanding signed/Terminal acceptance are recorded in `docs/desktop-validation.md`.
+
+## 2026-10-19 — Unified npm and desktop installation
+
+Quarterdeck now uses one per-user app path and one installer for published npm packages and local linking. CLI and Dock startup validate the recorded owning package slot, release/source identity, and local build identity before runtime admission. npm owns updates; the independent Electron updater and background CLI notifier are removed. The Electron build package remains private because its native dependencies differ from the shared runtime.
+
+Replacement uses verified staging, an ownership-checked transaction journal, a temporary rollback backup, and atomic receipt/manifest publication. Native OS-only entry wrappers acquire shared bundle admission before loading Electron or Node; the installer requires exclusive admission and never stops sessions. Every bundled entry point participates, including helpers that outlive the main process. Electron helper host names preserve the recognized `Helper (Renderer)`/GPU/Plugin suffixes; signing grants JIT only to actual hosts, not the native wrappers. The lock inode remains stable through uninstall. An interrupted npm operation cannot atomically roll back both products, so mismatched or incomplete pairing refuses launch with repair guidance.
+
+Notable owners: `src/desktop-install/`, `src/shared/desktop-installation-contract.ts`, `desktop/native/installation-admission.c`, `src/npm-install.ts`, `scripts/dependency-workflow.mjs`, and the release workflows. Published desktop assets must be public and anonymously verified before npm publication; retries verify immutable public bytes. Legacy copies are inventoried without deleting uncertain files; Dock migration remains an explicit user-environment step.
+
+Validation evidence and remaining signed-distribution gates are recorded in `docs/desktop-validation.md`. Native synthetic-home experiments prove admission survives main-process death and blocks all seven packaged entry points during exclusive replacement. The actual product npm-launch lane separately checks typed requests and singleton behavior. Its second-launch census now starts after the exit event before accepting process drain; a deterministic regression covers an exit arriving during an earlier census, while a surviving descendant still fails. No installed app, Dock entry, live session, or project data was changed.
+
 ## 2026-10-19 — Processless Review chat availability
 
 Read-only live diagnostics showed saved Review chats skipped by startup recovery with no owned process. Opening task detail nevertheless attached a terminal viewer and successfully restored an empty snapshot, leaving a blank cursor. The saved conversation identity remained available; viewer restore completion was not proof of provider resume.

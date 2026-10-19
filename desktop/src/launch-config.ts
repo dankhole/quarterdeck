@@ -12,6 +12,8 @@ export interface DesktopRuntimeLaunchConfig {
 	stateHome: string;
 	projectPath: string;
 	synthetic: boolean;
+	/** Set only after the isolated desktop lab configuration has been validated. */
+	labConfigPath?: string;
 	hostSimulationConfigPath?: string;
 }
 
@@ -62,7 +64,7 @@ export async function readDesktopLaunchConfig(
 	if (labConfigPath !== undefined) {
 		const lab = readLabLaunchConfig(labConfigPath);
 		const validatedRequest = request ? await validateDesktopLaunchRequest(request, lab) : null;
-		return { ...lab, synthetic: true, lab, request: validatedRequest };
+		return { ...lab, synthetic: true, labConfigPath, lab, request: validatedRequest };
 	}
 	const validatedRequest = request ? await validateDesktopLaunchRequest(request) : null;
 	const stateHome = validatedRequest?.stateHome ?? (await resolveCanonicalRuntimeStateHome(getRuntimeHomePath()));

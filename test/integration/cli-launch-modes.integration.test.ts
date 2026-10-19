@@ -12,13 +12,14 @@ describe("CLI launch mode routing", () => {
 		{ args: ["--desktop", "--no-open"], message: "cannot be used with option" },
 		{ args: ["--desktop", "--port", "auto"], message: "cannot be used with option" },
 		{ args: ["--browser", "desktop", "install"], message: "cannot be combined with subcommands" },
+		{ args: ["--browser", "--no-open"], message: "native installation admission bootstrap" },
 		{ args: ["desktop", "install", "--desktop"], message: "cannot be combined with subcommands" },
 		{
 			args: ["--desktop"],
 			message:
 				process.platform === "darwin"
 					? "A desktop runtime helper cannot launch another desktop app"
-					: "Desktop mode is available on macOS",
+					: "Desktop mode requires macOS 13",
 		},
 	])("rejects $args before installation or runtime startup", ({ args, message }) => {
 		const sandbox = createTempDir("quarterdeck-cli-modes-");

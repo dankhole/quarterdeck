@@ -4,6 +4,9 @@
 
 ## [0.12.9]
 
+- Unify npm and macOS app installation at a stable app path, make plain `npm run link` build and install the paired app, validate CLI/app ownership before launch, and use npm-owned updates with guarded replacement and interruption recovery.
+- Show available desktop updates after startup or an explicit check, with release notes and a confirmed npm update in Terminal that verifies the CLI/app pair after clean shutdown.
+
 - Show when a saved task's chat is not running and offer Resume chat while preserving terminal output.
 
 - Reconnect both terminal sockets after a stream disconnect so resumed and restarted tasks restore correctly, and make Re-sync repair disconnected viewers.

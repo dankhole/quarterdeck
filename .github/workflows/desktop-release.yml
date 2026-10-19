@@ -7,24 +7,11 @@ on:
         description: Exact 40-character main commit SHA to build (does not publish)
         required: true
         type: string
-      validation_feed_base:
-        description: Optional signed HTTPS validation feed base (candidate only; never public release)
-        required: false
-        default: ""
-        type: string
   workflow_call:
     inputs:
       source_sha:
         required: true
         type: string
-      production_updates:
-        required: false
-        default: false
-        type: boolean
-      coordinated_release:
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -123,16 +110,8 @@ jobs:
           QUARTERDECK_DESKTOP_NOTARIZE: "1"
           QUARTERDECK_DESKTOP_SIGNING_IDENTITY: ${{ vars.DESKTOP_MAC_SIGNING_IDENTITY }}
           QUARTERDECK_DESKTOP_TEAM_ID: ${{ vars.DESKTOP_MAC_TEAM_ID }}
-          QUARTERDECK_DESKTOP_PRODUCTION_UPDATES: ${{ vars.QUARTERDECK_DESKTOP_PRODUCTION_UPDATES }}
-          QUARTERDECK_DESKTOP_VALIDATION_FEED_BASE: ${{ !inputs.coordinated_release && inputs.validation_feed_base || '' }}
-          COORDINATED_PRODUCTION_UPDATES: ${{ inputs.production_updates && '1' || '' }}
-          COORDINATED_RELEASE: ${{ inputs.coordinated_release && '1' || '' }}
         run: |
           : "${QUARTERDECK_DESKTOP_SIGNING_IDENTITY:?Missing Developer ID Application identity}"
-          # Reusable public builds derive policy from immutable product version; manual validation never uses production.
-          if [[ -n "$COORDINATED_PRODUCTION_UPDATES" ]]; then export QUARTERDECK_DESKTOP_PRODUCTION_UPDATES=1; fi
-          if [[ -n "$QUARTERDECK_DESKTOP_VALIDATION_FEED_BASE" ]]; then unset QUARTERDECK_DESKTOP_PRODUCTION_UPDATES; fi
-          if [[ -n "$COORDINATED_RELEASE" && -z "$COORDINATED_PRODUCTION_UPDATES" ]]; then unset QUARTERDECK_DESKTOP_PRODUCTION_UPDATES; fi
           npm --prefix desktop run make -- --arch="$TARGET_ARCH"
           app="desktop/out/Quarterdeck-darwin-$TARGET_ARCH/Quarterdeck.app"
           npm --prefix desktop run verify -- --manifest "$PWD/desktop/out/artifact-manifest-darwin-$TARGET_ARCH.json"
@@ -144,7 +123,7 @@ jobs:
           done < <(find "$app/Contents/Resources/runtime" -type f -print0)
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose "$app"
-      - name: Finalize notarized install and update containers
+      - name: Finalize notarized install and archive containers
         env:
           SIGNING_IDENTITY: ${{ vars.DESKTOP_MAC_SIGNING_IDENTITY }}
         run: |
@@ -152,7 +131,7 @@ jobs:
           app="desktop/out/Quarterdeck-darwin-$TARGET_ARCH/Quarterdeck.app"
           payload=desktop/out/release
           mkdir -p "$payload"
-          # Forge's DMG name is intentionally independent of updater matching.
+          # The DMG is installed by npm; the ZIP remains an ancillary CI/archive asset.
           dmg=$(find desktop/out/make -name '*.dmg' -type f)
           [[ -n "$dmg" && "$dmg" != *$'\n'* ]] || { echo "Expected exactly one DMG"; exit 1; }
           final_dmg="$payload/Quarterdeck-$version-darwin-$TARGET_ARCH.dmg"
@@ -179,7 +158,8 @@ jobs:
       - name: Upload verified signed candidate (not a public release)
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-signed-${{ matrix.arch }}-${{ github.run_attempt }}
+          name: desktop-signed-${{ matrix.arch }}
+          overwrite: true
           path: desktop/out/release/
           if-no-files-found: error
           retention-days: 14

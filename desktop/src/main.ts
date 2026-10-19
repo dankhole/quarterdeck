@@ -4,8 +4,8 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
 	app,
-	autoUpdater,
 	BrowserWindow,
+	clipboard,
 	dialog,
 	ipcMain,
 	Menu,
@@ -19,6 +19,7 @@ import originalFs from "original-fs";
 import type { DesktopDiagnosticEvent, DesktopDiagnosticState } from "../../src/core/api/desktop-diagnostics.js";
 import type { DesktopStartupFailureMessage } from "../../src/core/api/desktop-runtime-protocol.js";
 import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown.js";
+import { DesktopInstallationError, validateDesktopInstallation } from "../../src/desktop-install/index.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { admittedBrowserLaunch } from "./browser-launch.js";
 import { createDesktopDiagnostics, type DesktopDiagnostics } from "./desktop-diagnostics.js";
@@ -27,15 +28,12 @@ import { DesktopHostEffectDispatcher } from "./desktop-host-effects.js";
 import { readDesktopLaunchAppIdentity } from "./desktop-launch-identity.js";
 import { DesktopLaunchRequests, desktopLaunchRefusal } from "./desktop-launch-requests.js";
 import { navigateDesktopDocument } from "./desktop-navigation.js";
-import { resolveDesktopFrontendPreflightReason } from "./desktop-preflight-reason.js";
-import { verifyDesktopUpdateEligibility } from "./desktop-update-proof.js";
-import { DesktopUpdates } from "./desktop-updates.js";
 import { createDesktopWindow, restoreDesktopWindow } from "./desktop-window.js";
 import { createDesktopDiagnosticExporter } from "./diagnostic-export.js";
 import { installEditorDraftSave } from "./editor-draft-save.js";
 import { DesktopEnvironmentController, type DesktopEnvironmentRefreshResult } from "./environment-controller.js";
 import { applyDesktopExecutableDirectories, readDesktopEnvironmentPreferences } from "./environment-preferences.js";
-import { recoverDesktopAfterInstallerFailure } from "./installer-recovery.js";
+import { type DesktopInstallationPreflight, preflightDesktopInstallation } from "./installation-preflight.js";
 import { type DesktopLaunchConfig, readDesktopLaunchConfig, validateDesktopLaunchRequest } from "./launch-config.js";
 import { createDesktopLaunchEnvironmentResolver, type DesktopLaunchEnvironmentResult } from "./launch-environment.js";
 import { desktopMenuTemplate } from "./native-menus.js";
@@ -66,6 +64,8 @@ import {
 	showDesktopSessionRecoveryMessage,
 } from "./session-recovery.js";
 import { type DesktopSurface, startupSurface } from "./startup-surface.js";
+import { DESKTOP_RELEASE_NOTES_URL, DesktopUpdateController } from "./update-controller.js";
+import { installDesktopUpdateIpc } from "./update-ipc.js";
 import { installWindowState, readWindowState, restoreWindowState } from "./window-state.js";
 
 // Electron's ordinary fs treats app.asar as a virtual directory; package identity
@@ -79,7 +79,11 @@ protocol.registerSchemesAsPrivileged([
 	},
 ]);
 
-async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLaunchAppIdentity | null): Promise<void> {
+async function launchDesktop(
+	launch: DesktopLaunchConfig,
+	appIdentity: DesktopLaunchAppIdentity | null,
+	{ installation, admission }: DesktopInstallationPreflight,
+): Promise<void> {
 	const showWindow = launch.lab?.showWindow ?? true;
 	if (launch.synthetic) {
 		// Electron 44.4+ uses this same Chromium switch for its own isolated macOS app tests.
@@ -94,7 +98,6 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 	}
 	let renderer: ApprovedRenderer | null = null;
 	let supervisor: RuntimeSupervisor | null = null;
-	let updates: DesktopUpdates | null = null;
 	let commands: DesktopRendererCommands | null = null;
 	let coordinator: DesktopQuitCoordinator | null = null;
 	let diagnostics: DesktopDiagnostics | null = null;
@@ -103,6 +106,8 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 	let runtimeIdentity: SupervisedRuntime | null = null;
 	let bundle: RuntimeBundle | null = null;
 	let environment: DesktopLaunchEnvironmentResult | null = null;
+	let executableEnvironment: NodeJS.ProcessEnv | null = null;
+	let updates: DesktopUpdateController | null = null;
 	let appliedDirectories: string[] = [];
 	let currentProjectId: string | null = null;
 	let runtimeEvidence: RuntimeSupervisorEvidence = {
@@ -156,6 +161,24 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		}
 	};
 	const dialogs = new DesktopDialogs(getWindow, launch.synthetic);
+	const checkInstallationForRuntimeWork = async (): Promise<boolean> => {
+		if (!installation) return true;
+		try {
+			await validateDesktopInstallation({ appPath: installation.appPath, version: app.getVersion() });
+			return true;
+		} catch (error: unknown) {
+			await dialogs.message({
+				type: "warning",
+				buttons: ["OK"],
+				message: "Quarterdeck installation needs repair",
+				detail:
+					error instanceof DesktopInstallationError
+						? error.message
+						: "The app could not verify its owning npm package. Quit Quarterdeck, then run quarterdeck desktop install from the owning npm prefix or npm run link from its checkout.",
+			});
+			return false;
+		}
+	};
 	const hostEffects = new DesktopHostEffectDispatcher({
 		getIdentity: () => supervisor?.hostEffectIdentity() ?? null,
 		getParentWindow: getWindow,
@@ -172,6 +195,23 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 				!reloading &&
 				!refreshing &&
 				!recovering &&
+				!updates?.isBusy() &&
+				!shutdownConfirmed,
+		);
+	const canUpdate = (): boolean =>
+		Boolean(
+			coordinator &&
+				executableEnvironment &&
+				!starting &&
+				!stopping &&
+				!navigating &&
+				!reloading &&
+				!refreshing &&
+				!recovering &&
+				!preparation &&
+				!supervisor?.isRecoveryRunning() &&
+				!coordinator.isPending() &&
+				!coordinator.isNormalQuitPending() &&
 				!shutdownConfirmed,
 		);
 	const connectedProduct = (): boolean => productReady() && renderer?.generation === selection.get()?.generation;
@@ -205,6 +245,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		requestRefresh: () => refreshEnvironment(),
 	});
 	const rebuildMenu = (): void => {
+		const update = updates?.getSnapshot();
 		Menu.setApplicationMenu(
 			Menu.buildFromTemplate(
 				desktopMenuTemplate({
@@ -215,19 +256,24 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 						connectedProduct() &&
 						commands?.availability()?.runtimeConnected === true &&
 						(commands?.availability()?.commands.length ?? 0) > 0,
-					updatesAvailable: updates?.snapshot().phase !== "disabled" && updates !== null,
-					updatePending: updates?.snapshot().pending ?? false,
+					updateGuidanceAvailable: installation !== null && !launch.synthetic,
+					updateBusy: updates?.isBusy() || update?.phase === "checking" || !canUpdate(),
+					updateLabel:
+						installation?.owner.kind === "link"
+							? "Update from Linked Checkout…"
+							: update?.phase === "available"
+								? `Update available · v${update.availableVersion}…`
+								: update?.phase === "checking"
+									? "Checking for Updates…"
+									: "Check for Updates…",
 					dispatch: (command) => {
 						if (productReady()) commands?.dispatch(command);
 					},
 					openInBrowser: () => {
 						void openInBrowser();
 					},
-					checkForUpdates: () => {
-						void updates?.checkForUpdates();
-					},
-					restartToUpdate: () => {
-						void updates?.restartToUpdate();
+					showUpdateGuidance: () => {
+						void updates?.request(update?.phase === "available" ? "details" : "check");
 					},
 					reloadWindow: () => {
 						void reloadWindow();
@@ -239,7 +285,8 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 						!navigating &&
 						!reloading &&
 						!refreshing &&
-						!recovering,
+						!recovering &&
+						!updates?.isBusy(),
 					restartRuntime: () => {
 						void startRuntime();
 					},
@@ -250,6 +297,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 						!reloading &&
 						!refreshing &&
 						!recovering &&
+						!updates?.isBusy() &&
 						!shutdownConfirmed
 							? () => {
 									void environmentController.open();
@@ -265,8 +313,16 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		);
 	};
 	const clearRuntime = (): void => {
-		diagnostics?.disconnect();
-		notifications?.stop();
+		try {
+			diagnostics?.disconnect();
+		} catch {
+			/* Diagnostic teardown cannot retain runtime authority or block the final update commit. */
+		}
+		try {
+			notifications?.stop();
+		} catch {
+			/* Native presentation cannot retain runtime authority. */
+		}
 		notifications = null;
 		selection.clear();
 		currentProjectId = null;
@@ -341,7 +397,8 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		rebuildMenu();
 	};
 	const reloadWindow = async (): Promise<void> => {
-		if (!connectedProduct() || navigating || reloading || refreshing || coordinator?.isPending()) return;
+		if (!connectedProduct() || navigating || reloading || refreshing || coordinator?.isPending() || updates?.isBusy())
+			return;
 		const runtime = selection.get();
 		reloading = true;
 		rebuildMenu();
@@ -402,6 +459,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			recovering ||
 			supervisor?.isRecoveryRunning() ||
 			coordinator?.isPending() ||
+			updates?.isBusy() ||
 			shutdownConfirmed ||
 			!supervisor ||
 			environmentCleanupUnconfirmed
@@ -411,6 +469,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		rebuildMenu();
 		let reply = null;
 		try {
+			if (!(await checkInstallationForRuntimeWork())) return;
 			if (renderer && isProductPage(renderer.contents.getURL()) && loadedGeneration !== null) {
 				reply = (await commands?.requestPreflight("reload", true)) ?? null;
 				if (reply?.decision !== "ready" || !commands?.isSealValid(reply)) return;
@@ -482,6 +541,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 					reloading ||
 					refreshing ||
 					Boolean(coordinator?.isPending()) ||
+					Boolean(updates?.isBusy()) ||
 					shutdownConfirmed ||
 					environmentCleanupUnconfirmed ||
 					supervisor !== recoverySupervisor ||
@@ -503,7 +563,10 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 							return typeof callback === "function" ? await callback(message) : 0;
 						},
 					}),
-				runHelper: () => recoverySupervisor.recoverPriorSessions(),
+				runHelper: async () =>
+					(await checkInstallationForRuntimeWork())
+						? await recoverySupervisor.recoverPriorSessions()
+						: "unavailable",
 				retryRuntime: async () => {
 					recovering = false;
 					await startRuntime();
@@ -520,6 +583,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			bundle,
 			launch,
 			environment: environmentForHelper,
+			installationAdmission: admission,
 			onEvidence: evidence,
 			onPrivateMessage: (message, sender) => {
 				void hostEffects
@@ -602,7 +666,12 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			environmentSource: environment.source,
 			failureCode: environment.source === "fallback" ? "environment_fallback" : undefined,
 		});
-		return applyDesktopExecutableDirectories(environment.environment, bundle.nodePath, appliedDirectories);
+		executableEnvironment = applyDesktopExecutableDirectories(
+			environment.environment,
+			bundle.nodePath,
+			appliedDirectories,
+		);
+		return executableEnvironment;
 	};
 	const refreshEnvironment = async (): Promise<DesktopEnvironmentRefreshResult> => {
 		if (
@@ -616,6 +685,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			recovering ||
 			supervisor?.isRecoveryRunning() ||
 			coordinator.isPending() ||
+			updates?.isBusy() ||
 			shutdownConfirmed ||
 			runtimeIdentity?.ownership === "attached"
 		)
@@ -623,6 +693,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		refreshing = true;
 		rebuildMenu();
 		try {
+			if (!(await checkInstallationForRuntimeWork())) return "cancelled";
 			const result = await coordinator.request("restart");
 			if (result.kind !== "clean") return "incomplete";
 			if (coordinator.isNormalQuitPending() || shutdownConfirmed) return "cancelled";
@@ -662,7 +733,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		}
 	};
 	const requestQuit = async (reason: DesktopQuitReason): Promise<boolean> => {
-		if (!coordinator) return false;
+		if (!coordinator || updates?.isBusy()) return false;
 		// Provisional navigation temporarily clears document authority; no lifecycle action may use that gap.
 		if (recovering || supervisor?.isRecoveryRunning()) return false;
 		if (navigating || reloading || ((refreshing || starting) && loadedGeneration !== null)) {
@@ -680,7 +751,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		shutdownConfirmed = true;
 		clearRuntime();
 		rebuildMenu();
-		// A forced user Quit is never represented as cleanup success to the updater.
+		// Runtime restart still requires confirmed cleanup.
 		return reason === "quit" || result.kind === "clean";
 	};
 
@@ -789,6 +860,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 					!starting &&
 					!stopping &&
 					!recovering &&
+					!updates?.isBusy() &&
 					!coordinator?.isPending()
 				)
 					void loadProduct().catch(() => undefined);
@@ -867,13 +939,7 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 					? "unconfirmed"
 					: (supervisor?.exitCleanupState() ?? "not_started"),
 		preflight: async (reason, seal) =>
-			(await commands?.requestPreflight(
-				resolveDesktopFrontendPreflightReason(
-					reason,
-					environmentCleanupUnconfirmed ? "unconfirmed" : (supervisor?.exitCleanupState() ?? "not_started"),
-				),
-				seal,
-			)) ?? null,
+			(await commands?.requestPreflight(reason === "restart" ? "reload" : reason, seal)) ?? null,
 		isSealValid: (response) => commands?.isSealValid(response) ?? false,
 		releasePreflight: () => commands?.releasePreflight(),
 		getSummary: async () => {
@@ -900,7 +966,6 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 		confirmSessions: (summary, reason) => dialogs.confirmSessions(summary, reason),
 		confirmUnconfirmedExit: () => dialogs.confirmUnconfirmedExit(),
 		inform: (reason) => dialogs.inform(reason),
-		canForceExit: () => updates?.snapshot().pending !== true,
 		finalize: async (result, reason) => {
 			record({
 				kind: "shutdown",
@@ -915,10 +980,57 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			rebuildMenu();
 		},
 	});
+	const updateController = new DesktopUpdateController({
+		installation,
+		installedVersion: app.getVersion(),
+		synthetic: launch.synthetic,
+		dialogs,
+		clipboard,
+		openReleaseNotes: async () => {
+			await shell.openExternal(DESKTOP_RELEASE_NOTES_URL);
+		},
+		getEnvironment: () => executableEnvironment,
+		canTransition: canUpdate,
+		requestQuit: async (authorize) => {
+			if (!coordinator || !canUpdate()) return { kind: "cancelled" };
+			record({ kind: "shutdown", phase: "requested", intent: "update" });
+			const result = await coordinator.request("update", authorize);
+			if (result.kind === "clean") clearRuntime();
+			return result;
+		},
+		onCancelledQuit: () => {
+			// Clean shutdown can precede a cancelled final seal or commit. Keep runtime recovery reachable.
+			if (runtimeIdentity && !supervisor?.isRunning() && loadedGeneration) {
+				surface = "runtime_failed";
+				clearRuntime();
+			}
+			try {
+				commands?.releasePreflight();
+			} catch {
+				/* A retired document cannot prevent runtime recovery. */
+			}
+			record({ kind: "shutdown", phase: "cancelled", intent: "update" });
+			restoreWindow();
+		},
+		quit: () => {
+			shutdownConfirmed = true;
+			app.quit();
+		},
+	});
+	updates = updateController;
+	updateController.subscribe(() => rebuildMenu());
+	const disposeUpdateIpc = installDesktopUpdateIpc({
+		ipc: ipcMain,
+		getRenderer: () => renderer,
+		getSnapshot: () => updateController.getSnapshot(),
+		subscribe: (listener) => updateController.subscribe(listener),
+		request: (intent) => updateController.request(intent),
+	});
 	app.once("will-quit", () => {
+		updates?.dispose();
+		disposeUpdateIpc();
 		commands?.dispose();
 		disposeDraftSave();
-		updates?.dispose();
 		hostEffects.dispose();
 		notifications?.stop();
 		void diagnostics?.close();
@@ -946,10 +1058,19 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 						generation: runtimeEvidence.generation,
 						ownership: runtimeIdentity?.ownership ?? null,
 					},
-					update: updates?.snapshot() ?? {
-						phase: "disabled",
-						pending: false,
-						reason: launch.synthetic ? "synthetic" : "unsigned",
+					update: {
+						phase:
+							updates?.getSnapshot().phase === "disabled"
+								? "disabled"
+								: updates?.getSnapshot().phase === "checking"
+									? "checking"
+									: updates?.getSnapshot().phase === "failed"
+										? "error"
+										: updates?.isBusy()
+											? "restarting"
+											: "idle",
+						pending: updates?.isBusy() ?? false,
+						reason: launch.synthetic ? "synthetic" : "npm_managed",
 					},
 				}),
 			});
@@ -1000,44 +1121,6 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			const environmentForHelper = await resolveEnvironment();
 			if (stopping || shutdownConfirmed || environmentCleanupUnconfirmed) return;
 			supervisor = createSupervisor(environmentForHelper);
-			const eligibility = await verifyDesktopUpdateEligibility({
-				appPath: app.getAppPath().replace(/\/Contents\/Resources\/app\.asar$/u, ""),
-				resourceRoot,
-				isPackaged: app.isPackaged,
-				synthetic: launch.synthetic,
-				platform: process.platform,
-				bundle,
-			});
-			if (stopping || shutdownConfirmed) return;
-			updates = new DesktopUpdates({
-				updater: autoUpdater,
-				eligibility,
-				preflightAndShutdown: () => requestQuit("update"),
-				isNormalQuitPending: () => coordinator?.isNormalQuitPending() ?? false,
-				showMessage: (message) => dialogs.showUpdate(message),
-				chooseDownloadedUpdate: (message) => dialogs.chooseUpdate(message),
-				onStatusChanged: rebuildMenu,
-				onEvidence: (status) => record({ kind: "update", status }),
-				onRestartFailed: () =>
-					recoverDesktopAfterInstallerFailure({
-						releaseFrontendSeal: () => commands?.releasePreflight(),
-						reopenQuitGate: () => {
-							shutdownConfirmed = false;
-							stopping = false;
-						},
-						hasWindow: () => getWindow() !== null,
-						createWindow,
-						showStoppedSurface: () => showSurface("runtime_failed"),
-						markRuntimeStopped: () => {
-							surface = "runtime_failed";
-							rebuildMenu();
-							record({
-								kind: "update",
-								status: { phase: "downloaded", pending: true, reason: "restart_failed" },
-							});
-						},
-					}),
-			});
 		})();
 		await preparation;
 		preparation = null;
@@ -1057,6 +1140,8 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 			await getDiagnostics()?.markFailed();
 			await showSurface("startup_failed");
 		}
+	} finally {
+		updateController.start();
 	}
 }
 
@@ -1064,6 +1149,18 @@ async function launchDesktop(launch: DesktopLaunchConfig, appIdentity: DesktopLa
 // launchDesktop itself reaches app.whenReady without awaiting any further pre-ready operation.
 const launchPreparation = await (async () => {
 	const request = readDesktopLaunchRequest(process.argv);
+	const launch = await readDesktopLaunchConfig(
+		process.env.QUARTERDECK_DESKTOP_LAB_CONFIG,
+		app.getPath("userData"),
+		request,
+	);
+	const installation = app.isPackaged
+		? await preflightDesktopInstallation({
+				appPath: app.getAppPath().replace(/\/Contents\/Resources\/app\.asar$/u, ""),
+				version: app.getVersion(),
+				synthetic: launch.synthetic,
+			})
+		: { installation: null, admission: null };
 	const resourceRoot = app.isPackaged
 		? join(process.resourcesPath, "runtime")
 		: resolve(import.meta.dirname, "..", ".stage", process.arch, "runtime");
@@ -1083,18 +1180,14 @@ const launchPreparation = await (async () => {
 		);
 		if (refusal) throw new Error(refusal);
 	}
-	const launch = await readDesktopLaunchConfig(
-		process.env.QUARTERDECK_DESKTOP_LAB_CONFIG,
-		app.getPath("userData"),
-		request,
-	);
-	return { launch, appIdentity };
+	return { launch, appIdentity, installation };
 })().catch((error: unknown) => {
 	dialog.showErrorBox(
 		"Desktop launch refused",
-		error instanceof Error &&
-			(error.message.startsWith("The running Quarterdeck app") ||
-				error.message.startsWith("A different Quarterdeck app"))
+		error instanceof DesktopInstallationError ||
+			(error instanceof Error &&
+				(error.message.startsWith("The running Quarterdeck app") ||
+					error.message.startsWith("A different Quarterdeck app")))
 			? error.message
 			: "Quarterdeck desktop could not validate its launch configuration. Run quarterdeck --desktop again, or reopen the app from Finder.",
 	);
@@ -1103,7 +1196,9 @@ const launchPreparation = await (async () => {
 	return null;
 });
 if (launchPreparation)
-	void launchDesktop(launchPreparation.launch, launchPreparation.appIdentity).catch(() => {
-		console.error("Quarterdeck desktop could not initialize.");
-		app.exit(1);
-	});
+	void launchDesktop(launchPreparation.launch, launchPreparation.appIdentity, launchPreparation.installation).catch(
+		() => {
+			console.error("Quarterdeck desktop could not initialize.");
+			app.exit(1);
+		},
+	);

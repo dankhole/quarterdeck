@@ -1,4 +1,4 @@
-.TH QUARTERDECK 1 "August 2026" "quarterdeck 0.12.3" "User Commands"
+.TH QUARTERDECK 1 "October 2026" "quarterdeck" "User Commands"
 .SH NAME
 quarterdeck \- local orchestration board for coding agents
 .SH SYNOPSIS
@@ -28,16 +28,16 @@ quarterdeck \- local orchestration board for coding agents
 .RI " " [ options ]
 .SH DESCRIPTION
 .B quarterdeck
-starts the local Quarterdeck runtime and serves the web UI. When launched inside a Git repository, it opens that repository's indexed workspace. When launched outside Git, it starts without an active workspace or uses an indexed project.
+opens the installed desktop app on supported local graphical Macs, or starts the local runtime and browser UI elsewhere. When launched inside a Git repository, it opens that repository's indexed workspace. When launched outside Git, it starts without an active workspace or uses an indexed project.
 .SH OPTIONS
 .TP
 .B --browser
-Open browser mode explicitly. This is the default without a mode flag.
+Open browser mode explicitly. Runtime options and headless environments also select this mode.
 .TP
 .B --desktop
-Install the matching optional macOS app if needed and request native launch.
+Validate the installed macOS app and request native launch.
 Cannot be combined with browser-runtime flags or subcommands.
-npm installation alone does not download Electron.
+A supported global npm installation installs the matching app; launch never downloads it.
 .TP
 .B --host <ip>
 Bind the runtime to an IP address. The default is 127.0.0.1.
@@ -61,12 +61,19 @@ Show help text and exit.
 Show the version and exit.
 .SH COMMANDS
 .TP
-.B desktop install [--from <app-path>]
+.B desktop install [--from <app-path>] [--replace-owner]
 Install the matching published macOS app without launching it,
 or explicitly import a local app candidate.
 Native self-updates are disabled for npm-managed copies.
-Failed imports preserve the previous selection.
-Quit a running older app before switching installations.
+Replacement uses a temporary backup and journal. Quit the running app and retry; installation never kills sessions.
+Use --replace-owner explicitly when changing the owning checkout or npm prefix.
+.TP
+.B desktop status [--json]
+Report app, npm owner, and incomplete or mismatched installation state.
+With --json, print one JSON object and exit unsuccessfully unless the pair is ready with no pending work.
+.TP
+.B desktop uninstall
+Remove the owned app before npm uninstall. Preserve projects, sessions, and runtime data.
 .TP
 .B hooks ingest [payload]
 Ingest an agent hook event into a running Quarterdeck instance. The payload may be supplied as an argument or on standard input. Hook adapters can also provide structured fields with options including
@@ -147,7 +154,7 @@ for the complete option set.
 The lightweight metadata-only flight recorder starts automatically. Deep recording remains content-safe and does not enable terminal transcripts or Git diffs. Bundles are private local directories and are never uploaded automatically.
 .SH EXAMPLES
 .TP
-Start the runtime on the default loopback address:
+Open Quarterdeck in the default launch mode:
 .B quarterdeck
 .TP
 Start without browser or host-native integrations:

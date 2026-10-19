@@ -11,6 +11,7 @@ import {
 	inspectDependencyTrees,
 	linkCheckout,
 	normalizeCheckoutPathForComparison,
+	shouldLinkDesktop,
 } from "../../scripts/dependency-workflow.mjs";
 
 describe("dependency workflow preflight", () => {
@@ -133,28 +134,70 @@ describe("dependency workflow preflight", () => {
 		await installFixture("web-ui", {});
 		const calls = [];
 		await linkCheckout(checkoutRoot, {
+			browser: true,
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
 			executeNpm: (args) => calls.push(args),
 		});
 		expect(calls).toEqual([["run", "build"], ["link", "--ignore-scripts"]]);
 	});
 
-	it("installs the paired desktop build before linking without building twice", async () => {
-		const calls = [];
-		await linkCheckout(checkoutRoot, { desktop: true, executeNpm: (args) => calls.push(args) });
-		expect(calls).toEqual([["run", "desktop:install"], ["link", "--ignore-scripts"]]);
+	it("selects desktop by host support and preserves compatibility and browser opt-outs", () => {
+		const supported = { platform: "darwin", arch: "arm64", osRelease: "25.0.0", installMode: "" };
+		expect(shouldLinkDesktop(supported)).toBe(true);
+		expect(shouldLinkDesktop({ ...supported, desktop: true })).toBe(true);
+		expect(shouldLinkDesktop({ ...supported, browser: true })).toBe(false);
+		expect(shouldLinkDesktop({ ...supported, installMode: "browser" })).toBe(false);
+		expect(shouldLinkDesktop({ ...supported, platform: "linux" })).toBe(false);
+		expect(shouldLinkDesktop({ ...supported, osRelease: "21.0" })).toBe(false);
 	});
 
-	it("does not link when desktop installation fails", async () => {
+	function desktopLinkOptions(calls, overrides = {}) {
+		return {
+			desktop: true, platform: "darwin", arch: "arm64", osRelease: "25.0.0",
+			runtime: { activeRuntimePids: [], linkedCheckout: null },
+			executeNpm: (args) => calls.push(args),
+			resolveGlobalPackageLocation: () => ({ packageSlot: "/synthetic/prefix/lib/node_modules/quarterdeck", prefix: "/synthetic/prefix" }),
+			resolveLinkedCheckout: () => checkoutRoot,
+			installDesktop: (location) => calls.push(["install", location.packageSlot]),
+			...overrides,
+		};
+	}
+
+	it("builds once, links, installs the paired app, and verifies the completed global link", async () => {
 		const calls = [];
-		await expect(linkCheckout(checkoutRoot, {
-			desktop: true,
+		let inspected = 0;
+		await linkCheckout(checkoutRoot, desktopLinkOptions(calls, { resolveLinkedCheckout: () => { inspected += 1; return checkoutRoot; } }));
+		expect(calls).toEqual([["run", "desktop:build"], ["link", "--ignore-scripts"], ["install", "/synthetic/prefix/lib/node_modules/quarterdeck"]]);
+		expect(inspected).toBe(2);
+	});
+
+	it("does not install an app after a failed global link", async () => {
+		const calls = [];
+		await expect(linkCheckout(checkoutRoot, desktopLinkOptions(calls, {
 			executeNpm(args) {
 				calls.push(args);
-				throw new Error("installation failed");
+				if (args[0] === "link") throw new Error("link failed");
 			},
-		})).rejects.toThrow("installation failed");
-		expect(calls).toEqual([["run", "desktop:install"]]);
+		}))).rejects.toThrow("link failed");
+		expect(calls).toEqual([["run", "desktop:build"], ["link", "--ignore-scripts"]]);
+	});
+
+	it("reports an incomplete pair when app replacement fails after linking", async () => {
+		const calls = [];
+		await expect(linkCheckout(checkoutRoot, desktopLinkOptions(calls, { installDesktop: () => { throw new Error("quit and retry"); } }))).rejects.toThrow("quit and retry");
+		expect(calls).toEqual([["run", "desktop:build"], ["link", "--ignore-scripts"]]);
+	});
+
+	it("rejects a conflicting resolved global link before app placement", async () => {
+		const calls = [];
+		await expect(linkCheckout(checkoutRoot, desktopLinkOptions(calls, { resolveLinkedCheckout: () => "/other/checkout" }))).rejects.toThrow("does not point to this checkout");
+		expect(calls).toEqual([["run", "desktop:build"], ["link", "--ignore-scripts"]]);
+	});
+
+	it("checks active linked runtime before desktop preparation", async () => {
+		const calls = [];
+		await expect(linkCheckout(checkoutRoot, desktopLinkOptions(calls, { runtime: { activeRuntimePids: [1234], linkedCheckout: checkoutRoot } }))).rejects.toThrow("Stop Quarterdeck");
+		expect(calls).toEqual([]);
 	});
 
 	it("rejects a shared dependency symlink before installing any tree", async () => {

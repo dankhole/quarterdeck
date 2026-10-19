@@ -22,7 +22,7 @@ async function generatedMainPrefix(fixture, virtualArchiveView = false) {
 	const rawFsStub = join(fixture, "original-fs.mjs");
 	await writeFile(
 		electronStub,
-		"export const app = null, autoUpdater = null, BrowserWindow = null, ipcMain = null, Menu = null, Notification = null, powerMonitor = null, protocol = null, session = null, shell = null, dialog = null, screen = null;\n",
+		"export const app = null, BrowserWindow = null, clipboard = null, ipcMain = null, Menu = null, Notification = null, powerMonitor = null, protocol = null, session = null, shell = null, dialog = null, screen = null;\n",
 	);
 	// Node supplies the raw filesystem API that Electron's original-fs exposes.
 	await writeFile(rawFsStub, 'export { default } from "node:fs";\n');
@@ -136,5 +136,52 @@ describe("generated desktop bundles", () => {
 		});
 		expect(required).toEqual(["electron"]);
 		expect(exposed).toEqual([]);
+	});
+
+	it("exposes optional updates separately while preserving the original version-one preload shape", async () => {
+		const result = await build({ ...preloadBuildOptions, write: false, sourcemap: false });
+		const exposed = new Map();
+		runInNewContext(result.outputFiles[0].text, {
+			window: { location: { protocol: "app:", host: "quarterdeck", pathname: "/" } },
+			require: (name) => {
+				if (name !== "electron") throw new Error(`Unavailable sandbox module: ${name}`);
+				return {
+					contextBridge: { exposeInMainWorld: (key, value) => exposed.set(key, value) },
+					ipcRenderer: {
+						sendSync: () => ({
+							documentId: "document-current",
+							bootstrap: {
+								runtimeGeneration: "generation-current",
+								runtimeOrigin: "http://127.0.0.1:12345",
+								capabilities: { desktop: true, nativeDialogs: true, nativeNotifications: false },
+							},
+						}),
+					},
+				};
+			},
+		});
+		expect([...exposed.keys()]).toEqual(["quarterdeckDesktop", "quarterdeckDesktopUpdates"]);
+		const original = exposed.get("quarterdeckDesktop");
+		expect(original.version).toBe(1);
+		// This is the exact allowlist used by older compatible runtime UIs.
+		expect(Object.keys(original).sort()).toEqual([
+			"bootstrap",
+			"onCommand",
+			"onNotificationTarget",
+			"onOpenProject",
+			"onPreflightReleased",
+			"onQuitPreflight",
+			"publishCommandAvailability",
+			"reportNotificationContext",
+			"respondQuitPreflight",
+			"saveEditorDraft",
+			"version",
+		]);
+		expect(Object.keys(exposed.get("quarterdeckDesktopUpdates")).sort()).toEqual([
+			"getSnapshot",
+			"onSnapshot",
+			"request",
+			"version",
+		]);
 	});
 });

@@ -1,4 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { fstatSync, statSync } from "node:fs";
+
+function assertInstallationAdmission() {
+	if (process.env.QUARTERDECK_INSTALLATION_LOCK_FD === undefined) return;
+	const inherited = fstatSync(Number(process.env.QUARTERDECK_INSTALLATION_LOCK_FD));
+	const expected = statSync(process.env.QUARTERDECK_INSTALLATION_LOCK_PATH);
+	if (inherited.ino !== expected.ino || inherited.dev !== expected.dev) process.exit(7);
+}
+
+assertInstallationAdmission();
 
 process.on("message", (message) => {
 	if (message.type === "quarterdeck:desktop-startup") {
@@ -47,6 +57,7 @@ process.on("message", (message) => {
 		process.send(response);
 	}
 	if (message.type === "quarterdeck:desktop-shutdown") {
+		assertInstallationAdmission();
 		if (process.env.DESKTOP_FIXTURE_MODE === "no-ack") {
 			process.exit(0);
 			return;

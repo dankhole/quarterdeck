@@ -7,18 +7,58 @@ function items(template: MenuItemConstructorOptions[]): MenuItemConstructorOptio
 }
 
 describe("native menus", () => {
+	it("shows checked availability and blocks the item during update coordination", () => {
+		const actions = {
+			appName: "Quarterdeck",
+			productReady: true,
+			updateGuidanceAvailable: true,
+			updateLabel: "Update available · v0.12.9…",
+			dispatch: vi.fn(),
+			openInBrowser: vi.fn(),
+			showUpdateGuidance: vi.fn(),
+			reloadWindow: vi.fn(),
+		};
+		expect(items(desktopMenuTemplate(actions)).find((item) => item.id === "desktop.updateGuidance")).toMatchObject({
+			label: "Update available · v0.12.9…",
+			enabled: true,
+		});
+		expect(
+			items(desktopMenuTemplate({ ...actions, updateBusy: true })).find(
+				(item) => item.id === "desktop.updateGuidance",
+			)?.enabled,
+		).toBe(false);
+	});
+	it("opens owner update guidance without download or restart actions", () => {
+		const showUpdateGuidance = vi.fn();
+		const template = desktopMenuTemplate({
+			appName: "Quarterdeck",
+			productReady: false,
+			updateGuidanceAvailable: true,
+			dispatch: vi.fn(),
+			openInBrowser: vi.fn(),
+			showUpdateGuidance,
+			reloadWindow: vi.fn(),
+		});
+		const flattened = items(template);
+		const update = flattened.find((item) => item.id === "desktop.updateGuidance");
+		expect(update?.enabled).toBe(true);
+		expect(update?.label).toBe("Update Quarterdeck…");
+		update?.click?.({} as Electron.MenuItem, {} as Electron.BrowserWindow, {} as Electron.KeyboardEvent);
+		expect(showUpdateGuidance).toHaveBeenCalledOnce();
+		expect(flattened.some((item) => item.id === "desktop.checkUpdates" || item.id === "desktop.restartUpdate")).toBe(
+			false,
+		);
+	});
 	it("routes Settings once without synthesizing a renderer keyboard event", () => {
 		const dispatch = vi.fn();
 		const template = desktopMenuTemplate({
 			appName: "Quarterdeck",
 			productReady: true,
 			availableCommands: ["settings"],
-			updatesAvailable: false,
-			updatePending: false,
+			updateGuidanceAvailable: false,
 			dispatch,
 			openInBrowser: vi.fn(),
-			checkForUpdates: vi.fn(),
-			restartToUpdate: vi.fn(),
+			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		});
 		const settings = items(template).find((item) => item.id === "desktop.settings");
@@ -30,12 +70,10 @@ describe("native menus", () => {
 		const base = {
 			appName: "Quarterdeck",
 			productReady: true,
-			updatesAvailable: false,
-			updatePending: false,
+			updateGuidanceAvailable: false,
 			dispatch: vi.fn(),
 			openInBrowser: vi.fn(),
-			checkForUpdates: vi.fn(),
-			restartToUpdate: vi.fn(),
+			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		};
 		expect(items(desktopMenuTemplate(base)).find((item) => item.id === "desktop.settings")?.enabled).toBe(false);
@@ -51,17 +89,15 @@ describe("native menus", () => {
 		const template = desktopMenuTemplate({
 			appName: "Quarterdeck",
 			productReady: false,
-			updatesAvailable: false,
-			updatePending: false,
+			updateGuidanceAvailable: false,
 			dispatch: vi.fn(),
 			openInBrowser: vi.fn(),
-			checkForUpdates: vi.fn(),
-			restartToUpdate: vi.fn(),
+			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		});
 		const flattened = items(template);
 		expect(flattened.find((item) => item.id === "desktop.newTask")?.enabled).toBe(false);
-		expect(flattened.find((item) => item.id === "desktop.checkUpdates")?.enabled).toBe(false);
+		expect(flattened.find((item) => item.id === "desktop.updateGuidance")?.enabled).toBe(false);
 		expect(
 			flattened.some(
 				(item) => item.role === "reload" || item.role === "forceReload" || item.role === "toggleDevTools",

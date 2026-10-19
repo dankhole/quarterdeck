@@ -28,7 +28,6 @@ function fixture(overrides: Partial<DesktopQuitOptions> = {}) {
 		stop: vi.fn(async () => ({ status: "clean", safeToExit: true, safeToReleaseOwnership: true }) as const),
 		confirmSessions: vi.fn(async () => true),
 		confirmUnconfirmedExit: vi.fn(async () => true),
-		canForceExit: () => true,
 		inform: vi.fn(async () => undefined),
 		onStopping: vi.fn(),
 		...overrides,
@@ -36,19 +35,104 @@ function fixture(overrides: Partial<DesktopQuitOptions> = {}) {
 	return { owner: new DesktopQuitCoordinator(options), options };
 }
 
-describe("native quit and update lease", () => {
-	it("serializes requests and lets normal Quit take over an update without duplicating shutdown", async () => {
+describe("native quit and runtime restart lease", () => {
+	it("never offers unconfirmed cleanup to an update or calls its commit", async () => {
+		const { owner, options } = fixture({ cleanupState: () => "unconfirmed" });
+		const commit = vi.fn(async () => undefined);
+		expect(await owner.request("update", commit)).toEqual({ kind: "cancelled" });
+		expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
+		expect(commit).not.toHaveBeenCalled();
+	});
+	it("seals drafts after cleanup/evidence before committing an update", async () => {
+		const events: string[] = [];
+		const { owner } = fixture({
+			preflight: async (_reason, seal) => {
+				events.push(seal ? "seal" : "preflight");
+				return READY;
+			},
+			stop: async () => {
+				events.push("stop");
+				return { status: "clean", safeToExit: true, safeToReleaseOwnership: true };
+			},
+			finalize: async () => {
+				events.push("flush");
+			},
+		});
+		expect(
+			await owner.request("update", async () => {
+				events.push("authorize");
+			}),
+		).toEqual({ kind: "clean" });
+		expect(events).toEqual(["preflight", "seal", "stop", "flush", "seal", "authorize"]);
+	});
+	it("keeps post-clean draft protection usable after the runtime disconnects", async () => {
+		let connected = true;
+		const { owner, options } = fixture({
+			preflight: vi.fn<DesktopQuitOptions["preflight"]>(async (reason) => ({
+				...READY,
+				decision: reason === "update" && !connected ? "blocked" : "ready",
+				status: { ...READY.status, runtimeConnected: connected },
+			})),
+			stop: async () => {
+				connected = false;
+				return { status: "clean", safeToExit: true, safeToReleaseOwnership: true };
+			},
+		});
+		const commit = vi.fn(async () => undefined);
+		expect(await owner.request("update", commit)).toEqual({ kind: "clean" });
+		expect(options.preflight).toHaveBeenNthCalledWith(1, "update");
+		expect(options.preflight).toHaveBeenLastCalledWith("quit", true);
+		expect(commit).toHaveBeenCalledOnce();
+	});
+	it("refuses competing transitions while a clean update commit is pending", async () => {
+		let commit: () => void = () => undefined;
+		const authorization = new Promise<void>((resolve) => {
+			commit = resolve;
+		});
+		const { owner } = fixture();
+		const update = owner.request("update", () => authorization);
+		await vi.waitFor(() => expect(owner.isPending()).toBe(true));
+		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
+		expect(await owner.request("restart")).toEqual({ kind: "cancelled" });
+		expect(await owner.request("update")).toEqual({ kind: "cancelled" });
+		expect(owner.isNormalQuitPending()).toBe(false);
+		commit();
+		expect(await update).toEqual({ kind: "clean" });
+	});
+	it("cancels an update if its draft seal cannot be renewed after authorization", async () => {
+		let valid = true;
+		const { owner, options } = fixture({
+			isSealValid: () => valid,
+			preflight: async () => (valid ? READY : DIRTY),
+		});
+		expect(
+			await owner.request("update", async () => {
+				valid = false;
+			}),
+		).toEqual({ kind: "cancelled" });
+		expect(options.stop).toHaveBeenCalledOnce();
+		expect(options.releasePreflight).toHaveBeenCalledOnce();
+	});
+	it("does not attach update authorization to an ordinary quit already in progress", async () => {
+		const { owner } = fixture();
+		const quitting = owner.request("quit");
+		const commit = vi.fn(async () => undefined);
+		expect(await owner.request("update", commit)).toEqual({ kind: "cancelled" });
+		expect(await quitting).toEqual({ kind: "clean" });
+		expect(commit).not.toHaveBeenCalled();
+	});
+	it("serializes runtime restart and Quit without duplicating shutdown", async () => {
 		const { owner, options } = fixture();
 		expect(owner.isPending()).toBe(false);
-		const update = owner.request("update");
+		const restart = owner.request("restart");
 		expect(owner.isPending()).toBe(true);
 		const quit = owner.request("quit");
-		expect(quit).toBe(update);
+		expect(quit).toBe(restart);
 		expect(owner.isNormalQuitPending()).toBe(true);
-		expect(await update).toEqual({ kind: "clean" });
+		expect(await restart).toEqual({ kind: "clean" });
 		expect(owner.isPending()).toBe(false);
 		expect(options.stop).toHaveBeenCalledOnce();
-		expect(options.preflight).toHaveBeenNthCalledWith(2, "update", true);
+		expect(options.preflight).toHaveBeenNthCalledWith(2, "restart", true);
 	});
 	it("keeps dirty-editor vetoes authoritative before stopping any session", async () => {
 		const { owner, options } = fixture({ preflight: async () => DIRTY });
@@ -81,12 +165,12 @@ describe("native quit and update lease", () => {
 		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
 		expect(options.stop).not.toHaveBeenCalled();
 	});
-	it("labels an explicit normal force exit unconfirmed and never offers it to updates", async () => {
+	it("labels an explicit normal force exit unconfirmed and never offers it to restarts", async () => {
 		const normal = fixture({ cleanupState: () => "unconfirmed" });
 		expect(await normal.owner.request("quit")).toEqual({ kind: "forced", cleanup: "unconfirmed" });
-		const update = fixture({ cleanupState: () => "unconfirmed" });
-		expect(await update.owner.request("update")).toEqual({ kind: "cancelled" });
-		expect(update.options.confirmUnconfirmedExit).not.toHaveBeenCalled();
+		const restart = fixture({ cleanupState: () => "unconfirmed" });
+		expect(await restart.owner.request("restart")).toEqual({ kind: "cancelled" });
+		expect(restart.options.confirmUnconfirmedExit).not.toHaveBeenCalled();
 	});
 	it("does not interrupt an attached CLI owner's sessions", async () => {
 		const { owner, options } = fixture({
@@ -100,13 +184,13 @@ describe("native quit and update lease", () => {
 		expect(await owner.request("quit")).toEqual({ kind: "clean" });
 		expect(options.confirmSessions).not.toHaveBeenCalled();
 	});
-	it("cannot commit an update after the renderer seal expired during shutdown", async () => {
+	it("cannot restart after the renderer seal expired during shutdown", async () => {
 		let checks = 0;
 		const { owner } = fixture({
 			isSealValid: () => ++checks === 1,
-			preflight: async (reason, seal) => (reason === "update" && seal && checks > 0 ? null : READY),
+			preflight: async (reason, seal) => (reason === "restart" && seal && checks > 0 ? null : READY),
 		});
-		expect(await owner.request("update")).toEqual({ kind: "cancelled" });
+		expect(await owner.request("restart")).toEqual({ kind: "cancelled" });
 	});
 	it("waits for bounded startup-owned work before declaring a startup Quit clean", async () => {
 		let finishPreparation: () => void = () => undefined;
@@ -129,80 +213,14 @@ describe("native quit and update lease", () => {
 		finishPreparation();
 		expect(await quitting).toEqual({ kind: "clean" });
 	});
-	it("blocks forced normal Quit when a downloaded update may apply on relaunch", async () => {
-		const { owner, options } = fixture({ cleanupState: () => "unconfirmed", canForceExit: () => false });
-		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
-		expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
-		expect(options.inform).toHaveBeenCalledExactlyOnceWith("shutdown_incomplete");
-	});
-	it("explains an update veto after final evidence flushing but quietly respects declined Quit Anyway", async () => {
-		let pending = false;
-		const late = fixture({
-			cleanupState: () => "unconfirmed",
-			canForceExit: () => !pending,
-			finalize: async () => {
-				pending = true;
-			},
-		});
-		expect(await late.owner.request("quit")).toEqual({ kind: "cancelled" });
-		expect(late.options.inform).toHaveBeenCalledExactlyOnceWith("shutdown_incomplete");
-		const declined = fixture({ cleanupState: () => "unconfirmed", confirmUnconfirmedExit: async () => false });
-		expect(await declined.owner.request("quit")).toEqual({ kind: "cancelled" });
-		expect(declined.options.inform).not.toHaveBeenCalled();
-	});
-	it("still cancels and releases the seal when the final pending-update explanation fails", async () => {
-		let pending = false;
-		const { owner, options } = fixture({
-			cleanupState: () => "unconfirmed",
-			canForceExit: () => !pending,
-			finalize: async () => {
-				pending = true;
-			},
-			inform: vi.fn(async () => {
-				throw new Error("presentation unavailable");
-			}),
-		});
-		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
-		expect(options.releasePreflight).toHaveBeenCalledOnce();
-		expect(owner.isPending()).toBe(false);
-	});
-	it.each(["already_unconfirmed", "failed_stop"])(
-		"vetoes forced Quit if an update arrives during the last async seal (%s)",
-		async (mode) => {
-			let pendingUpdate = false;
-			let cleanup: "running" | "unconfirmed" = mode === "already_unconfirmed" ? "unconfirmed" : "running";
-			let seals = 0;
-			const { owner } = fixture({
-				cleanupState: () => cleanup,
-				canForceExit: () => !pendingUpdate,
-				stop: async () => {
-					cleanup = "unconfirmed";
-					return {
-						status: "incomplete",
-						safeToExit: false,
-						safeToReleaseOwnership: false,
-						reasons: ["processes_unconfirmed"],
-					};
-				},
-				preflight: async (_reason, seal) => {
-					if (seal && ++seals === (mode === "already_unconfirmed" ? 1 : 2)) {
-						await Promise.resolve();
-						pendingUpdate = true;
-					}
-					return READY;
-				},
-			});
-			expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
-		},
-	);
-	it("retains a verified clean receipt for disconnected update retry and still protects drafts", async () => {
+	it("retains a clean shutdown receipt while still protecting offline drafts", async () => {
 		const offline = { ...READY, status: { ...READY.status, runtimeConnected: false } };
 		const clean = fixture({ cleanupState: () => "clean", preflight: async () => offline });
-		expect(await clean.owner.request("update")).toEqual({ kind: "clean" });
+		expect(await clean.owner.request("quit")).toEqual({ kind: "clean" });
 		const dirty = fixture({ cleanupState: () => "clean", preflight: async () => DIRTY });
-		expect(await dirty.owner.request("update")).toEqual({ kind: "cancelled" });
+		expect(await dirty.owner.request("quit")).toEqual({ kind: "cancelled" });
 		const uncertain = fixture({ cleanupState: () => "unconfirmed", preflight: async () => offline });
-		expect(await uncertain.owner.request("update")).toEqual({ kind: "cancelled" });
+		expect(await uncertain.owner.request("restart")).toEqual({ kind: "cancelled" });
 	});
 	it("renews the renderer seal if final evidence flushing outlasts its deadline", async () => {
 		let valid = true;

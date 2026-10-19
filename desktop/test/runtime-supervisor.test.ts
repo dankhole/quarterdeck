@@ -1,8 +1,15 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtemp, open, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/runtime-protocol.js";
-import { RuntimeSupervisor, type RuntimeSupervisorEvidence } from "../src/runtime-supervisor.js";
+import {
+	RuntimeSupervisor,
+	type RuntimeSupervisorEvidence,
+	type RuntimeSupervisorOptions,
+} from "../src/runtime-supervisor.js";
 
 const children: ChildProcess[] = [];
 afterEach(async () => {
@@ -19,6 +26,8 @@ afterEach(async () => {
 function supervisor(
 	mode = "normal",
 	throwObserver = false,
+	installationAdmission?: RuntimeSupervisorOptions["installationAdmission"],
+	labConfigPath?: string,
 ): {
 	owner: RuntimeSupervisor;
 	evidence: RuntimeSupervisorEvidence[];
@@ -44,15 +53,21 @@ function supervisor(
 			stateHome: "/synthetic/state",
 			projectPath: "/synthetic/project",
 			hostSimulationConfigPath: "/synthetic/host.json",
+			labConfigPath,
 		},
 		environment: {
 			...process.env,
 			DESKTOP_FIXTURE_MODE: mode,
 			DESKTOP_FIXTURE_BROWSER_PROTOCOL: String(QUARTERDECK_RUNTIME_PROTOCOL_VERSION),
+			QUARTERDECK_INSTALLATION_LOCK_FD: "99",
+			QUARTERDECK_INSTALLATION_LOCK_PATH: "/untrusted/inherited.lock",
+			QUARTERDECK_DESKTOP_LAB_CONFIG: "/untrusted/lab.json",
 		},
+		installationAdmission,
 		startupDeadlineMs: 500,
 		shutdownDeadlineMs: 1000,
 		spawnChild: (executable, args, options) => {
+			expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(labConfigPath);
 			expect(executable).toBe("/synthetic/bin/node");
 			if (args[1] === "recover") {
 				expect(mode).toBe("maintenance");
@@ -71,6 +86,14 @@ function supervisor(
 			expect(args).not.toContainEqual(expect.stringContaining("clientToken"));
 			expect(options.env?.QUARTERDECK_STATE_HOME).toBe("/synthetic/state");
 			expect(options.env?.QUARTERDECK_DESKTOP_CHILD).toBe("1");
+			if (installationAdmission) {
+				expect(options.stdio).toEqual(["pipe", "ignore", "ignore", "ipc", installationAdmission.fd]);
+				expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_FD).toBe("4");
+				expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_PATH).toBe(installationAdmission.path);
+			} else {
+				expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_FD).toBeUndefined();
+				expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_PATH).toBeUndefined();
+			}
 			const child = spawn(
 				mode === "spawn-failure" ? "/nonexistent/quarterdeck-desktop-test-node" : process.execPath,
 				[fileURLToPath(new URL("./fixtures/runtime-helper.mjs", import.meta.url))],
@@ -89,6 +112,25 @@ function supervisor(
 }
 
 describe("private bundled runtime supervision", () => {
+	it("passes only the validated lab configuration to a noncanonical bundled Node wrapper", async () => {
+		const { owner } = supervisor("normal", false, undefined, "/synthetic/validated-lab.json");
+		await owner.start();
+		expect(await owner.stop()).toMatchObject({ status: "clean" });
+	});
+	it("inherits installation admission before helper startup and retains it after the parent closes its copy", async () => {
+		const root = await mkdtemp(join(tmpdir(), "quarterdeck-desktop-admission-"));
+		const path = join(root, "admission.lock");
+		const file = await open(path, "wx", 0o600);
+		try {
+			const { owner } = supervisor("normal", false, { fd: file.fd, path });
+			await owner.start();
+			await file.close();
+			expect(await owner.stop()).toMatchObject({ status: "clean" });
+		} finally {
+			await file.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
 	it("fences runtime start until the maintenance helper actually exits", async () => {
 		const { owner } = supervisor("maintenance");
 		const recovery = owner.recoverPriorSessions();

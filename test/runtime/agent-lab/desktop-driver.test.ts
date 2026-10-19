@@ -1355,16 +1355,17 @@ describe("desktop main-loss retirement and admitted writer drain", () => {
 			return evaluated.promise;
 		});
 		Reflect.set(driver, "rendererPages", () => []);
+		let inspection: Promise<void> | undefined;
+		let stopping: Promise<void> | undefined;
 		try {
-			const inspection = driver.inspect("late-inspection");
+			inspection = driver.inspect("late-inspection");
 			await entered.promise;
 			await expect(withDesktopDeadline(inspection, "Caller capture", 5)).rejects.toThrow("timed out");
 			let finished = false;
-			const stopping = driver.stop().then(() => {
+			stopping = driver.stop().then(() => {
 				finished = true;
 			});
-			await new Promise((resolve) => setTimeout(resolve, 10));
-			expect(quit).toHaveBeenCalledOnce();
+			await vi.waitFor(() => expect(quit).toHaveBeenCalledOnce());
 			expect(finished).toBe(false);
 			await access(fixture.config.tempRoot);
 			evaluated.resolve({
@@ -1385,6 +1386,7 @@ describe("desktop main-loss retirement and admitted writer drain", () => {
 				userDataPath: fixture.config.userDataPath,
 				windows: [],
 			});
+			await Promise.allSettled([inspection, stopping]);
 			await removeFixture(fixture);
 		}
 	});

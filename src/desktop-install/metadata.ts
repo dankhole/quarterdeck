@@ -13,13 +13,16 @@ export const maximumDesktopContainerBytes = 1024 * 1024 * 1024;
 export const desktopResourcePaths = [
 	"app.asar",
 	"runtime/bin/node",
+	"runtime/bin/nodeHost",
+	"runtime/installation-admission",
+	"runtime/dist/build-manifest.json",
 	"runtime/dist/cli.js",
 	"runtime/dist/web-ui/index.html",
 	"runtime/bundle-manifest.json",
 	"runtime/release-policy.json",
 ] as const;
 
-const bundleSchema = z.object({
+const bundleSchema = z.strictObject({
 	schemaVersion: z.literal(1),
 	platform: z.literal("darwin"),
 	arch: desktopArchitectureSchema,
@@ -33,9 +36,8 @@ const bundleSchema = z.object({
 		.string()
 		.regex(/^[A-Z0-9]{10}$/u)
 		.nullable(),
-	productionUpdatesEnabled: z.boolean(),
-	channel: z.enum(["stable", "preview", "validation"]),
-	validationFeedBase: z.string().max(2048).nullable(),
+	updateAuthority: z.literal("npm"),
+	channel: z.enum(["stable", "preview"]),
 	electronVersion: desktopVersionSchema,
 	nodeVersion: desktopVersionSchema,
 	nodeAbi: z.string().regex(/^\d{1,4}$/u),
@@ -48,6 +50,12 @@ const bundleSchema = z.object({
 });
 
 const releaseManifestSchema = bundleSchema.extend({
+	appPath: z.string().max(4096).optional(),
+	nativeAdmission: z.strictObject({
+		schemaVersion: z.literal(1),
+		bootstrapSha256: desktopSha256Schema,
+		hostSha256: desktopSha256Schema,
+	}),
 	distribution: z.literal("signed-notarized"),
 	fuses: z.object({
 		RunAsNode: z.literal(false),
@@ -111,8 +119,6 @@ export function validateDesktopReleaseManifest(
 		!manifest.signedDistribution ||
 		manifest.expectedTeamId === null ||
 		manifest.channel !== (stable ? "stable" : "preview") ||
-		manifest.validationFeedBase !== null ||
-		manifest.productionUpdatesEnabled !== stable ||
 		desktopResourcePaths.some((path) => !manifest.checksums[path])
 	) {
 		throw new DesktopInstallationError(

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { vi } from "vitest";
 import { desktopFileSha256 } from "../../../src/desktop-install/files.js";
@@ -26,9 +26,8 @@ export async function createDesktopAppFixture(
 		...(options.launchProtocol === false ? {} : { desktopLaunchProtocolVersion: 1 }),
 		signedDistribution: options.signed ?? false,
 		expectedTeamId: options.signed ? "ABCDE12345" : null,
-		productionUpdatesEnabled: (options.signed ?? false) && !version.includes("-"),
+		updateAuthority: "npm",
 		channel: version.includes("-") ? "preview" : "stable",
-		validationFeedBase: null,
 		electronVersion: "44.5.1",
 		nodeVersion: "22.22.2",
 		nodeAbi: "127",
@@ -45,9 +44,8 @@ export async function createDesktopAppFixture(
 		sourceSha: bundle.sourceSha,
 		signedDistribution: bundle.signedDistribution,
 		expectedTeamId: bundle.expectedTeamId,
-		productionUpdatesEnabled: bundle.productionUpdatesEnabled,
+		updateAuthority: bundle.updateAuthority,
 		channel: bundle.channel,
-		validationFeedBase: null,
 	};
 	const files: Record<string, string> = {
 		"Contents/Info.plist": JSON.stringify({
@@ -56,8 +54,18 @@ export async function createDesktopAppFixture(
 			CFBundleExecutable: "Quarterdeck",
 		}),
 		"Contents/MacOS/Quarterdeck": arch,
+		"Contents/MacOS/QuarterdeckHost": arch,
 		"Contents/Resources/app.asar": `shell-${bundle.buildId}`,
 		"Contents/Resources/runtime/bin/node": arch,
+		"Contents/Resources/runtime/bin/nodeHost": arch,
+		"Contents/Resources/runtime/installation-admission": arch,
+		"Contents/Resources/runtime/dist/build-manifest.json": JSON.stringify({
+			schemaVersion: 1,
+			version,
+			buildId: bundle.buildId,
+			sourceSha: bundle.sourceSha,
+			sourceDirty: bundle.sourceDirty,
+		}),
 		"Contents/Resources/runtime/node_modules/node-pty/build/Release/pty.node": arch,
 		"Contents/Resources/runtime/dist/cli.js": `runtime-${bundle.buildId}`,
 		"Contents/Resources/runtime/dist/web-ui/index.html": `<main>${bundle.buildId}</main>`,
@@ -81,6 +89,11 @@ export async function createDesktopAppFixture(
 	await writeFile(containerPath, containerBytes);
 	const manifest = {
 		...bundle,
+		nativeAdmission: {
+			schemaVersion: 1,
+			bootstrapSha256: await desktopFileSha256(join(appPath, "Contents/MacOS/Quarterdeck")),
+			hostSha256: await desktopFileSha256(join(appPath, "Contents/MacOS/QuarterdeckHost")),
+		},
 		distribution: "signed-notarized",
 		fuses: {
 			RunAsNode: false,
@@ -103,10 +116,34 @@ export async function createDesktopAppFixture(
 	return { appPath, bundle, manifest, containerBytes };
 }
 
-export function createInstallerDependencies(
+export async function createInstallerDependencies(
 	root: string,
 	fixture?: Awaited<ReturnType<typeof createDesktopAppFixture>>,
 ) {
+	const packageRoot = join(await realpath(root), "package");
+	const prefix = join(root, "prefix");
+	const packageSlot = join(prefix, "lib/node_modules/quarterdeck");
+	await mkdir(join(packageRoot, "dist"), { recursive: true });
+	await mkdir(dirname(packageSlot), { recursive: true });
+	try {
+		await symlink(packageRoot, packageSlot);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	}
+	const identity = {
+		schemaVersion: 1 as const,
+		version: fixture?.bundle.version ?? "0.12.8",
+		buildId: fixture?.bundle.buildId ?? randomUUID(),
+		sourceSha: "a".repeat(40),
+		sourceDirty: false,
+	};
+	await writeFile(join(packageRoot, "dist/build-manifest.json"), JSON.stringify(identity));
+	await writeFile(
+		join(packageRoot, "package.json"),
+		JSON.stringify({ name: "quarterdeck", version: identity.version }),
+	);
+	const owner = { kind: "link" as const, packageSlot, packageRoot, prefix, identity };
+	let mutationActive = false;
 	const commands: Array<{ command: string; args: readonly string[] }> = [];
 	const runCommand: DesktopInstallationDependencies["runCommand"] = vi.fn(async (command, args) => {
 		commands.push({ command, args });
@@ -139,6 +176,16 @@ export function createInstallerDependencies(
 			platform: "darwin" as const,
 			arch: "arm64",
 			managedRoot: join(root, "managed"),
+			appPath: join(root, "Applications/Quarterdeck.app"),
+			owner,
+			stageIdentity: { host: "synthetic-host", process: { pid: process.pid, creationIdentity: "synthetic-birth" } },
+			acquireMutation: vi.fn(async () => {
+				if (mutationActive) throw new Error("installation in use");
+				mutationActive = true;
+				return async () => {
+					mutationActive = false;
+				};
+			}),
 			runCommand,
 			download,
 		},

@@ -1,6 +1,8 @@
 import { constants } from "node:fs";
-import { access, copyFile, mkdir, readdir, realpath, rm } from "node:fs/promises";
+import { access, copyFile, lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { z } from "zod";
+import { runDesktopInstallCommand } from "../../src/desktop-install/macos.js";
 import type { DesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import {
 	isolateDesktopProvider,
@@ -20,20 +22,20 @@ export async function resolveDesktopAppExecutable(
 ): Promise<{ appPath: string; executablePath: string }> {
 	const canonicalAppPath = await realpath(resolve(appPath));
 	if (!canonicalAppPath.endsWith(".app")) throw new Error("Desktop Agent Lab requires a packaged macOS .app.");
-	const executableDirectory = join(canonicalAppPath, "Contents", "MacOS");
-	const executables: string[] = [];
-	for (const entry of await readdir(executableDirectory, { withFileTypes: true })) {
-		if (!entry.isFile()) continue;
-		const path = join(executableDirectory, entry.name);
-		try {
-			await access(path, constants.X_OK);
-			executables.push(path);
-		} catch {
-			// Ignore bundle metadata and non-executable resources.
-		}
-	}
-	if (executables.length !== 1) throw new Error("Packaged .app must have exactly one main executable.");
-	return { appPath: canonicalAppPath, executablePath: executables[0] as string };
+	const plistPath = join(canonicalAppPath, "Contents", "Info.plist");
+	const plist = await lstat(plistPath);
+	if (!plist.isFile() || plist.size > 128 * 1024) throw new Error("Packaged .app has invalid Info.plist metadata.");
+	const { stdout } = await runDesktopInstallCommand("/usr/bin/plutil", ["-convert", "json", "-o", "-", plistPath]);
+	const info = z.object({ CFBundleExecutable: z.string().regex(/^[\w .-]{1,64}$/u) }).parse(JSON.parse(stdout));
+	if (info.CFBundleExecutable === "." || info.CFBundleExecutable === "..")
+		throw new Error("Packaged .app has an invalid main executable.");
+	const executablePath = join(canonicalAppPath, "Contents", "MacOS", info.CFBundleExecutable);
+	if (!(await lstat(executablePath)).isFile())
+		throw new Error("Packaged .app main executable must be a regular file.");
+	await access(executablePath, constants.X_OK);
+	// The native admission bootstrap and Electron host are both executable. Launch
+	// the bundle-declared entry point so the lab exercises the same lock as Finder.
+	return { appPath: canonicalAppPath, executablePath };
 }
 
 export interface DesktopLabFixture {

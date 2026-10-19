@@ -1,3 +1,8 @@
+import { lstatSync, realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+
+import { desktopStableAppPath, getDesktopAdmissionDescriptor } from "../desktop-install/admission.js";
+import { readLabLaunchConfig } from "../shared/desktop-lab-launch-config.js";
 import { buildShellCommandLine } from "./shell.js";
 
 export interface RuntimeInvocationContext {
@@ -6,12 +11,57 @@ export interface RuntimeInvocationContext {
 	execArgv?: string[];
 }
 
+function isValidatedSyntheticRuntime(context: RuntimeInvocationContext): boolean {
+	const runtime = dirname(dirname(context.execPath));
+	if (
+		resolve(runtime, "../../..") === desktopStableAppPath() ||
+		process.env.QUARTERDECK_AGENT_LAB !== "1" ||
+		process.env.QUARTERDECK_DESKTOP_CHILD !== "1" ||
+		context.argv[1] !== join(runtime, "dist/cli.js")
+	)
+		return false;
+	const lab = readLabLaunchConfig(process.env.QUARTERDECK_DESKTOP_LAB_CONFIG);
+	const simulationFlag = context.argv.indexOf("--simulate-host-integrations");
+	return (
+		process.env.QUARTERDECK_STATE_HOME !== undefined &&
+		realpathSync(process.env.QUARTERDECK_STATE_HOME) === lab.stateHome &&
+		simulationFlag > 1 &&
+		context.argv[simulationFlag + 1] === lab.hostSimulationConfigPath
+	);
+}
+
+function resolveNodeExecutable(context: RuntimeInvocationContext): string {
+	if (!context.execPath.endsWith("/Contents/Resources/runtime/bin/nodeHost")) {
+		return context.execPath;
+	}
+
+	// Provider children do not retain the runtime's admission descriptor. Their
+	// generated hooks must acquire their own admission before loading bundled Node.
+	const wrapper = join(dirname(context.execPath), "node");
+	try {
+		if (!getDesktopAdmissionDescriptor() && !isValidatedSyntheticRuntime(context))
+			throw new Error("Missing native admission");
+		for (const path of [context.execPath, wrapper]) {
+			const info = lstatSync(path);
+			if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o111) === 0 || realpathSync(path) !== path) {
+				throw new Error("Invalid bundled Node executable");
+			}
+		}
+	} catch {
+		throw new Error(
+			"The bundled Quarterdeck hook launcher could not verify native installation admission. Quit Quarterdeck and repair the npm installation.",
+		);
+	}
+	return wrapper;
+}
+
 function resolveNodeCommandPrefix(context: RuntimeInvocationContext): string[] {
+	const executable = resolveNodeExecutable(context);
 	const execArgv = context.execArgv ?? [];
 	if (execArgv.length === 0) {
-		return [context.execPath];
+		return [executable];
 	}
-	return [context.execPath, ...execArgv];
+	return [executable, ...execArgv];
 }
 
 function isLikelyTsxCliEntrypoint(value: string): boolean {

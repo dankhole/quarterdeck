@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import { promisify } from "node:util";
 import { getRuntimeHomePath } from "./core/runtime-state-home.js";
-import { ensureDesktopInstallation } from "./desktop-install/index.js";
+import { resolveDesktopInstallationOwner, validateDesktopInstallation } from "./desktop-install/index.js";
 import { resolveCanonicalRuntimeStateHome } from "./server/runtime-ownership.js";
 import { hasGitRepository } from "./server/runtime-startup-paths.js";
 import {
@@ -25,10 +25,8 @@ export async function launchDesktop(version: string): Promise<void> {
 	const stateHome = await resolveCanonicalRuntimeStateHome(getRuntimeHomePath());
 	const cwd = await realpath(process.cwd());
 	const projectPath = !isUnderWorktreesHome(cwd) && (await hasGitRepository(cwd)) ? cwd : undefined;
-	const installation = await ensureDesktopInstallation({
-		version,
-		onProgress: (progress) => console.log(progress.message),
-	});
+	const owner = await resolveDesktopInstallationOwner();
+	const installation = await validateDesktopInstallation({ version, owner });
 	const request = serializeDesktopLaunchRequest({
 		schemaVersion: DESKTOP_LAUNCH_PROTOCOL_VERSION,
 		version: installation.version,

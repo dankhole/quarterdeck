@@ -1,7 +1,6 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from "vitest";
-import { resolveDesktopFrontendPreflightReason } from "../../../../desktop/src/desktop-preflight-reason";
 import { DesktopQuitCoordinator, type DesktopQuitOptions } from "../../../../desktop/src/quit-coordinator";
 import type { DesktopQuitPreflightResponse } from "../../../../src/shared/desktop-bridge-contract";
 import {
@@ -20,7 +19,7 @@ import {
 import { createFileEditorTab } from "../git/file-editor-workspace";
 import { resolveDesktopQuitPreflight } from "./desktop-app";
 
-/** Composes the actual main reason adapter, renderer draft veto, and native cleanup authority. */
+/** Composes the renderer draft veto, and native cleanup authority. */
 function fixture(initial: "running" | "clean" | "unconfirmed", dirty = false, recoveryReady = () => true) {
 	let cleanup = initial;
 	let connected = initial === "running";
@@ -29,7 +28,7 @@ function fixture(initial: "running" | "clean" | "unconfirmed", dirty = false, re
 	const reasons: string[] = [];
 	const responses: (DesktopQuitPreflightResponse | null)[] = [];
 	const preflight: DesktopQuitOptions["preflight"] = async (reason, seal) => {
-		const frontendReason = resolveDesktopFrontendPreflightReason(reason, cleanup);
+		const frontendReason = reason;
 		reasons.push(frontendReason);
 		const response = resolveDesktopQuitPreflight(
 			{ requestId: `request-${++request}`, runtimeGeneration: "generation", reason: frontendReason },
@@ -68,36 +67,35 @@ function fixture(initial: "running" | "clean" | "unconfirmed", dirty = false, re
 		}),
 		confirmSessions: vi.fn(async () => true),
 		confirmUnconfirmedExit: vi.fn(async () => true),
-		canForceExit: () => false,
 		inform: vi.fn(async () => undefined),
 		onStopping: vi.fn(),
 	};
 	return { owner: new DesktopQuitCoordinator(options), options, reasons, responses };
 }
 
-describe("clean-stop update preflight composition", () => {
+describe("native Quit preflight composition", () => {
 	it("renews an expired renderer seal after main proves a clean runtime stop", async () => {
 		const { owner, options, reasons } = fixture("running");
-		expect(await owner.request("update")).toEqual({ kind: "clean" });
-		expect(reasons).toEqual(["update", "update", "quit"]);
+		expect(await owner.request("quit")).toEqual({ kind: "clean" });
+		expect(reasons).toEqual(["quit", "quit", "quit"]);
 		expect(options.stop).toHaveBeenCalledOnce();
 	});
-	it("permits a later installer retry with a clean stopped runtime", async () => {
+	it("permits Quit with a clean stopped runtime", async () => {
 		const { owner, options, reasons } = fixture("clean");
-		expect(await owner.request("update")).toEqual({ kind: "clean" });
+		expect(await owner.request("quit")).toEqual({ kind: "clean" });
 		expect(reasons).toEqual(["quit", "quit", "quit"]);
 		expect(options.getSummary).not.toHaveBeenCalled();
 	});
-	it("retains the offline renderer draft veto after the clean-stop mapping", async () => {
+	it("retains the offline renderer draft veto after a clean stop", async () => {
 		const { owner, options, reasons } = fixture("clean", true);
-		expect(await owner.request("update")).toEqual({ kind: "cancelled" });
+		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
 		expect(reasons).toEqual(["quit"]);
 		expect(options.stop).not.toHaveBeenCalled();
 	});
-	it("cannot map unconfirmed cleanup into an offline update permission", async () => {
+	it("does not restart after unconfirmed cleanup", async () => {
 		const { owner, options, reasons } = fixture("unconfirmed");
-		expect(await owner.request("update")).toEqual({ kind: "cancelled" });
-		expect(reasons).toEqual(["update"]);
+		expect(await owner.request("restart")).toEqual({ kind: "cancelled" });
+		expect(reasons).toEqual(["restart"]);
 		expect(options.stop).not.toHaveBeenCalled();
 		expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
 	});
@@ -142,7 +140,6 @@ describe("clean-stop update preflight composition", () => {
 					false,
 					() => getFileEditorRecoveryCommitStatus(storage).ready,
 				);
-				options.canForceExit = () => true;
 				options.finalize = vi.fn(async () => {});
 				expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
 				expect(options.confirmUnconfirmedExit).toHaveBeenCalledOnce();

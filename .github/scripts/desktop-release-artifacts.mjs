@@ -48,10 +48,11 @@ export async function validateRelease(directory, version, sourceSha) {
 			throw new Error(`Missing signed policy identity: ${arch}.`);
 		if (
 			manifest.channel !== (production ? "stable" : "preview") ||
-			manifest.validationFeedBase !== null ||
-			manifest.productionUpdatesEnabled !== production
+			manifest.updateAuthority !== "npm" ||
+			Object.hasOwn(manifest, "productionUpdatesEnabled") ||
+			Object.hasOwn(manifest, "validationFeedBase")
 		)
-			throw new Error(`Public release requires the matching stable/preview update policy: ${arch}.`);
+			throw new Error(`Public release requires the matching stable/preview npm update policy: ${arch}.`);
 		for (const [name, expected] of Object.entries({
 			RunAsNode: false,
 			EnableNodeOptionsEnvironmentVariable: false,
@@ -71,7 +72,10 @@ export async function validateRelease(directory, version, sourceSha) {
 		for (const resource of [
 			"app.asar",
 			"runtime/bin/node",
+		"runtime/bin/nodeHost",
 			"runtime/dist/cli.js",
+			"runtime/dist/build-manifest.json",
+			"runtime/installation-admission",
 			"runtime/dist/web-ui/index.html",
 			"runtime/bundle-manifest.json",
 			"runtime/release-policy.json",
@@ -79,6 +83,12 @@ export async function validateRelease(directory, version, sourceSha) {
 			if (!sha256Pattern.test(manifest.checksums?.[resource]))
 				throw new Error(`Missing resource checksum: ${arch}.`);
 		}
+		if (
+			manifest.nativeAdmission?.schemaVersion !== 1 ||
+			!sha256Pattern.test(manifest.nativeAdmission.bootstrapSha256) ||
+			!sha256Pattern.test(manifest.nativeAdmission.hostSha256)
+		)
+			throw new Error(`Missing native admission provenance: ${arch}.`);
 		if (first) {
 			for (const field of [
 				"electronVersion",

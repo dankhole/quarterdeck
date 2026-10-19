@@ -28,3 +28,12 @@ export const preloadBuildOptions = {
 	outfile: "dist/preload.cjs",
 	format: "cjs",
 };
+
+export const npmUpdateWorkerBuildOptions = {
+	...shared,
+	external: [],
+	entryPoints: ["src/npm-update-worker-entry.ts"],
+	outfile: "dist/npm-update-worker.mjs",
+	format: "esm",
+	sourcemap: false,
+};

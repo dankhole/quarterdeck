@@ -11,16 +11,7 @@ if (!buildId) {
 }
 
 /** Modules that must stay external (native addons, large runtime deps). */
-const external = [
-	"node-pty",
-	"proper-lockfile",
-	"ws",
-	"open",
-	"@trpc/client",
-	"@trpc/server",
-	"commander",
-	"zod",
-];
+const external = ["node-pty", "proper-lockfile", "ws", "open", "@trpc/client", "@trpc/server", "commander", "zod"];
 
 const define = {
 	"process.env.NODE_ENV": '"production"',
@@ -79,6 +70,7 @@ await Promise.all([
 		outfile: "dist/cli.js",
 		banner: { js: `#!/usr/bin/env node\n${cjsShimBanner}` },
 	}),
+	esbuild.build({ ...shared, entryPoints: ["src/npm-install.ts"], outfile: "dist/npm-install.js" }),
 ]);
 
 for (const asset of runtimeAssets) {
@@ -90,4 +82,4 @@ await rm(webUiDistOutput, { recursive: true, force: true, maxRetries: 10, retryD
 await copyDirectoryContents(webUiDistSource, webUiDistOutput);
 if (process.platform !== "win32") await chmod("dist/cli.js", 0o755);
 
-console.log("esbuild: bundled dist/cli.js and copied runtime assets");
+console.log("esbuild: bundled CLI and npm installation entry points and copied runtime assets");

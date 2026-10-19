@@ -76,6 +76,20 @@ describe("desktop preload bridge", () => {
 		expect(bridge).not.toHaveProperty("documentId");
 		expect(bridge).not.toHaveProperty("token");
 		expect(bridge).not.toHaveProperty("ipc");
+		// Older compatible runtime UIs reject unknown enumerable keys on this original namespace.
+		expect(Object.keys(bridge).sort()).toEqual([
+			"bootstrap",
+			"onCommand",
+			"onNotificationTarget",
+			"onOpenProject",
+			"onPreflightReleased",
+			"onQuitPreflight",
+			"publishCommandAvailability",
+			"reportNotificationContext",
+			"respondQuitPreflight",
+			"saveEditorDraft",
+			"version",
+		]);
 		bootstrap.runtimeGeneration = "replacement";
 		bootstrap.capabilities.nativeDialogs = false;
 		expect(bridge.bootstrap.runtimeGeneration).toBe(generation);

@@ -1,6 +1,7 @@
 import { lstat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { desktopBuildIdentitySchema } from "../shared/desktop-installation-contract.js";
 import { DesktopInstallationError } from "./errors.js";
 import { desktopAppTreeSha256, desktopFileSha256, readDesktopJson } from "./files.js";
 import {
@@ -64,6 +65,20 @@ export async function inspectDesktopApp(
 		version,
 		arch,
 	);
+	const runtimeIdentity = desktopBuildIdentitySchema.safeParse(
+		await readDesktopJson(join(resources, "runtime/dist/build-manifest.json"), 4096),
+	);
+	if (
+		!runtimeIdentity.success ||
+		runtimeIdentity.data.version !== bundle.version ||
+		runtimeIdentity.data.buildId !== bundle.buildId ||
+		runtimeIdentity.data.sourceSha !== bundle.sourceSha ||
+		runtimeIdentity.data.sourceDirty !== bundle.sourceDirty
+	)
+		throw new DesktopInstallationError(
+			"invalid_artifact",
+			"The bundled runtime build identity differs from its app.",
+		);
 	const policyResult = z
 		.record(z.string(), z.unknown())
 		.safeParse(await readDesktopJson(join(resources, "runtime/release-policy.json")));
@@ -82,9 +97,8 @@ export async function inspectDesktopApp(
 		"sourceSha",
 		"signedDistribution",
 		"expectedTeamId",
-		"productionUpdatesEnabled",
+		"updateAuthority",
 		"channel",
-		"validationFeedBase",
 	] as const) {
 		if (!(field in policy) || policy[field] !== bundle[field]) {
 			throw new DesktopInstallationError(
@@ -95,7 +109,10 @@ export async function inspectDesktopApp(
 	}
 	const binaries = [
 		join(canonicalAppPath, "Contents/MacOS", parsedInfo.data.CFBundleExecutable),
+		join(canonicalAppPath, "Contents/MacOS/QuarterdeckHost"),
+		join(resources, "runtime/installation-admission"),
 		join(resources, "runtime/bin/node"),
+		join(resources, "runtime/bin/nodeHost"),
 		join(resources, "runtime/node_modules/node-pty/build/Release/pty.node"),
 	];
 	for (const binary of binaries) {
@@ -106,6 +123,17 @@ export async function inspectDesktopApp(
 			throw new DesktopInstallationError("invalid_artifact", `The app's native binaries must match darwin-${arch}.`);
 		}
 	}
+	if (
+		release &&
+		((await desktopFileSha256(join(canonicalAppPath, "Contents/MacOS", parsedInfo.data.CFBundleExecutable))) !==
+			release.nativeAdmission.bootstrapSha256 ||
+			(await desktopFileSha256(join(canonicalAppPath, "Contents/MacOS/QuarterdeckHost"))) !==
+				release.nativeAdmission.hostSha256)
+	)
+		throw new DesktopInstallationError(
+			"invalid_artifact",
+			"The native admission bootstrap or Electron host does not match the release manifest.",
+		);
 	for (const resource of desktopResourcePaths) {
 		const path = join(resources, resource);
 		if (!(await lstat(path)).isFile())

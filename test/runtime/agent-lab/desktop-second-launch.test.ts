@@ -264,6 +264,48 @@ describe("isolated packaged desktop second launch", () => {
 		expect(test.kill).not.toHaveBeenCalled();
 	});
 
+	it("refreshes a census captured before the clean exit notification", async () => {
+		const input = await fixture();
+		const test = scenario(input, "running");
+		let exitObserved = false;
+		let freshCensuses = 0;
+		test.options.readSecondInstanceCount = async () => {
+			if (!test.launched()) return 0;
+			if (!exitObserved) {
+				exitObserved = true;
+				test.child.emit("exit", 0, null);
+			}
+			return 1;
+		};
+		test.options.listProcesses = async () => {
+			if (exitObserved) {
+				freshCensuses += 1;
+				return test.originals;
+			}
+			return [...test.originals, ...(test.launched() ? [test.second] : [])];
+		};
+		await expect(proveDesktopSecondLaunch(input, test.options)).resolves.toMatchObject({ exitCode: 0 });
+		expect(freshCensuses).toBeGreaterThan(0);
+		expect(test.kill).not.toHaveBeenCalled();
+	});
+
+	it("still rejects an acknowledged exit with a surviving owned descendant", async () => {
+		const input = await fixture();
+		const test = scenario(input, "success");
+		const list = test.options.listProcesses;
+		test.options.listProcesses = async () => [
+			...(await list()),
+			...(test.launched()
+				? [{ pid: 201, parentPid: 200, startedAt: "survivor", command: "synthetic-renderer" }]
+				: []),
+		];
+		await expect(proveDesktopSecondLaunch(input, test.options)).rejects.toMatchObject({
+			cleanupConfirmed: false,
+			secondProcesses: expect.arrayContaining([expect.objectContaining({ pid: 201, startedAt: "survivor" })]),
+		});
+		expect(test.kill).not.toHaveBeenCalled();
+	});
+
 	it.each(["helperBirth", "generation", "appPid"] as const)(
 		"rejects changed original %s evidence and cleans only its exact second child",
 		async (change) => {

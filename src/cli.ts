@@ -17,13 +17,15 @@ import {
 	setQuarterdeckRuntimeHost,
 	setQuarterdeckRuntimePort,
 } from "./core";
+import { validateDesktopNativeAdmission } from "./desktop-install/index.js";
 import { launchDesktop } from "./desktop-launcher.js";
 import { createDesktopRuntimeDiagnosticsIngestor } from "./diagnostics/desktop-diagnostics.js";
+import { readLaunchEnvironment } from "./launch-environment.js";
+import { resolveLaunchPolicy } from "./launch-policy.js";
 import { DesktopRuntimeChannel } from "./server/desktop-runtime-channel";
 import { classifyDesktopStartupFailure } from "./server/desktop-startup-failure.js";
 import { createRuntimeHostIntegrations } from "./server/runtime-host-integrations";
 import { startAdmittedRuntime } from "./server/runtime-launch";
-import { notifyAboutAvailableUpdate } from "./update-notification";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -200,6 +202,9 @@ function createRuntimeWarnLogger(): (message: string) => void {
 }
 
 async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
+	if (process.env.QUARTERDECK_DESKTOP_CHILD === "1" || process.env.QUARTERDECK_INSTALLATION_LOCK_FD !== undefined) {
+		await validateDesktopNativeAdmission({ synthetic: process.env.QUARTERDECK_AGENT_LAB === "1" });
+	}
 	const desktop = process.env.QUARTERDECK_DESKTOP_CHILD === "1" ? new DesktopRuntimeChannel() : null;
 	const desktopStartup = desktop ? await desktop.startup : null;
 	if (desktop && options.skipShutdownCleanup) throw new Error("Desktop cannot skip shutdown cleanup.");
@@ -315,9 +320,12 @@ function createProgram(invocationArgs: string[]): Command {
 		.name("quarterdeck")
 		.description("Local orchestration board for coding agents.")
 		.version(QUARTERDECK_VERSION, "-v, --version", "Output the version number")
-		.addOption(new Option("--browser", "Open browser mode (the default).").conflicts("desktop"))
+		.addOption(new Option("--browser", "Open browser mode.").conflicts("desktop"))
 		.addOption(
-			new Option("--desktop", "Install if needed and open the optional macOS app.").conflicts([
+			new Option(
+				"--desktop",
+				"Open the installed macOS app (the default in supported local graphical sessions).",
+			).conflicts([
 				"browser",
 				"host",
 				"port",
@@ -331,7 +339,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--no-native-ui", "Disable integrations that launch or interact with host-native UI.")
-		.option("--no-update-notifier", "Disable the periodic npm update notification.")
+		.option("--no-update-notifier", "Compatibility option; background update notifications are no longer used.")
 		.option("--skip-shutdown-cleanup", "Skip graceful shutdown cleanup (session marking, orphan process cleanup).")
 		.showHelpAfterError()
 		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
@@ -349,22 +357,39 @@ function createProgram(invocationArgs: string[]): Command {
 	registerRecoverCommand(program);
 	registerDiagnosticsCommand(program);
 	registerDesktopCommand(program, QUARTERDECK_VERSION);
-	program.hook("preAction", (_command, actionCommand) => {
+	program.hook("preAction", async (_command, actionCommand) => {
 		const options = program.opts<RootCommandOptions>();
 		if (actionCommand !== program && (options.desktop || options.browser)) {
 			throw new Error("--desktop and --browser select launch modes and cannot be combined with subcommands.");
 		}
+		if (actionCommand.name() === "recover" && process.env.QUARTERDECK_INSTALLATION_LOCK_FD !== undefined) {
+			await validateDesktopNativeAdmission({ synthetic: process.env.QUARTERDECK_AGENT_LAB === "1" });
+		}
 	});
 
 	program.action(async (options: RootCommandOptions) => {
-		if (options.desktop) {
+		const policy = resolveLaunchPolicy(
+			{
+				desktop: options.desktop,
+				browser: options.browser,
+				noOpen: options.open === false,
+				runtimeFlags:
+					options.host !== undefined ||
+					options.port !== undefined ||
+					options.open === false ||
+					options.nativeUi === false ||
+					options.skipShutdownCleanup === true ||
+					options.simulateHostIntegrations !== undefined,
+			},
+			await readLaunchEnvironment(),
+		);
+		if (policy.mode === "desktop") {
 			await launchDesktop(QUARTERDECK_VERSION);
 			return;
 		}
 		if (options.simulateHostIntegrations && options.nativeUi !== false) {
 			throw new Error("--simulate-host-integrations requires --no-native-ui.");
 		}
-		if (process.env.QUARTERDECK_DESKTOP_CHILD !== "1") notifyAboutAvailableUpdate();
 		await runMainCommand(
 			{
 				host: options.host ?? null,
@@ -374,7 +399,7 @@ function createProgram(invocationArgs: string[]): Command {
 				hostSimulationConfigPath: options.simulateHostIntegrations ?? null,
 				skipShutdownCleanup: options.skipShutdownCleanup === true,
 			},
-			shouldAutoOpenBrowser,
+			shouldAutoOpenBrowser && policy.openBrowser,
 		);
 	});
 

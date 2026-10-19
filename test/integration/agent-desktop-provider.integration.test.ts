@@ -49,6 +49,10 @@ describe.skipIf(process.platform !== "darwin")("desktop real-provider fixture is
 				const appPath = join(root, "Quarterdeck.app");
 				const executablePath = join(appPath, "Contents", "MacOS", "Quarterdeck");
 				await mkdir(join(appPath, "Contents", "MacOS"), { recursive: true });
+				await writeFile(
+					join(appPath, "Contents", "Info.plist"),
+					'<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Quarterdeck</string></dict></plist>',
+				);
 				await writeFile(executablePath, "#!/bin/sh\nexit 0\n");
 				await chmod(executablePath, 0o755);
 				const sourceProfile = join(root, "source-profile");

@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, release } from "node:os";
 import { dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -190,31 +190,86 @@ async function runBootstrap() {
 	await bootstrapDependencies(repoRoot);
 }
 
+/** Select desktop installation by host support, independently of terminal interactivity. */
+export function shouldLinkDesktop(options = {}) {
+	if (options.desktop === true && options.browser === true) throw new Error("Choose --desktop or --browser, not both.");
+	if (options.browser === true || options.desktop === false) return false;
+	const platform = options.platform ?? process.platform;
+	const arch = options.arch ?? process.arch;
+	const osRelease = options.osRelease ?? release();
+	const supported = platform === "darwin" && ["arm64", "x64"].includes(arch) && Number.parseInt(osRelease, 10) >= 22;
+	if (options.desktop === true && !supported) throw new Error("Desktop linking requires macOS 13 or newer on arm64 or x64.");
+	if (options.desktop === true) return true;
+	return supported && (options.installMode ?? process.env.QUARTERDECK_INSTALL_MODE) !== "browser";
+}
+
+export function resolveGlobalPackageLocation() {
+	const readNpmPath = (args) => {
+		const invocation = resolveNpmCommand(args);
+		const result = spawnSync(invocation.command, invocation.args, { encoding: "utf8", windowsHide: true });
+		if (result.error) throw result.error;
+		if (result.status !== 0 || !String(result.stdout).trim()) throw new Error(`Cannot resolve npm ${args.join(" ")}.`);
+		return resolve(String(result.stdout).trim());
+	};
+	return { packageSlot: join(readNpmPath(["root", "-g"]), "quarterdeck"), prefix: readNpmPath(["prefix", "-g"]) };
+}
+
+function installLinkedDesktop(checkoutRoot, location) {
+	const appPath = join(checkoutRoot, "desktop", "out", `Quarterdeck-darwin-${process.arch}`, "Quarterdeck.app");
+	const result = spawnSync(process.execPath, [
+		join(checkoutRoot, "dist", "cli.js"), "desktop", "install", "--from", appPath,
+		"--replace-owner", "--owner-package-slot", location.packageSlot, "--owner-prefix", location.prefix,
+	], { cwd: checkoutRoot, stdio: "inherit", windowsHide: true });
+	if (result.error) throw result.error;
+	if (result.status !== 0) {
+		throw new Error("The CLI was linked, but app installation is incomplete. Quit Quarterdeck and rerun npm run link in this checkout to repair the pair.");
+	}
+}
+
 export async function linkCheckout(checkoutRoot, options = {}) {
+	const desktop = shouldLinkDesktop(options);
 	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
-	if (options.desktop) {
-		// desktop:install owns preparation and the single paired build.
-		await executeNpm(["run", "desktop:install"]);
+	// This must precede even the packaging command: dependencies and dist can be in use.
+	await assertLinkedRuntimeIsStopped(checkoutRoot, options.runtime);
+	if (desktop) {
+		// The build-only lane owns preparation and exactly one paired runtime/UI build.
+		await executeNpm(["run", "desktop:build"]);
 	} else {
 		await ensureDependencies(checkoutRoot, options);
 		await executeNpm(["run", "build"]);
 	}
-	// Preparation and the paired build already ran; global linking only needs bins.
 	await executeNpm(["link", "--ignore-scripts"]);
+	if (!desktop) return;
+	const location = await (options.resolveGlobalPackageLocation ?? resolveGlobalPackageLocation)();
+	const resolvedCheckout = await realpath(checkoutRoot);
+	const verifyLink = async () => {
+		const linkedCheckout = await (options.resolveLinkedCheckout ?? (() => realpath(location.packageSlot)))();
+		const canonicalLinkedCheckout = linkedCheckout ? await realpath(linkedCheckout).catch(() => resolve(linkedCheckout)) : null;
+		if (!canonicalLinkedCheckout || normalizeCheckoutPathForComparison(canonicalLinkedCheckout) !== normalizeCheckoutPathForComparison(resolvedCheckout)) {
+			throw new Error("The global quarterdeck link does not point to this checkout. App installation is incomplete; rerun npm run link after resolving the conflicting npm prefix.");
+		}
+	};
+	await verifyLink();
+	await (options.installDesktop ?? ((ownerLocation) => installLinkedDesktop(checkoutRoot, ownerLocation)))(location);
+	await verifyLink();
+	console.log("Linked CLI and desktop app installation completed for this checkout.");
 }
 
 async function main() {
 	const command = process.argv[2];
 	const flags = process.argv.slice(3);
-	if (flags.length > 0 && !(command === "link" && flags.length === 1 && flags[0] === "--desktop")) {
-		throw new Error("Usage: npm run bootstrap | npm run link [-- --desktop]");
+	if (flags.length > 0 && !(command === "link" && flags.length === 1 && ["--desktop", "--browser"].includes(flags[0]))) {
+		throw new Error("Usage: npm run bootstrap | npm run link [-- --desktop|--browser]");
 	}
 	if (command === "bootstrap") {
 		await runBootstrap();
 		return;
 	}
 	if (command === "link") {
-		await linkCheckout(repoRoot, { desktop: flags.includes("--desktop") });
+		await linkCheckout(repoRoot, {
+			...(flags.includes("--desktop") ? { desktop: true } : {}),
+			browser: flags.includes("--browser"),
+		});
 		return;
 	}
 	throw new Error("Usage: node scripts/dependency-workflow.mjs <bootstrap|link>");

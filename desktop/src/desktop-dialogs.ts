@@ -1,6 +1,5 @@
 import { type BrowserWindow, dialog, type MessageBoxOptions, type OpenDialogOptions } from "electron";
 import type { DesktopDraftSaveRequest } from "../../src/shared/desktop-bridge-contract.js";
-import type { DesktopUpdateMessage } from "./desktop-updates.js";
 import type { DesktopQuitReason, DesktopQuitSummary } from "./quit-coordinator.js";
 
 export class DesktopDialogs {
@@ -15,10 +14,10 @@ export class DesktopDialogs {
 			type: "warning",
 			buttons: [
 				"Cancel",
-				reason === "update"
-					? "Stop Sessions and Update"
-					: reason === "restart"
-						? "Stop Sessions and Restart"
+				reason === "restart"
+					? "Stop Sessions and Restart"
+					: reason === "update"
+						? "Stop Sessions and Update"
 						: "Stop Sessions and Quit",
 			],
 			defaultId: 0,
@@ -39,7 +38,7 @@ export class DesktopDialogs {
 				cancelId: 0,
 				message: "Runtime cleanup is unconfirmed",
 				detail:
-					"The owned runtime helper exited before confirming that its sessions stopped. Some processes may still be running, and unsaved window edits may be lost. Quit Anyway closes only this app; it does not confirm cleanup or authorize an update. If restart remains blocked, check that prior agents and background commands have stopped, then choose Recover sessions. Restart the Mac if you cannot confirm cleanup.",
+					"The owned runtime helper exited before confirming that its sessions stopped. Some processes may still be running, and unsaved window edits may be lost. Quit Anyway closes this app without confirming cleanup. If restart remains blocked, check that prior agents and background commands have stopped, then choose Recover sessions. Restart the Mac if you cannot confirm cleanup.",
 			})) === 1
 		);
 	}
@@ -51,7 +50,7 @@ export class DesktopDialogs {
 			runtime_unavailable:
 				"The runtime did not provide its authoritative session summary. Keep the app open and retry when the runtime is available.",
 			shutdown_incomplete:
-				"The runtime did not confirm that sessions stopped and state was saved. Keep the app open and retry. An update cannot install until cleanup succeeds.",
+				"The runtime did not confirm that sessions stopped and state was saved. Keep the app open and retry.",
 		};
 		await this.message({
 			type: "warning",
@@ -59,23 +58,6 @@ export class DesktopDialogs {
 			message: "Quarterdeck could not finish closing",
 			detail: details[reason],
 		});
-	}
-
-	async showUpdate(message: DesktopUpdateMessage): Promise<void> {
-		await this.message({ type: message.kind, buttons: ["OK"], message: message.message, detail: message.detail });
-	}
-
-	async chooseUpdate(message: DesktopUpdateMessage): Promise<"later" | "restart"> {
-		return (await this.message({
-			type: "info",
-			buttons: ["Later", "Restart to Update"],
-			defaultId: 0,
-			cancelId: 0,
-			message: message.message,
-			detail: message.detail,
-		})) === 1
-			? "restart"
-			: "later";
 	}
 
 	async chooseDraftPath(request: DesktopDraftSaveRequest): Promise<string | null> {

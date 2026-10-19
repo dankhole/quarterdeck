@@ -15,7 +15,10 @@ export async function recordPackagedApp(outputPath, arch) {
 	const files = [
 		"app.asar",
 		"runtime/bin/node",
+		"runtime/bin/nodeHost",
 		"runtime/dist/cli.js",
+		"runtime/dist/build-manifest.json",
+		"runtime/installation-admission",
 		"runtime/dist/web-ui/index.html",
 		"runtime/bundle-manifest.json",
 		"runtime/release-policy.json",
@@ -35,6 +38,11 @@ export async function recordPackagedApp(outputPath, arch) {
 		fuses,
 		appPath: relative(join(desktopRoot, "out"), appPath),
 		checksums,
+		nativeAdmission: {
+			schemaVersion: 1,
+			bootstrapSha256: await sha256File(join(appPath, "Contents/MacOS/Quarterdeck")),
+			hostSha256: await sha256File(join(appPath, "Contents/MacOS/QuarterdeckHost")),
+		},
 		artifacts: [],
 	};
 	await writeFile(

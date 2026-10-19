@@ -71,6 +71,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 				USERPROFILE: directory,
 				QUARTERDECK_STATE_HOME: stateHome,
 				QUARTERDECK_DESKTOP_CHILD: "1",
+				QUARTERDECK_AGENT_LAB: "1",
 			},
 			stdio: ["pipe", "pipe", "pipe", "ipc"],
 		});

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
+import { validateBuildManifest } from "./build-manifest.mjs";
 import { resolveNpmCommand } from "./npm-command.mjs";
 import { fetchInstalledApplication, readInstalledBrowserBootstrap } from "./package-smoke-client.mjs";
 import { createPackageSmokeEnvironment } from "./package-smoke-environment.mjs";
@@ -106,6 +107,9 @@ function assertCliArtifact(packRecord, manifest) {
 	if (!Array.isArray(packRecord?.files) || packRecord.files.length === 0) {
 		throw new Error("npm pack did not report the artifact file inventory.");
 	}
+	for (const required of ["npm-postinstall.cjs", "dist/npm-install.js", "dist/build-manifest.json"]) {
+		if (!packRecord.files.some((file) => file.path === required)) throw new Error(`The CLI tarball is missing ${required}.`);
+	}
 	for (const file of packRecord.files) {
 		if (typeof file.path !== "string" || /(^|\/)(desktop|node_modules)(\/|$)/u.test(file.path)) {
 			throw new Error("The CLI tarball unexpectedly contains a desktop or dependency directory.");
@@ -124,9 +128,16 @@ function assertCliDependencyTree(tree) {
 }
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const { values } = parseArgs({ options: { "npm-cache": { type: "string" } } });
+const { values } = parseArgs({ options: { "npm-cache": { type: "string" }, "release-source-sha": { type: "string" } } });
 if (values["npm-cache"] !== undefined && !values["npm-cache"].trim()) throw new Error("--npm-cache requires a directory.");
 const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
+const builtIdentity = validateBuildManifest(JSON.parse(readFileSync(join(repoRoot, "dist", "build-manifest.json"), "utf8")));
+if (builtIdentity.version !== packageJson.version) throw new Error("The built npm identity does not match package.json.");
+if (values["release-source-sha"] !== undefined) {
+	if (!/^[a-f0-9]{40}$/u.test(values["release-source-sha"]) || builtIdentity.sourceDirty || builtIdentity.sourceSha !== values["release-source-sha"]) {
+		throw new Error("The release npm candidate must be clean and stamped with the exact immutable release source SHA.");
+	}
+}
 const smokeRoot = mkdtempSync(join(tmpdir(), "quarterdeck-package-smoke-"));
 const artifactRoot = join(smokeRoot, "artifact");
 const installRoot = join(smokeRoot, "install");
@@ -138,6 +149,10 @@ const smokeEnv = createPackageSmokeEnvironment(
 	smokeRoot,
 	values["npm-cache"] === undefined ? undefined : resolve(values["npm-cache"]),
 );
+// Unpublished PR builds have no public release artifact. This named baseline
+// verifies the complete browser/native-PTY product under an explicit install opt-out.
+smokeEnv.QUARTERDECK_INSTALL_MODE = "browser";
+smokeEnv.npm_config_prefix = installRoot;
 let child;
 let retainSmokeRoot = false;
 
@@ -159,7 +174,7 @@ try {
 	const tarballPath = join(artifactRoot, filename);
 	const tarballSha256 = createHash("sha256").update(readFileSync(tarballPath)).digest("hex");
 	console.log(
-		`Artifact ${filename} SHA-256 ${tarballSha256}; Node ${process.version}; npm ${runNpm(["--version"], repoRoot, smokeEnv, true).trim()}; default isolated npm script policy.`,
+		`Artifact ${filename} SHA-256 ${tarballSha256}; Node ${process.version}; npm ${runNpm(["--version"], repoRoot, smokeEnv, true).trim()}; default isolated npm script policy; explicit browser-only installation baseline.`,
 	);
 	runNpm(
 		["install", "--global", "--prefix", installRoot, "--package-lock=false", "--foreground-scripts", tarballPath],
@@ -173,6 +188,10 @@ try {
 
 	const installedCli = resolveInstalledCli(installRoot);
 	const installedBin = resolveInstalledBin(installRoot);
+	const installedIdentity = validateBuildManifest(JSON.parse(readFileSync(join(resolve(installedCli, "..", ".."), "dist", "build-manifest.json"), "utf8")));
+	if (JSON.stringify(installedIdentity) !== JSON.stringify(builtIdentity) || !readFileSync(installedCli, "utf8").includes(installedIdentity.buildId)) {
+		throw new Error("The packed npm manifest and CLI do not match the exact paired source build.");
+	}
 	if (!existsSync(installedCli)) throw new Error("The installed package did not contain dist/cli.js.");
 	if (!existsSync(installedBin)) throw new Error("The installed package did not create the quarterdeck command.");
 	retainSmokeRoot = true;
