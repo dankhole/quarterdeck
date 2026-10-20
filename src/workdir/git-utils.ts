@@ -1,15 +1,19 @@
 import { type ExecFileException, execFile } from "node:child_process";
+import { realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
 	buildGitCommandArgs,
 	createGitProcessEnv,
 	INTEGRATION_BASE_REF_CANDIDATES,
+	KeyedOperationCoordinator,
+	normalizeFileSystemPathForComparison,
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+const remoteGitCommands = new KeyedOperationCoordinator();
 export const GIT_COMMAND_TIMEOUTS_MS = {
 	default: 5_000,
 	inspection: 30_000,
@@ -98,6 +102,11 @@ function isTimeoutError(error: {
 	if (error.code === "ETIMEDOUT") {
 		return true;
 	}
+	// Buffer exhaustion and launch errors can also terminate a process. Their
+	// explicit codes take precedence over generic killed/signal heuristics.
+	if (boundedGitErrorCode(error.code) !== null) {
+		return false;
+	}
 	if (error.killed === true && error.signal === "SIGTERM") {
 		return true;
 	}
@@ -170,15 +179,56 @@ function executeGitCommand(
 	});
 }
 
+/** Preserve global options when probing the repository used by a remote command. */
+function remoteGitCommandPrefix(args: string[]): string[] | null {
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === undefined) return null;
+		if (!arg.startsWith("-")) {
+			return arg === "fetch" || arg === "pull" || arg === "push" ? args.slice(0, index) : null;
+		}
+		if (arg === "-c" || arg === "-C") index += 1;
+	}
+	return null;
+}
+
+async function remoteGitRepositoryKey(cwd: string, prefix: string[], env: NodeJS.ProcessEnv): Promise<string> {
+	// Use the process primitive directly: repository discovery must never enter
+	// the remote queue, and must observe the same options and environment.
+	const { stdout } = await executeGitCommand(
+		cwd,
+		buildGitCommandArgs([
+			...prefix,
+			"--no-optional-locks",
+			"rev-parse",
+			"--path-format=absolute",
+			"--git-common-dir",
+		]),
+		env,
+		GIT_COMMAND_TIMEOUTS_MS.metadata,
+	);
+	const commonDirectory = stdout.replace(/\r?\n$/u, "");
+	if (!commonDirectory) throw new Error("Git remote command not started: shared Git directory is unavailable.");
+	try {
+		return normalizeFileSystemPathForComparison(await realpath(commonDirectory));
+	} catch (cause) {
+		throw new Error("Git remote command not started: shared Git directory could not be resolved.", { cause });
+	}
+}
+
 export async function runGit(cwd: string, args: string[], options: RunGitOptions = {}): Promise<GitCommandResult> {
 	try {
 		const fullArgs = buildGitCommandArgs(args);
-		const { stdout, stderr } = await executeGitCommand(
-			cwd,
-			fullArgs,
-			options.env || createGitProcessEnv(),
-			resolveGitTimeoutMs(options),
-		);
+		const env = options.env || createGitProcessEnv();
+		const execute = () => executeGitCommand(cwd, fullArgs, env, resolveGitTimeoutMs(options));
+		const remotePrefix = remoteGitCommandPrefix(args);
+		// Fetch, pull and push update remote refs shared across linked worktrees.
+		// Admit one remote process per canonical common directory; inspections
+		// remain concurrent and the command timeout begins only after admission.
+		const { stdout, stderr } =
+			remotePrefix === null
+				? await execute()
+				: await remoteGitCommands.run(await remoteGitRepositoryKey(cwd, remotePrefix, env), execute);
 		const normalizedStdout = String(stdout ?? "").trim();
 		const normalizedStderr = String(stderr ?? "").trim();
 		return {
@@ -205,8 +255,14 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 		const message = String(candidate.message ?? "").trim();
 		const timedOut = isTimeoutError(candidate);
 		const timeoutMessage = `Git command timed out after ${resolveGitTimeoutMs(options)}ms`;
-		const errorMessage = timedOut ? stderr || timeoutMessage : stderr || message || "Unknown git error";
 		const exitCode = normalizeProcessExitCode(candidate.code);
+		const errorMessage = timedOut
+			? message.startsWith("Git command timed out after ")
+				? message
+				: timeoutMessage
+			: exitCode < 0
+				? message || stderr || "Unknown git error"
+				: stderr || message || "Unknown git error";
 		const errorCode = boundedGitErrorCode(candidate.code);
 		const failureKind: GitCommandFailureKind =
 			error instanceof GitLaunchAdmissionError

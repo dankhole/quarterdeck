@@ -191,6 +191,8 @@ This is the supported path for Claude Code, Codex, and the exact validated Pi re
 
 `src/workdir/` owns worktree creation, lookup, cleanup, git helpers, and workdir searches.
 
+Remote Git commands (`fetch`, `pull`, and `push`) share a runtime-local queue in `runGit`, keyed by the canonical Git common directory. Background metadata fetches and user actions therefore cannot race each other while updating shared remote refs, including across linked worktrees. Read-only probes and unrelated repositories remain concurrent. Command timeouts start after queue admission, and failures release the queue. This boundary does not coordinate external Git processes or replace Git's own locking.
+
 `src/config/runtime-config.ts` owns Quarterdeck preferences such as selected agents, shortcuts, notification settings, and prompt templates. Global config lives at the runtime state home; project config lives under the project's state directory.
 
 ### State streaming

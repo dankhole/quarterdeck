@@ -4,11 +4,13 @@ import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogBody,
+	AlertDialogDescription,
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { getGitActionErrorPresentation } from "./git-action-error";
 
 export function GitActionErrorDialog({
 	open,
@@ -27,6 +29,8 @@ export function GitActionErrorDialog({
 	onStashAndRetry?: () => void;
 	isStashAndRetrying?: boolean;
 }): ReactElement {
+	const { summary, details } = getGitActionErrorPresentation(message, output);
+
 	return (
 		<AlertDialog
 			open={open}
@@ -40,11 +44,23 @@ export function GitActionErrorDialog({
 				<AlertDialogTitle>{title}</AlertDialogTitle>
 			</AlertDialogHeader>
 			<AlertDialogBody>
-				<p>{message}</p>
-				{output ? (
-					<pre className="max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap">
-						{output}
-					</pre>
+				<AlertDialogDescription className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+					{summary}
+				</AlertDialogDescription>
+				{details ? (
+					<details key={details} className="min-w-0">
+						<summary className="cursor-pointer rounded-sm text-text-primary focus-visible:outline-2 focus-visible:outline-border-focus">
+							Show details
+						</summary>
+						<pre
+							role="region"
+							tabIndex={0}
+							aria-label="Git command output"
+							className="mt-2 max-h-[220px] overflow-auto rounded-md bg-surface-0 p-3 font-mono text-xs text-text-secondary whitespace-pre-wrap [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-border-focus"
+						>
+							{details}
+						</pre>
+					</details>
 				) : null}
 			</AlertDialogBody>
 			<AlertDialogFooter className="justify-end">

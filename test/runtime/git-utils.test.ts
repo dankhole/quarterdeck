@@ -107,12 +107,15 @@ describe("runGit", () => {
 
 	it("does not classify non-process failures as git exit code 1", async () => {
 		childProcessMocks.execFilePromise.mockRejectedValueOnce(
-			createExecError({
-				code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
-				stdout: "partial-output",
-				stderr: "",
-				message: "stdout maxBuffer length exceeded",
-			}),
+			Object.assign(
+				createExecError({
+					code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+					stdout: "partial-output",
+					stderr: "remote: Counting objects: 10%\rremote: Counting objects: 20%\n",
+					message: "stdout maxBuffer length exceeded",
+				}),
+				{ killed: true, signal: "SIGTERM" },
+			),
 		);
 
 		const result = await runGit("/repo", ["diff", "--binary", "HEAD", "--"], { trimStdout: false });
@@ -120,6 +123,22 @@ describe("runGit", () => {
 		expect(result.ok).toBe(false);
 		expect(result.exitCode).toBe(-1);
 		expect(result.stdout).toBe("partial-output");
+		expect(result.error).toBe("stdout maxBuffer length exceeded");
+		expect(result.output).toContain("remote: Counting objects: 10%\rremote: Counting objects: 20%");
+		expect(result.errorCode).toBe("ERR_CHILD_PROCESS_STDIO_MAXBUFFER");
+		expect(result.timedOut).toBe(false);
+	});
+
+	it("keeps normal Git stderr as the error while retaining all command output", async () => {
+		const stderr = "remote: Counting objects: 100%\r\nfatal: could not read from remote repository.\n";
+		childProcessMocks.execFilePromise.mockRejectedValueOnce(
+			createExecError({ code: 128, stdout: "partial output\n", stderr, message: "Command failed" }),
+		);
+
+		const result = await runGit("/repo", ["status"]);
+
+		expect(result.error).toBe(stderr.trim());
+		expect(result.output).toBe(`partial output\n${stderr.trim()}`);
 	});
 
 	it("launches git without a shell and hides its Windows console", async () => {
@@ -155,14 +174,14 @@ describe("runGit", () => {
 		try {
 			let gitCallback: ((error: Error | null, stdout: string, stderr: string) => void) | null = null;
 			const kill = vi.fn(() => {
-				gitCallback?.(new Error("terminated"), "partial", "");
+				gitCallback?.(new Error("terminated"), "partial", "remote: Receiving objects: 12%\r");
 				return true;
 			});
 			childProcessMocks.execFile.mockImplementation(
 				(_command: string, args: string[], _options: unknown, execCallback: typeof gitCallback) => {
 					if (args.includes("/pid")) {
 						execCallback?.(null, "", "");
-						gitCallback?.(new Error("terminated"), "partial", "");
+						gitCallback?.(new Error("terminated"), "partial", "remote: Receiving objects: 12%\r");
 						return { pid: 54_321, kill: vi.fn(() => true) };
 					}
 					gitCallback = execCallback;
@@ -185,6 +204,8 @@ describe("runGit", () => {
 				timedOut: true,
 				error: `Git command timed out after ${GIT_COMMAND_TIMEOUTS_MS.metadata}ms`,
 				stdout: "partial",
+				stderr: "remote: Receiving objects: 12%",
+				output: "partial\nremote: Receiving objects: 12%",
 			});
 		} finally {
 			vi.useRealTimers();
