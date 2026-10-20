@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	assertLinkedRuntimeIsStopped,
@@ -18,7 +18,7 @@ describe("dependency workflow preflight", () => {
 	let checkoutRoot;
 
 	beforeEach(async () => {
-		checkoutRoot = await mkdtemp(join(tmpdir(), "quarterdeck-dependency-workflow-"));
+		checkoutRoot = await realpath(await mkdtemp(join(tmpdir(), "quarterdeck-dependency-workflow-")));
 	});
 
 	afterEach(async () => {
@@ -135,8 +135,10 @@ describe("dependency workflow preflight", () => {
 		const calls = [];
 		await linkCheckout(checkoutRoot, {
 			browser: true,
+			managedInstallation: { platform: "linux" },
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
 			executeNpm: (args) => calls.push(args),
+			resolveGlobalPackageLocation: () => ({ packageSlot: join(checkoutRoot, "prefix/lib/node_modules/quarterdeck"), prefix: join(checkoutRoot, "prefix") }),
 		});
 		expect(calls).toEqual([["run", "build"], ["link", "--ignore-scripts"]]);
 	});
@@ -152,13 +154,24 @@ describe("dependency workflow preflight", () => {
 	});
 
 	function desktopLinkOptions(calls, overrides = {}) {
+		const buildId = "11111111-1111-4111-8111-111111111111";
 		return {
 			desktop: true, platform: "darwin", arch: "arm64", osRelease: "25.0.0",
+			managedInstallation: { platform: "darwin", userHome: join(checkoutRoot, "synthetic-home") },
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
 			executeNpm: (args) => calls.push(args),
+			buildDesktop: () => calls.push(["run", "desktop:build"]),
+			readBuildIdentity: () => ({ schemaVersion: 1, version: "1.2.3", buildId, sourceSha: "a".repeat(40), sourceDirty: false }),
 			resolveGlobalPackageLocation: () => ({ packageSlot: "/synthetic/prefix/lib/node_modules/quarterdeck", prefix: "/synthetic/prefix" }),
 			resolveLinkedCheckout: () => checkoutRoot,
 			installDesktop: (location) => calls.push(["install", location.packageSlot]),
+			readDesktopStatus: () => ({
+				state: "ready", pending: false,
+				installation: {
+					buildId,
+					owner: { kind: "link", packageRoot: checkoutRoot, packageSlot: "/synthetic/prefix/lib/node_modules/quarterdeck", prefix: "/synthetic/prefix" },
+				},
+			}),
 			...overrides,
 		};
 	}
@@ -169,6 +182,91 @@ describe("dependency workflow preflight", () => {
 		await linkCheckout(checkoutRoot, desktopLinkOptions(calls, { resolveLinkedCheckout: () => { inspected += 1; return checkoutRoot; } }));
 		expect(calls).toEqual([["run", "desktop:build"], ["link", "--ignore-scripts"], ["install", "/synthetic/prefix/lib/node_modules/quarterdeck"]]);
 		expect(inspected).toBe(2);
+	});
+
+	it("authorizes one paired desktop build and verifies status only after app installation", async () => {
+		const calls = [];
+		const options = desktopLinkOptions(calls);
+		const buildDesktop = vi.fn(() => calls.push(["build-desktop"]));
+		const readDesktopStatus = vi.fn(() => {
+			calls.push(["status"]);
+			return options.readDesktopStatus();
+		});
+		await linkCheckout(checkoutRoot, { ...options, buildDesktop, readDesktopStatus });
+		expect(buildDesktop).toHaveBeenCalledOnce();
+		expect(buildDesktop.mock.calls[0][1]).toMatchObject({ pairedDesktopInstall: true });
+		expect(calls).toEqual([
+			["build-desktop"], ["link", "--ignore-scripts"],
+			["install", "/synthetic/prefix/lib/node_modules/quarterdeck"], ["status"],
+		]);
+	});
+
+	it.each([
+		["missing", false], ["incomplete", true], ["owner_conflict", false], ["changed", false], ["ready", true],
+	])("rejects a final app status of %s with pending=%s without reporting success", async (state, pending) => {
+		const calls = [];
+		const options = desktopLinkOptions(calls);
+		const output = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			await expect(linkCheckout(checkoutRoot, {
+				...options,
+				readDesktopStatus: () => ({ ...options.readDesktopStatus(), state, pending }),
+			})).rejects.toThrow();
+			expect(output).not.toHaveBeenCalledWith(expect.stringContaining("installation completed"));
+		} finally {
+			output.mockRestore();
+		}
+	});
+
+	it.each([
+		{ kind: "npm" }, { packageRoot: "/other/checkout" },
+		{ packageSlot: "/other/prefix/lib/node_modules/quarterdeck" }, { prefix: "/other/prefix" },
+	])("rejects a ready app belonging to another owner: %j", async (ownerOverrides) => {
+		const options = desktopLinkOptions([]);
+		const status = options.readDesktopStatus();
+		await expect(linkCheckout(checkoutRoot, {
+			...options,
+			readDesktopStatus: () => ({
+				...status,
+				installation: { ...status.installation, owner: { ...status.installation.owner, ...ownerOverrides } },
+			}),
+		})).rejects.toThrow();
+	});
+
+	it("rejects a ready app from an earlier build of the same owner", async () => {
+		const options = desktopLinkOptions([]);
+		const status = options.readDesktopStatus();
+		await expect(linkCheckout(checkoutRoot, {
+			...options,
+			readDesktopStatus: () => ({
+				...status,
+				installation: { ...status.installation, buildId: "22222222-2222-4222-8222-222222222222" },
+			}),
+		})).rejects.toThrow();
+	});
+
+	it("propagates failed or unreadable final status instead of reporting success", async () => {
+		const options = desktopLinkOptions([]);
+		await expect(linkCheckout(checkoutRoot, {
+			...options,
+			readDesktopStatus: () => { throw new Error("status failed"); },
+		})).rejects.toThrow("status failed");
+	});
+
+	it.each([null, {}, { state: "ready", pending: false }])("rejects malformed final desktop status: %j", async (status) => {
+		await expect(linkCheckout(checkoutRoot, {
+			...desktopLinkOptions([]),
+			readDesktopStatus: () => status,
+		})).rejects.toThrow();
+	});
+
+	it("detects a global link replaced during app installation", async () => {
+		const calls = [];
+		let inspections = 0;
+		await expect(linkCheckout(checkoutRoot, desktopLinkOptions(calls, {
+			resolveLinkedCheckout: () => ++inspections === 1 ? checkoutRoot : "/other/checkout",
+		}))).rejects.toThrow("does not point to this checkout");
+		expect(calls).toContainEqual(["install", "/synthetic/prefix/lib/node_modules/quarterdeck"]);
 	});
 
 	it("does not install an app after a failed global link", async () => {

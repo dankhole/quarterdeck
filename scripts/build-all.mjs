@@ -9,60 +9,76 @@ import { fileURLToPath } from "node:url";
 import { resolveNpmCommand } from "./npm-command.mjs";
 import { mergeProcessEnvironment } from "./process-environment.mjs";
 import { readSourceIdentity, validateBuildManifest } from "./build-manifest.mjs";
+import { cleanCheckout } from "./clean.mjs";
+import { assertLinkedRuntimeIsStopped } from "./linked-runtime-guard.mjs";
+import { assertStandaloneBuildIsSafe } from "./managed-installation-guard.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const buildId = randomUUID();
-const source = readSourceIdentity(repoRoot);
-const version = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version;
-const buildEnv = mergeProcessEnvironment(process.env, {
-	QUARTERDECK_BUILD_ID: buildId,
-});
+const scriptPath = fileURLToPath(import.meta.url);
 
-function run(command, args) {
-	const result = spawnSync(command, args, {
-		cwd: repoRoot,
-		env: buildEnv,
-		stdio: "inherit",
-		windowsHide: true,
+export async function buildCheckout(repoRoot, options = {}) {
+	await assertStandaloneBuildIsSafe(repoRoot, {
+		...options.managedInstallation,
+		pairedDesktopInstall: options.pairedDesktopInstall,
 	});
-	if (result.error) {
-		throw result.error;
+	await assertLinkedRuntimeIsStopped(repoRoot, options.runtime);
+	const execute = options.execute ?? spawnSync;
+	const buildId = randomUUID();
+	const source = readSourceIdentity(repoRoot, execute);
+	const version = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version;
+	const buildEnv = mergeProcessEnvironment(process.env, {
+		QUARTERDECK_BUILD_ID: buildId,
+	});
+
+	function run(command, args) {
+		const result = execute(command, args, {
+			cwd: repoRoot,
+			env: buildEnv,
+			stdio: "inherit",
+			windowsHide: true,
+		});
+		if (result.error) {
+			throw result.error;
+		}
+		if (result.status !== 0) {
+			throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status ?? "unknown"}.`);
+		}
 	}
-	if (result.status !== 0) {
-		throw new Error(`${command} ${args.join(" ")} failed with exit code ${result.status ?? "unknown"}.`);
+
+	function assertBuildIdentity() {
+		const runtimeBundle = readFileSync(join(repoRoot, "dist", "cli.js"), "utf8");
+		const webIndex = readFileSync(join(repoRoot, "dist", "web-ui", "index.html"), "utf8");
+		const entryAsset = webIndex.match(/<script[^>]+src="([^"]+\.js)"/u)?.[1];
+		if (!entryAsset) {
+			throw new Error("Could not resolve the packaged web entry asset while verifying the build identity.");
+		}
+		const browserBundle = readFileSync(join(repoRoot, "dist", "web-ui", entryAsset.replace(/^\//u, "")), "utf8");
+		if (!runtimeBundle.includes(buildId) || !browserBundle.includes(buildId)) {
+			throw new Error("The packaged runtime and browser were not stamped with the same build identity.");
+		}
 	}
+
+	await cleanCheckout(repoRoot, options);
+	const webBuildCommand = resolveNpmCommand(["run", "web:build"]);
+	run(webBuildCommand.command, webBuildCommand.args);
+	run(process.execPath, ["scripts/build.mjs"]);
+	assertBuildIdentity();
+	const completedSource = readSourceIdentity(repoRoot, execute);
+	if (completedSource.sourceSha !== source.sourceSha) throw new Error("Git HEAD changed during the paired build.");
+	if (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version !== version)
+		throw new Error("Product version changed during the paired build.");
+	const manifest = validateBuildManifest({
+		schemaVersion: 1,
+		version,
+		buildId,
+		sourceSha: source.sourceSha,
+		sourceDirty: source.sourceDirty || completedSource.sourceDirty,
+	});
+	writeFileSync(join(repoRoot, "dist", "build-manifest.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
+
+	process.stdout.write(`[quarterdeck-build] packaged runtime and browser build ${buildId}\n`);
+	return manifest;
 }
 
-function assertBuildIdentity() {
-	const runtimeBundle = readFileSync(join(repoRoot, "dist", "cli.js"), "utf8");
-	const webIndex = readFileSync(join(repoRoot, "dist", "web-ui", "index.html"), "utf8");
-	const entryAsset = webIndex.match(/<script[^>]+src="([^"]+\.js)"/u)?.[1];
-	if (!entryAsset) {
-		throw new Error("Could not resolve the packaged web entry asset while verifying the build identity.");
-	}
-	const browserBundle = readFileSync(join(repoRoot, "dist", "web-ui", entryAsset.replace(/^\//u, "")), "utf8");
-	if (!runtimeBundle.includes(buildId) || !browserBundle.includes(buildId)) {
-		throw new Error("The packaged runtime and browser were not stamped with the same build identity.");
-	}
+if (resolve(process.argv[1] ?? "") === scriptPath) {
+	await buildCheckout(resolve(dirname(scriptPath), ".."));
 }
-
-const cleanCommand = resolveNpmCommand(["run", "clean"]);
-run(cleanCommand.command, cleanCommand.args);
-const webBuildCommand = resolveNpmCommand(["run", "web:build"]);
-run(webBuildCommand.command, webBuildCommand.args);
-run(process.execPath, ["scripts/build.mjs"]);
-assertBuildIdentity();
-const completedSource = readSourceIdentity(repoRoot);
-if (completedSource.sourceSha !== source.sourceSha) throw new Error("Git HEAD changed during the paired build.");
-if (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version !== version)
-	throw new Error("Product version changed during the paired build.");
-const manifest = validateBuildManifest({
-	schemaVersion: 1,
-	version,
-	buildId,
-	sourceSha: source.sourceSha,
-	sourceDirty: source.sourceDirty || completedSource.sourceDirty,
-});
-writeFileSync(join(repoRoot, "dist", "build-manifest.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
-
-process.stdout.write(`[quarterdeck-build] packaged runtime and browser build ${buildId}\n`);

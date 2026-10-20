@@ -1,30 +1,23 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { homedir, release } from "node:os";
-import { dirname, join, posix, resolve, win32 } from "node:path";
+import { lstat, readFile, realpath } from "node:fs/promises";
+import { release } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { requireNativeMacTarget } from "../desktop/scripts/paths.mjs";
 import { prepareAgentLabBrowserCache } from "./agent-lab/browser-cache.mjs";
+import { buildCheckout as buildRuntimeCheckout } from "./build-all.mjs";
+import { readBuildManifest } from "./build-manifest.mjs";
+import { assertStandaloneBuildIsSafe } from "./managed-installation-guard.mjs";
 import { resolveNpmCommand } from "./npm-command.mjs";
+import { assertLinkedRuntimeIsStopped, normalizeCheckoutPathForComparison } from "./linked-runtime-guard.mjs";
+
+export { assertLinkedRuntimeIsStopped, findActiveRuntimePids, normalizeCheckoutPathForComparison, resolveGlobalLinkedCheckout } from "./linked-runtime-guard.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = resolve(dirname(scriptPath), "..");
-
-function removeWindowsNamespacePrefix(path) {
-	const normalizedSeparators = path.replaceAll("/", "\\");
-	if (/^\\\\\?\\unc\\/iu.test(normalizedSeparators)) return `\\\\${normalizedSeparators.slice(8)}`;
-	if (/^\\\\\?\\[A-Za-z]:\\/u.test(normalizedSeparators)) return normalizedSeparators.slice(4);
-	return path;
-}
-
-export function normalizeCheckoutPathForComparison(path, platform = process.platform) {
-	if (platform === "win32") {
-		return win32.resolve(removeWindowsNamespacePrefix(path)).toLowerCase();
-	}
-	return posix.resolve(path);
-}
 
 async function dependencyTreeMatchesLockfile(packageRoot) {
 	try {
@@ -64,74 +57,6 @@ export async function inspectDependencyTrees(checkoutRoot) {
 		dependencyTreeMatchesLockfile(join(checkoutRoot, "web-ui")),
 	]);
 	return { rootAvailable, webAvailable };
-}
-
-function isProcessAlive(pid) {
-	if (!Number.isInteger(pid) || pid <= 0) return false;
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
-	}
-}
-
-export async function findActiveRuntimePids(stateHome) {
-	const instancesRoot = join(stateHome, "diagnostics", "instances");
-	const entries = await readdir(instancesRoot, { withFileTypes: true }).catch(() => []);
-	const pids = [];
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-		try {
-			const descriptor = JSON.parse(await readFile(join(instancesRoot, entry.name, "runtime.json"), "utf8"));
-			if (
-				(descriptor.status === "starting" || descriptor.status === "ready") &&
-				typeof descriptor.pid === "number" &&
-				isProcessAlive(descriptor.pid)
-			) {
-				pids.push(descriptor.pid);
-			}
-		} catch {}
-	}
-	return [...new Set(pids)].sort((left, right) => left - right);
-}
-
-export async function resolveGlobalLinkedCheckout(command) {
-	const invocation = command
-		? { command, args: ["root", "-g"] }
-		: resolveNpmCommand(["root", "-g"]);
-	const result = spawnSync(invocation.command, invocation.args, {
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "ignore"],
-		windowsHide: true,
-	});
-	if (result.status !== 0) return null;
-	const packagePath = join(String(result.stdout).trim(), "quarterdeck");
-	try {
-		return await realpath(packagePath);
-	} catch {
-		return null;
-	}
-}
-
-export async function assertLinkedRuntimeIsStopped(
-	checkoutRoot,
-	options = {},
-) {
-	const stateHome = options.stateHome ?? process.env.QUARTERDECK_STATE_HOME ?? join(homedir(), ".quarterdeck");
-	const [activeRuntimePids, linkedCheckout, resolvedCheckout] = await Promise.all([
-		options.activeRuntimePids ?? findActiveRuntimePids(stateHome),
-		options.linkedCheckout === undefined ? resolveGlobalLinkedCheckout() : options.linkedCheckout,
-		realpath(checkoutRoot),
-	]);
-	if (activeRuntimePids.length === 0 || !linkedCheckout) return;
-	const resolvedLinkedCheckout = await realpath(linkedCheckout).catch(() => resolve(linkedCheckout));
-	if (normalizeCheckoutPathForComparison(resolvedLinkedCheckout) !== normalizeCheckoutPathForComparison(resolvedCheckout)) {
-		return;
-	}
-	throw new Error(
-		`Quarterdeck is running from this linked checkout (PID${activeRuntimePids.length === 1 ? "" : "s"} ${activeRuntimePids.join(", ")}). Stop Quarterdeck before reinstalling dependencies, rebuilding, or relinking this checkout, then retry.`,
-	);
 }
 
 function runNpm(args, checkoutRoot = repoRoot) {
@@ -214,6 +139,28 @@ export function resolveGlobalPackageLocation() {
 	return { packageSlot: join(readNpmPath(["root", "-g"]), "quarterdeck"), prefix: readNpmPath(["prefix", "-g"]) };
 }
 
+/** Build a local candidate; only the paired installer may replace an installed owner's build. */
+export async function buildDesktopCheckout(checkoutRoot, options = {}) {
+	await assertStandaloneBuildIsSafe(checkoutRoot, {
+		...options.managedInstallation,
+		pairedDesktopInstall: options.pairedDesktopInstall,
+	});
+	requireNativeMacTarget(process.arch);
+	if (process.arch === "x64") {
+		const translated = spawnSync("/usr/sbin/sysctl", ["-in", "sysctl.proc_translated"], { encoding: "utf8", timeout: 2_000 });
+		if (String(translated.stdout).trim() === "1") {
+			throw new Error("Desktop builds cannot use x64 Node under Rosetta. Use native arm64 Node and rerun npm run link.");
+		}
+	}
+	await ensureDependencies(checkoutRoot, { ...options, desktop: true });
+	const identity = await (options.buildCheckout ?? buildRuntimeCheckout)(checkoutRoot, options);
+	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
+	await executeNpm(["--prefix", "desktop", "run", "package", "--", `--arch=${process.arch}`]);
+	const appPath = join(checkoutRoot, "desktop", "out", `Quarterdeck-darwin-${process.arch}`, "Quarterdeck.app");
+	console.log(`Built desktop app: ${appPath}`);
+	return { appPath, identity };
+}
+
 function installLinkedDesktop(checkoutRoot, location) {
 	const appPath = join(checkoutRoot, "desktop", "out", `Quarterdeck-darwin-${process.arch}`, "Quarterdeck.app");
 	const result = spawnSync(process.execPath, [
@@ -226,21 +173,54 @@ function installLinkedDesktop(checkoutRoot, location) {
 	}
 }
 
+function readLinkedDesktopStatus(checkoutRoot) {
+	const result = spawnSync(process.execPath, [join(checkoutRoot, "dist", "cli.js"), "desktop", "status", "--json"], {
+		cwd: checkoutRoot,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+		windowsHide: true,
+		maxBuffer: 128 * 1024,
+	});
+	if (result.error) throw result.error;
+	try {
+		const status = JSON.parse(result.stdout);
+		if (result.status !== 0) throw new Error(status.message ?? "Desktop status exited unsuccessfully.");
+		return status;
+	} catch (error) {
+		throw new Error("The linked CLI could not verify the completed desktop installation. Rerun npm run link -- --desktop to repair the pair.", { cause: error });
+	}
+}
+
 export async function linkCheckout(checkoutRoot, options = {}) {
 	const desktop = shouldLinkDesktop(options);
 	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
 	// This must precede even the packaging command: dependencies and dist can be in use.
 	await assertLinkedRuntimeIsStopped(checkoutRoot, options.runtime);
+	const location = await (options.resolveGlobalPackageLocation ?? resolveGlobalPackageLocation)();
+	await assertStandaloneBuildIsSafe(checkoutRoot, {
+		...options.managedInstallation,
+		packageSlot: location.packageSlot,
+		pairedDesktopInstall: desktop,
+	});
+	let expectedIdentity;
 	if (desktop) {
-		// The build-only lane owns preparation and exactly one paired runtime/UI build.
-		await executeNpm(["run", "desktop:build"]);
+		// Authorization stays in this invocation, never in an inherited environment flag.
+		await (options.buildDesktop ?? buildDesktopCheckout)(checkoutRoot, {
+			...options,
+			pairedDesktopInstall: true,
+		});
+		expectedIdentity = await (options.readBuildIdentity ?? (() => readBuildManifest(join(checkoutRoot, "dist"))))();
 	} else {
 		await ensureDependencies(checkoutRoot, options);
 		await executeNpm(["run", "build"]);
+		// Recheck the destination immediately before a browser-only relink.
+		await assertStandaloneBuildIsSafe(checkoutRoot, {
+			...options.managedInstallation,
+			packageSlot: location.packageSlot,
+		});
 	}
 	await executeNpm(["link", "--ignore-scripts"]);
 	if (!desktop) return;
-	const location = await (options.resolveGlobalPackageLocation ?? resolveGlobalPackageLocation)();
 	const resolvedCheckout = await realpath(checkoutRoot);
 	const verifyLink = async () => {
 		const linkedCheckout = await (options.resolveLinkedCheckout ?? (() => realpath(location.packageSlot)))();
@@ -252,6 +232,16 @@ export async function linkCheckout(checkoutRoot, options = {}) {
 	await verifyLink();
 	await (options.installDesktop ?? ((ownerLocation) => installLinkedDesktop(checkoutRoot, ownerLocation)))(location);
 	await verifyLink();
+	const status = await (options.readDesktopStatus ?? (() => readLinkedDesktopStatus(checkoutRoot)))(location);
+	const installation = status?.installation;
+	const owner = installation?.owner;
+	if (
+		status?.state !== "ready" || status.pending !== false ||
+		installation?.buildId !== expectedIdentity.buildId || owner?.kind !== "link" ||
+		owner.packageRoot !== resolvedCheckout || owner.packageSlot !== location.packageSlot || owner.prefix !== location.prefix
+	) {
+		throw new Error("The CLI was linked, but its exact desktop pair is not ready or cleanup remains pending. Quit Quarterdeck and rerun npm run link -- --desktop in this checkout to repair the installation.");
+	}
 	console.log("Linked CLI and desktop app installation completed for this checkout.");
 }
 

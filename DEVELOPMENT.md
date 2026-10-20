@@ -272,7 +272,9 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-After local code changes, run `npm run link` again to update both the linked command and installed app. `npm run build` updates only runtime/UI assets; a desktop launch will reject stale pairing until the matching app is installed.
+After local code changes, run `npm run link -- --desktop` again to update both the linked command and installed app. Standalone build and clean commands refuse to replace output in the checkout that owns the installed desktop app. This includes `npm run build`, `npm run desktop:build`, and dogfood's build step. Use another worktree for build-only validation. A browser-only relink also refuses to change the installed app's owning checkout or global package slot; uninstall the owned desktop app first if you intend to switch to browser-only use.
+
+The paired workflow reports success only after verifying that the installed app and linked CLI match the new build and have no pending installation work. A failed paired build or install may still require rerunning `npm run link -- --desktop`; rebuilding and replacing the app are not one atomic operation. Dock startup continues to reject mismatched installations.
 
 When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `quarterdeck` binary points at the right `dist/cli.js`.
 
