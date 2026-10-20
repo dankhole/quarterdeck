@@ -1,4 +1,5 @@
 import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
+import { runtimeCodexSessionStartSourceSchema } from "../core";
 
 const HOOK_METADATA_TEXT_MAX_LENGTH = 500;
 
@@ -437,6 +438,10 @@ export function normalizeHookMetadata(
 		: null;
 	const inferredSource = inferHookSourceFromPayload(payload);
 	const source = flagMetadata.source ?? inferredSource ?? null;
+	const sessionStartSource =
+		source?.trim().toLowerCase() === "codex" && hookEventName?.toLowerCase() === "sessionstart"
+			? runtimeCodexSessionStartSourceSchema.safeParse(payload?.source)
+			: null;
 	const backgroundWork = classifyClaudeStopBackgroundWork(payload, source, hookEventName);
 	const waitingForBackgroundWork = backgroundWork === "pending";
 	const extractedFinalMessage = payload
@@ -506,6 +511,7 @@ export function normalizeHookMetadata(
 		elicitationId: flagMetadata.elicitationId ?? elicitationId ?? null,
 		providerAgentId: flagMetadata.providerAgentId ?? providerAgentId ?? null,
 		transcriptPath: flagMetadata.transcriptPath ?? transcriptPath ?? null,
+		...(sessionStartSource?.success ? { sessionStartSource: sessionStartSource.data } : undefined),
 		conversationSummaryText: waitingForBackgroundWork
 			? null
 			: (flagMetadata.conversationSummaryText ??

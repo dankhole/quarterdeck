@@ -226,6 +226,8 @@ export function parseHookIngestRequest(value: unknown): RuntimeHookIngestRequest
 				elicitationId: parsed.metadata.elicitationId?.trim() || null,
 				providerAgentId: parsed.metadata.providerAgentId?.trim() || null,
 				transcriptPath: parsed.metadata.transcriptPath?.trim() || null,
+				sessionStartSource: parsed.metadata.sessionStartSource,
+				sessionStartHasTranscript: parsed.metadata.sessionStartHasTranscript,
 				conversationSummaryText: parsed.metadata.conversationSummaryText?.trim() || null,
 			}
 		: undefined;

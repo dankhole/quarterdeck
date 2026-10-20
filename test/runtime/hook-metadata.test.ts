@@ -8,6 +8,29 @@ import {
 } from "../../src/commands/hook-metadata";
 
 describe("hook metadata", () => {
+	it.each(["startup", "resume", "clear", "compact", "fork"])(
+		"retains native Codex SessionStart source %s independently of provider identity",
+		(source) => {
+			expect(
+				normalizeHookMetadata(
+					"activity",
+					{ hook_event_name: "SessionStart", source, transcript_path: null },
+					{ source: "codex" },
+				),
+			).toMatchObject({ source: "codex", sessionStartSource: source, transcriptPath: null });
+		},
+	);
+
+	it.each([
+		{ provider: "claude", hookEventName: "SessionStart", source: "clear" },
+		{ provider: "codex", hookEventName: "UserPromptSubmit", source: "clear" },
+		{ provider: "codex", hookEventName: "SessionStart", source: "unknown" },
+	])("does not infer Codex navigation from unrelated payloads: %o", ({ provider, hookEventName, source }) => {
+		expect(
+			normalizeHookMetadata("activity", { hook_event_name: hookEventName, source }, { source: provider }),
+		).not.toHaveProperty("sessionStartSource");
+	});
+
 	it("parses and forwards tool input summaries from hook flags", () => {
 		const metadata = parseMetadataFromOptions({
 			source: " pi ",

@@ -95,6 +95,32 @@ describe("hook transition outbox", () => {
 		).not.toBeNull();
 	});
 
+	it.each([
+		{ sessionStartSource: "clear" as const, transcriptPath: null, hasTranscript: false },
+		{ sessionStartSource: undefined, transcriptPath: "/private/navigation.jsonl", hasTranscript: true },
+	])("retains content-free SessionStart navigation evidence through disk replay: %o", async (evidence) => {
+		await enqueueHookTransition({
+			...request(1),
+			event: "activity",
+			metadata: {
+				...request(1).metadata,
+				hookEventName: "SessionStart",
+				turnId: null,
+				sessionStartSource: evidence.sessionStartSource,
+				transcriptPath: evidence.transcriptPath,
+			},
+		});
+		const [record] = await loadPendingHookTransitions();
+		expect(record?.request.metadata?.sessionStartSource).toBe(evidence.sessionStartSource);
+		expect(record?.request.metadata?.sessionStartHasTranscript).toBe(evidence.hasTranscript);
+		expect(record?.request.metadata?.transcriptPath).toBeNull();
+		expect(JSON.stringify(record)).not.toContain("/private/");
+		if (!record) throw new Error("Missing persisted hook transition");
+		expect(createPersistedHookTransition(record.request)?.request.metadata?.sessionStartHasTranscript).toBe(
+			evidence.hasTranscript,
+		);
+	});
+
 	it("persists Claude lifecycle events with launch fencing without requiring Codex turn identity", () => {
 		expect(
 			createPersistedHookTransition({

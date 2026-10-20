@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeHookEvent, RuntimeHookIngestRequest } from "../../../src/core";
+import type { RuntimeHookEvent, RuntimeHookIngestRequest, RuntimeHookMetadata } from "../../../src/core";
 import { runtimeTaskProviderHookOrderObservationSchema } from "../../../src/core";
 import {
 	commitHookEventOrder,
@@ -38,6 +38,7 @@ function hook(input: {
 	sessionInstanceId?: string;
 	sessionId?: string;
 	transcriptPath?: string;
+	sessionStartSource?: RuntimeHookMetadata["sessionStartSource"];
 	unboundedBackgroundWorkPending?: boolean;
 }): RuntimeHookIngestRequest {
 	return {
@@ -50,6 +51,7 @@ function hook(input: {
 			sessionInstanceId: input.sessionInstanceId ?? SESSION_INSTANCE_ID,
 			sessionId: input.sessionId,
 			transcriptPath: input.transcriptPath,
+			sessionStartSource: input.sessionStartSource,
 			turnId: input.turnId,
 			toolName: input.toolName,
 			toolUseId: input.toolUseId,
@@ -497,6 +499,97 @@ describe("Codex hook event ordering", () => {
 				}),
 			),
 		).toEqual({ accepted: false, reason: "stale_observation" });
+	});
+
+	it.each(["startup", "resume", "clear"] as const)(
+		"admits null-transcript %s navigation and restores its ordering owner",
+		(sessionStartSource) => {
+			const inputs = [
+				hook({ event: "to_review", hookEventName: "Stop", sessionId: "original", turnId: "old", deliveryIndex: 1 }),
+				hook({
+					event: "activity",
+					hookEventName: "SessionStart",
+					sessionId: "replacement",
+					sessionStartSource,
+					deliveryIndex: 2,
+				}),
+			];
+			const live = createHookEventOrderState(SESSION_INSTANCE_ID);
+			for (const input of inputs) acceptAndCommit(live, input);
+			for (const state of [live, restoreCommittedOrder(inputs)]) {
+				expect(state.codexSessionId).toBe("replacement");
+				expect(
+					evaluateHookEventOrder(
+						state,
+						hook({
+							event: "activity",
+							hookEventName: "SessionStart",
+							sessionId: "original",
+							sessionStartSource: "resume",
+							deliveryIndex: 3,
+							occurredAt: 150,
+						}),
+					),
+				).toEqual({ accepted: false, reason: "stale_observation" });
+				for (const source of ["fork", "compact"] as const) {
+					expect(
+						evaluateHookEventOrder(
+							state,
+							hook({
+								event: "activity",
+								hookEventName: "SessionStart",
+								sessionId: "side",
+								sessionStartSource: source,
+								deliveryIndex: 4,
+							}),
+						),
+					).toEqual({ accepted: false, reason: "non_foreground_session" });
+				}
+				expect(
+					evaluateHookEventOrder(
+						state,
+						hook({
+							event: "activity",
+							hookEventName: "SessionStart",
+							sessionId: "child",
+							sessionStartSource: "startup",
+							providerAgentId: "child",
+							deliveryIndex: 5,
+						}),
+					),
+				).toEqual({ accepted: false, reason: "non_foreground_session" });
+				acceptAndCommit(
+					state,
+					hook({
+						event: "to_in_progress",
+						hookEventName: "UserPromptSubmit",
+						sessionId: "replacement",
+						turnId: "new",
+						deliveryIndex: 6,
+					}),
+				);
+			}
+		},
+	);
+
+	it("retains transcript-backed persistent forks as navigation", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			hook({ event: "to_review", hookEventName: "Stop", sessionId: "original", deliveryIndex: 1 }),
+		);
+		acceptAndCommit(
+			state,
+			hook({
+				event: "activity",
+				hookEventName: "SessionStart",
+				sessionId: "forked",
+				sessionStartSource: "fork",
+				transcriptPath: "/synthetic/fork.jsonl",
+				deliveryIndex: 2,
+			}),
+		);
+		expect(state.codexSessionId).toBe("forked");
 	});
 
 	it("rejects explicit Codex subagent work even before main identity is known", () => {

@@ -3,6 +3,7 @@ import type {
 	RuntimeTaskOutstandingInteraction,
 	RuntimeTaskProviderHookOrderObservation,
 } from "../core";
+import { isCodexForegroundSessionStart } from "./codex-hook-session-scope";
 
 // Ordering is additive: only launch-scoped events with documented Codex turn
 // identity participate. Older/third-party payloads fall through unchanged.
@@ -145,7 +146,10 @@ export function createProviderHookOrderObservation(
 		source,
 		sessionInstanceId,
 		providerSessionId: optionalIdentity(input.metadata?.sessionId),
-		sessionStartHasTranscript: Boolean(input.metadata?.transcriptPath?.trim()),
+		sessionStartHasTranscript: Boolean(
+			input.metadata?.transcriptPath?.trim() || input.metadata?.sessionStartHasTranscript,
+		),
+		...(input.metadata?.sessionStartSource ? { sessionStartSource: input.metadata.sessionStartSource } : undefined),
 		hookEventName: optionalIdentity(input.metadata?.hookEventName),
 		notificationType: optionalIdentity(input.metadata?.notificationType),
 		turnId: optionalIdentity(input.metadata?.turnId),
@@ -166,8 +170,8 @@ function observationAsHookInput(observation: RuntimeTaskProviderHookOrderObserva
 			source: observation.source,
 			sessionInstanceId: observation.sessionInstanceId,
 			sessionId: observation.providerSessionId,
-			// Ordering needs only presence, never a persisted filesystem path.
-			transcriptPath: observation.sessionStartHasTranscript ? "__ordering_restore__" : null,
+			sessionStartHasTranscript: observation.sessionStartHasTranscript,
+			sessionStartSource: observation.sessionStartSource,
 			hookEventName: observation.hookEventName,
 			notificationType: observation.notificationType,
 			turnId: observation.turnId,
@@ -533,9 +537,9 @@ export function evaluateHookEventOrder(
 	const providerSessionId = optionalIdentity(input.metadata?.sessionId);
 	if (input.metadata?.providerAgentId?.trim()) return { accepted: false, reason: "non_foreground_session" };
 	if (providerSessionId && state.codexSessionId && providerSessionId !== state.codexSessionId) {
-		// A native persistent SessionStart supports explicit /resume navigation.
-		// /btw forks are ephemeral (no transcript), so cannot take ownership.
-		if (hookEventName !== "sessionstart" || !input.metadata?.transcriptPath?.trim()) {
+		// Native main-chat navigation can precede transcript materialization.
+		// Ephemeral /btw forks lack both navigation source and transcript evidence.
+		if (!isCodexForegroundSessionStart(input.metadata)) {
 			return { accepted: false, reason: "non_foreground_session" };
 		}
 		return state.codexSessionLatestOccurredAt !== null && occurredAt <= state.codexSessionLatestOccurredAt

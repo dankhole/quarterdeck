@@ -93,6 +93,8 @@ export const runtimeTaskOutstandingInteractionSchema = z.object({
 });
 export type RuntimeTaskOutstandingInteraction = z.infer<typeof runtimeTaskOutstandingInteractionSchema>;
 
+export const runtimeCodexSessionStartSourceSchema = z.enum(["startup", "resume", "clear", "compact", "fork"]);
+
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 	.extend({
 		sessionId: z.string().nullable().default(null),
@@ -103,6 +105,10 @@ export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 		elicitationId: z.string().nullable().default(null),
 		providerAgentId: z.string().nullable().default(null),
 		transcriptPath: z.string().nullable().default(null),
+		/** Native Codex SessionStart source; separate from the hook provider's source. */
+		sessionStartSource: runtimeCodexSessionStartSourceSchema,
+		/** Content-free transcript presence retained when reliable SessionStart delivery retries. */
+		sessionStartHasTranscript: z.boolean(),
 		/** Claude root Stop left only shell/monitor background work, which may wake the same prompt later. */
 		unboundedBackgroundWorkPending: z.boolean(),
 	})
@@ -131,6 +137,7 @@ export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 	sessionInstanceId: z.string().min(1),
 	providerSessionId: z.string().min(1).nullish(),
 	sessionStartHasTranscript: z.boolean().optional(),
+	sessionStartSource: runtimeCodexSessionStartSourceSchema.optional(),
 	unboundedBackgroundWorkPending: z.boolean().optional(),
 	hookEventName: z.string().nullable(),
 	notificationType: z.string().nullable(),

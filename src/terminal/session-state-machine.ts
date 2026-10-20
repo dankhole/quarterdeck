@@ -10,6 +10,7 @@ import {
 	type RuntimeTaskSessionReviewReason,
 	type RuntimeTaskSessionSummary,
 } from "../core";
+import { isCodexForegroundSessionStart } from "./codex-hook-session-scope";
 import { removeLegacySemanticStateWarning, type StartupRecoveryReviewState } from "./session-startup-recovery-policy";
 
 export type HookSessionReviewReason = Extract<RuntimeTaskSessionReviewReason, "hook" | "attention" | "error">;
@@ -664,10 +665,8 @@ function reduceProviderHook(
 	// Retire the old owner's wait without claiming the new session is working.
 	if (
 		live &&
-		providerFromMetadata(metadata) === "codex" &&
-		hookEventName === "sessionstart" &&
-		metadata?.transcriptPath?.trim() &&
-		metadata.sessionId?.trim() &&
+		isCodexForegroundSessionStart(metadata) &&
+		metadata?.sessionId?.trim() &&
 		summary.resumeSessionId &&
 		metadata.sessionId !== summary.resumeSessionId
 	) {

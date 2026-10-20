@@ -63,6 +63,15 @@ function minimalReplayMetadata(metadata: RuntimeHookMetadata | undefined): Runti
 		toolName: metadata.toolName ?? null,
 		notificationType: metadata.notificationType ?? null,
 		...(metadata.unboundedBackgroundWorkPending ? { unboundedBackgroundWorkPending: true } : undefined),
+		...(metadata.source?.trim().toLowerCase() === "codex" &&
+		metadata.hookEventName?.trim().toLowerCase() === "sessionstart"
+			? {
+					sessionStartSource: metadata.sessionStartSource,
+					sessionStartHasTranscript: Boolean(
+						metadata.transcriptPath?.trim() || metadata.sessionStartHasTranscript,
+					),
+				}
+			: undefined),
 	};
 }
 

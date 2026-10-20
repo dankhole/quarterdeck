@@ -125,6 +125,20 @@ describe("runtimeTaskSessionSummarySchema", () => {
 });
 
 describe("parseHookIngestRequest", () => {
+	it.each([
+		{ sessionStartSource: "clear" as const, sessionStartHasTranscript: false },
+		{ sessionStartSource: undefined, sessionStartHasTranscript: true },
+	])("preserves content-free Codex navigation evidence: %o", (evidence) => {
+		const parsed = parseHookIngestRequest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: { source: "codex", hookEventName: "SessionStart", ...evidence },
+		});
+		expect(parsed.metadata?.sessionStartSource).toBe(evidence.sessionStartSource);
+		expect(parsed.metadata?.sessionStartHasTranscript).toBe(evidence.sessionStartHasTranscript);
+	});
+
 	it("parses and trims task and project identifiers", () => {
 		const parsed = parseHookIngestRequest({
 			taskId: "  task-123  ",
