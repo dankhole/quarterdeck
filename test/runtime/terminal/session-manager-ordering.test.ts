@@ -1570,6 +1570,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 					"■ Conversation interrupted - tell the model what to do differently. Something went wrong? Hit `/feedback` to report the issue.",
 			},
 			{ result: "capacity failure", message: "■ Selected model is at capacity. Please try a different model." },
+			{ result: "workspace-requirements failure", message: "■ failed to load workspace requirements" },
 		])("keeps a newer provider-confirmed turn Running across historical $result text", async ({ message }) => {
 			const detector = createCodexTurnInterruptionDetector();
 			prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({

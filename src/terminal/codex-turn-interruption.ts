@@ -5,6 +5,7 @@ import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
 const TURN_FAILURE_MESSAGES = [
 	"■ conversation interrupted - tell the model what to do differently. something went wrong? hit `/feedback` to report the issue.",
 	"■ selected model is at capacity. please try a different model.",
+	"■ failed to load workspace requirements",
 ] as const;
 const INPUT_PROMPT = "› ask codex to do anything";
 const MAX_WRAPPED_FAILURE_ROWS = 5;

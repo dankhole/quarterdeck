@@ -37,6 +37,15 @@ const interruptionWithTipScreen = screen([
 const capacityMessage = "■ Selected model is at capacity. Please try a different model.";
 const capacityScreen = screen([capacityMessage, "", "› Ask Codex to do anything", "gpt-6-astra high"]);
 const capacityWithTipScreen = screen([capacityMessage, "", composerTip, "", "› Ask Codex to do anything"]);
+const workspaceRequirementsMessage = "■ failed to load workspace requirements";
+const workspaceRequirementsScreen = screen([workspaceRequirementsMessage, "", "› Ask Codex to do anything"]);
+const workspaceRequirementsWithTipScreen = screen([
+	workspaceRequirementsMessage,
+	"",
+	composerTip,
+	"",
+	"› Ask Codex to do anything",
+]);
 
 describe("Codex rendered turn failure", () => {
 	it("recognizes the complete interruption result followed by the Codex input prompt", () => {
@@ -180,11 +189,53 @@ describe("Codex rendered turn failure", () => {
 			),
 		).toBe(false);
 	});
+
+	it.each([
+		workspaceRequirementsScreen,
+		workspaceRequirementsWithTipScreen,
+		screen(["■ failed to load workspace", "  requirements", "", "› Ask Codex to do anything"]),
+	])("recognizes the complete workspace-requirements failure at the current composer: %j", (snapshot) => {
+		expect(isCodexTurnInterruptedScreen(snapshot)).toBe(true);
+	});
+
+	it.each([
+		["■ failed to load workspace", "", composerTip, "", "› Ask Codex to do anything"],
+		['const message = "■ failed to load workspace requirements";', "› Ask Codex to do anything"],
+		[`> ${workspaceRequirementsMessage}`, "› Ask Codex to do anything"],
+		[`${workspaceRequirementsMessage} More output.`, "› Ask Codex to do anything"],
+		["failed to load workspace requirements", "› Ask Codex to do anything"],
+		["■ failed to load another workspace", "› Ask Codex to do anything"],
+		[workspaceRequirementsMessage],
+		["› Ask Codex to do anything", workspaceRequirementsMessage],
+		["■ failed", "to", "load", "workspace", "require", "ments", "› Ask Codex to do anything"],
+	])("rejects partial, quoted, unanchored, or different workspace-failure text: %j", (...lines) => {
+		expect(isCodexTurnInterruptedScreen(screen(lines))).toBe(false);
+	});
+
+	it.each([
+		["• Working on the follow-up", "", composerTip],
+		["A newer assistant response."],
+		[composerTip, "A newer assistant response."],
+		[composerTip, "", composerTip],
+		["Tip:"],
+		["› Ask Codex to do anything", "", "• Working on the follow-up"],
+	])("keeps historical workspace-requirements failures inert at the newest composer: %j", (...interveningRows) => {
+		expect(
+			isCodexTurnInterruptedScreen(
+				screen([workspaceRequirementsMessage, "", ...interveningRows, "", "› Ask Codex to do anything"]),
+			),
+		).toBe(false);
+	});
 });
 
 describe.each([
 	{ result: "interruption", snapshot: interruptionScreen, snapshotWithTip: interruptionWithTipScreen },
 	{ result: "capacity failure", snapshot: capacityScreen, snapshotWithTip: capacityWithTipScreen },
+	{
+		result: "workspace-requirements failure",
+		snapshot: workspaceRequirementsScreen,
+		snapshotWithTip: workspaceRequirementsWithTipScreen,
+	},
 ])("Codex rendered $result transitions", ({ snapshot, snapshotWithTip }) => {
 	it("emits a conservative transition while the task claims Running", () => {
 		const detector = createCodexTurnInterruptionDetector();
