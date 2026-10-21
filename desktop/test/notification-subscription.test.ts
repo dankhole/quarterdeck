@@ -86,6 +86,7 @@ describe("main-process notification subscription", () => {
 	const notification = vi.fn();
 	const badge = vi.fn();
 	const factory = vi.fn();
+	const reset = vi.fn();
 	beforeEach(() => {
 		vi.useFakeTimers();
 		controller = new AbortController();
@@ -99,6 +100,7 @@ describe("main-process notification subscription", () => {
 		notification.mockReset();
 		badge.mockReset();
 		factory.mockReset();
+		reset.mockReset();
 		factory.mockImplementation(() => {
 			const socket = new FakeSocket();
 			sockets.push(socket);
@@ -116,6 +118,7 @@ describe("main-process notification subscription", () => {
 			getFocus: () => ({ focused: false, currentProjectId: null }),
 			onNotification: notification,
 			onBadge: badge,
+			onPresentationReset: reset,
 			createSocket: factory,
 		});
 		return sockets[0];
@@ -150,6 +153,24 @@ describe("main-process notification subscription", () => {
 		controller.abort();
 		expect(socket.close).toHaveBeenCalledOnce();
 		expect(badge).toHaveBeenLastCalledWith(0);
+	});
+	it("passes fractional and muted volume while cancelling playback on preference and ownership changes", () => {
+		const socket = start();
+		baseline(socket);
+		grant(socket);
+		delta(socket);
+		vi.advanceTimersByTime(500);
+		expect(notification).toHaveBeenLastCalledWith(expect.objectContaining({ volume: 0.5 }));
+		reset.mockClear();
+		socket.message({ type: "notification_preferences", preferences: { ...settings, volume: 0 } });
+		expect(reset).toHaveBeenCalledOnce();
+		delta(socket, running, 3);
+		delta(socket, { ...review, updatedAt: 3, lastHookAt: 3 }, 4);
+		vi.advanceTimersByTime(500);
+		expect(notification).toHaveBeenLastCalledWith(expect.objectContaining({ volume: 0 }));
+		reset.mockClear();
+		socket.message({ type: "notification_presentation", state: state("desktop", secondEpoch), granted: false });
+		expect(reset).toHaveBeenCalledOnce();
 	});
 	it("reacquires after lease expiry on an open socket and delivers only new edges", () => {
 		const first = start();

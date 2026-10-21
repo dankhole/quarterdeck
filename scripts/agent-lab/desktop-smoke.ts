@@ -24,6 +24,7 @@ import { waitForDesktopHelperExit } from "./desktop-helper-exit";
 import { exerciseDesktopMainLoss } from "./desktop-main-loss-scenario";
 import { exerciseDesktopManualShells, validateDesktopManualShellSelection } from "./desktop-manual-shells";
 import { DesktopNativeExperienceError, exerciseDesktopNativeExperience } from "./desktop-native-experience";
+import { exerciseDesktopNotifications, validateDesktopNotificationSelection } from "./desktop-notifications";
 import {
 	assertDesktopNpmInitialProject,
 	exerciseDesktopNpmLaunch,
@@ -118,7 +119,7 @@ async function findPtyProof(directory: string): Promise<string | null> {
 	return null;
 }
 
-async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver): Promise<string> {
+async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, confirmWorking = false): Promise<string> {
 	await page.locator("section.kb-board").waitFor({ state: "visible" });
 	await page.getByRole("button", { name: "Create task", exact: true }).first().click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
@@ -207,6 +208,15 @@ async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver): Promise<
 			return false;
 		}
 	}, "exact fixture-local fake conversation progress history");
+	if (confirmWorking) {
+		await page.keyboard.type("/working");
+		await page.keyboard.press("Enter");
+		await page
+			.locator(`[data-task-id="${taskId}"]`)
+			.filter({ hasText: "Running" })
+			.first()
+			.waitFor({ state: "visible" });
+	}
 	await page.keyboard.type("/review Packaged desktop PTY verified");
 	await page.keyboard.press("Enter");
 	await page.locator(`[data-task-id="${taskId}"]`).filter({ hasText: "Review" }).first().waitFor({ state: "visible" });
@@ -466,10 +476,12 @@ export async function runDesktopSmoke(options: {
 	sessionRecovery?: boolean;
 	npmLaunch?: boolean;
 	manualShells?: boolean;
+	notifications?: boolean;
 	agentMode?: DesktopAgentMode;
 }): Promise<{ runId: string; manifestPath: string; artifactDir: string }> {
 	if (process.platform !== "darwin") throw new Error("Packaged desktop smoke requires macOS.");
 	if (options.sessionRecovery) validateDesktopSessionRecoverySelection(options);
+	if (options.notifications) validateDesktopNotificationSelection(options);
 	validateDesktopProviderSelection(options.agentMode ?? "fake", options.includeAgent !== false);
 	if (options.manualShells) validateDesktopManualShellSelection(options);
 	if (options.performance) validateDesktopPerformanceSelection(options);
@@ -539,6 +551,14 @@ export async function runDesktopSmoke(options: {
 			await exerciseDesktopNpmLaunch(page, driver, npmPreparation);
 		} else if (options.manualShells) {
 			await exerciseDesktopManualShells(page, driver);
+			await driver.inspect("completed");
+		} else if (options.notifications) {
+			try {
+				await exerciseDesktopNotifications(page, driver, () => exerciseFakeAgent(page, driver, true));
+			} finally {
+				const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+				if (await settings.isVisible()) await settings.getByRole("button", { name: "Cancel", exact: true }).click();
+			}
 			await driver.inspect("completed");
 		} else if (options.performance) {
 			// Measurement is exclusive: do not repeat crash, reload, second-launch, or runtime-recovery acceptance.

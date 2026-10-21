@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type DesktopDiagnosticState,
 	type DesktopDiagnosticsPayload,
+	desktopDiagnosticEventSchema,
 	desktopDiagnosticsPayloadSchema,
 } from "../../../src/core/api/desktop-diagnostics.js";
 import { runtimeDiagnosticDescriptorSchema } from "../../../src/core/api/diagnostics.js";
@@ -37,6 +38,11 @@ function state(): DesktopDiagnosticState {
 }
 
 describe("desktop diagnostics roles and private projection", () => {
+	it("accepts fixed audio failures and rejects paths or arbitrary process errors", () => {
+		const event = { kind: "notification_audio", eventType: "review", outcome: "failed" };
+		expect(desktopDiagnosticEventSchema.parse(event)).toEqual(event);
+		expect(desktopDiagnosticEventSchema.safeParse({ ...event, error: "/private/process/error" }).success).toBe(false);
+	});
 	let stateHome: string;
 	let diagnostics: RuntimeDiagnostics;
 	beforeEach(async () => {

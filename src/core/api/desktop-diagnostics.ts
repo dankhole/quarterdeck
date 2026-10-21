@@ -114,6 +114,13 @@ export const desktopDiagnosticEventSchema = z.discriminatedUnion("kind", [
 		})
 		.strict(),
 	z.object({ kind: z.literal("update"), status: desktopDiagnosticUpdateStatusSchema }).strict(),
+	z
+		.object({
+			kind: z.literal("notification_audio"),
+			eventType: z.enum(["permission", "review", "failure"]),
+			outcome: z.literal("failed"),
+		})
+		.strict(),
 ]);
 export type DesktopDiagnosticEvent = z.infer<typeof desktopDiagnosticEventSchema>;
 

@@ -43,6 +43,14 @@ On the first upgraded visit, valid preferences already present in that browser o
 
 Window geometry, current navigation and selected files/tasks, unsaved drafts, browser permissions, authentication, and diagnostic records stay with their owning window or profile. Project-group collapse choices seed later visits without changing another open window's navigation. Native executable-folder overrides remain desktop launch configuration; an attached app uses the owning CLI's process environment. Sharing settings does not make independently launched processes inherit identical shell environments.
 
+### Notification sounds
+
+Desktop task notifications play Quarterdeck's short permission, review, and failure tones using the same tone definitions as browser mode. The desktop main process owns playback, so hiding or reloading the window does not disable sounds. Playback honors the shared sound enablement, volume, event toggles, and current-project/focus suppression settings. Native notification banners are silent; their macOS permission does not control Quarterdeck's tones. System output volume and mute still apply.
+
+While desktop owns notification presentation, connected browsers suppress their task tones to avoid duplicates. Desktop cancels pending playback when that ownership is lost, the connection closes, the runtime changes, or the app quits. Settings sound previews remain explicit UI playback and do not depend on a new task event.
+
+If previews work but task tones remain silent, check the event and focus suppression settings first. Playback failures appear as `notification_audio` events with a `failed` outcome in the desktop diagnostics journal; they contain the tone category, not task content or filesystem paths. Synthetic desktop tests record playback intent without using speakers or displaying native banners.
+
 ## Process and storage ownership
 
 Electron main owns the window, native presentation, update guidance, and private IPC to a separate real Node helper. The helper owns PTYs, provider hooks, and existing runtime services. Its dependencies are built for bundled Node, separately from Electron's ABI. Runtime code, paired web assets, Node, and native modules live outside ASAR.

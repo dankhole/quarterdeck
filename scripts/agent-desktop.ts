@@ -19,6 +19,7 @@ program
 	.option("--no-agent", "Limit the smoke to startup, shortcuts, window, and renderer lifecycle")
 	.option("--npm-launch", "Check typed npm project handoff and installation identity with hidden synthetic state")
 	.option("--manual-shells", "Check Home/Detail shell panel lifetime and hidden native close without a task agent")
+	.option("--notifications", "Check hidden desktop tone intent, Settings volume, and muted events with a fake task")
 	.option("--native-experience", "Check keyboard navigation, enlarged text, and visible close/reopen when requested")
 	.option(
 		"--performance",
@@ -40,6 +41,7 @@ program
 			sessionRecovery?: boolean;
 			npmLaunch?: boolean;
 			manualShells?: boolean;
+			notifications?: boolean;
 			agent: boolean;
 			json?: boolean;
 			provider: string;
@@ -56,6 +58,7 @@ program
 				sessionRecovery: options.sessionRecovery,
 				npmLaunch: options.npmLaunch,
 				manualShells: options.manualShells,
+				notifications: options.notifications,
 				agentMode: DesktopAgentModeSchema.parse(options.provider),
 			});
 			process.stdout.write(

@@ -35,7 +35,14 @@ type RuntimeHostIntegrationEventDraft =
 			target: RuntimeHostIntegrationSanitizedPath;
 			projectId: string | null;
 	  }
-	| (RuntimeBrowserHostIntegrationEventRequest & { outcome: "simulated"; origin: "browser" });
+	| (Exclude<RuntimeBrowserHostIntegrationEventRequest, { kind: "notification_audio" }> & {
+			outcome: "simulated";
+			origin: "browser";
+	  })
+	| (Omit<Extract<RuntimeBrowserHostIntegrationEventRequest, { kind: "notification_audio" }>, "origin"> & {
+			outcome: "simulated";
+			origin: "browser" | "desktop";
+	  });
 
 interface EventWaiter {
 	afterSequence: number;
@@ -189,11 +196,10 @@ export class RuntimeHostEventLedger {
 	}
 
 	async recordBrowserEvent(request: RuntimeBrowserHostIntegrationEventRequest): Promise<RuntimeHostIntegrationEvent> {
-		return await this.record({
-			...request,
-			origin: "browser",
-			outcome: "simulated",
-		});
+		if (request.kind === "notification_audio") {
+			return await this.record({ ...request, origin: request.origin ?? "browser", outcome: "simulated" });
+		}
+		return await this.record({ ...request, origin: "browser", outcome: "simulated" });
 	}
 
 	list(query: RuntimeHostEventQuery = {}): RuntimeHostIntegrationEventLedgerResponse {

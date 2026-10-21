@@ -25,7 +25,8 @@ export interface DesktopNotificationSubscriptionOptions {
 	runtime: SelectedRuntime;
 	buildId: string;
 	getFocus: () => DesktopNotificationFocus;
-	onNotification: (event: DesktopTaskNotification & { projectName: string; silent: boolean }) => void;
+	onNotification: (event: DesktopTaskNotification & { projectName: string; volume: number }) => void;
+	onPresentationReset?: () => void;
 	onBadge: (count: number) => void;
 	createSocket?: SocketFactory;
 }
@@ -75,6 +76,7 @@ export class DesktopNotificationSubscription {
 	}
 
 	private clearConnection(): void {
+		this.options.onPresentationReset?.();
 		this.ready = false;
 		this.grantedEpoch = null;
 		this.policy.setOwned(false);
@@ -176,9 +178,11 @@ export class DesktopNotificationSubscription {
 					return;
 				}
 				const state = presentation.data.state;
+				const previousEpoch = this.grantedEpoch;
 				if (state.owner !== "desktop" || state.epoch !== this.grantedEpoch) this.grantedEpoch = null;
 				if (presentation.data.granted === true && state.owner === "desktop") this.grantedEpoch = state.epoch;
 				if (presentation.data.granted === false) this.grantedEpoch = null;
+				if (previousEpoch && previousEpoch !== this.grantedEpoch) this.options.onPresentationReset?.();
 				this.policy.setOwned(this.ready && this.grantedEpoch !== null);
 				this.deliver();
 				// Claims are admitted on upgrade. Reconnect once the public owner returns
@@ -188,6 +192,7 @@ export class DesktopNotificationSubscription {
 			}
 			const preferences = runtimeStateStreamNotificationPreferencesMessageSchema.safeParse(raw);
 			if (preferences.success) {
+				this.options.onPresentationReset?.();
 				this.preferences = preferences.data.preferences;
 				this.deliver();
 				return;
@@ -196,6 +201,7 @@ export class DesktopNotificationSubscription {
 			if (!parsed.success) return;
 			const message = parsed.data;
 			if (message.type === "snapshot") {
+				this.options.onPresentationReset?.();
 				if (message.runtimeProtocolVersion !== QUARTERDECK_RUNTIME_PROTOCOL_VERSION) {
 					this.stop();
 					return;
@@ -252,7 +258,7 @@ export class DesktopNotificationSubscription {
 				this.options.onNotification({
 					...event,
 					projectName: this.projectNames.get(event.projectId) ?? "Quarterdeck",
-					silent: this.preferences?.volume === 0,
+					volume: this.preferences?.volume ?? 0,
 				});
 			} catch {
 				/* Denied native notifications leave authoritative in-app indicators usable. */

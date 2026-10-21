@@ -36,7 +36,7 @@ import { type DesktopInstallationPreflight, preflightDesktopInstallation } from 
 import { type DesktopLaunchConfig, readDesktopLaunchConfig, validateDesktopLaunchRequest } from "./launch-config.js";
 import type { DesktopLaunchEnvironmentResult } from "./launch-environment.js";
 import { desktopMenuTemplate } from "./native-menus.js";
-import { DesktopNotificationSubscription } from "./notification-subscription.js";
+import { DesktopNotifications } from "./notifications.js";
 import { proxyRuntimeRequest } from "./protocol-proxy.js";
 import { DesktopQuitCoordinator, type DesktopQuitReason } from "./quit-coordinator.js";
 import {
@@ -101,7 +101,8 @@ async function launchDesktop(
 	let commands: DesktopRendererCommands | null = null;
 	let coordinator: DesktopQuitCoordinator | null = null;
 	let diagnostics: DesktopDiagnostics | null = null;
-	let notifications: DesktopNotificationSubscription | null = null;
+	let notifications: DesktopNotifications | null = null;
+	let notificationCleanup = Promise.resolve();
 	let exporter: (() => Promise<void>) | null = null;
 	let runtimeIdentity: SupervisedRuntime | null = null;
 	let bundle: RuntimeBundle | null = null;
@@ -314,20 +315,23 @@ async function launchDesktop(
 			),
 		);
 	};
-	const clearRuntime = (): void => {
+	const clearRuntime = (): Promise<void> => {
 		try {
 			diagnostics?.disconnect();
 		} catch {
 			/* Diagnostic teardown cannot retain runtime authority or block the final update commit. */
 		}
 		try {
-			notifications?.stop();
+			if (notifications) {
+				notificationCleanup = Promise.allSettled([notificationCleanup, notifications.stop()]).then(() => undefined);
+			}
 		} catch {
 			/* Native presentation cannot retain runtime authority. */
 		}
 		notifications = null;
 		selection.clear();
 		currentProjectId = null;
+		return notificationCleanup;
 	};
 	const navigate = async (url: string, nextSurface?: DesktopSurface): Promise<void> => {
 		const current = renderer;
@@ -487,7 +491,7 @@ async function launchDesktop(
 				reply = (await commands?.requestPreflight("reload", true, "navigation")) ?? null;
 				if (reply?.decision !== "ready" || !commands?.isSealValid(reply)) return;
 			}
-			clearRuntime();
+			await clearRuntime();
 			runtimeIdentity = null;
 			await showSurface("starting");
 			if (stopping || shutdownConfirmed) return;
@@ -610,9 +614,13 @@ async function launchDesktop(
 		const runtime = selection.get();
 		if (!runtime || !bundle) return;
 		notifications?.stop();
-		const subscription = new DesktopNotificationSubscription({
+		notifications = new DesktopNotifications({
 			runtime,
 			buildId: bundle.buildId,
+			synthetic: launch.synthetic,
+			nativeNotifications,
+			isCurrent: () => runtime === selection.get() && !stopping && !shutdownConfirmed,
+			onAudioFailure: (eventType) => record({ kind: "notification_audio", eventType, outcome: "failed" }),
 			getFocus: () => ({
 				focused: Boolean(
 					renderer?.documentId &&
@@ -625,31 +633,11 @@ async function launchDesktop(
 			onBadge: (count) => {
 				if (!launch.synthetic && process.platform === "darwin") app.dock?.setBadge(count > 0 ? String(count) : "");
 			},
-			onNotification: (event) => {
-				if (!nativeNotifications || runtime !== selection.get()) return;
-				const body = {
-					permission: "A task needs your input.",
-					review: "A task is ready for review.",
-					failure: "A task needs attention.",
-				}[event.eventType];
-				const notification = new Notification({
-					title: "Quarterdeck",
-					subtitle: event.projectName,
-					body,
-					silent: event.silent,
-				});
-				notification.once("click", () => {
-					if (runtime !== selection.get() || stopping || shutdownConfirmed) return;
-					restoreWindow();
-					commands?.notificationTarget({
-						runtimeGeneration: runtime.generation,
-						...subscription.resolveTarget(event),
-					});
-				});
-				notification.show();
+			onClick: (target) => {
+				restoreWindow();
+				commands?.notificationTarget({ runtimeGeneration: runtime.generation, ...target });
 			},
 		});
-		notifications = subscription;
 	};
 	const resolveEnvironment = async (): Promise<NodeJS.ProcessEnv> => {
 		if (!bundle) throw new Error("Runtime bundle is unavailable.");
@@ -700,7 +688,7 @@ async function launchDesktop(
 				const finalSeal = await commands?.requestPreflight("reload", true, "navigation");
 				if (finalSeal?.decision !== "ready" || !commands?.isSealValid(finalSeal)) return "cancelled";
 			}
-			clearRuntime();
+			await clearRuntime();
 			runtimeIdentity = null;
 			await showSurface("starting");
 			commands?.releasePreflight();
@@ -732,7 +720,7 @@ async function launchDesktop(
 		}
 	};
 	const requestQuit = async (reason: DesktopQuitReason): Promise<boolean> => {
-		if (!coordinator || updates?.isBusy()) return false;
+		if (!coordinator || stopping || updates?.isBusy()) return false;
 		// Provisional navigation temporarily clears document authority; no lifecycle action may use that gap.
 		if (recovering || supervisor?.isRecoveryRunning()) return false;
 		if (navigating || reloading || ((refreshing || starting) && loadedGeneration !== null)) {
@@ -747,8 +735,9 @@ async function launchDesktop(
 			restoreWindow();
 			return false;
 		}
+		stopping = true;
+		await clearRuntime();
 		shutdownConfirmed = true;
-		clearRuntime();
 		rebuildMenu();
 		// Runtime restart still requires confirmed cleanup.
 		return reason === "quit" || result.kind === "clean";
@@ -994,7 +983,7 @@ async function launchDesktop(
 			if (!coordinator || !canUpdate()) return { kind: "cancelled" };
 			record({ kind: "shutdown", phase: "requested", intent: "update" });
 			const result = await coordinator.request("update", authorize);
-			if (result.kind === "clean") clearRuntime();
+			if (result.kind === "clean") await clearRuntime();
 			return result;
 		},
 		onCancelledQuit: () => {

@@ -115,7 +115,7 @@ export const runtimeHostIntegrationSanitizedUrlSchema = z.string().url().max(MAX
 const runtimeHostIntegrationEventBaseFields = {
 	sequence: z.number().int().positive(),
 	timestamp: z.string().datetime(),
-	origin: z.enum(["runtime", "browser"]),
+	origin: z.enum(["runtime", "browser", "desktop"]),
 } as const;
 
 export const runtimeHostIntegrationEventSchema = z.discriminatedUnion("kind", [
@@ -181,6 +181,8 @@ export const runtimeBrowserHostIntegrationEventRequestSchema = z.discriminatedUn
 	}),
 	z.object({
 		kind: z.literal("notification_audio"),
+		/** Optional synthetic main-process provenance; existing browser requests omit this. */
+		origin: z.literal("desktop").optional(),
 		eventType: z.enum(["permission", "review", "failure"]),
 		volume: z.number().min(0).max(1),
 		projectId: z.string().max(128).nullable(),
