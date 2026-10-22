@@ -1,5 +1,5 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
@@ -35,6 +35,7 @@ import {
 	runProbeCommand,
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
+	setAgentProbeTimeoutMsForTests,
 	waitForPendingAgentAvailabilityProbes,
 } from "../../../src/config";
 import { getRuntimeAgentCatalogEntry } from "../../../src/core";
@@ -90,6 +91,10 @@ beforeEach(() => {
 	vi.useRealTimers();
 	resetAgentAvailabilityCache();
 	setAgentAvailabilityDiagnosticSink(null);
+	// This file's fake-timer tests advance by a fixed 3_001ms to clear the probe
+	// timeout; pin that timeout to match instead of the production default so
+	// those advances don't depend on (and don't have to track) that default.
+	setAgentProbeTimeoutMsForTests(3_000);
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReset();
@@ -102,6 +107,10 @@ beforeEach(() => {
 	delete process.env.QUARTERDECK_DEBUG_MODE;
 	delete process.env.DEBUG_MODE;
 	delete process.env.debug_mode;
+});
+
+afterEach(() => {
+	setAgentProbeTimeoutMsForTests(null);
 });
 
 describe("agent-registry", () => {

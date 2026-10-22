@@ -239,14 +239,12 @@ function isProbeTimeout(error: ExecFileException, durationMs: number, timeoutMs:
 	if (error.killed === true || error.code === "ETIMEDOUT") {
 		return true;
 	}
-	// Windows terminates the whole process tree through an external `taskkill`
-	// (see `terminateProcessForTimeout`), which Node's own child-process
-	// bookkeeping never observes, so `killed`/`code` do not reliably reflect our
-	// own termination there. A failure that only surfaced after waiting at least
-	// the full configured timeout was evidently caused by that termination
-	// regardless of how the OS reports the kill; a genuine execution failure
-	// (missing binary, bad arguments, early crash) fails in a small fraction of
-	// that budget.
+	// `armChildProcessTimeout`'s `onAbandoned` settles `guard.isTimedOut()` (checked
+	// first in `finish`) for a child it could never confirm exited, but an error
+	// that still reaches here after waiting at least the full configured timeout
+	// (e.g. Windows tree termination that produces an ordinary exec error instead
+	// of an abandonment) was still evidently caused by that termination, not a
+	// genuine execution failure; those fail in a small fraction of the budget.
 	return durationMs >= timeoutMs;
 }
 
@@ -331,12 +329,8 @@ async function detectAgentVersion(
 	agentName: string,
 	binary: string,
 ): Promise<VersionProbeResult> {
-	const dbgT0 = Date.now();
 	try {
 		const result = await runProbeCommand(agentId, "version", binary, ["--version"]);
-		process.stderr.write(
-			`DBGDAV ${agentId} ${binary} resolved after ${Date.now() - dbgT0}ms stdout=${JSON.stringify(result.stdout)}\n`,
-		);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const version = extractVersion(output);
 		log.debug(`${agentName} version probe completed`, {
@@ -347,9 +341,6 @@ async function detectAgentVersion(
 		});
 		return version ? { ok: true, version } : { ok: false, reason: "unsupported_version" };
 	} catch (error) {
-		process.stderr.write(
-			`DBGDAV ${agentId} ${binary} rejected after ${Date.now() - dbgT0}ms error=${String(error)}\n`,
-		);
 		log.debug(`${agentName} version probe failed`, {
 			binary,
 			error: error instanceof Error ? error.message : String(error),
@@ -558,7 +549,6 @@ export function resetAgentAvailabilityCache(): void {
 }
 
 async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Promise<AgentAvailability> {
-	process.stderr.write(`DBGCAA computeAgentAvailability start ${agentId} ${binary} ${Date.now()}\n`);
 	if (!isAgentAllowedByAgentLabPolicy(agentId)) {
 		const agentLabel =
 			getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === agentId)?.label ?? agentId;
