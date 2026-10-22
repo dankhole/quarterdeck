@@ -568,7 +568,33 @@ describe("agent-registry", () => {
 	// implementation, proving `runProbeCommand`'s actual timing behavior end to end
 	// (no execFile mock deciding the outcome).
 	describe("runProbeCommand against real child processes", () => {
-		beforeEach(() => {
+		beforeEach((context) => {
+			context.onTestFailed(async () => {
+				// CI-only evidence for platform-specific probe failures: rerun the same
+				// child directly and report its exit shape (content is synthetic).
+				await new Promise<void>((resolveRerun) => {
+					childProcessMocks.realExecFile(
+						process.execPath,
+						["-e", "process.stdout.write('2.1.198'); process.exit(0);"],
+						{ encoding: "utf8", windowsHide: true },
+						(error: ExecFileException | null, stdout: string, stderr: string) => {
+							console.error(
+								"probe child rerun",
+								JSON.stringify({
+									execPath: process.execPath,
+									nodeOptions: process.env.NODE_OPTIONS ?? null,
+									code: error?.code ?? null,
+									signal: error?.signal ?? null,
+									killed: error?.killed ?? null,
+									stdout,
+									stderr: stderr.slice(0, 2000),
+								}),
+							);
+							resolveRerun();
+						},
+					);
+				});
+			});
 			childProcessMocks.execFile.mockImplementation(childProcessMocks.realExecFile);
 			// These tests pass their own explicit timeoutMs to prove real timing
 			// behavior end to end; undo the file-level test-seam override (which
