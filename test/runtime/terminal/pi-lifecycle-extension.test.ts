@@ -10,11 +10,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
-	QUARTERDECK_PI_TOOL_APPROVALS_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
 
 const HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
-const TOOL_APPROVALS_ENV_PLACEHOLDER = "__QUARTERDECK_PI_TOOL_APPROVALS_ENV__";
 const PI_LIFECYCLE_RUNTIME_ASSET_URL = new URL(
 	"../../../src/terminal/pi-lifecycle-extension.runtime.js",
 	import.meta.url,
@@ -38,17 +36,8 @@ function listenerBlock(source: string, eventName: string): string {
 	return next === -1 ? source.slice(start) : source.slice(start, next);
 }
 
-interface PiToolInfoHarness {
-	name: string;
-	sourceInfo?: {
-		source?: string;
-	};
-}
-
 interface PiExtensionContextHarness {
-	hasUI: boolean;
 	ui: {
-		confirm(title: string, question: string): Promise<boolean>;
 		notify(message: string, type?: string): void;
 	};
 	sessionManager: {
@@ -63,7 +52,6 @@ type PiEventHandlerHarness = (
 
 interface PiExtensionApiHarness {
 	on(eventName: string, handler: PiEventHandlerHarness): void;
-	getAllTools(): PiToolInfoHarness[];
 }
 
 async function loadPiLifecycleExtension(): Promise<(pi: PiExtensionApiHarness) => void> {
@@ -81,23 +69,60 @@ async function loadPiLifecycleExtension(): Promise<(pi: PiExtensionApiHarness) =
 	}
 }
 
+async function captureLifecycleHooks(
+	emit: (handlers: Map<string, PiEventHandlerHarness>, context: PiExtensionContextHarness) => void,
+	expectedCount: number,
+): Promise<string[][]> {
+	const initialize = await loadPiLifecycleExtension();
+	const handlers = new Map<string, PiEventHandlerHarness>();
+	initialize({ on: (eventName, handler) => handlers.set(eventName, handler) });
+	const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-hook-capture-"));
+	const helperPath = join(tempDir, "capture-hook.mjs");
+	const outputPath = join(tempDir, "hooks.jsonl");
+	await writeFile(
+		helperPath,
+		'import { appendFileSync } from "node:fs";\nappendFileSync(process.env.QD_TEST_PI_HOOK_OUTPUT, JSON.stringify(process.argv.slice(2)) + "\\n");\n',
+		"utf8",
+	);
+	const context: PiExtensionContextHarness = {
+		ui: { notify: vi.fn() },
+		sessionManager: { getSessionId: () => "pi-session-1" },
+	};
+	const originalHookCommand = process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
+	const originalOutputPath = process.env.QD_TEST_PI_HOOK_OUTPUT;
+	process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = JSON.stringify([process.execPath, helperPath, "notify"]);
+	process.env.QD_TEST_PI_HOOK_OUTPUT = outputPath;
+	try {
+		emit(handlers, context);
+		await vi.waitFor(
+			async () => {
+				expect((await readFile(outputPath, "utf8")).trim().split("\n")).toHaveLength(expectedCount);
+			},
+			{ timeout: 5_000 },
+		);
+		return (await readFile(outputPath, "utf8"))
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as string[]);
+	} finally {
+		if (originalHookCommand === undefined) delete process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
+		else process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = originalHookCommand;
+		if (originalOutputPath === undefined) delete process.env.QD_TEST_PI_HOOK_OUTPUT;
+		else process.env.QD_TEST_PI_HOOK_OUTPUT = originalOutputPath;
+		await rm(tempDir, { recursive: true, force: true });
+	}
+}
+
 describe("Pi lifecycle extension source", () => {
 	it("emits the runtime asset with only the launch environment placeholders substituted", () => {
 		const assetSource = readPiLifecycleRuntimeAsset();
 		const source = buildPiLifecycleExtensionSource();
 
 		expect(assetSource.split(HOOK_COMMAND_ENV_PLACEHOLDER)).toHaveLength(2);
-		expect(assetSource.split(TOOL_APPROVALS_ENV_PLACEHOLDER)).toHaveLength(2);
 		expect(assetSource).not.toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
-		expect(source).toBe(
-			assetSource
-				.replace(HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV)
-				.replace(TOOL_APPROVALS_ENV_PLACEHOLDER, QUARTERDECK_PI_TOOL_APPROVALS_ENV),
-		);
+		expect(source).toBe(assetSource.replace(HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV));
 		expect(source).toContain(`const HOOK_COMMAND_ENV = "${QUARTERDECK_PI_HOOK_COMMAND_ENV}";`);
-		expect(source).toContain(`const TOOL_APPROVALS_ENV = "${QUARTERDECK_PI_TOOL_APPROVALS_ENV}";`);
 		expect(source).not.toContain(HOOK_COMMAND_ENV_PLACEHOLDER);
-		expect(source).not.toContain(TOOL_APPROVALS_ENV_PLACEHOLDER);
 	});
 
 	it("keeps the runtime asset and emitted extension parseable by Node", async () => {
@@ -118,18 +143,15 @@ describe("Pi lifecycle extension source", () => {
 	it("registers the Pi lifecycle events Quarterdeck maps into hook state", () => {
 		const source = buildPiLifecycleExtensionSource();
 		const eventNames = [
-			"project_trust",
 			"session_start",
 			"session_before_switch",
 			"session_before_fork",
-			"input",
 			"agent_start",
 			"agent_end",
 			"agent_settled",
 			"tool_execution_start",
 			"tool_execution_update",
 			"tool_execution_end",
-			"tool_call",
 		];
 
 		for (const eventName of eventNames) {
@@ -146,86 +168,100 @@ describe("Pi lifecycle extension source", () => {
 		expect(source).toContain('durableArgs[durableArgs.length - 1] = "ingest";');
 		expect(source).toContain("waitForExit: true");
 		expect(listenerBlock(source, "session_start")).toMatch(/enqueueDurableHook\(\s*"activity"/);
-		expect(listenerBlock(source, "input")).toMatch(/enqueueDurableHook\(\s*"to_in_progress"/);
 		expect(listenerBlock(source, "agent_start")).toMatch(/enqueueDurableHook\(\s*"to_in_progress"/);
 		expect(listenerBlock(source, "agent_end")).toMatch(/enqueueDurableHook\(\s*"activity"/);
 		expect(listenerBlock(source, "agent_settled")).toMatch(/enqueueDurableHook\(\s*"to_review"/);
-		expect(listenerBlock(source, "agent_settled")).toMatch(/hookEventName: "AgentSettled"/);
+		expect(listenerBlock(source, "agent_settled")).toMatch(
+			/hookEventName: aborted \? "Interrupt" : failed \? "StopFailure" : "AgentSettled"/,
+		);
 	});
 
 	it("freezes each queued hook to the run identity active when it was enqueued", async () => {
-		const initialize = await loadPiLifecycleExtension();
-		const handlers = new Map<string, PiEventHandlerHarness>();
-		initialize({
-			on: (eventName, handler) => handlers.set(eventName, handler),
-			getAllTools: () => [],
-		});
-		const input = handlers.get("input");
-		const agentStart = handlers.get("agent_start");
-		expect(input).toBeDefined();
-		expect(agentStart).toBeDefined();
-
-		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-hook-order-"));
-		const helperPath = join(tempDir, "capture-hook.mjs");
-		const outputPath = join(tempDir, "hooks.jsonl");
-		await writeFile(
-			helperPath,
-			'import { appendFileSync } from "node:fs";\nappendFileSync(process.env.QD_TEST_PI_HOOK_OUTPUT, JSON.stringify(process.argv.slice(2)) + "\\n");\n',
-			"utf8",
-		);
-		const context: PiExtensionContextHarness = {
-			hasUI: true,
-			ui: { confirm: vi.fn(async () => true), notify: vi.fn() },
-			sessionManager: { getSessionId: () => "pi-session-1" },
-		};
-		const originalHookCommand = process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-		const originalOutputPath = process.env.QD_TEST_PI_HOOK_OUTPUT;
-		process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = JSON.stringify([process.execPath, helperPath, "notify"]);
-		process.env.QD_TEST_PI_HOOK_OUTPUT = outputPath;
-		try {
-			input?.({}, context);
-			agentStart?.({}, context);
-			agentStart?.({}, context);
-
-			await vi.waitFor(
-				async () => {
-					const lines = (await readFile(outputPath, "utf8")).trim().split("\n");
-					expect(lines).toHaveLength(3);
-				},
-				{ timeout: 5_000 },
-			);
-			const calls = (await readFile(outputPath, "utf8"))
-				.trim()
-				.split("\n")
-				.map((line) => JSON.parse(line) as string[]);
-			expect(calls[0]).not.toContain("--turn-id");
-			const turnIds = calls.slice(1).map((args) => args[args.indexOf("--turn-id") + 1]);
-			expect(turnIds).toEqual([expect.any(String), expect.any(String)]);
-			expect(turnIds[0]).not.toBe(turnIds[1]);
-		} finally {
-			if (originalHookCommand === undefined) {
-				delete process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-			} else {
-				process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = originalHookCommand;
-			}
-			if (originalOutputPath === undefined) {
-				delete process.env.QD_TEST_PI_HOOK_OUTPUT;
-			} else {
-				process.env.QD_TEST_PI_HOOK_OUTPUT = originalOutputPath;
-			}
-			await rm(tempDir, { recursive: true, force: true });
-		}
+		const calls = await captureLifecycleHooks((handlers, context) => {
+			handlers.get("session_start")?.({}, context);
+			handlers.get("agent_start")?.({}, context);
+			handlers.get("agent_start")?.({}, context);
+		}, 3);
+		expect(calls[0]).not.toContain("--turn-id");
+		const turnIds = calls.slice(1).map((args) => args[args.indexOf("--turn-id") + 1]);
+		expect(turnIds).toEqual([expect.any(String), expect.any(String)]);
+		expect(turnIds[0]).not.toBe(turnIds[1]);
 	});
 
-	it("awaits permission request and resolution hooks in order", () => {
-		const source = buildPiLifecycleExtensionSource();
-		const block = listenerBlock(source, "tool_call");
+	it.each([false, true])(
+		"reports aborted=%s settlement without promoting interrupted output to completion",
+		async (aborted) => {
+			const calls = await captureLifecycleHooks((handlers, context) => {
+				handlers.get("agent_start")?.({}, context);
+				handlers.get("agent_end")?.(
+					{ messages: [{ role: "assistant", content: [{ type: "text", text: "Partial response" }] }] },
+					context,
+				);
+				handlers.get("agent_settled")?.({ aborted }, context);
+			}, 3);
+			const start = calls[0];
+			const settled = calls[2];
+			expect(settled).toContain("ingest");
+			expect(settled[settled.indexOf("--event") + 1]).toBe("to_review");
+			expect(settled[settled.indexOf("--hook-event-name") + 1]).toBe(aborted ? "Interrupt" : "AgentSettled");
+			expect(settled[settled.indexOf("--turn-id") + 1]).toBe(start[start.indexOf("--turn-id") + 1]);
+			expect(settled[settled.indexOf("--session-id") + 1]).toBe("pi-session-1");
+			if (aborted) {
+				expect(settled).not.toContain("--final-message");
+				expect(settled).not.toContain("Partial response");
+			} else {
+				expect(settled[settled.indexOf("--final-message") + 1]).toBe("Partial response");
+			}
+		},
+	);
 
-		expect(block).toMatch(/await enqueueDurableHook\(\s*"to_review"/);
-		expect(block).toMatch(/hookEventName: "PermissionRequest"/);
-		expect(block).toMatch(/await enqueueDurableHook\(\s*"to_in_progress"/);
-		expect(block).toMatch(/hookEventName: "PermissionResolved"/);
-		expect(block).toMatch(/hookEventName: "PermissionDenied"/);
+	it.each([false, true])("distinguishes final errors from recovered retries (recovered=%s)", async (recovered) => {
+		const calls = await captureLifecycleHooks(
+			(handlers, context) => {
+				handlers.get("agent_start")?.({}, context);
+				handlers.get("agent_end")?.(
+					{
+						messages: [
+							{
+								role: "assistant",
+								content: [{ type: "text", text: "Earlier reasoning" }],
+								stopReason: "toolUse",
+							},
+							{
+								role: "assistant",
+								content: [],
+								stopReason: "error",
+								errorMessage: "Synthetic provider failure",
+							},
+						],
+					},
+					context,
+				);
+				if (recovered) {
+					handlers.get("agent_start")?.({}, context);
+					handlers.get("agent_end")?.(
+						{
+							messages: [
+								{
+									role: "assistant",
+									content: [{ type: "text", text: "Recovered result" }],
+									stopReason: "stop",
+								},
+							],
+						},
+						context,
+					);
+				}
+				handlers.get("agent_settled")?.({ aborted: false }, context);
+			},
+			recovered ? 5 : 3,
+		);
+		const settled = calls.at(-1);
+		expect(settled).toBeDefined();
+		if (!settled) throw new Error("Missing settlement hook");
+		expect(settled[settled.indexOf("--hook-event-name") + 1]).toBe(recovered ? "AgentSettled" : "StopFailure");
+		if (recovered) expect(settled[settled.indexOf("--final-message") + 1]).toBe("Recovered result");
+		else expect(settled).not.toContain("--final-message");
 	});
 
 	it("does not emit hook processes for high-volume tool execution updates", () => {
@@ -250,126 +286,14 @@ describe("Pi lifecycle extension source", () => {
 		expect(endBlock).toContain("forgetToolInput(event);");
 	});
 
-	it("bypasses approval only for read-only tools verified as Pi built-ins", () => {
-		const source = buildPiLifecycleExtensionSource();
-		const block = listenerBlock(source, "tool_call");
-
-		expect(source).toContain('new Set(["read", "grep", "find", "ls"])');
-		expect(source).toContain("function isVerifiedBuiltInReadOnlyTool");
-		expect(source).toContain('tool.sourceInfo?.source === "builtin"');
-		expect(block).toContain("!areToolApprovalsEnabled() || isVerifiedBuiltInReadOnlyTool(pi, event.toolName)");
-		expect(block).toContain('return { block: true, reason: "Blocked by user" };');
-	});
-
-	it("prompts for an extension that overrides a read-only built-in name", async () => {
+	it("leaves tool execution and project trust entirely to Pi", async () => {
 		const initialize = await loadPiLifecycleExtension();
 		const handlers = new Map<string, PiEventHandlerHarness>();
-		let toolSource = "builtin";
-		const pi: PiExtensionApiHarness = {
-			on: (eventName, handler) => handlers.set(eventName, handler),
-			getAllTools: () => [{ name: "read", sourceInfo: { source: toolSource } }],
-		};
-		initialize(pi);
-		const toolCall = handlers.get("tool_call");
-		expect(toolCall).toBeDefined();
-
-		const confirm = vi.fn(async () => false);
-		const context: PiExtensionContextHarness = {
-			hasUI: true,
-			ui: { confirm, notify: vi.fn() },
-			sessionManager: { getSessionId: () => "pi-session-1" },
-		};
-		const originalHookCommand = process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-		delete process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-		try {
-			const builtInResult = await toolCall?.(
-				{ toolName: "read", toolCallId: "built-in-read", input: { path: "README.md" } },
-				context,
-			);
-			expect(builtInResult).toBeUndefined();
-			expect(confirm).not.toHaveBeenCalled();
-
-			toolSource = "local";
-			const overriddenResult = await toolCall?.(
-				{ toolName: "read", toolCallId: "overridden-read", input: { path: "README.md" } },
-				context,
-			);
-			expect(overriddenResult).toEqual({ block: true, reason: "Blocked by user" });
-			expect(confirm).toHaveBeenCalledOnce();
-		} finally {
-			if (originalHookCommand === undefined) {
-				delete process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-			} else {
-				process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = originalHookCommand;
-			}
-		}
-	});
-
-	it("allows every tool without prompting when launch-scoped approvals are disabled", async () => {
-		const initialize = await loadPiLifecycleExtension();
-		const handlers = new Map<string, PiEventHandlerHarness>();
-		initialize({
-			on: (eventName, handler) => handlers.set(eventName, handler),
-			getAllTools: () => [],
-		});
-		const toolCall = handlers.get("tool_call");
-		expect(toolCall).toBeDefined();
-
-		const confirm = vi.fn(async () => false);
-		const context: PiExtensionContextHarness = {
-			hasUI: true,
-			ui: { confirm, notify: vi.fn() },
-			sessionManager: { getSessionId: () => "pi-session-1" },
-		};
-		const originalToolApprovals = process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV];
-		process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV] = "disabled";
-		try {
-			const result = await toolCall?.(
-				{ toolName: "bash", toolCallId: "bash-1", input: { command: "node --version" } },
-				context,
-			);
-			expect(result).toBeUndefined();
-			expect(confirm).not.toHaveBeenCalled();
-		} finally {
-			if (originalToolApprovals === undefined) {
-				delete process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV];
-			} else {
-				process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV] = originalToolApprovals;
-			}
-		}
-	});
-
-	it("still requires project trust when tool approvals are disabled", async () => {
-		const initialize = await loadPiLifecycleExtension();
-		const handlers = new Map<string, PiEventHandlerHarness>();
-		initialize({
-			on: (eventName, handler) => handlers.set(eventName, handler),
-			getAllTools: () => [],
-		});
-		const projectTrust = handlers.get("project_trust");
-		expect(projectTrust).toBeDefined();
-
-		const confirm = vi.fn(async () => true);
-		const context: PiExtensionContextHarness = {
-			hasUI: true,
-			ui: { confirm, notify: vi.fn() },
-			sessionManager: { getSessionId: () => "pi-session-1" },
-		};
-		const originalToolApprovals = process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV];
-		process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV] = "disabled";
-		try {
-			const result = await projectTrust?.({ cwd: "/tmp/project" }, context);
-			expect(result).toEqual({ trusted: "yes", remember: false });
-			expect(confirm).toHaveBeenCalledWith(
-				"Pi Permission",
-				expect.stringContaining("Trust this project for this Pi session?"),
-			);
-		} finally {
-			if (originalToolApprovals === undefined) {
-				delete process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV];
-			} else {
-				process.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV] = originalToolApprovals;
-			}
-		}
+		initialize({ on: (eventName, handler) => handlers.set(eventName, handler) });
+		expect(handlers.has("tool_call")).toBe(false);
+		expect(handlers.has("project_trust")).toBe(false);
+		expect(handlers.has("input")).toBe(false);
+		expect(handlers.has("tool_execution_start")).toBe(true);
+		expect(handlers.has("agent_settled")).toBe(true);
 	});
 });

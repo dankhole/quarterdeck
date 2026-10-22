@@ -12,7 +12,7 @@ export interface FakeAgentInvocation {
 const FAKE_AGENT_VERSION_OUTPUT: Record<FakeAgentProvider, string> = {
 	claude: "2.1.198 (Claude Code)",
 	codex: "codex-cli 0.157.0",
-	pi: "0.84.3",
+	pi: "1.4.0",
 };
 
 export function parseFakeAgentProvider(value: string | undefined): FakeAgentProvider {

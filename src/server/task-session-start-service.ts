@@ -360,7 +360,6 @@ export async function prepareTaskSessionStart(
 		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		codexOptions: resolved.agentId === "codex" ? existingCard?.codexOptions : undefined,
-		piToolApprovalsEnabled: scopedRuntimeConfig.piToolApprovalsEnabled,
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		startupRecoveryToken: options.startupRecoveryToken,

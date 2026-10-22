@@ -100,7 +100,7 @@ describe("runtime state stream", () => {
 		expect(invalidatePreload).not.toHaveBeenCalled();
 	});
 
-	it.each([undefined, QUARTERDECK_RUNTIME_PROTOCOL_VERSION + 1])(
+	it.each([undefined, QUARTERDECK_RUNTIME_PROTOCOL_VERSION - 1, QUARTERDECK_RUNTIME_PROTOCOL_VERSION + 1])(
 		"blocks protocol %s before accepting or applying state even when build IDs match",
 		async (runtimeProtocolVersion) => {
 			// Simulate the document after its one automatic reload.

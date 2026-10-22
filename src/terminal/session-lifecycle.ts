@@ -135,7 +135,6 @@ export async function spawnTaskSession(
 			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			codexOptions: request.codexOptions,
-			piToolApprovalsEnabled: request.piToolApprovalsEnabled,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 

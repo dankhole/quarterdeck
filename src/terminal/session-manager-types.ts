@@ -120,7 +120,6 @@ export interface StartTaskSessionRequest {
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
-	piToolApprovalsEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
 	/** Server-derived task meaning to preserve while replacing only the provider process. */

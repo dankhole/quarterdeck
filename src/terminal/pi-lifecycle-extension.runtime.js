@@ -2,14 +2,13 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 const HOOK_COMMAND_ENV = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
-const TOOL_APPROVALS_ENV = "__QUARTERDECK_PI_TOOL_APPROVALS_ENV__";
 const MAX_TEXT_LENGTH = 600;
 const DURABLE_HOOK_TIMEOUT_MS = 8_000;
-const READ_ONLY_TOOL_NAMES = new Set(["read", "grep", "find", "ls"]);
 const toolInputsById = new Map();
 let durableHookQueue = Promise.resolve();
 let activeRunId = null;
 let lastAssistantSummary = null;
+let lastAssistantFailed = false;
 
 function normalizeText(value) {
 	if (typeof value !== "string") {
@@ -239,7 +238,7 @@ function textFromContent(content) {
 		.join("");
 }
 
-function lastAssistantText(messages) {
+function lastAssistantMessage(messages) {
 	if (!Array.isArray(messages)) {
 		return null;
 	}
@@ -248,74 +247,16 @@ function lastAssistantText(messages) {
 		if (message?.role !== "assistant") {
 			continue;
 		}
-		const text = truncate(textFromContent(message.content));
-		if (text) {
-			return text;
-		}
+		return message;
 	}
 	return null;
 }
 
-async function confirmPermission(ctx, question) {
-	if (!ctx.hasUI) {
-		return false;
-	}
-	try {
-		return await ctx.ui.confirm("Pi Permission", question);
-	} catch {
-		return false;
-	}
-}
-
-function isVerifiedBuiltInReadOnlyTool(pi, toolName) {
-	if (!READ_ONLY_TOOL_NAMES.has(toolName)) {
-		return false;
-	}
-	try {
-		return pi.getAllTools().some((tool) => tool.name === toolName && tool.sourceInfo?.source === "builtin");
-	} catch {
-		return false;
-	}
-}
-
-function areToolApprovalsEnabled() {
-	return process.env[TOOL_APPROVALS_ENV] !== "disabled";
-}
-
 export default function quarterdeckLifecycle(pi) {
-	pi.on("project_trust", async (event, ctx) => {
-		const interactionId = randomUUID();
-		await enqueueDurableHook(
-			"to_review",
-			{
-				hookEventName: "ProjectTrustRequest",
-				notificationType: "permission_prompt",
-				activityText: "Waiting for project trust",
-				toolName: "project_trust",
-				toolUseId: interactionId,
-			},
-			ctx,
-		);
-		const confirmed = await confirmPermission(
-			ctx,
-			"Trust this project for this Pi session? Project resources and extensions may execute code.\n\n" + event.cwd,
-		);
-		await enqueueDurableHook(
-			confirmed ? "activity" : "to_review",
-			{
-				hookEventName: confirmed ? "ProjectTrustResolved" : "ProjectTrustDenied",
-				activityText: confirmed ? "Project trusted for this session" : "Project trust denied",
-				toolName: "project_trust",
-				toolUseId: interactionId,
-			},
-			ctx,
-		);
-		return { trusted: confirmed ? "yes" : "no", remember: false };
-	});
-
 	pi.on("session_start", (_event, ctx) => {
 		activeRunId = null;
 		lastAssistantSummary = null;
+		lastAssistantFailed = false;
 		void enqueueDurableHook(
 			"activity",
 			{
@@ -326,20 +267,10 @@ export default function quarterdeckLifecycle(pi) {
 		);
 	});
 
-	pi.on("input", (_event, ctx) => {
-		void enqueueDurableHook(
-			"to_in_progress",
-			{
-				hookEventName: "Input",
-				activityText: "Pi received input",
-			},
-			ctx,
-		);
-	});
-
 	pi.on("agent_start", (_event, ctx) => {
 		activeRunId = randomUUID();
 		lastAssistantSummary = null;
+		lastAssistantFailed = false;
 		void enqueueDurableHook(
 			"to_in_progress",
 			{
@@ -351,7 +282,11 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("agent_end", (event, ctx) => {
-		lastAssistantSummary = lastAssistantText(event.messages) ?? lastAssistantSummary;
+		const assistantMessage = lastAssistantMessage(event.messages);
+		lastAssistantFailed = assistantMessage?.stopReason === "error";
+		lastAssistantSummary = lastAssistantFailed
+			? null
+			: truncate(textFromContent(assistantMessage?.content)) ?? lastAssistantSummary;
 		void enqueueDurableHook(
 			"activity",
 			{
@@ -362,14 +297,20 @@ export default function quarterdeckLifecycle(pi) {
 		);
 	});
 
-	pi.on("agent_settled", (_event, ctx) => {
+	pi.on("agent_settled", (event, ctx) => {
 		const settledRunId = activeRunId;
-		const finalMessage = lastAssistantSummary;
+		const aborted = event.aborted === true;
+		const failed = lastAssistantFailed;
+		const finalMessage = aborted || failed ? null : lastAssistantSummary;
 		void enqueueDurableHook(
 			"to_review",
 			{
-				hookEventName: "AgentSettled",
-				activityText: finalMessage ? "Final: " + finalMessage : "Waiting for review",
+				hookEventName: aborted ? "Interrupt" : failed ? "StopFailure" : "AgentSettled",
+				activityText: aborted
+					? "Pi interrupted"
+					: failed
+						? "Pi failed"
+						: finalMessage ? "Final: " + finalMessage : "Waiting for review",
 				finalMessage,
 				turnId: settledRunId,
 			},
@@ -378,6 +319,7 @@ export default function quarterdeckLifecycle(pi) {
 			if (activeRunId === settledRunId) {
 				activeRunId = null;
 				lastAssistantSummary = null;
+				lastAssistantFailed = false;
 			}
 		});
 	});
@@ -427,57 +369,5 @@ export default function quarterdeckLifecycle(pi) {
 			ctx,
 		);
 		forgetToolInput(event);
-	});
-
-	pi.on("tool_call", async (event, ctx) => {
-		if (!areToolApprovalsEnabled() || isVerifiedBuiltInReadOnlyTool(pi, event.toolName)) {
-			return;
-		}
-
-		const toolInputSummary = summarizeToolInput(event.toolName, event.input);
-		const toolUseId = getToolCallId(event);
-		await enqueueDurableHook(
-			"to_review",
-			{
-				hookEventName: "PermissionRequest",
-				notificationType: "permission_prompt",
-				activityText: "Waiting for approval",
-				toolName: event.toolName,
-				toolInputSummary,
-				toolUseId,
-			},
-			ctx,
-		);
-
-		const question = toolInputSummary
-			? "Allow " + event.toolName + "?\n\n" + toolInputSummary
-			: "Allow " + event.toolName + "?";
-		const confirmed = await confirmPermission(ctx, question);
-		if (!confirmed) {
-			await enqueueDurableHook(
-				"to_in_progress",
-				{
-					hookEventName: "PermissionDenied",
-					activityText: "Denied " + event.toolName,
-					toolName: event.toolName,
-					toolInputSummary,
-					toolUseId,
-				},
-				ctx,
-			);
-			return { block: true, reason: "Blocked by user" };
-		}
-
-		await enqueueDurableHook(
-			"to_in_progress",
-			{
-				hookEventName: "PermissionResolved",
-				activityText: "Approved " + event.toolName,
-				toolName: event.toolName,
-				toolInputSummary,
-				toolUseId,
-			},
-			ctx,
-		);
 	});
 }

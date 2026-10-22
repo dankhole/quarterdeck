@@ -22,7 +22,6 @@ describe("resolveInitialValues", () => {
 		expect(values.claudeLaunchPermissionMode).toBe("inherit");
 		expect(values.statuslineEnabled).toBe(false);
 		expect(values.codexApprovalsReviewer).toBe("inherit");
-		expect(values.piToolApprovalsEnabled).toBe(true);
 		expect(values.codeNavigationEnabled).toBe(false);
 		expect(values.lspServers[0]?.command).toBe("typescript-language-server");
 	});

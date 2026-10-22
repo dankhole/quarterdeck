@@ -133,7 +133,7 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 					status: "completed",
 					durationMs: 1,
 					data: {
-						supportedVersion: "0.84.3",
+						supportedVersion: "1.4.0",
 						detectedVersion: "0.85.0",
 						installed: false,
 						reason: "unsupported_version",
@@ -175,7 +175,7 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 					status: "completed",
 					durationMs: 1,
 					data: {
-						supportedVersion: "0.84.3",
+						supportedVersion: "1.4.0",
 						installed: false,
 						reason: "missing",
 						extensionAvailable: false,

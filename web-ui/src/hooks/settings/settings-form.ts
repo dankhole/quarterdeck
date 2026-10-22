@@ -21,7 +21,6 @@ export interface SettingsFormValues {
 	claudeLaunchPermissionMode: RuntimeConfigResponse["claudeLaunchPermissionMode"];
 	statuslineEnabled: boolean;
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
-	piToolApprovalsEnabled: boolean;
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	codeNavigationEnabled: boolean;
@@ -64,7 +63,6 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		claudeLaunchPermissionMode: config?.claudeLaunchPermissionMode ?? CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,
-		piToolApprovalsEnabled: config?.piToolApprovalsEnabled ?? CONFIG_DEFAULTS.piToolApprovalsEnabled,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		codeNavigationEnabled: config?.codeNavigationEnabled ?? CONFIG_DEFAULTS.codeNavigationEnabled,

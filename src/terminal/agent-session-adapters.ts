@@ -19,11 +19,7 @@ import { createClaudeRendererEnvironment } from "./claude-renderer-policy";
 import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
-import {
-	buildPiLifecycleExtensionSource,
-	QUARTERDECK_PI_HOOK_COMMAND_ENV,
-	QUARTERDECK_PI_TOOL_APPROVALS_ENV,
-} from "./pi-lifecycle-extension";
+import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
@@ -47,7 +43,6 @@ export interface AgentAdapterLaunchInput {
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	codexOptions?: RuntimeCodexOptions;
-	piToolApprovalsEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 }
 
@@ -493,9 +488,21 @@ const codexAdapter: AgentSessionAdapter = {
 const piAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
+		const separatorIndex = args.indexOf("--");
+		const positionalArgs = separatorIndex < 0 ? [] : args.splice(separatorIndex + 1);
+		if (separatorIndex >= 0) args.pop();
 		if (input.resumeConversation) {
 			const resumeSessionId = input.resumeSessionId?.trim();
-			if (resumeSessionId && !hasCliOption(args, "--session")) {
+			if (resumeSessionId) {
+				// Exact recovery identity takes precedence over saved custom CLI arguments.
+				removeCliOptionWithValue(args, "--session");
+				removeCliOption(args, "--continue");
+				removeCliOption(args, "-c");
+				removeCliOption(args, "--resume");
+				removeCliOption(args, "-r");
+				removeCliOption(args, "--no-session");
+				removeCliOptionWithValue(args, "--session-id");
+				removeCliOptionWithValue(args, "--fork");
 				args.push("--session", resumeSessionId);
 			} else if (
 				!resumeSessionId &&
@@ -523,11 +530,11 @@ const piAdapter: AgentSessionAdapter = {
 				}),
 				{
 					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckCommandParts(["hooks", "notify"])),
-					[QUARTERDECK_PI_TOOL_APPROVALS_ENV]: input.piToolApprovalsEnabled === false ? "disabled" : "enabled",
 				},
 			);
 		}
 
+		if (separatorIndex >= 0 || input.prompt.trim()) args.push("--", ...positionalArgs);
 		const launch = withPrompt(args, input.prompt, "append");
 		log.debug("pi adapter prepared launch", {
 			taskId: input.taskId,

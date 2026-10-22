@@ -97,7 +97,7 @@ const SAFE_DEFAULTS = [
 		icon: LockKeyhole,
 		title: "Provider-native permissions",
 		description:
-			"Claude and Codex inherit their configured permission policy. Pi keeps tool approvals on because it has no Quarterdeck sandbox.",
+			"Claude and Codex inherit their configured permission policy. Pi uses its native execution behavior without a Quarterdeck sandbox.",
 	},
 	{
 		icon: Sparkles,

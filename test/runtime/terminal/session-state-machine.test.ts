@@ -24,9 +24,9 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 }
 
 describe("reduceSessionTransition", () => {
-	describe("native Codex Interrupt", () => {
+	describe.each(["codex", "pi"] as const)("native %s Interrupt", (provider) => {
 		const interrupt = createTestProviderHookEvent("to_review", {
-			source: "codex",
+			source: provider,
 			hookEventName: "Interrupt",
 			occurredAt: 200,
 			metadata: { sessionId: "session-1", turnId: "turn-1" },
@@ -37,11 +37,11 @@ describe("reduceSessionTransition", () => {
 			(sessionEvidence) => {
 				for (const status of ["waiting", "response_submitted", "resolution_unknown"] as const) {
 					const summary = createSummary({
-						agentId: "codex",
+						agentId: provider,
 						state: "awaiting_review",
 						reviewReason: "hook",
 						outstandingInteraction: createTestTaskOutstandingInteraction({
-							provider: "codex",
+							provider,
 							kind: "permission",
 							status,
 							turnId: "turn-1",
@@ -69,7 +69,7 @@ describe("reduceSessionTransition", () => {
 		);
 
 		it("ends Running without requiring an outstanding interaction", () => {
-			const result = reduceSessionTransition(createSummary({ agentId: "codex" }), interrupt);
+			const result = reduceSessionTransition(createSummary({ agentId: provider }), interrupt);
 			expect(result.patch).toMatchObject({
 				state: "awaiting_review",
 				reviewReason: "interrupted",
@@ -84,7 +84,7 @@ describe("reduceSessionTransition", () => {
 			{ providerAgentId: "child" },
 			{ source: "claude" },
 		])("rejects malformed or non-foreground interruption %j", (metadata) => {
-			const result = reduceSessionTransition(createSummary({ agentId: "codex", resumeSessionId: "session-1" }), {
+			const result = reduceSessionTransition(createSummary({ agentId: provider, resumeSessionId: "session-1" }), {
 				...interrupt,
 				metadata: { ...interrupt.metadata, ...metadata },
 			});
@@ -93,19 +93,19 @@ describe("reduceSessionTransition", () => {
 
 		it("preserves a newer or background interaction and rejects unconfirmed evidence", () => {
 			for (const interaction of [
-				createTestTaskOutstandingInteraction({ provider: "codex", openedAt: 201, updatedAt: 201 }),
-				createTestTaskOutstandingInteraction({ provider: "codex", providerAgentId: "child" }),
+				createTestTaskOutstandingInteraction({ provider, openedAt: 201, updatedAt: 201 }),
+				createTestTaskOutstandingInteraction({ provider, providerAgentId: "child" }),
 				createTestTaskOutstandingInteraction({ provider: "claude" }),
 			]) {
 				expect(
 					reduceSessionTransition(
-						createSummary({ agentId: "codex", outstandingInteraction: interaction }),
+						createSummary({ agentId: provider, outstandingInteraction: interaction }),
 						interrupt,
 					).changed,
 				).toBe(false);
 			}
 			expect(
-				reduceSessionTransition(createSummary({ agentId: "codex" }), {
+				reduceSessionTransition(createSummary({ agentId: provider }), {
 					...interrupt,
 					sessionEvidence: "unconfirmed",
 				}).changed,
@@ -333,7 +333,6 @@ describe("reduceSessionTransition", () => {
 		it.each([
 			["codex", "UserPromptSubmit", { turnId: "turn-1" }],
 			["claude", "UserPromptSubmit", { promptId: "prompt-1" }],
-			["pi", "Input", {}],
 			["pi", "AgentStart", { turnId: "run-1" }],
 		] as const)("uses the initial %s %s hook to enter Running", (source, hookEventName, metadata) => {
 			const summary = createSummary({
@@ -364,6 +363,25 @@ describe("reduceSessionTransition", () => {
 			});
 			expect(result.patch.nativeWorkEvidence).toMatchObject(metadata);
 		});
+
+		it.each(["running", "awaiting_review"] as const)(
+			"does not treat legacy Pi Input hooks as work from %s",
+			(state) => {
+				const summary = createSummary({
+					agentId: "pi",
+					state,
+					reviewReason: state === "running" ? null : "unconfirmed",
+				});
+				const result = reduceSessionTransition(
+					summary,
+					createTestProviderHookEvent("to_in_progress", {
+						source: "pi",
+						hookEventName: "Input",
+					}),
+				);
+				expect(result).toMatchObject({ changed: false, patch: {}, hookMetadataMode: "identity_only" });
+			},
+		);
 
 		it("lets new running evidence classify a semantically uncertain legacy recovery", () => {
 			const summary = createSummary({

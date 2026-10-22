@@ -111,7 +111,6 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	claudeLaunchPermissionMode: CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	codexApprovalsReviewer: CONFIG_DEFAULTS.codexApprovalsReviewer,
-	piToolApprovalsEnabled: CONFIG_DEFAULTS.piToolApprovalsEnabled,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,

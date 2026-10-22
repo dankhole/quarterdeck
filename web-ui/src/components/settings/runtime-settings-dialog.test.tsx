@@ -339,21 +339,14 @@ describe("RuntimeSettingsDialog", () => {
 		expect(document.body.textContent).toContain("without confirmation prompts or Codex sandboxing");
 
 		const piSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
-			button.textContent?.includes("Tool approvals on"),
+			button.textContent?.includes("Native Pi execution"),
 		);
 		expect(piSectionButton).toBeInstanceOf(HTMLButtonElement);
 		await act(async () => {
 			piSectionButton?.click();
 		});
-		const piToolApprovalsSwitch = findSwitchByLabel(document.body, "Require tool approvals");
-		expect(piToolApprovalsSwitch).toBeInstanceOf(HTMLButtonElement);
-		expect(piToolApprovalsSwitch?.getAttribute("data-state")).toBe("checked");
-		expect(document.body.textContent).toContain("Project trust is still confirmed once per launch");
-		await act(async () => {
-			piToolApprovalsSwitch?.click();
-		});
-		expect(piToolApprovalsSwitch?.getAttribute("data-state")).toBe("unchecked");
-		expect(document.body.textContent).toContain("Tool approvals off");
+		expect(findSwitchByLabel(document.body, "Require tool approvals")).toBeNull();
+		expect(document.body.textContent).toContain("Pi runs with its native tool and extension behavior");
 
 		const saveButton = findButtonByText(document.body, "Save");
 		await act(async () => {
@@ -364,9 +357,9 @@ describe("RuntimeSettingsDialog", () => {
 				claudeLaunchPermissionMode: "bypassPermissions",
 				statuslineEnabled: true,
 				codexApprovalsReviewer: "dangerously_bypass",
-				piToolApprovalsEnabled: false,
 			}),
 		);
+		expect(saveMock.mock.calls[0]?.[0]).not.toHaveProperty("piToolApprovalsEnabled");
 	});
 
 	it("shows optional helper setup guidance when LLM is not configured", async () => {

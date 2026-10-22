@@ -1277,7 +1277,7 @@ describe("Codex hook event ordering", () => {
 });
 
 describe("Pi hook event ordering", () => {
-	it("uses agent_settled as the run completion boundary", () => {
+	it.each(["AgentSettled", "Interrupt", "StopFailure"])("uses %s as the run settlement boundary", (hookEventName) => {
 		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
 		acceptAndCommit(
 			state,
@@ -1308,7 +1308,7 @@ describe("Pi hook event ordering", () => {
 			hook({
 				source: "pi",
 				event: "to_review",
-				hookEventName: "AgentSettled",
+				hookEventName,
 				turnId: "run-1",
 				deliveryIndex: 102,
 				occurredAt: 300,
@@ -1329,6 +1329,41 @@ describe("Pi hook event ordering", () => {
 				}),
 			),
 		).toEqual({ accepted: false, reason: "completed_turn" });
+	});
+
+	it("restores an interrupted run boundary and permits only a later run", () => {
+		const inputs = [
+			hook({
+				source: "pi",
+				event: "to_in_progress",
+				hookEventName: "AgentStart",
+				turnId: "run-1",
+				deliveryIndex: 100,
+			}),
+			hook({ source: "pi", event: "to_review", hookEventName: "Interrupt", turnId: "run-1", deliveryIndex: 101 }),
+		];
+		const state = restoreCommittedOrder(inputs);
+		expect(state.activePiRunCompleted).toBe(true);
+		for (const hookEventName of ["AgentStart", "ToolExecutionStart", "AgentSettled"]) {
+			expect(
+				evaluateHookEventOrder(
+					state,
+					hook({ source: "pi", event: "activity", hookEventName, turnId: "run-1", deliveryIndex: 102 }),
+				),
+			).toEqual({ accepted: false, reason: "completed_turn" });
+		}
+		acceptAndCommit(
+			state,
+			hook({
+				source: "pi",
+				event: "to_in_progress",
+				hookEventName: "AgentStart",
+				turnId: "run-2",
+				deliveryIndex: 103,
+			}),
+		);
+		expect(state.activePiRunId).toBe("run-2");
+		expect(state.activePiRunCompleted).toBe(false);
 	});
 
 	it("rejects stale Pi tool and run identities", () => {

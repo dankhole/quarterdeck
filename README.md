@@ -14,7 +14,7 @@ You need **Node.js 22.22.2+**, **Git**, and at least one supported agent CLI ins
 | --- | --- |
 | Claude Code | 2.1.198+ |
 | OpenAI Codex | 0.157.0+ with native hooks and auto-review support |
-| Pi | Exactly 0.84.3; currently validated on macOS |
+| Pi | Exactly 1.4.0; currently validated on macOS |
 
 See [agent setup](docs/usage.md#set-up-an-agent) for install and sign-in instructions. Quarterdeck does not require its own account.
 

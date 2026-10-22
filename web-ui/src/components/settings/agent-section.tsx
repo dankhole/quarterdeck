@@ -73,8 +73,8 @@ export function HarnessSection({
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
 	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
-	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "0.84.3";
-	const piSettingsSummary = `Exactly ${piSupportedVersion} · ${fields.piToolApprovalsEnabled ? "Tool approvals on" : "Tool approvals off"}`;
+	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "1.4.0";
+	const piSettingsSummary = `Exactly ${piSupportedVersion} · Native Pi execution`;
 
 	return (
 		<>
@@ -230,16 +230,9 @@ export function HarnessSection({
 							Quarterdeck supports exactly Pi {piSupportedVersion}. Newer Pi releases remain unavailable until
 							the lifecycle and resume contract is validated and Quarterdeck moves this version deliberately.
 						</p>
-						<SettingsSwitch
-							checked={fields.piToolApprovalsEnabled}
-							onCheckedChange={(value) => setField("piToolApprovalsEnabled", value)}
-							disabled={disabled}
-							label="Require tool approvals"
-							description="When on, shell, PowerShell, write/edit, and unknown custom tools pause for approval. Pi has no Quarterdeck sandbox; turning this off allows those tools without confirmation in new or restarted sessions."
-						/>
 						<p className="m-0">
-							Project trust is still confirmed once per launch because project resources and extensions may
-							execute code before ordinary tool calls begin.
+							Pi runs with its native tool and extension behavior. Quarterdeck adds no approval prompts or
+							sandbox.
 						</p>
 					</div>
 				</RadixCollapsible.Content>

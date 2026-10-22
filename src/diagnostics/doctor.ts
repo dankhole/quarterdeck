@@ -248,7 +248,7 @@ export function evaluateDiagnosticSnapshot(
 						"PI_LIFECYCLE_EXTENSION_MISSING",
 						"error",
 						"The managed Pi lifecycle extension is unavailable",
-						"Quarterdeck cannot safely author Pi task state or approval interactions without its launch-scoped extension asset. Reinstall or rebuild Quarterdeck before starting Pi tasks.",
+						"Quarterdeck cannot safely author Pi task state without its launch-scoped extension asset. Reinstall or rebuild Quarterdeck before starting Pi tasks.",
 						{},
 						[],
 					),

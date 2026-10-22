@@ -67,7 +67,7 @@ function mockSuccessfulAgentProbe(): void {
 			}
 			callback(
 				null,
-				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe") ? "0.84.3\n" : "0.157.0\n",
+				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe") ? "1.4.0\n" : "0.157.0\n",
 				"",
 			);
 			return {} as ChildProcess;
@@ -624,8 +624,8 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(pi?.installed).toBe(false);
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("exactly 0.84.3");
-		expect(pi?.statusMessage).toContain("@earendil-works/pi-coding-agent@0.84.3");
+		expect(pi?.statusMessage).toContain("exactly 1.4.0");
+		expect(pi?.statusMessage).toContain("@earendil-works/pi-coding-agent@1.4.0");
 	});
 
 	it("rejects an untested newer Pi release", async () => {
@@ -633,7 +633,7 @@ describe("agent-registry", () => {
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "0.85.0\n", "");
+				callback(null, "1.4.1\n", "");
 				return {} as ChildProcess;
 			}
 			callback(null, "", "");
@@ -646,8 +646,8 @@ describe("agent-registry", () => {
 
 		expect(resolved).toBeNull();
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("Detected Pi 0.85.0");
-		expect(pi?.statusMessage).toContain("exactly 0.84.3");
+		expect(pi?.statusMessage).toContain("Detected Pi 1.4.1");
+		expect(pi?.statusMessage).toContain("exactly 1.4.0");
 	});
 
 	it("disables Pi when its version cannot be determined", async () => {
@@ -669,7 +669,7 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(pi?.installed).toBe(false);
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("exactly 0.84.3");
+		expect(pi?.statusMessage).toContain("exactly 1.4.0");
 	});
 });
 

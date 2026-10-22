@@ -1,24 +1,24 @@
 # Pi Desktop Support Contract
 
-Status: maintained on macOS and pinned to exactly Pi `0.84.3`.
+Status: maintained on macOS and pinned to exactly Pi `1.4.0`.
 
 ## Product contract
 
 Pi is a first-class desktop task agent alongside Claude Code and Codex. Quarterdeck preserves Pi selection through task creation, create-and-start, authoritative hydration, project switching, restart, Trash/restore, and startup recovery.
 
-Quarterdeck deliberately accepts exactly Pi `0.84.3`, not an open-ended minimum version. Older or newer versions return a typed availability failure naming the detected and required versions. Advancing the supported version requires a fresh compatibility review and the validation gate below.
+Quarterdeck deliberately accepts exactly Pi `1.4.0`, not an open-ended minimum version. Older or newer versions return a typed availability failure naming the detected and required versions. Advancing the supported version requires a fresh compatibility review and the validation gate below.
 
 The native Pi TUI remains the execution owner. Pi does not participate in the internal structured-execution handoff currently supported for exact Claude Code and Codex sessions.
 
 ## Lifecycle and interaction ownership
 
-- The launch-scoped Pi lifecycle extension owns project trust, provider session/run/tool identity, lifecycle delivery, and managed-session replacement guards.
-- `input` and `agent_start` provide current-launch working evidence. `agent_end` is activity only; `agent_settled` is the completion boundary.
+- The launch-scoped Pi lifecycle extension owns provider session/run/tool identity, lifecycle delivery, and managed-session replacement guards.
+- `agent_start` provides current-launch working evidence. Input may be consumed by another extension without starting a run. `agent_end` is activity only; `agent_settled` is the completion boundary, with aborted runs reported as Interrupted and native assistant errors as Error.
 - Terminal output, browser input, spinner state, and conversation-file changes never establish Running or Review.
 - Pi hooks may affect a task only when project, task, provider session, launch session instance, run/tool identity, and delivery ordering match current runtime authority.
 - Managed sessions block Pi-local `/new`, `/resume`, and `/fork` operations that would replace provider identity outside Quarterdeck's lifecycle owner.
 
-Project trust always fails closed and is required once per launch. Tool approvals default on for shell, PowerShell, file write/edit, overridden, and unknown tools. Settings may disable per-tool confirmation for new or restarted sessions, but that opt-out never bypasses project trust, lifecycle delivery, exact-session recovery, or managed-session identity guards.
+Pi owns project trust, saved trust decisions, and tool execution. Quarterdeck does not register `project_trust` or `tool_call` handlers, add confirmation dialogs, or override native trust policy. The lifecycle extension only observes execution and protects the managed provider identity. Dialogs created by user extensions remain in Pi’s terminal and are not mapped to Quarterdeck input notifications. Native startup trust prompts remain visible in Pi’s terminal; they do not produce Quarterdeck approval notifications. Restart existing sessions to load the simplified extension.
 
 ## Recovery contract
 
@@ -30,7 +30,7 @@ Project trust always fails closed and is required once per launch. Tool approval
 
 ## Platform scope
 
-Pi `0.84.3` has completed deterministic Agent Lab coverage, native synthetic macOS validation, and an explicitly authorized no-tools authenticated macOS smoke. Linux and Windows Pi support remain outside the validated Pi platform claim until their native PTY, path, process-tree, trust, approval, and exact-resume cases pass.
+Pi support targets macOS. Version validation uses deterministic Agent Lab coverage and native synthetic checks; authenticated provider behavior is a separate gate requiring explicit authorization. Linux and Windows Pi support remain outside the validated Pi platform claim until their native PTY, path, process-tree, trust, and exact-resume cases pass.
 
 Quarterdeck's broader Windows support remains experimental under the separate [Windows acceptance ledger](./windows-compatibility-todo.md).
 
@@ -41,7 +41,7 @@ For every proposed Pi version change:
 1. Review upstream release notes plus extension, event, session, and trust changes.
 2. Update the exact supported version and committed fixtures together.
 3. Run lifecycle-extension contract tests and the deterministic Pi Agent Lab scenarios.
-4. Verify new task, input, settlement, approval accept/deny, stop, exact resume, restart, cold recovery, stale-event rejection, and ambiguous-failure behavior.
+4. Verify new task, consumed input, settlement, cancellation, native trust, stop, exact resume, restart, cold recovery, stale-event rejection, and ambiguous-failure behavior.
 5. Run a native synthetic smoke on every platform claimed for Pi.
 6. Use an authenticated provider only with explicit authorization when real provider behavior remains the unresolved risk.
 

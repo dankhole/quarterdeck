@@ -43,7 +43,7 @@ describe("TaskStartAgentOnboardingCarousel", () => {
 							status: "upgrade_required",
 							installed: false,
 							configured: false,
-							statusMessage: "Pi 0.84.4 is not supported; install exactly 0.84.3.",
+							statusMessage: "Pi 1.4.1 is not supported; install exactly 1.4.0.",
 						}),
 					]}
 					llmConfigured={false}
@@ -59,7 +59,7 @@ describe("TaskStartAgentOnboardingCarousel", () => {
 		expect(container.textContent).toContain("claude auth status");
 		expect(container.textContent).toContain("codex login status");
 		expect(container.textContent).toContain("printenv OPENAI_API_KEY | codex login --with-api-key");
-		expect(container.textContent).toContain("npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.84.3");
+		expect(container.textContent).toContain("npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.4.0");
 		expect(container.textContent).toContain("not provider credentials");
 		expect(container.textContent).not.toContain("Add onboarding media");
 	});

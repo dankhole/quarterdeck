@@ -669,7 +669,10 @@ export function commitHookEventOrder(
 		) {
 			state.completedPiToolUseIds.set(toolUseId, occurredAt);
 		}
-		if (hookEventName === "agentsettled" && runId === state.activePiRunId) {
+		if (
+			(hookEventName === "agentsettled" || hookEventName === "interrupt" || hookEventName === "stopfailure") &&
+			runId === state.activePiRunId
+		) {
 			state.activePiRunCompleted = true;
 		}
 		pruneTrackedIds(state.retiredPiRunIds, now);

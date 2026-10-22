@@ -87,6 +87,48 @@ function currentProviderHook(
 }
 
 describe("SessionTransitionController", () => {
+	it.each([
+		["Interrupt", "interrupted", true],
+		["StopFailure", "error", false],
+	] as const)("settles native Pi %s and admits the next native run", (hookEventName, reviewReason, interrupted) => {
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createSummary({ agentId: "pi", resumeSessionId: "pi-session-1" }) });
+		store.update("task-1", { pid: 1234, startupRecoveryRequired: false });
+		const entry = createEntry();
+		const active = entry.active;
+		if (!active) throw new Error("Missing active test process");
+		active.agentId = "pi";
+		const controller = new SessionTransitionController(store, new Map([["task-1", entry]]));
+		const result = controller.applyTransitionEvent(
+			entry,
+			createTestProviderHookEvent("to_review", {
+				source: "pi",
+				hookEventName,
+				occurredAt: 110,
+				metadata: { sessionInstanceId: "session-test", sessionId: "pi-session-1", turnId: "run-1" },
+			}),
+		);
+		expect(result?.summary).toMatchObject({
+			state: "awaiting_review",
+			reviewReason,
+			resumeSessionId: "pi-session-1",
+			nativeWorkEvidence: null,
+		});
+		expect(active.lastInterruptAt).toBe(interrupted ? 110 : null);
+		expect(entry.suppressAutoRestartOnExit).toBe(interrupted);
+		const resumed = controller.applyTransitionEvent(
+			entry,
+			createTestProviderHookEvent("to_in_progress", {
+				source: "pi",
+				hookEventName: "AgentStart",
+				occurredAt: 120,
+				metadata: { sessionInstanceId: "session-test", sessionId: "pi-session-1", turnId: "run-2" },
+			}),
+		);
+		expect(resumed?.summary.state).toBe("running");
+		expect(entry.suppressAutoRestartOnExit).toBe(false);
+	});
+
 	it("settles native interruption after local Ctrl+C and keeps its causal fence until newer work", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({ "task-1": createSummary({ state: "awaiting_review", reviewReason: "interrupted" }) });

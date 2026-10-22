@@ -600,14 +600,19 @@ function reduceProviderHook(
 	// logged by ingest, but must never author this Quarterdeck task's state or
 	// overwrite stronger identity-bearing hook activity.
 	if (isNonAuthoritativeClaudeNotification(event)) return unchanged("preserve");
+	// Pi input handlers run before input can be consumed by another extension or
+	// rejected by model/auth preflight. Only agent_start proves a run began.
+	if (providerFromMetadata(metadata) === "pi" && hookEventName === "input") return unchanged("identity_only");
 	if (hookEventName === "interrupt") {
-		// Codex Interrupt is a terminal main-thread turn observation, not a
-		// completion or a generic failure. Ingest fences provider/turn ordering;
+		// Codex Interrupt and Pi's aborted settlement are terminal foreground
+		// observations, not completion. Ingest fences provider/turn ordering;
 		// keep the reducer fail-closed for malformed or non-foreground payloads.
+		const provider = providerFromMetadata(metadata);
 		if (
 			event.event !== "to_review" ||
 			event.occurredAt === undefined ||
-			providerFromMetadata(metadata) !== "codex" ||
+			(provider !== "codex" && provider !== "pi") ||
+			(provider === "pi" && summary.agentId !== "pi") ||
 			!metadata?.turnId?.trim() ||
 			!metadata.sessionId?.trim() ||
 			metadata.providerAgentId?.trim() ||

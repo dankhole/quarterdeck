@@ -57,7 +57,6 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 				expect(state.claudeLaunchPermissionMode).toBe("inherit");
 				expect(state.statuslineEnabled).toBe(false);
 				expect(state.codexApprovalsReviewer).toBe("inherit");
-				expect(state.piToolApprovalsEnabled).toBe(true);
 			});
 		} finally {
 			cleanupHome();
@@ -87,28 +86,26 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 		}
 	});
 
-	it("persists the Pi tool approval policy globally", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-pi-tool-approvals-");
-
-		try {
-			await withTemporaryEnv({ home: tempHome }, async () => {
-				const updated = await updateRuntimeConfig(null, {
-					piToolApprovalsEnabled: false,
+	it.each([true, false])(
+		"ignores and removes the retired Pi tool approval setting (%s) on config save",
+		async (enabled) => {
+			const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-retired-pi-tool-approvals-");
+			try {
+				await withTemporaryEnv({ home: tempHome }, async () => {
+					const configDir = join(tempHome, ".quarterdeck");
+					mkdirSync(configDir, { recursive: true });
+					writeFileSync(join(configDir, "config.json"), JSON.stringify({ piToolApprovalsEnabled: enabled }));
+					expect(await loadGlobalRuntimeConfig()).not.toHaveProperty("piToolApprovalsEnabled");
+					await updateRuntimeConfig(null, { statuslineEnabled: true });
+					const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
+					expect(saved).not.toHaveProperty("piToolApprovalsEnabled");
+					expect(saved.statuslineEnabled).toBe(true);
 				});
-				expect(updated.piToolApprovalsEnabled).toBe(false);
-
-				const globalPayload = JSON.parse(readFileSync(join(tempHome, ".quarterdeck", "config.json"), "utf8")) as {
-					piToolApprovalsEnabled?: boolean;
-				};
-				expect(globalPayload.piToolApprovalsEnabled).toBe(false);
-
-				const reloaded = await loadGlobalRuntimeConfig();
-				expect(reloaded.piToolApprovalsEnabled).toBe(false);
-			});
-		} finally {
-			cleanupHome();
-		}
-	});
+			} finally {
+				cleanupHome();
+			}
+		},
+	);
 
 	it("persists the Codex launch permission mode globally", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-codex-auto-review-");

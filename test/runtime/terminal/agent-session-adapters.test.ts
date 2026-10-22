@@ -17,7 +17,6 @@ import { prepareAgentLaunch } from "../../../src/terminal";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
-	QUARTERDECK_PI_TOOL_APPROVALS_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -1071,7 +1070,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		expect(launch.binary).toBe("pi");
-		expect(launch.args).toEqual(["Try the Pi TUI"]);
+		expect(launch.args).toEqual(["--", "Try the Pi TUI"]);
 		expect(launch.env.PI_OFFLINE).toBeUndefined();
 		expect(launch.env.PI_CODING_AGENT_DIR).toBeUndefined();
 		expect(launch.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME).toBeUndefined();
@@ -1093,39 +1092,23 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		const extensionPath = join(tempHomePath, ".quarterdeck", "hooks", "pi", "quarterdeck-lifecycle.js");
-		expect(launch.args).toEqual(["--extension", extensionPath, "Try the Pi TUI"]);
+		expect(launch.args).toEqual(["--extension", extensionPath, "--", "Try the Pi TUI"]);
 		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-pi");
 		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
 		const hookCommand = JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "[]") as string[];
 		expect(hookCommand).toEqual(expect.arrayContaining(["hooks", "notify"]));
-		expect(launch.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV]).toBe("enabled");
 		const extensionSource = readFileSync(extensionPath, "utf8");
 		expect(extensionSource).toBe(buildPiLifecycleExtensionSource());
 		expect(extensionSource).toContain('pi.on("agent_end"');
 		expect(extensionSource).toContain('pi.on("agent_settled"');
-		expect(extensionSource).toContain('pi.on("input"');
-		expect(extensionSource).toContain('pi.on("tool_call"');
-		expect(extensionSource).toContain("PermissionRequest");
+		expect(extensionSource).toContain('pi.on("agent_start"');
+		expect(extensionSource).not.toContain('pi.on("tool_call"');
+		expect(extensionSource).not.toContain('pi.on("project_trust"');
+		expect(extensionSource).not.toContain("PermissionRequest");
 		expect(extensionSource).toContain("enqueueDurableHook");
 		expect(extensionSource).toContain("detached: !waitForExit");
 		expect(extensionSource).toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
 		expect(extensionSource).not.toContain("\\${");
-	});
-
-	it("disables Pi tool approvals through the launch environment", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-pi-unrestricted-tools",
-			agentId: "pi",
-			binary: "pi",
-			args: [],
-			cwd: "/tmp",
-			prompt: "Run the checks",
-			projectId: "project-1",
-			piToolApprovalsEnabled: false,
-		});
-
-		expect(launch.env[QUARTERDECK_PI_TOOL_APPROVALS_ENV]).toBe("disabled");
 	});
 
 	it("uses a stored Pi session id for resume when available", async () => {
@@ -1142,8 +1125,30 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
 		});
 
-		expect(launch.args).toEqual(["--session", "019d6fa0-db65-7f83-9531-35df54674d76", "Continue the task"]);
+		expect(launch.args).toEqual(["--session", "019d6fa0-db65-7f83-9531-35df54674d76", "--", "Continue the task"]);
 		expect(launch.args).not.toContain("--continue");
+	});
+
+	it.each([
+		["--session", "other-session", "--continue"],
+		["--session=other-session", "-c"],
+		["--resume"],
+		["-r"],
+		["--fork", "other-session", "--session-id", "new-session"],
+		["--no-session"],
+	])("preserves exact Pi resume identity over custom selectors %j", async (...args) => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--model", "sonnet", ...args],
+			cwd: "/tmp",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "stored-session",
+		});
+		expect(launch.args).toEqual(["--model", "sonnet", "--session", "stored-session"]);
 	});
 
 	it("falls back to Pi --continue when no stored session id is available", async () => {
@@ -1160,6 +1165,45 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		expect(launch.args).toEqual(["--continue"]);
+	});
+
+	it("inserts managed Pi options before a custom argument separator", async () => {
+		const tempHomePath = setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: ["--model", "sonnet", "--", "--literal"],
+			cwd: "/tmp",
+			prompt: "Continue",
+			projectId: "project-1",
+			resumeConversation: true,
+			resumeSessionId: "stored-session",
+		});
+		expect(launch.args).toEqual([
+			"--model",
+			"sonnet",
+			"--session",
+			"stored-session",
+			"--extension",
+			join(tempHomePath, ".quarterdeck", "hooks", "pi", "quarterdeck-lifecycle.js"),
+			"--",
+			"--literal",
+			"Continue",
+		]);
+	});
+
+	it("passes a dash-prefixed Pi task prompt as text", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt: "--version is failing; investigate",
+		});
+		expect(launch.args).toEqual(["--", "--version is failing; investigate"]);
 	});
 
 	it("preserves custom Pi args without forcing extension suppression", async () => {

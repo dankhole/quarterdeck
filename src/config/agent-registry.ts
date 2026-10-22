@@ -71,7 +71,7 @@ export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosti
 
 const MINIMUM_CODEX_VERSION = "0.157.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
-export const SUPPORTED_PI_VERSION = "0.84.3";
+export const SUPPORTED_PI_VERSION = "1.4.0";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_PROBE_TIMEOUT_MS = 3_000;
 const log = createTaggedLogger("agent-registry");
