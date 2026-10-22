@@ -140,6 +140,25 @@ export interface RunGitOptions {
 
 export const GIT_INSPECTION_OPTIONS = { timeoutClass: "inspection" } as const satisfies RunGitOptions;
 
+/** The Git command a user explicitly requested: commit, stash, merge, revert, cherry-pick, sync, etc. */
+export const GIT_USER_ACTION_OPTIONS = { timeoutClass: "userAction" } as const satisfies RunGitOptions;
+
+/**
+ * For a preflight (repo-root resolution, status/diff probe) nested inside a
+ * user action, not the action command itself. `inspection`'s `background`
+ * admission priority has no queue-wait bound, so under heavy load a
+ * foreground user action's own preflight could queue behind unlimited
+ * background work; `userAction`'s full 120s timeout is also far longer than
+ * a preflight should ever need. This runs at `foreground` priority (bounded
+ * by `GIT_FOREGROUND_QUEUE_MAX_WAIT_MS`) with a moderate 30s timeout, so a
+ * hung preflight surfaces "Git did not respond in time; retry." in ~30s
+ * instead of up to 120s, while still queuing ahead of background work.
+ */
+export const GIT_USER_ACTION_PREFLIGHT_OPTIONS = {
+	timeoutMs: 30_000,
+	priority: "foreground",
+} as const satisfies RunGitOptions;
+
 function normalizeProcessExitCode(code: unknown): number {
 	if (typeof code === "number" && Number.isFinite(code)) {
 		return code;

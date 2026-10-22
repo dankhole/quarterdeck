@@ -6,9 +6,14 @@ import type {
 	RuntimeStashPushResponse,
 	RuntimeStashShowResponse,
 } from "../core";
-import { GIT_INSPECTION_OPTIONS, resolveRepoRoot, runGit, validateGitPath } from "./git-utils";
-
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+import {
+	GIT_INSPECTION_OPTIONS,
+	GIT_USER_ACTION_OPTIONS,
+	GIT_USER_ACTION_PREFLIGHT_OPTIONS,
+	resolveRepoRoot,
+	runGit,
+	validateGitPath,
+} from "./git-utils";
 
 /**
  * Stash changes in the working tree.
@@ -20,7 +25,7 @@ export async function stashPush(options: {
 	paths?: string[];
 	message?: string;
 }): Promise<RuntimeStashPushResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const paths = options.paths ?? [];
 
 	for (const p of paths) {
@@ -37,7 +42,7 @@ export async function stashPush(options: {
 		args.push("--", ...paths);
 	}
 
-	const result = await runGit(repoRoot, args, USER_GIT_ACTION_OPTIONS);
+	const result = await runGit(repoRoot, args, GIT_USER_ACTION_OPTIONS);
 	if (!result.ok) {
 		return { ok: false, error: result.error ?? "Stash push failed." };
 	}
@@ -104,8 +109,8 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
  * If conflicts occur, the entry is NOT removed (git's default behavior).
  */
 export async function stashPop(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
-	const result = await runGit(repoRoot, ["stash", "pop", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
+	const result = await runGit(repoRoot, ["stash", "pop", `stash@{${options.index}}`], GIT_USER_ACTION_OPTIONS);
 
 	if (!result.ok) {
 		// Git writes CONFLICT messages to stdout, not stderr.
@@ -125,8 +130,8 @@ export async function stashPop(options: { cwd: string; index: number }): Promise
  * If conflicts occur, changes are partially applied.
  */
 export async function stashApply(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
-	const result = await runGit(repoRoot, ["stash", "apply", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
+	const result = await runGit(repoRoot, ["stash", "apply", `stash@{${options.index}}`], GIT_USER_ACTION_OPTIONS);
 
 	if (!result.ok) {
 		// Git writes CONFLICT messages to stdout, not stderr.
@@ -145,8 +150,8 @@ export async function stashApply(options: { cwd: string; index: number }): Promi
  * Drop a stash entry by index without applying it.
  */
 export async function stashDrop(options: { cwd: string; index: number }): Promise<RuntimeStashDropResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
-	const result = await runGit(repoRoot, ["stash", "drop", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
+	const result = await runGit(repoRoot, ["stash", "drop", `stash@{${options.index}}`], GIT_USER_ACTION_OPTIONS);
 
 	if (!result.ok) {
 		return { ok: false, error: result.error ?? "Stash drop failed." };
@@ -172,11 +177,19 @@ export async function stashShow(options: { cwd: string; index: number }): Promis
 /**
  * Count the number of stash entries. Used in metadata polling.
  * Uses `--no-optional-locks` to avoid lock contention with concurrent agent operations.
+ *
+ * Returns `null` when the count is indeterminate (e.g. the list command failed
+ * under load): `git stash list` otherwise always exits 0, even with no
+ * stashes, so a failed result never legitimately means "zero" — the caller
+ * should keep its previous known count rather than show a false zero badge.
  */
-export async function stashCount(cwd: string): Promise<number> {
+export async function stashCount(cwd: string): Promise<number | null> {
 	const repoRoot = await resolveRepoRoot(cwd);
 	const result = await runGit(repoRoot, ["--no-optional-locks", "stash", "list"]);
-	if (!result.ok || !result.stdout) {
+	if (!result.ok) {
+		return null;
+	}
+	if (!result.stdout) {
 		return 0;
 	}
 	return result.stdout.split("\n").filter(Boolean).length;

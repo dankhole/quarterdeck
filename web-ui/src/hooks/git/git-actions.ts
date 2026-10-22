@@ -7,7 +7,7 @@
  */
 
 import { showAppToast } from "@/components/app-toaster";
-import type { RuntimeGitSyncAction, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
+import type { RuntimeGitSyncAction, RuntimeGitSyncSummary, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +36,19 @@ export interface TopbarGitSyncScopeInput {
 
 export interface GitSyncSummaryPolicyOptions {
 	updateHomeSummary?: boolean;
+}
+
+/**
+ * A summary flagged `stale` means the Git action itself succeeded but the
+ * follow-up probe that measured the result failed (e.g. it timed out under
+ * load); the attached numbers are the last known state the server had, not a
+ * fresh read. Applying it as current can blank the toolbar (no branch, 0
+ * ahead/behind) or overwrite a fresher metadata broadcast that arrives after
+ * this response. Callers should skip applying it and request a metadata
+ * refresh instead.
+ */
+export function isStaleGitSyncSummary(summary: RuntimeGitSyncSummary | null | undefined): boolean {
+	return summary?.stale === true;
 }
 
 // ---------------------------------------------------------------------------

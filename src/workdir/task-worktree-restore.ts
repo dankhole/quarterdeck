@@ -7,13 +7,12 @@ import { areFileSystemPathsEqual, isFileSystemPathWithin } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
 import { getRuntimeHomePath, getTaskWorktreesHomePath } from "../state/project-state";
-import { getGitCommonDir, getGitStdout, runGit } from "./git-utils";
+import { GIT_USER_ACTION_OPTIONS, getGitCommonDir, getGitStdout, runGit } from "./git-utils";
 import { assertTaskWorktreeRegistration, getTaskWorktreePathKey } from "./task-worktree-identity";
 import type { findTaskPatch } from "./task-worktree-patch";
 import { normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import { initializeTaskWorktreeSetup } from "./task-worktree-setup";
 
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 type TaskPatch = NonNullable<Awaited<ReturnType<typeof findTaskPatch>>>;
 interface RestoreIdentity {
 	repoPath: string;
@@ -185,14 +184,14 @@ export async function completePendingTaskPatchRestore(identity: RestoreIdentity)
 				await runGit(
 					identity.worktreePath,
 					["apply", "--reverse", "--check", "--binary", path],
-					USER_GIT_ACTION_OPTIONS,
+					GIT_USER_ACTION_OPTIONS,
 				)
 			).ok;
 		if (!alreadyApplied) {
 			const checked = await runGit(
 				identity.worktreePath,
 				["apply", "--check", "--binary", "--whitespace=nowarn", path],
-				USER_GIT_ACTION_OPTIONS,
+				GIT_USER_ACTION_OPTIONS,
 			);
 			if (!checked.ok) {
 				throw new Error(
@@ -203,7 +202,7 @@ export async function completePendingTaskPatchRestore(identity: RestoreIdentity)
 			const applied = await runGit(
 				identity.worktreePath,
 				["apply", "--binary", "--whitespace=nowarn", path],
-				USER_GIT_ACTION_OPTIONS,
+				GIT_USER_ACTION_OPTIONS,
 			);
 			if (!applied.ok) {
 				throw new Error(

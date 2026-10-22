@@ -75,12 +75,20 @@ const MINIMUM_CLAUDE_VERSION = "2.1.198";
 export const SUPPORTED_PI_VERSION = "1.4.0";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 /**
- * Applies to every agent's `--version` probe and Codex's `features list` probe.
- * Under heavy machine load a genuinely installed CLI can take several seconds to
- * spawn and answer; keep this generous so load alone never reports an agent
- * unavailable (see `resolveAgentAvailability`'s never-cache-timeouts policy).
+ * Applies to every agent's `--version` probe and Codex's `features list` probe
+ * for display/config reads (Settings agent list, getConfig/saveConfig): these
+ * never retry (see `resolveAgentAvailability`'s never-cache-timeouts policy),
+ * so keep the per-probe wait short enough that a hung CLI doesn't stall the
+ * UI; a transient result still re-probes on the next read instead of sticking.
  */
-const DEFAULT_AGENT_PROBE_TIMEOUT_MS = 15_000;
+const DISPLAY_AGENT_PROBE_TIMEOUT_MS = 5_000;
+/**
+ * Task launches (`resolveAgentCommandForLaunch`) get one bounded retry, so
+ * this can afford to be longer than the display budget while the worst case
+ * (probe + retry, with Codex's version/features probes run concurrently)
+ * stays well under a minute.
+ */
+const LAUNCH_AGENT_PROBE_TIMEOUT_MS = 10_000;
 /** Test-only seam: real production code never calls this. */
 let agentProbeTimeoutMsOverrideForTests: number | null = null;
 const log = createTaggedLogger("agent-registry");
@@ -92,15 +100,17 @@ export function setAgentAvailabilityDiagnosticSink(sink: AgentAvailabilityDiagno
 
 /**
  * Test-only seam so agent-availability tests are deterministic under machine
- * load instead of depending on the production probe timeout's real duration.
- * Pass `null` to restore the production default.
+ * load instead of depending on a real probe timeout's duration. Overrides
+ * every probe timeout, display or launch alike. Pass `null` to restore the
+ * production defaults.
  */
 export function setAgentProbeTimeoutMsForTests(timeoutMs: number | null): void {
 	agentProbeTimeoutMsOverrideForTests = timeoutMs;
 }
 
-function resolveDefaultAgentProbeTimeoutMs(): number {
-	return agentProbeTimeoutMsOverrideForTests ?? DEFAULT_AGENT_PROBE_TIMEOUT_MS;
+/** `explicitTimeoutMs` lets a caller request the launch budget; omitted, this is the display budget. */
+function resolveAgentProbeTimeoutMs(explicitTimeoutMs?: number): number {
+	return agentProbeTimeoutMsOverrideForTests ?? explicitTimeoutMs ?? DISPLAY_AGENT_PROBE_TIMEOUT_MS;
 }
 
 function recordAvailabilityDiagnostic(event: AgentAvailabilityDiagnosticEvent): void {
@@ -232,31 +242,35 @@ class AgentProbeExecutionError extends Error {
 	}
 }
 
-function isProbeTimeout(error: ExecFileException, durationMs: number, timeoutMs: number): boolean {
+function isProbeTimeout(error: ExecFileException): boolean {
 	// Node's execFile timeout terminates the process and reports `killed: true`
 	// (normally with SIGTERM). A process that exits from an unrelated signal is
-	// an execution failure, not evidence that the timeout elapsed.
-	if (error.killed === true || error.code === "ETIMEDOUT") {
-		return true;
-	}
-	// `armChildProcessTimeout`'s `onAbandoned` settles `guard.isTimedOut()` (checked
-	// first in `finish`) for a child it could never confirm exited, but an error
-	// that still reaches here after waiting at least the full configured timeout
-	// (e.g. Windows tree termination that produces an ordinary exec error instead
-	// of an abandonment) was still evidently caused by that termination, not a
-	// genuine execution failure; those fail in a small fraction of the budget.
-	return durationMs >= timeoutMs;
+	// an execution failure, not evidence that the timeout elapsed. Windows tree
+	// termination and an unreapable process are both handled upstream by
+	// `armChildProcessTimeout`: `timedOut` is set synchronously when its timer
+	// fires, before termination even starts, and `onAbandoned` guarantees
+	// `finish` eventually runs even if the real process never reports exit.
+	// `guard.isTimedOut()` (checked first in `finish`) is therefore already
+	// authoritative for every genuine timeout on every platform; a duration
+	// heuristic here would risk misclassifying a slow-but-genuine failure.
+	return error.killed === true || error.code === "ETIMEDOUT";
 }
 
-/** Exported for direct real-process timeout tests; otherwise only called internally. */
+/**
+ * Exported for direct real-process timeout tests; otherwise only called
+ * internally. `explicitTimeoutMs` lets a caller request the launch budget
+ * instead of the display default; `setAgentProbeTimeoutMsForTests` overrides
+ * either.
+ */
 export function runProbeCommand(
 	agentId: RuntimeAgentId,
 	probeKind: AgentAvailabilityProbeKind,
 	binary: string,
 	args: string[],
-	timeoutMs: number = resolveDefaultAgentProbeTimeoutMs(),
+	explicitTimeoutMs?: number,
 ): Promise<ProbeCommandResult> {
 	return new Promise((resolve, reject) => {
+		const timeoutMs = resolveAgentProbeTimeoutMs(explicitTimeoutMs);
 		const startedAt = Date.now();
 		const command = resolveWindowsCompatibleCommand(binary, args);
 		assertRuntimeProcessLaunchAdmission();
@@ -283,7 +297,7 @@ export function runProbeCommand(
 				return;
 			}
 			if (error) {
-				const reason = isProbeTimeout(error, durationMs, timeoutMs) ? "probe_timeout" : "probe_failed";
+				const reason = isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
 				recordAvailabilityDiagnostic({
 					name: "agent.availability_probe_completed",
 					payload: { agentId, probeKind, durationMs, outcome: reason },
@@ -328,9 +342,10 @@ async function detectAgentVersion(
 	agentId: RuntimeAgentId,
 	agentName: string,
 	binary: string,
+	timeoutMs?: number,
 ): Promise<VersionProbeResult> {
 	try {
-		const result = await runProbeCommand(agentId, "version", binary, ["--version"]);
+		const result = await runProbeCommand(agentId, "version", binary, ["--version"], timeoutMs);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const version = extractVersion(output);
 		log.debug(`${agentName} version probe completed`, {
@@ -378,9 +393,9 @@ export function parseCodexFeaturesListOutput(output: string): boolean {
 
 type FeatureProbeResult = { ok: true; supported: boolean } | { ok: false; reason: TransientProbeFailureReason };
 
-async function codexSupportsNativeHooks(binary: string): Promise<FeatureProbeResult> {
+async function codexSupportsNativeHooks(binary: string, timeoutMs?: number): Promise<FeatureProbeResult> {
 	try {
-		const result = await runProbeCommand("codex", "features", binary, ["features", "list"]);
+		const result = await runProbeCommand("codex", "features", binary, ["features", "list"], timeoutMs);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const supported = parseCodexFeaturesListOutput(output);
 		log.debug("Codex native hook feature probe completed", {
@@ -403,16 +418,16 @@ async function codexSupportsNativeHooks(binary: string): Promise<FeatureProbeRes
 	}
 }
 
-async function resolveMinimumVersionAvailability(
-	agentId: RuntimeAgentId,
+/** Pure evaluation of an already-fetched version probe, so a caller that needs
+ *  to run it alongside another probe (see Codex below) can do so concurrently
+ *  instead of waiting on this function to both probe and evaluate serially. */
+function evaluateVersionProbeResult(
+	versionResult: VersionProbeResult,
 	agentName: string,
-	binary: string,
 	minimumVersion: string,
-): Promise<AgentAvailability> {
-	const versionResult = await detectAgentVersion(agentId, agentName, binary);
+): AgentAvailability {
 	if (!versionResult.ok) {
 		log.debug(`${agentName} availability rejected: version probe failed`, {
-			binary,
 			minimumVersion,
 			reason: versionResult.reason,
 		});
@@ -439,7 +454,6 @@ async function resolveMinimumVersionAvailability(
 	const { version } = versionResult;
 	if (compareSemver(version, minimumVersion) < 0) {
 		log.debug(`${agentName} availability rejected: version below minimum`, {
-			binary,
 			version,
 			minimumVersion,
 		});
@@ -452,7 +466,6 @@ async function resolveMinimumVersionAvailability(
 		};
 	}
 	log.debug(`${agentName} availability confirmed`, {
-		binary,
 		version,
 		minimumVersion,
 	});
@@ -465,12 +478,23 @@ async function resolveMinimumVersionAvailability(
 	};
 }
 
-async function resolveClaudeAvailability(binary: string): Promise<AgentAvailability> {
-	return resolveMinimumVersionAvailability("claude", "Claude Code", binary, MINIMUM_CLAUDE_VERSION);
+async function resolveMinimumVersionAvailability(
+	agentId: RuntimeAgentId,
+	agentName: string,
+	binary: string,
+	minimumVersion: string,
+	timeoutMs?: number,
+): Promise<AgentAvailability> {
+	const versionResult = await detectAgentVersion(agentId, agentName, binary, timeoutMs);
+	return evaluateVersionProbeResult(versionResult, agentName, minimumVersion);
 }
 
-async function resolvePiAvailability(binary: string): Promise<AgentAvailability> {
-	const versionResult = await detectAgentVersion("pi", "Pi", binary);
+async function resolveClaudeAvailability(binary: string, timeoutMs?: number): Promise<AgentAvailability> {
+	return resolveMinimumVersionAvailability("claude", "Claude Code", binary, MINIMUM_CLAUDE_VERSION, timeoutMs);
+}
+
+async function resolvePiAvailability(binary: string, timeoutMs?: number): Promise<AgentAvailability> {
+	const versionResult = await detectAgentVersion("pi", "Pi", binary, timeoutMs);
 	if (!versionResult.ok) {
 		if (versionResult.reason === "unsupported_version") {
 			return {
@@ -527,6 +551,8 @@ interface ResolveAgentAvailabilityOptions {
 	allowStale?: boolean;
 	forceRefresh?: boolean;
 	reuseCachedFailure?: boolean;
+	/** Omit for the display/config budget; pass `LAUNCH_AGENT_PROBE_TIMEOUT_MS` for a task launch. */
+	probeTimeoutMs?: number;
 }
 
 const agentAvailabilityCache = new Map<string, AvailabilityCacheEntry>();
@@ -548,7 +574,11 @@ export function resetAgentAvailabilityCache(): void {
 	inFlightAgentAvailabilityProbes.clear();
 }
 
-async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Promise<AgentAvailability> {
+async function computeAgentAvailability(
+	agentId: RuntimeAgentId,
+	binary: string,
+	timeoutMs?: number,
+): Promise<AgentAvailability> {
 	if (!isAgentAllowedByAgentLabPolicy(agentId)) {
 		const agentLabel =
 			getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === agentId)?.label ?? agentId;
@@ -587,9 +617,9 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 	}
 	let result: AgentAvailability;
 	if (agentId === "pi") {
-		result = await resolvePiAvailability(binary);
+		result = await resolvePiAvailability(binary, timeoutMs);
 	} else if (agentId === "claude") {
-		result = await resolveClaudeAvailability(binary);
+		result = await resolveClaudeAvailability(binary, timeoutMs);
 	} else if (agentId !== "codex") {
 		result = {
 			installed: true,
@@ -599,9 +629,16 @@ async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string)
 			transient: false,
 		};
 	} else {
-		result = await resolveMinimumVersionAvailability("codex", "Codex", binary, MINIMUM_CODEX_VERSION);
+		// Run concurrently rather than version-then-features: both are independent
+		// spawns, and waiting on them serially doubles the worst-case latency for
+		// no benefit (the feature result is simply discarded below when the
+		// version check itself fails or is too old).
+		const [versionResult, featureResult] = await Promise.all([
+			detectAgentVersion("codex", "Codex", binary, timeoutMs),
+			codexSupportsNativeHooks(binary, timeoutMs),
+		]);
+		result = evaluateVersionProbeResult(versionResult, "Codex", MINIMUM_CODEX_VERSION);
 		if (result.installed) {
-			const featureResult = await codexSupportsNativeHooks(binary);
 			if (!featureResult.ok) {
 				result = {
 					installed: false,
@@ -661,13 +698,14 @@ function startAvailabilityProbe(
 	cacheKey: string,
 	agentId: RuntimeAgentId,
 	binary: string,
+	probeTimeoutMs?: number,
 ): Promise<AvailabilityCacheEntry> {
 	const existing = inFlightAgentAvailabilityProbes.get(cacheKey);
 	if (existing) {
 		return existing;
 	}
 	const generation = agentAvailabilityCacheGeneration;
-	const probe = computeAgentAvailability(agentId, binary)
+	const probe = computeAgentAvailability(agentId, binary, probeTimeoutMs)
 		.then((result) => {
 			const entry = { result, checkedAt: Date.now() };
 			// A timeout or launcher failure says nothing durable about whether the
@@ -704,7 +742,7 @@ async function resolveAgentAvailability(
 		return cached.result;
 	}
 	if (!options.forceRefresh && cached && options.allowStale !== false) {
-		void startAvailabilityProbe(cacheKey, agentId, binary).catch((error) => {
+		void startAvailabilityProbe(cacheKey, agentId, binary, options.probeTimeoutMs).catch((error) => {
 			log.debug("Agent availability stale refresh failed", {
 				agentId,
 				binary,
@@ -713,7 +751,7 @@ async function resolveAgentAvailability(
 		});
 		return cached.result;
 	}
-	const entry = await startAvailabilityProbe(cacheKey, agentId, binary);
+	const entry = await startAvailabilityProbe(cacheKey, agentId, binary, options.probeTimeoutMs);
 	return entry.result;
 }
 
@@ -802,14 +840,15 @@ export class AgentCommandUnavailableError extends Error {
 }
 
 export interface ResolveAgentCommandForLaunchOptions {
-	/** Startup recovery gets one bounded retry for a timeout or launcher failure. */
+	/** Every task launch sets this for one bounded retry of a timeout or launcher failure. */
 	retryTransient?: boolean;
 }
 
 /**
  * Resolve an agent for a process launch. Unlike display reads, this path never
  * serves an expired cache entry. Successful fresh entries remain reusable, while
- * transient negatives are never cached and may be retried once by recovery.
+ * transient negatives are never cached and get one bounded retry (every task
+ * launch requests it; see `task-session-start-service.ts`).
  */
 export async function resolveAgentCommandForLaunch(
 	runtimeConfig: RuntimeConfigState,
@@ -828,11 +867,13 @@ export async function resolveAgentCommandForLaunch(
 	let availability = await resolveAgentAvailability(selected.id, selected.binary, {
 		allowStale: false,
 		reuseCachedFailure: false,
+		probeTimeoutMs: LAUNCH_AGENT_PROBE_TIMEOUT_MS,
 	});
 	if (!availability.installed && availability.transient && options.retryTransient) {
 		availability = await resolveAgentAvailability(selected.id, selected.binary, {
 			allowStale: false,
 			forceRefresh: true,
+			probeTimeoutMs: LAUNCH_AGENT_PROBE_TIMEOUT_MS,
 		});
 	}
 	if (!availability.installed) {

@@ -8,6 +8,7 @@ import {
 	type GitSyncSummaryPolicyOptions,
 	getGitActionErrorTitle,
 	getGitSyncSuccessLabel,
+	isStaleGitSyncSummary,
 	isTaskGitActionInFlight,
 	matchesWorktreeInfoSelection,
 	shouldApplyHomeGitSummaryFromSync,
@@ -19,7 +20,12 @@ import {
 } from "@/hooks/git/git-actions";
 import { isTaskBaseRefResolved } from "@/hooks/git/git-view";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type { RuntimeConfigResponse, RuntimeGitSyncAction, RuntimeTaskRepositoryInfoResponse } from "@/runtime/types";
+import type {
+	RuntimeConfigResponse,
+	RuntimeGitSyncAction,
+	RuntimeGitSyncSummary,
+	RuntimeTaskRepositoryInfoResponse,
+} from "@/runtime/types";
 import { findCardSelection } from "@/state/board-state";
 import {
 	getProjectMetadataScopeVersion,
@@ -51,7 +57,7 @@ interface UseGitActionsInput {
 	) => Promise<{ ok: boolean; message?: string }>;
 	fetchTaskWorktreeInfo: (task: BoardCard) => Promise<RuntimeTaskRepositoryInfoResponse | null>;
 	isGitHistoryOpen: boolean;
-	refreshProjectState: () => Promise<void>;
+	refreshProjectState: (options?: { suppressErrorToast?: boolean }) => Promise<void>;
 }
 
 export interface UseGitActionsResult {
@@ -151,6 +157,28 @@ export function useGitActions({
 		enabled: isGitHistoryOpen,
 	});
 	const refreshGitHistory = gitHistory.refresh;
+
+	/**
+	 * Apply a mutation response's summary as the current home Git state, unless
+	 * it's flagged `stale` (the action succeeded but the server's follow-up
+	 * summary probe failed, e.g. under load). A stale summary is the server's
+	 * best last-known data, not a fresh read — applying it can blank the
+	 * toolbar or overwrite a fresher broadcast, so this requests a metadata
+	 * refresh instead of publishing it.
+	 */
+	const applyHomeGitSummaryOrRefresh = useCallback(
+		(summary: RuntimeGitSyncSummary | null | undefined, expectedScopeVersion?: number) => {
+			if (!currentProjectId || !summary) {
+				return;
+			}
+			if (isStaleGitSyncSummary(summary)) {
+				void refreshProjectState({ suppressErrorToast: true });
+				return;
+			}
+			setHomeGitSummary(currentProjectId, summary, expectedScopeVersion);
+		},
+		[currentProjectId, refreshProjectState],
+	);
 
 	const setTaskGitActionLoading = useCallback(
 		(taskId: string, action: TaskGitAction, source: TaskGitActionSource | null) => {
@@ -334,7 +362,7 @@ export function useGitActions({
 					const output = payload.output ?? "";
 					const fallbackSummary = payload.summary ?? null;
 					if (fallbackSummary && shouldUpdateHomeSummary) {
-						setHomeGitSummary(currentProjectId, fallbackSummary);
+						applyHomeGitSummaryOrRefresh(fallbackSummary);
 					}
 					setGitActionError({
 						action,
@@ -345,7 +373,7 @@ export function useGitActions({
 					return;
 				}
 				if (shouldUpdateHomeSummary) {
-					setHomeGitSummary(currentProjectId, payload.summary);
+					applyHomeGitSummaryOrRefresh(payload.summary);
 				}
 				refreshGitHistory();
 				showGitSuccessToast(getGitSyncSuccessLabel(action));
@@ -361,7 +389,7 @@ export function useGitActions({
 				if (isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) setRunningGitAction(null);
 			}
 		},
-		[currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction],
+		[applyHomeGitSummaryOrRefresh, currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction],
 	);
 
 	const switchHomeBranch = useCallback(
@@ -382,7 +410,7 @@ export function useGitActions({
 					// Preflight failures have an empty branch and placeholder summary;
 					// attempted checkouts retain the requested branch and a measured summary.
 					if ((payload.ok || payload.branch !== "") && payload.summary) {
-						setHomeGitSummary(currentProjectId, payload.summary, requestScopeVersion);
+						applyHomeGitSummaryOrRefresh(payload.summary, requestScopeVersion);
 					}
 					if (!payload.ok || !payload.summary) {
 						const errorMessage = payload.error ?? "Switch branch failed.";
@@ -427,6 +455,7 @@ export function useGitActions({
 			});
 		},
 		[
+			applyHomeGitSummaryOrRefresh,
 			currentProjectId,
 			switchHomeBranchGuard.run,
 			homeGitSummary?.currentBranch,
@@ -445,12 +474,12 @@ export function useGitActions({
 				if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
 				if (!payload.ok) {
 					if (payload.summary) {
-						setHomeGitSummary(currentProjectId, payload.summary);
+						applyHomeGitSummaryOrRefresh(payload.summary);
 					}
 					showGitErrorToast(payload.error ?? "Could not discard working copy changes.");
 					return;
 				}
-				setHomeGitSummary(currentProjectId, payload.summary);
+				applyHomeGitSummaryOrRefresh(payload.summary);
 				refreshGitHistory();
 				showGitSuccessToast("Discarded working copy changes.", 4000);
 			} catch (error) {
@@ -458,7 +487,7 @@ export function useGitActions({
 				showGitErrorToast(`Could not discard working copy changes. ${toErrorMessage(error)}`);
 			}
 		});
-	}, [currentProjectId, discardHomeChangesGuard.run, refreshGitHistory]);
+	}, [applyHomeGitSummaryOrRefresh, currentProjectId, discardHomeChangesGuard.run, refreshGitHistory]);
 
 	const stashAndRetryPull = useCallback(async () => {
 		if (!currentProjectId) return;
@@ -482,7 +511,7 @@ export function useGitActions({
 				if (!pullResult.ok || !pullResult.summary) {
 					const fallbackSummary = pullResult.summary ?? null;
 					if (fallbackSummary) {
-						setHomeGitSummary(currentProjectId, fallbackSummary);
+						applyHomeGitSummaryOrRefresh(fallbackSummary);
 					}
 					setGitActionError({
 						action: "pull",
@@ -496,7 +525,7 @@ export function useGitActions({
 					);
 					return;
 				}
-				setHomeGitSummary(currentProjectId, pullResult.summary);
+				applyHomeGitSummaryOrRefresh(pullResult.summary);
 
 				const popResult = await trpcClient.project.stashPop.mutate({
 					taskScope: null,
@@ -525,7 +554,7 @@ export function useGitActions({
 				showGitErrorToast(`Stash & Pull failed: ${toErrorMessage(error)}`);
 			}
 		});
-	}, [currentProjectId, stashAndRetryPullGuard.run, refreshGitHistory]);
+	}, [applyHomeGitSummaryOrRefresh, currentProjectId, stashAndRetryPullGuard.run, refreshGitHistory]);
 
 	const resetGitActionState = useCallback(() => {
 		setRunningGitAction(null);

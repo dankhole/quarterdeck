@@ -16,6 +16,8 @@ vi.mock("../../src/workdir/git-utils", () => ({
 	resolveRepoRoot: vi.fn(async (cwd: string) => cwd),
 	validateGitPath: vi.fn(() => true),
 	runGit: mocks.runGit,
+	GIT_USER_ACTION_OPTIONS: { timeoutClass: "userAction" },
+	GIT_USER_ACTION_PREFLIGHT_OPTIONS: { timeoutMs: 30_000, priority: "foreground" },
 }));
 
 import { runtimeGitCommitResponseSchema } from "../../src/core/api/git-sync";

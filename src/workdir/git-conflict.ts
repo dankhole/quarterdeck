@@ -14,6 +14,8 @@ import { lockedFileSystem } from "../fs";
 import { getGitSyncSummary } from "./git-probe";
 import {
 	GIT_INSPECTION_OPTIONS,
+	GIT_USER_ACTION_OPTIONS,
+	GIT_USER_ACTION_PREFLIGHT_OPTIONS,
 	resolveRepoRoot,
 	runGit,
 	splitNullSeparatedGitOutput,
@@ -21,8 +23,6 @@ import {
 	validateGitRef,
 } from "./git-utils";
 import { readWorkdirFile, resolveWorkdirFilePath } from "./read-workdir-file";
-
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 // ---------------------------------------------------------------------------
 // Conflict detection / query functions
@@ -288,11 +288,11 @@ export async function resolveConflictFile(
 			}
 		}
 		if (resolution !== "manual") {
-			const checkoutResult = await runGit(cwd, ["checkout", `--${resolution}`, "--", path], USER_GIT_ACTION_OPTIONS);
+			const checkoutResult = await runGit(cwd, ["checkout", `--${resolution}`, "--", path], GIT_USER_ACTION_OPTIONS);
 			if (!checkoutResult.ok)
 				return { ok: false, error: checkoutResult.error ?? `Failed to checkout --${resolution} for ${path}.` };
 		}
-		const addResult = await runGit(cwd, ["add", "--", path], USER_GIT_ACTION_OPTIONS);
+		const addResult = await runGit(cwd, ["add", "--", path], GIT_USER_ACTION_OPTIONS);
 		return addResult.ok
 			? { ok: true }
 			: { ok: false, error: addResult.error ?? `Failed to stage resolved file ${path}.` };
@@ -316,23 +316,23 @@ export async function continueMergeOrRebase(cwd: string): Promise<RuntimeConflic
 		const staged = detected.revertNeedsCommit ? await runGit(cwd, ["diff", "--cached", "--name-only"]) : null;
 		const commitResult =
 			staged?.ok && staged.stdout.trim()
-				? await runGit(cwd, ["commit", "--no-edit"], USER_GIT_ACTION_OPTIONS)
+				? await runGit(cwd, ["commit", "--no-edit"], GIT_USER_ACTION_OPTIONS)
 				: null;
 		continueResult =
 			commitResult && !commitResult.ok
 				? commitResult
-				: await runGit(cwd, ["-c", "core.editor=true", "revert", "--continue"], USER_GIT_ACTION_OPTIONS);
+				: await runGit(cwd, ["-c", "core.editor=true", "revert", "--continue"], GIT_USER_ACTION_OPTIONS);
 	} else if (detected?.operation === "rebase") {
-		continueResult = await runGit(cwd, ["-c", "core.editor=true", "rebase", "--continue"], USER_GIT_ACTION_OPTIONS);
+		continueResult = await runGit(cwd, ["-c", "core.editor=true", "rebase", "--continue"], GIT_USER_ACTION_OPTIONS);
 	} else {
 		// Default to merge commit (also handles case where detected is null — graceful attempt)
-		continueResult = await runGit(cwd, ["commit", "--no-edit"], USER_GIT_ACTION_OPTIONS);
+		continueResult = await runGit(cwd, ["commit", "--no-edit"], GIT_USER_ACTION_OPTIONS);
 	}
 
 	// Check if new conflicts appeared after the continue
 	const lsUnmerged = await runGit(cwd, ["ls-files", "-u"]);
 	const hasNewConflicts = lsUnmerged.ok && lsUnmerged.stdout.trim().length > 0;
-	const summary = await getGitSyncSummary(cwd);
+	const summary = await getGitSyncSummary(cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (hasNewConflicts) {
 		const conflictState = await getConflictState(cwd);
@@ -374,13 +374,13 @@ export async function abortMergeOrRebase(cwd: string): Promise<RuntimeConflictAb
 	const detected = await detectActiveConflict(cwd);
 
 	if (!detected) {
-		const summary = await getGitSyncSummary(cwd);
+		const summary = await getGitSyncSummary(cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 		return { ok: true, summary };
 	}
 
 	const abortArgs = [detected.operation, "--abort"];
-	const abortResult = await runGit(cwd, abortArgs, USER_GIT_ACTION_OPTIONS);
-	const summary = await getGitSyncSummary(cwd);
+	const abortResult = await runGit(cwd, abortArgs, GIT_USER_ACTION_OPTIONS);
+	const summary = await getGitSyncSummary(cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (!abortResult.ok) {
 		return {
@@ -399,8 +399,8 @@ export async function abortMergeOrRebase(cwd: string): Promise<RuntimeConflictAb
 
 export async function runGitRebaseAction(options: { cwd: string; onto: string }): Promise<RuntimeGitRebaseResponse> {
 	const ontoRef = options.onto.trim();
-	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
-	const initialSummary = await getGitSyncSummary(repoRoot);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
+	const initialSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (!ontoRef || !validateGitRef(ontoRef)) {
 		return {
@@ -412,7 +412,7 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 		};
 	}
 
-	const rebaseResult = await runGit(repoRoot, ["rebase", ontoRef], USER_GIT_ACTION_OPTIONS);
+	const rebaseResult = await runGit(repoRoot, ["rebase", ontoRef], GIT_USER_ACTION_OPTIONS);
 
 	if (!rebaseResult.ok) {
 		const lsUnmerged = await runGit(repoRoot, ["ls-files", "-u"]);
@@ -426,7 +426,7 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 				sourceBranch: initialSummary.currentBranch ?? undefined,
 				autoMergedFiles,
 			});
-			const conflictSummary = await getGitSyncSummary(repoRoot);
+			const conflictSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 			return {
 				ok: false,
 				onto: ontoRef,
@@ -436,8 +436,8 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 			};
 		}
 
-		await runGit(repoRoot, ["rebase", "--abort"], USER_GIT_ACTION_OPTIONS);
-		const abortedSummary = await getGitSyncSummary(repoRoot);
+		await runGit(repoRoot, ["rebase", "--abort"], GIT_USER_ACTION_OPTIONS);
+		const abortedSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 		return {
 			ok: false,
 			onto: ontoRef,
@@ -447,7 +447,7 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 		};
 	}
 
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 	return {
 		ok: true,
 		onto: ontoRef,
@@ -462,8 +462,8 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 
 export async function runGitMergeAction(options: { cwd: string; branch: string }): Promise<RuntimeGitMergeResponse> {
 	const branchToMerge = options.branch.trim();
-	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
-	const initialSummary = await getGitSyncSummary(repoRoot);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
+	const initialSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (!branchToMerge || !validateGitRef(branchToMerge)) {
 		return {
@@ -488,7 +488,7 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 	const mergeResult = await runGit(
 		repoRoot,
 		["merge", branchToMerge, "--no-commit", "--no-edit"],
-		USER_GIT_ACTION_OPTIONS,
+		GIT_USER_ACTION_OPTIONS,
 	);
 
 	if (!mergeResult.ok) {
@@ -506,7 +506,7 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 				sourceBranch: branchToMerge,
 				autoMergedFiles,
 			});
-			const conflictSummary = await getGitSyncSummary(repoRoot);
+			const conflictSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 			return {
 				ok: false,
 				branch: branchToMerge,
@@ -517,8 +517,8 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		}
 
 		// Non-conflict merge failure — abort to restore clean state
-		await runGit(repoRoot, ["merge", "--abort"], USER_GIT_ACTION_OPTIONS);
-		const abortedSummary = await getGitSyncSummary(repoRoot);
+		await runGit(repoRoot, ["merge", "--abort"], GIT_USER_ACTION_OPTIONS);
+		const abortedSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 		const hasUncommittedChanges =
 			mergeResult.output.includes("Your local changes") || mergeResult.output.includes("overwritten by merge");
@@ -540,10 +540,10 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 	// so only run commit if MERGE_HEAD exists (indicating a real merge in progress).
 	const detected = await detectActiveConflict(repoRoot);
 	if (detected) {
-		const commitResult = await runGit(repoRoot, ["commit", "--no-edit"], USER_GIT_ACTION_OPTIONS);
+		const commitResult = await runGit(repoRoot, ["commit", "--no-edit"], GIT_USER_ACTION_OPTIONS);
 		if (!commitResult.ok) {
 			const conflictState = await getConflictState(repoRoot);
-			const nextSummary = await getGitSyncSummary(repoRoot);
+			const nextSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 			return {
 				ok: false,
 				branch: branchToMerge,
@@ -555,7 +555,7 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		}
 	}
 
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 	return {
 		ok: true,
 		branch: branchToMerge,

@@ -16,10 +16,10 @@ export async function loadHomeGitMetadata(
 	currentHomeGit: CachedHomeGitMetadata,
 ): Promise<CachedHomeGitMetadata> {
 	try {
-		const [probe, currentStashCount] = await Promise.all([
-			probeGitWorkdirState(projectPath),
-			stashCount(projectPath),
-		]);
+		const [probe, probedStashCount] = await Promise.all([probeGitWorkdirState(projectPath), stashCount(projectPath)]);
+		// `null` means the count is indeterminate (e.g. a timeout under load):
+		// never publish a false "zero" badge, keep the last known count instead.
+		const currentStashCount = probedStashCount ?? currentHomeGit.stashCount;
 		// Metadata polling is the current safety net for out-of-band branch
 		// changes. If repository-info cache ownership moves closer to metadata
 		// polling, fold this into that shared owner instead of leaving it implicit.

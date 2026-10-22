@@ -187,6 +187,22 @@ describe("git-sync --no-optional-locks", () => {
 		assertFlagBeforeSubcommand(stashListCall, "stash");
 	});
 
+	it("stashCount returns null (not 0) when the list command is indeterminate, so a caller never shows a false-empty badge", async () => {
+		childProcessMocks.execFilePromise.mockImplementation((_cmd: string, args: string[]) => {
+			if (args.includes("--show-toplevel")) {
+				return Promise.resolve({ stdout: `${FAKE_REPO}\n`, stderr: "" });
+			}
+			if (args.includes("stash") && args.includes("list")) {
+				return Promise.reject(
+					Object.assign(new Error("Git command timed out after 5000ms"), { code: "ETIMEDOUT" }),
+				);
+			}
+			return Promise.resolve({ stdout: "", stderr: "" });
+		});
+
+		await expect(stashCount(FAKE_REPO)).resolves.toBeNull();
+	});
+
 	it("probeGitWorkdirState output is unchanged with --no-optional-locks", async () => {
 		const statusOutput = [
 			`# branch.oid ${FAKE_COMMIT}`,
