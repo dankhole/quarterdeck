@@ -91,7 +91,11 @@ function createSyntheticInvocation() {
 	// The runtime channel consumes this marker before preparing provider hooks.
 	vi.stubEnv("QUARTERDECK_DESKTOP_CHILD", undefined);
 	Object.defineProperty(process, "connected", { configurable: true, value: true });
-	process.send = vi.fn(() => true);
+	// Keep Vitest's own worker IPC working while the product sees a live channel.
+	const forwardSend = originalSend as ((...args: unknown[]) => boolean) | undefined;
+	process.send = vi.fn((...args: unknown[]) =>
+		forwardSend ? forwardSend.apply(process, args) : true,
+	) as unknown as typeof process.send;
 	vi.stubEnv("QUARTERDECK_DESKTOP_LAB_CONFIG", configPath);
 	vi.stubEnv("QUARTERDECK_STATE_HOME", stateHome);
 	return {
@@ -239,9 +243,25 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 	);
 	it.each(["disconnected", "missing send"])("rejects a synthetic helper with %s IPC", (kind) => {
 		const context = createSyntheticInvocation();
-		if (kind === "disconnected") Object.defineProperty(process, "connected", { configurable: true, value: false });
-		else process.send = undefined;
-		expect(() => resolveQuarterdeckCommandParts(context)).toThrow("could not verify native installation admission");
+		// Break the IPC channel only around the call under test: Vitest's worker
+		// uses the same channel and exits if it is unusable while reporting.
+		const connectedBefore = process.connected;
+		const sendBefore = process.send;
+		let thrown: unknown = null;
+		try {
+			if (kind === "disconnected") Object.defineProperty(process, "connected", { configurable: true, value: false });
+			else process.send = undefined;
+			try {
+				resolveQuarterdeckCommandParts(context);
+			} catch (error) {
+				thrown = error;
+			}
+		} finally {
+			Object.defineProperty(process, "connected", { configurable: true, value: connectedBefore });
+			process.send = sendBefore;
+		}
+		expect(thrown).toBeInstanceOf(Error);
+		expect((thrown as Error).message).toContain("could not verify native installation admission");
 	});
 
 	it("rejects changed lab config, runtime state, and host simulation identity", () => {
