@@ -3,8 +3,8 @@ import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "no
 import { dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
-import { KeyedOperationCoordinator } from "../core/keyed-operation-coordinator";
 import { assertRuntimeWriteAdmission, withRuntimeWriteOperation } from "../state/runtime-write-admission.js";
+import { inProcessLockOwners } from "./in-process-lock-owners";
 import { isNodeError } from "./node-error";
 import { removeDirectoryWithRetries } from "./remove-path";
 
@@ -27,8 +27,9 @@ interface BaseLockRequest {
 	 * is unfair: an owner that releases and immediately re-requests wins over
 	 * sleeping waiters, so heavily shared locks with slow holds (durable writes on
 	 * Windows) can exhaust a waiter's retry budget without any other process.
-	 * The retry budget still bounds cross-process contention. Only use for locks
-	 * that are never re-entered or nested in conflicting orders in-process.
+	 * The retry budget still bounds cross-process contention. Re-entry from the
+	 * owning async context throws `InProcessLockReentryError`; still never nest
+	 * serialized locks in conflicting orders.
 	 */
 	serializeInProcess?: boolean;
 }
@@ -52,9 +53,6 @@ interface NormalizedLockRequest {
 	sortKey: string;
 	serializeInProcess: boolean;
 }
-
-/** Process-wide: every LockedFileSystem instance shares one owner queue per lockfile. */
-const inProcessLockOwners = new KeyedOperationCoordinator();
 
 export interface AtomicTextWriteOptions {
 	lock?: LockRequest | null;
@@ -199,7 +197,9 @@ export class LockedFileSystem {
 					await release();
 				}
 			};
-			return request.serializeInProcess ? await inProcessLockOwners.run(identity, acquire) : await acquire();
+			return request.serializeInProcess
+				? await inProcessLockOwners.run(identity, request.sortKey, acquire)
+				: await acquire();
 		};
 		return await acquireFrom(0);
 	}
