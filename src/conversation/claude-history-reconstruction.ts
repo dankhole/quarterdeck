@@ -3,15 +3,18 @@ import type { ParsedProviderRecordAtOffset, ProviderHistoryReconstructionResult 
 export function reconstructClaudeHistory(
 	records: readonly ParsedProviderRecordAtOffset[],
 ): ProviderHistoryReconstructionResult {
+	// Only conversation nodes carry `parentUuid`. Metadata entries such as
+	// `custom-title` have a uuid without a parent and must never become the
+	// leaf; legacy transcripts with no parent links return every record.
 	let leaf: ParsedProviderRecordAtOffset | null = null;
 	for (let index = records.length - 1; index >= 0; index -= 1) {
 		const candidate = records[index];
-		if (candidate?.record.lineage && !candidate.record.lineage.isSidechain) {
+		if (candidate?.record.lineage?.parentFieldPresent && !candidate.record.lineage.isSidechain) {
 			leaf = candidate;
 			break;
 		}
 	}
-	if (!leaf?.record.lineage?.parentFieldPresent) {
+	if (!leaf?.record.lineage) {
 		return { records, incomplete: false, incompleteReason: null };
 	}
 

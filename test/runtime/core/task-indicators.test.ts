@@ -175,6 +175,52 @@ describe("deriveTaskIndicatorState", () => {
 		).toBe("review");
 	});
 
+	it("projects a waiting Claude subagent prompt over Running and an answered foreground prompt", () => {
+		const subagentWait = createTestTaskOutstandingInteraction({ kind: "permission", providerAgentId: "agent-a" });
+		const running = makeSummary({
+			state: "running",
+			agentId: "claude",
+			sessionInstanceId: "process-1",
+			pid: 123,
+			nativeWorkEvidence: createTestTaskNativeWorkEvidence({ provider: "claude" }),
+			subagentInteractions: [subagentWait],
+		});
+		expect(deriveTaskIndicatorState(running)).toMatchObject({
+			kind: "approval_required",
+			publicStatus: "needs_input",
+			notification: "permission",
+		});
+		expect(getRuntimeSessionWorkColumn(running)).toBe("review");
+		expect(
+			deriveTaskIndicatorState({
+				...running,
+				subagentInteractions: [{ ...subagentWait, status: "response_submitted" }],
+			}).kind,
+		).toBe("running");
+
+		const answeredForeground = createTestTaskOutstandingInteraction({
+			kind: "question",
+			status: "response_submitted",
+		});
+		expect(
+			deriveTaskIndicatorState({
+				...running,
+				state: "awaiting_review",
+				reviewReason: "attention",
+				outstandingInteraction: answeredForeground,
+			}).kind,
+		).toBe("approval_required");
+		// An unanswered foreground interaction keeps precedence.
+		expect(
+			deriveTaskIndicatorState({
+				...running,
+				state: "awaiting_review",
+				reviewReason: "attention",
+				outstandingInteraction: { ...answeredForeground, status: "waiting" },
+			}).kind,
+		).toBe("needs_input");
+	});
+
 	it.each(["codex", "pi"] as const)(
 		"fails a supported %s Running claim closed without matching evidence",
 		(agentId) => {

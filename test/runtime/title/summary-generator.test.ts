@@ -1,22 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/title/codex-client", () => ({ callCodex: vi.fn() }));
+vi.mock("../../../src/title/claude-client", () => ({ callClaude: vi.fn() }));
 
+import { callClaude } from "../../../src/title/claude-client";
 import { callCodex } from "../../../src/title/codex-client";
 
 const callCodexMock = vi.mocked(callCodex);
+const callClaudeMock = vi.mocked(callClaude);
 
 vi.mock("../../../src/title/llm-client", () => ({
 	callLlm: vi.fn(),
 }));
 
-import { callLlm, compactDisplaySummaryText, generateDisplaySummary } from "../../../src/title";
+import {
+	callLlm,
+	compactDisplaySummaryText,
+	generateDisplaySummary,
+	resetGenerationHelperPolicyForTests,
+} from "../../../src/title";
 
 const callLlmMock = vi.mocked(callLlm);
 
 describe("generateDisplaySummary", () => {
 	beforeEach(() => {
+		resetGenerationHelperPolicyForTests();
 		callCodexMock.mockReset().mockResolvedValue(null);
+		callClaudeMock.mockReset().mockResolvedValue(null);
 		callLlmMock.mockReset();
 	});
 
@@ -87,6 +97,7 @@ describe("generateDisplaySummary", () => {
 		expect(result).toBeNull();
 		expect(callLlmMock).not.toHaveBeenCalled();
 		expect(callCodexMock).not.toHaveBeenCalled();
+		expect(callClaudeMock).not.toHaveBeenCalled();
 	});
 
 	it("truncates input to 1800 chars before sending to LLM", async () => {

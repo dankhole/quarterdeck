@@ -18,7 +18,9 @@ type MockStoreMethods = Partial<SessionSummaryStore> & HookTransitionSummaryFact
 
 export function createMockManager(storeMethods: MockStoreMethods): TerminalSessionManager {
 	const { toReviewSummary, toRunningSummary, ...sessionStoreMethods } = storeMethods;
-	const store = sessionStoreMethods;
+	// Mock stores never emit, so hooks take the no-change durability barrier,
+	// which falls back to `persistSessionState` when no cheaper one is supplied.
+	const store: Partial<SessionSummaryStore> = { onChange: vi.fn(() => () => undefined), ...sessionStoreMethods };
 	const manager = {
 		store,
 		recordHookReceived: vi.fn(),

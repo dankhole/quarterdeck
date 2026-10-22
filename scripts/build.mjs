@@ -71,6 +71,10 @@ await Promise.all([
 		banner: { js: `#!/usr/bin/env node\n${cjsShimBanner}` },
 	}),
 	esbuild.build({ ...shared, entryPoints: ["src/npm-install.ts"], outfile: "dist/npm-install.js" }),
+	// Dedicated small entrypoint for hook/statusline commands (Workstream F1):
+	// avoids reinvoking the full cli.js bundle (server/router graph) on every
+	// provider hook call. See src/hooks.ts and buildQuarterdeckHookCommandLine.
+	esbuild.build({ ...shared, entryPoints: ["src/hooks.ts"], outfile: "dist/hooks.js" }),
 ]);
 
 for (const asset of runtimeAssets) {

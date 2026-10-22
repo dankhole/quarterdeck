@@ -39,8 +39,9 @@ CRITICAL RULES:
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
 const TITLE_GENERATION_TIMEOUT_MS = 6_000;
 const DEFAULT_CODEX_TITLE_MODEL = "gpt-6-luna";
+const DEFAULT_CLAUDE_TITLE_MODEL = "haiku";
 
-type TitleProvider = "codex" | "llm" | "local";
+type TitleProvider = "codex" | "claude" | "llm" | "local";
 
 function resolveTitleProvider(): TitleProvider {
 	const configured = process.env.QUARTERDECK_TITLE_PROVIDER?.trim().toLowerCase();
@@ -48,19 +49,23 @@ function resolveTitleProvider(): TitleProvider {
 		return "local";
 	}
 	if (!configured) return "codex";
-	if (configured === "codex" || configured === "llm") {
+	if (configured === "codex" || configured === "claude" || configured === "llm") {
 		return configured;
 	}
 	log.warn("Ignoring unsupported QUARTERDECK_TITLE_PROVIDER value", {
 		configured,
 		fallbackProvider: "codex",
-		supportedProviders: ["codex", "llm", "local"],
+		supportedProviders: ["codex", "claude", "llm", "local"],
 	});
 	return "codex";
 }
 
 function resolveCodexTitleModel(): string {
 	return process.env.QUARTERDECK_CODEX_TITLE_MODEL?.trim() || DEFAULT_CODEX_TITLE_MODEL;
+}
+
+function resolveClaudeTitleModel(): string {
+	return process.env.QUARTERDECK_CLAUDE_TITLE_MODEL?.trim() || DEFAULT_CLAUDE_TITLE_MODEL;
 }
 
 function normalizeTitle(title: string | null): string | null {
@@ -103,6 +108,7 @@ export async function generateTaskTitle(
 			maxTokens: 48,
 			timeoutMs: TITLE_GENERATION_TIMEOUT_MS,
 			codexModel: resolveCodexTitleModel(),
+			claudeModel: resolveClaudeTitleModel(),
 			normalize: normalizeTitle,
 		});
 		if (title) return title;

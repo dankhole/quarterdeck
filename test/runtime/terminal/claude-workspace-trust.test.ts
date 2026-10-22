@@ -87,6 +87,49 @@ describe("readClaudeWorkspaceTrustScreen", () => {
 		).toBe(false);
 	});
 
+	it("requires both options to be contiguous rows of one select", () => {
+		expect(readClaudeWorkspaceTrustScreen(screen(["❯ No, exit", "", "  Yes, I trust this folder"])).visible).toBe(
+			false,
+		);
+		expect(
+			readClaudeWorkspaceTrustScreen(screen(["❯ No, exit", "  Some other row", "  Yes, I trust this folder"]))
+				.visible,
+		).toBe(false);
+	});
+
+	it("reads wrapped option labels in a 40-column dialog", () => {
+		const narrow = (lines: string[]) => ({ ...screen(lines), cols: 40 });
+		expect(
+			readClaudeWorkspaceTrustScreen(
+				narrow([
+					" Accessing workspace:",
+					" /tmp/my-project",
+					"",
+					" ❯ No, continue without these",
+					"   permissions",
+					"   Yes, I trust this folder",
+					"",
+					" Enter to confirm · Esc to cancel",
+				]),
+			),
+		).toEqual({ visible: true, selection: "cancel" });
+		expect(
+			readClaudeWorkspaceTrustScreen(narrow([" ❯ 1. Yes, I trust this", "   folder", "   2. No, exit"])),
+		).toEqual({ visible: true, selection: "confirm" });
+	});
+
+	it("never selects an ambiguous or duplicated dialog", () => {
+		expect(readClaudeWorkspaceTrustScreen(screen(["❯ No, exit", "❯ Yes, I trust this folder"]))).toEqual({
+			visible: true,
+			selection: null,
+		});
+		expect(
+			readClaudeWorkspaceTrustScreen(
+				screen(["  No, exit", "❯ Yes, I trust this folder", "", "  No, exit", "❯ Yes, I trust this folder"]),
+			),
+		).toEqual({ visible: true, selection: null });
+	});
+
 	it("does not treat the settings-trust dialog as folder trust", () => {
 		expect(
 			readClaudeWorkspaceTrustScreen(screen(["\u276f No, exit Claude Code", "  Yes, I trust these settings"]))
@@ -160,6 +203,21 @@ describe("Claude workspace trust driver", () => {
 		expect(decideClaudeWorkspaceTrustAction(state, 0)).toEqual({ type: "idle" });
 		observeClaudeWorkspaceTrustScreen(state, screen(["No, exit", "Yes, I trust this folder"]), 0);
 		expect(decideClaudeWorkspaceTrustAction(state, 10_000)).toEqual({ type: "idle" });
+	});
+
+	it("stays idle while the user owns the dialog and re-arms once it disappears", () => {
+		const state = createClaudeWorkspaceTrustDriverState();
+		observeClaudeWorkspaceTrustScreen(state, CURRENT_DIALOG_CONFIRM_FOCUSED, 0);
+		state.manualInput = true;
+		observeClaudeWorkspaceTrustScreen(state, CURRENT_DIALOG_CONFIRM_FOCUSED, 10);
+		expect(decideClaudeWorkspaceTrustAction(state, 10_000)).toEqual({ type: "idle" });
+
+		observeClaudeWorkspaceTrustScreen(state, screen(["❯ "]), 10_000);
+		expect(state.manualInput).toBe(false);
+		observeClaudeWorkspaceTrustScreen(state, CURRENT_DIALOG_CONFIRM_FOCUSED, 10_000);
+		expect(decideClaudeWorkspaceTrustAction(state, 10_000 + CLAUDE_WORKSPACE_TRUST_INPUT_GUARD_MS)).toEqual({
+			type: "confirm",
+		});
 	});
 
 	it("restarts the guard when the dialog reappears after a confirm", () => {

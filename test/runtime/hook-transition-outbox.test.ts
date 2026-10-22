@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeHookIngestRequest } from "../../src/core";
 import {
+	abandonHookTransition,
 	createHookTransitionOutboxReplayer,
 	createPersistedHookTransition,
 	enqueueHookTransition,
+	HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS,
 	HOOK_TRANSITION_OUTBOX_TTL_MS,
 	loadPendingHookTransitions,
 } from "../../src/hook-transition-outbox";
@@ -40,6 +42,28 @@ function request(index: number, occurredAt: number = index * 100): RuntimeHookIn
 			occurredAt,
 		},
 	};
+}
+
+function deliveryId(index: number): string {
+	return `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+}
+
+/** Writes a record as a writer that enqueued it at `enqueuedAt` would have. */
+async function writeRecord(
+	input: RuntimeHookIngestRequest,
+	enqueuedAt: number,
+	options: { omitEnqueuedAt?: boolean } = {},
+): Promise<void> {
+	const record = createPersistedHookTransition(input, enqueuedAt);
+	if (!record) throw new Error("Expected a replayable transition.");
+	const { enqueuedAt: _enqueuedAt, ...legacyRecord } = record;
+	const directory = join(stateHome, "hook-transition-outbox");
+	await mkdir(directory, { recursive: true });
+	await writeFile(
+		join(directory, `${record.request.delivery.id}.json`),
+		JSON.stringify(options.omitEnqueuedAt ? legacyRecord : record),
+		"utf8",
+	);
 }
 
 beforeEach(async () => {
@@ -205,6 +229,85 @@ describe("hook transition outbox", () => {
 		await replayer.replayOnce();
 
 		expect(ingest).toHaveBeenCalledTimes(1);
+		expect(await loadPendingHookTransitions()).toEqual([]);
+		await replayer.close();
+	});
+
+	it("adopts an abandoned record immediately while holding one its writer may still deliver", async () => {
+		const now = Date.now();
+		// Delivery time predates the bound, but enqueue time decides whether a writer may be live.
+		await enqueueHookTransition(request(1, now - HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS - 1_000));
+		await enqueueHookTransition(request(2, now - HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS - 1_000));
+		await abandonHookTransition(deliveryId(2));
+		const ingest = vi.fn(async (_input: RuntimeHookIngestRequest) => ({ ok: true as const }));
+		const onReplayPassCompleted = vi.fn();
+		const replayer = createHookTransitionOutboxReplayer({ ingest, intervalMs: 60_000, onReplayPassCompleted });
+
+		replayer.start();
+		await vi.waitFor(() => expect(onReplayPassCompleted).toHaveBeenCalledOnce());
+		expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([deliveryId(2)]);
+		expect(onReplayPassCompleted).toHaveBeenLastCalledWith({
+			pendingTasks: [{ projectId: "project-1", taskId: "task-1" }],
+		});
+		expect((await loadPendingHookTransitions()).map((record) => record.request.delivery.id)).toEqual([deliveryId(1)]);
+		await replayer.close();
+
+		// Startup replay runs before clients connect and adopts every record.
+		await replayer.replayOnce();
+		expect(ingest).toHaveBeenCalledTimes(2);
+		expect(await loadPendingHookTransitions()).toEqual([]);
+	});
+
+	it("adopts an unmarked record once its writer could no longer be delivering it", async () => {
+		const now = Date.now();
+		const pastWriterBound = now - HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS - 1_000;
+		// A writer killed by its provider's hook timeout never marks its record.
+		await writeRecord(request(1, now), pastWriterBound);
+		// Records from older writers carry no enqueue time; it derives from their expiry.
+		await writeRecord(request(2, now), pastWriterBound, { omitEnqueuedAt: true });
+		await enqueueHookTransition(request(3, now));
+		const ingest = vi.fn(async (_input: RuntimeHookIngestRequest) => ({ ok: true as const }));
+		const onReplayPassCompleted = vi.fn();
+		const replayer = createHookTransitionOutboxReplayer({ ingest, intervalMs: 60_000, onReplayPassCompleted });
+
+		replayer.start();
+		await vi.waitFor(() => expect(onReplayPassCompleted).toHaveBeenCalledOnce());
+		expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([deliveryId(1), deliveryId(2)]);
+		expect((await loadPendingHookTransitions()).map((record) => record.request.delivery.id)).toEqual([deliveryId(3)]);
+		await replayer.close();
+	});
+
+	it("does not restore a record that replay already acknowledged when its writer gives up", async () => {
+		await abandonHookTransition(deliveryId(1));
+
+		expect(await loadPendingHookTransitions()).toEqual([]);
+	});
+
+	it("runs a complete replay after an active periodic pass instead of joining it", async () => {
+		const now = Date.now();
+		await writeRecord(request(1, now), now - HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS - 1_000);
+		await enqueueHookTransition(request(2, now));
+		let releaseFirst!: () => void;
+		const firstDelivery = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const ingest = vi.fn(async (input: RuntimeHookIngestRequest) => {
+			if (input.delivery?.id === deliveryId(1)) await firstDelivery;
+			return { ok: true as const };
+		});
+		const replayer = createHookTransitionOutboxReplayer({ ingest, intervalMs: 60_000 });
+
+		replayer.start();
+		await vi.waitFor(() => expect(ingest).toHaveBeenCalledOnce());
+		let completed = false;
+		const complete = replayer.replayOnce().then(() => {
+			completed = true;
+		});
+		releaseFirst();
+		await complete;
+
+		expect(completed).toBe(true);
+		expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([deliveryId(1), deliveryId(2)]);
 		expect(await loadPendingHookTransitions()).toEqual([]);
 		await replayer.close();
 	});

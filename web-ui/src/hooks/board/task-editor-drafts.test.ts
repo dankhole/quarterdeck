@@ -108,6 +108,30 @@ describe("task-editor-drafts", () => {
 			expect(task.codexOptions).toBeUndefined();
 		}
 	});
+	it("keeps Claude starting options on single and bulk tasks and drops them for other harnesses", () => {
+		const options = {
+			board: createBoard(),
+			prompt: "Single task",
+			prompts: ["First", "Second"],
+			images: [],
+			branchRef: "main",
+			defaultBranchRef: "main",
+			useWorktree: true,
+			branchName: "",
+			createFeatureBranch: false,
+			claudeOptions: { model: "opus", effort: "max" as const },
+		};
+		expect(createTaskOnBoard({ ...options, agentId: "claude" }).createdTask?.claudeOptions).toEqual(
+			options.claudeOptions,
+		);
+		for (const task of createTasksOnBoard({ ...options, agentId: "claude" }).createdTasks) {
+			expect(task.claudeOptions).toEqual(options.claudeOptions);
+		}
+		expect(createTaskOnBoard({ ...options, agentId: "codex" }).createdTask?.claudeOptions).toBeUndefined();
+		for (const task of createTasksOnBoard({ ...options, agentId: "pi" }).createdTasks) {
+			expect(task.claudeOptions).toBeUndefined();
+		}
+	});
 
 	it("returns stable reset drafts for create and edit flows", () => {
 		expect(createResetTaskCreateDraft("main", "claude")).toMatchObject({

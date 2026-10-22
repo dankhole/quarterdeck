@@ -1,3 +1,4 @@
+import { toRuntimeClaudeOptions } from "@runtime-contract";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback } from "react";
 import type { TaskLifecycleCommandDraft } from "@/hooks/board/task-lifecycle-operations";
@@ -44,6 +45,7 @@ function createAndStartDraft(task: BoardCard): Extract<TaskLifecycleCommandDraft
 			baseRef: task.baseRef,
 			agentId: task.agentId,
 			codexOptions: task.codexOptions,
+			claudeOptions: toRuntimeClaudeOptions(task.claudeOptions),
 			useWorktree: task.useWorktree,
 			branch: task.branch ?? undefined,
 			pinned: task.pinned,

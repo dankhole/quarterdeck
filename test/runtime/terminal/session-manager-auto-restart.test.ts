@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	RESUME_EXITED_BEFORE_INTERACTIVE_SESSION_WARNING,
 	STORED_CLAUDE_RESUME_FAILED_WARNING,
 	STORED_CODEX_RESUME_FAILED_WARNING,
 	STORED_PI_RESUME_FAILED_WARNING,
-} from "../../../src/terminal/codex-resume-failure";
+} from "../../../src/terminal/resume-failure";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
@@ -554,7 +555,11 @@ describe("TerminalSessionManager auto-restart", () => {
 		expect(manager.store.getSummary("task-1")?.warningMessage).toContain("input request was unresolved");
 	});
 
-	it("does not reconnect-auto-restart a failed Codex stored-id resume", async () => {
+	it.each([
+		{ agentId: "codex", label: "Codex", warning: STORED_CODEX_RESUME_FAILED_WARNING },
+		{ agentId: "claude", label: "Claude", warning: STORED_CLAUDE_RESUME_FAILED_WARNING },
+		{ agentId: "pi", label: "Pi", warning: STORED_PI_RESUME_FAILED_WARNING },
+	] as const)("does not reconnect-auto-restart a failed $label stored-id resume", async ({ agentId, warning }) => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
 			const session = createMockPtySession(111 + spawnedSessions.length, request);
@@ -571,13 +576,13 @@ describe("TerminalSessionManager auto-restart", () => {
 
 		await manager.startTaskSession({
 			taskId: "task-1",
-			agentId: "codex",
-			binary: "codex",
+			agentId,
+			binary: agentId,
 			args: [],
 			cwd: "/tmp/task-1",
 			prompt: "",
 			resumeConversation: true,
-			resumeSessionId: "codex-session-1",
+			resumeSessionId: `${agentId}-session-1`,
 			awaitReview: true,
 		});
 
@@ -585,15 +590,59 @@ describe("TerminalSessionManager auto-restart", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		expect(manager.store.getSummary("task-1")?.warningMessage).toBe(STORED_CODEX_RESUME_FAILED_WARNING);
+		expect(manager.store.getSummary("task-1")?.warningMessage).toBe(warning);
+		// Keep a usable-looking id (as a legacy persisted summary would) so only
+		// the resume-failure classification can refuse the reconnect restart.
+		manager.store.update("task-1", { resumeSessionId: `${agentId}-session-1` });
 
 		manager.recoverStaleSession("task-1");
 		await Promise.resolve();
 		await Promise.resolve();
 
 		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(prepareAgentLaunchMock).toHaveBeenCalledTimes(1);
 		expect(manager.store.getSummary("task-1")?.state).toBe("awaiting_review");
 		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("error");
+	});
+
+	it("does not reconnect-auto-restart a resume that exited cleanly before its interactive session", async () => {
+		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			const session = createMockPtySession(111 + spawnedSessions.length, request);
+			spawnedSessions.push(session);
+			return session;
+		});
+
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "",
+			resumeConversation: true,
+			resumeSessionId: "claude-session-1",
+			awaitReview: true,
+		});
+
+		spawnedSessions[0]?.triggerExit(0);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			resumeSessionId: "claude-session-1",
+			warningMessage: RESUME_EXITED_BEFORE_INTERACTIVE_SESSION_WARNING,
+		});
+
+		manager.recoverStaleSession("task-1");
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(ptySessionSpawnMock).toHaveBeenCalledTimes(1);
+		expect(manager.store.getSummary("task-1")).toMatchObject({ state: "awaiting_review", reviewReason: "error" });
 	});
 
 	it("surfaces a Pi replacement that spawns and then fails its exact targeted resume", async () => {

@@ -241,6 +241,7 @@ describe.each([
 		const detector = createCodexTurnInterruptionDetector();
 		expect(detector.detect(snapshot, createTestTaskSessionSummary({ state: "running", agentId: "codex" }))).toEqual({
 			type: "agent.rendered-turn-interrupted",
+			provider: "codex",
 		});
 	});
 
@@ -264,7 +265,7 @@ describe.each([
 						}),
 					}),
 				),
-			).toEqual({ type: "agent.rendered-turn-interrupted" });
+			).toEqual({ type: "agent.rendered-turn-interrupted", provider: "codex" });
 		},
 	);
 
@@ -293,11 +294,17 @@ describe.each([
 	it("does not replay the same rendered failure after a provider hook until the screen clears", () => {
 		const detector = createCodexTurnInterruptionDetector();
 		const running = createTestTaskSessionSummary({ state: "running", agentId: "codex" });
-		expect(detector.detect(snapshot, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
+		expect(detector.detect(snapshot, running)).toEqual({
+			type: "agent.rendered-turn-interrupted",
+			provider: "codex",
+		});
 		expect(detector.detect(snapshotWithTip, running)).toBeNull();
 		expect(detector.detect(snapshot, running)).toBeNull();
 		expect(detector.detect(screen(["Working on the next turn"]), running)).toBeNull();
-		expect(detector.detect(snapshot, running)).toEqual({ type: "agent.rendered-turn-interrupted" });
+		expect(detector.detect(snapshot, running)).toEqual({
+			type: "agent.rendered-turn-interrupted",
+			provider: "codex",
+		});
 	});
 
 	it("latches an ineligible visible failure so it cannot defeat a later working hook", () => {

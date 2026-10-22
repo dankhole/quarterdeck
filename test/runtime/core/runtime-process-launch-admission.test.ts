@@ -13,6 +13,7 @@ import { resolveCodexCliVersion } from "../../../src/execution/codex-structured-
 import { LanguageSession } from "../../../src/language-navigation/session.js";
 import { spawnWindowsLanguageProcess } from "../../../src/language-navigation/windows-process-owner.js";
 import { PtySession, _testing as ptyTesting } from "../../../src/terminal/pty-session.js";
+import { _testing as claudeTitleTesting } from "../../../src/title/claude-client.js";
 import { _testing as titleTesting } from "../../../src/title/codex-client.js";
 import { runGit } from "../../../src/workdir/git-utils.js";
 import { runWorktreeSetupScript } from "../../../src/workdir/task-worktree-setup.js";
@@ -135,6 +136,7 @@ describe("runtime child launch admission", () => {
 		["Claude executable locator", () => resolveClaudeExecutablePath("synthetic-agent", {})],
 		["Codex executable probe", () => resolveCodexCliVersion("synthetic-agent")],
 		["title-generation executable", () => titleTesting.runCodexCommand([], 1000, "synthetic")],
+		["Claude title-generation executable", () => claudeTitleTesting.runClaudeCommand([], 1000, "synthetic")],
 		[
 			"worktree setup shell",
 			() =>

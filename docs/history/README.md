@@ -20,5 +20,6 @@ The handwritten changelog and chronological implementation log were retired on 2
 - [LSP proposal](lsp-code-navigation-plan.md): original phased design; see the [current code-navigation contract](../lsp-code-navigation-plan.md).
 - [Claude terminal validation](claude-terminal-rendering-evidence.md): rollout receipts; see the [current rendering contract](../claude-terminal-rendering-plan.md).
 - [Pi implementation plan](pi-first-class-support-plan.md): original acceptance design; see the [current support contract](../pi-first-class-support-plan.md).
+- [Claude parity plan](claude-parity-plan.md): completed workstreams that closed Claude-vs-Codex gaps; see the [session lifecycle contract](../conventions/session-lifecycle.md).
 
 Other files in this directory retain earlier investigations and designs. `docs/archive/` contains older imported material and remains frozen. Preserve evidence and provenance; do not update historical claims to make them sound current.

@@ -1,22 +1,17 @@
-import { randomUUID } from "node:crypto";
-
 import { createTRPCProxyClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { Command } from "commander";
 
 import type { RuntimeHookDelivery, RuntimeHookEvent, RuntimeHookMetadata } from "../core";
 import { buildQuarterdeckRuntimeUrl } from "../core";
-import { acknowledgeHookTransition, enqueueHookTransition } from "../hook-transition-outbox";
-import { parseHookRuntimeContextFromEnv } from "../terminal";
+import { abandonHookTransition, acknowledgeHookTransition, enqueueHookTransition } from "../hook-transition-outbox";
+import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context";
 import type { RuntimeAppRouter } from "../trpc";
 import {
+	buildHookIngestRequest,
 	type HookCommandMetadataOptionValues,
-	inferHookSourceFromPayload,
-	normalizeHookMetadata,
 	parseJsonObject,
 	parseMetadataFromBase64,
 	parseMetadataFromOptions,
-	readPayloadStringField,
-	resolveHookEventFromPayload,
 } from "./hook-metadata";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
@@ -129,49 +124,30 @@ function parseHooksIngestArgs(
 	const payloadFromStdin = parseJsonObject(stdinPayload.trim());
 	const payloadFromArg = payloadArg ? parseJsonObject(payloadArg) : null;
 	const payload = payloadFromBase64 ?? payloadFromStdin ?? payloadFromArg;
-	const payloadSessionId = payload
-		? (readPayloadStringField(payload, "session_id") ?? readPayloadStringField(payload, "sessionId"))
-		: null;
-	const metadataContext = {
-		...flagMetadata,
-		sessionId: flagMetadata.sessionId ?? payloadSessionId ?? null,
-		sessionInstanceId: flagMetadata.sessionInstanceId ?? context.sessionInstanceId ?? null,
-	};
-	const resolvedEvent = resolveHookEventFromPayload(
-		event,
-		payload,
-		metadataContext.source ?? inferHookSourceFromPayload(payload),
-	);
-	const metadata = normalizeHookMetadata(resolvedEvent, payload, metadataContext);
 	return {
-		event: resolvedEvent,
-		taskId: context.taskId,
-		projectId: context.projectId,
-		metadata,
-		delivery: context.sessionInstanceId
-			? {
-					id: randomUUID(),
-					occurredAt: Date.now(),
-				}
-			: undefined,
+		...buildHookIngestRequest({ event, identity: context, flagMetadata, payload }),
 		payload,
 	};
 }
 
-export const HOOK_INGEST_ATTEMPT_TIMEOUT_MS = 1_500;
+// Both reliable attempts share one deadline. The runtime keeps applying an
+// attempt the client aborted, and a retry of the same delivery only waits for
+// that state to become durable, so the first attempt gets most of the budget
+// rather than being cut short and raced by its own retry.
+export const HOOK_INGEST_TOTAL_TIMEOUT_MS = 3_250;
+export const HOOK_INGEST_ATTEMPT_TIMEOUT_MS = 2_250;
 export const HOOK_INGEST_RETRY_DELAY_MS = 250;
 const HOOK_NOTIFY_TIMEOUT_MS = 250;
 
-interface HookIngestPolicy {
-	timeoutMs: number;
-	retry: boolean;
-	retryDelayMs?: number;
-}
+type HookIngestPolicy =
+	| { timeoutMs: number; retry: false }
+	| { timeoutMs: number; retry: true; retryDelayMs: number; totalTimeoutMs: number };
 
 const RELIABLE_HOOK_INGEST_POLICY: HookIngestPolicy = {
 	timeoutMs: HOOK_INGEST_ATTEMPT_TIMEOUT_MS,
 	retry: true,
 	retryDelayMs: HOOK_INGEST_RETRY_DELAY_MS,
+	totalTimeoutMs: HOOK_INGEST_TOTAL_TIMEOUT_MS,
 };
 
 const BEST_EFFORT_HOOK_NOTIFY_POLICY: HookIngestPolicy = {
@@ -183,7 +159,7 @@ async function ingestHookEvent(
 	args: HooksIngestArgs,
 	policy: HookIngestPolicy = RELIABLE_HOOK_INGEST_POLICY,
 ): Promise<void> {
-	const attempt = async (): Promise<void> => {
+	const attempt = async (timeoutMs: number): Promise<void> => {
 		const ingestResponse = await withAbortableTimeout(
 			(signal) => {
 				const trpcClient = createTRPCProxyClient<RuntimeAppRouter>({
@@ -207,7 +183,7 @@ async function ingestHookEvent(
 					delivery: args.delivery,
 				});
 			},
-			policy.timeoutMs,
+			timeoutMs,
 			"quarterdeck hooks ingest",
 		);
 		if (ingestResponse.ok === false) {
@@ -215,8 +191,9 @@ async function ingestHookEvent(
 		}
 	};
 
+	const startedAt = Date.now();
 	try {
-		await attempt();
+		await attempt(policy.timeoutMs);
 	} catch (firstError) {
 		if (!policy.retry) {
 			throw firstError;
@@ -227,9 +204,13 @@ async function ingestHookEvent(
 		writeHookCliDiagnostic(args, "ingest attempt failed; retrying", {
 			error: formatError(firstError),
 		});
-		await new Promise((resolve) => setTimeout(resolve, policy.retryDelayMs ?? HOOK_INGEST_RETRY_DELAY_MS));
+		await new Promise((resolve) => setTimeout(resolve, policy.retryDelayMs));
 		try {
-			await attempt();
+			const retryTimeoutMs = policy.totalTimeoutMs - (Date.now() - startedAt);
+			if (retryTimeoutMs <= 0) {
+				throw new Error(`quarterdeck hooks ingest exhausted its ${policy.totalTimeoutMs}ms budget`);
+			}
+			await attempt(retryTimeoutMs);
 		} catch (retryError) {
 			writeHookCliDiagnostic(args, "ingest retry failed", {
 				error: formatError(retryError),
@@ -298,13 +279,21 @@ async function runHooksIngest(
 				await acknowledgeHookTransition(args.delivery.id);
 			}
 		} catch (error) {
-			if (!queuedForReplay) {
+			if (!queuedForReplay || !args.delivery) {
 				throw error;
 			}
 			writeHookCliDiagnostic(args, "ingest deferred to durable replay", {
 				error: formatError(error),
-				delivery: args.delivery?.id ?? null,
+				delivery: args.delivery.id,
 			});
+			// Hand the record to live replay now instead of after its writer-age bound.
+			try {
+				await abandonHookTransition(args.delivery.id);
+			} catch (abandonError) {
+				writeHookCliDiagnostic(args, "failed to mark deferred transition for replay", {
+					error: formatError(abandonError),
+				});
+			}
 		}
 	} catch (error) {
 		process.stderr.write(`quarterdeck hooks ingest: ${formatError(error)}\n`);

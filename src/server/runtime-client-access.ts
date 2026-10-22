@@ -63,7 +63,7 @@ function header(request: IncomingMessage, name: string): string | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
-function isLoopback(address: string | undefined): boolean {
+export function isLoopbackAddress(address: string | undefined): boolean {
 	return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
@@ -343,7 +343,7 @@ export class RuntimeClientAccess {
 		const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
 		if (
 			this.cleared ||
-			!isLoopback(request.socket.remoteAddress) ||
+			!isLoopbackAddress(request.socket.remoteAddress) ||
 			header(request, "origin") !== undefined ||
 			generation !== this.generation ||
 			!token ||

@@ -3,6 +3,7 @@ import type {
 	RuntimeBoardColumnId,
 	RuntimeCodexOptions,
 	RuntimeConflictState,
+	RuntimePersistedClaudeOptions,
 	RuntimeTaskImage,
 } from "@/runtime/types";
 
@@ -20,6 +21,7 @@ export interface BoardCard {
 	baseRefPinned?: boolean;
 	agentId?: RuntimeAgentId;
 	codexOptions?: RuntimeCodexOptions;
+	claudeOptions?: RuntimePersistedClaudeOptions;
 	useWorktree?: boolean;
 	workingDirectory?: string | null;
 	branch?: string | null;

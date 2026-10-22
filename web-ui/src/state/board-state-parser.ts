@@ -2,6 +2,7 @@ import {
 	runtimeAgentIdSchema,
 	runtimeBoardCardSchema,
 	runtimeBoardColumnIdSchema,
+	runtimeClaudeOptionsSchema,
 	runtimeCodexOptionsSchema,
 	runtimeTaskImageSchema,
 } from "@runtime-contract";
@@ -27,6 +28,7 @@ const rawPersistedBoardCardSchema = z.object({
 	baseRefPinned: z.unknown().optional(),
 	agentId: z.unknown().optional(),
 	codexOptions: z.unknown().optional(),
+	claudeOptions: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
@@ -88,6 +90,7 @@ export function parsePersistedBoardCard(
 	const now = options.now ?? Date.now();
 	const agentId = parsePersistedAgentId(result.data.agentId);
 	const codexOptions = runtimeCodexOptionsSchema.safeParse(result.data.codexOptions);
+	const claudeOptions = agentId === "claude" ? parsePersistedClaudeOptions(result.data.claudeOptions) : undefined;
 
 	return {
 		id: parseNonEmptyString(result.data.id) ?? options.createTaskId(),
@@ -101,6 +104,7 @@ export function parsePersistedBoardCard(
 		...(typeof result.data.baseRefPinned === "boolean" ? { baseRefPinned: result.data.baseRefPinned } : {}),
 		...(agentId ? { agentId } : {}),
 		...(agentId === "codex" && codexOptions.success ? { codexOptions: codexOptions.data } : {}),
+		...(claudeOptions ? { claudeOptions } : {}),
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),
@@ -115,6 +119,21 @@ export function parsePersistedBoardCard(
 function parsePersistedAgentId(value: unknown): BoardCard["agentId"] | null {
 	const result = runtimeAgentIdSchema.safeParse(value);
 	return result.success ? result.data : null;
+}
+
+/** Keeps each valid Claude choice independently so an unknown (newer) effort level does not drop the model. */
+function parsePersistedClaudeOptions(value: unknown): BoardCard["claudeOptions"] {
+	const raw = z.object({ model: z.unknown().optional(), effort: z.unknown().optional() }).safeParse(value);
+	if (!raw.success) {
+		return undefined;
+	}
+	const model = runtimeClaudeOptionsSchema.shape.model.safeParse(raw.data.model);
+	const effort = runtimeClaudeOptionsSchema.shape.effort.safeParse(raw.data.effort);
+	const options = {
+		...(model.success && model.data ? { model: model.data } : {}),
+		...(effort.success && effort.data ? { effort: effort.data } : {}),
+	};
+	return Object.keys(options).length > 0 ? options : undefined;
 }
 
 export function parsePersistedTaskImages(rawImages: unknown): TaskImage[] | undefined {

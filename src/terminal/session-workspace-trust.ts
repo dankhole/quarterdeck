@@ -114,12 +114,19 @@ export function beginCodexWorkspaceTrustOutput(active: ActiveProcessState): numb
 	return ++state.outputRevision;
 }
 
-/** Direct keyboard intent takes over this dialog until it actually disappears. */
-export function cancelCodexWorkspaceTrustForUserInput(active: ActiveProcessState): void {
-	const state = active.codexWorkspaceTrust;
-	if (!state) return;
-	beginCodexWorkspaceTrustOutput(active);
-	state.manualInput = true;
+/** Direct keyboard intent takes over a trust dialog until it actually disappears. */
+export function cancelWorkspaceTrustForUserInput(active: ActiveProcessState): void {
+	const codexState = active.codexWorkspaceTrust;
+	if (codexState) {
+		beginCodexWorkspaceTrustOutput(active);
+		codexState.manualInput = true;
+	}
+	// Input before Claude renders its dialog is not an answer to that dialog.
+	const claudeState = active.claudeWorkspaceTrust;
+	if (claudeState && claudeState.dialogVisibleSince !== null) {
+		stopWorkspaceTrustTimers(active);
+		claudeState.manualInput = true;
+	}
 }
 
 export function processCodexWorkspaceTrustScreen(
@@ -180,21 +187,46 @@ export function processCodexWorkspaceTrustScreen(
 	}, WORKSPACE_TRUST_CONFIRM_DELAY_MS);
 }
 
+/** Retire Claude trust automation once the launch no longer needs or allows it. */
+function retireClaudeWorkspaceTrustIfDone(active: ActiveProcessState): boolean {
+	if (!active.nativeWorkConfirmed && !active.session.wasInterrupted()) return false;
+	stopWorkspaceTrustTimers(active);
+	active.claudeWorkspaceTrust = null;
+	return true;
+}
+
+/**
+ * Invalidate any pending Claude trust key before the mirror queues new
+ * filtered output, so keys are only ever sent for the newest rendered frame.
+ * Returns the revision the resulting screen must carry, or null when the
+ * observer is absent or retired.
+ */
+export function beginClaudeWorkspaceTrustOutput(active: ActiveProcessState): number | null {
+	const state = active.claudeWorkspaceTrust;
+	if (!state || retireClaudeWorkspaceTrustIfDone(active)) return null;
+	stopWorkspaceTrustTimers(active);
+	return ++state.outputRevision;
+}
+
 /**
  * Observe a rendered screen for Claude's workspace trust dialog and advance
- * the confirmation driver. Keys are written only after Claude's input guard
- * and only once the rendered selection says what the key will do.
+ * the confirmation driver. Keys are written only after Claude's input guard,
+ * only once the rendered selection says what the key will do, and only while
+ * no newer output is pending behind that frame.
  */
 export function processClaudeWorkspaceTrustScreen(
 	active: ActiveProcessState,
 	taskId: string,
 	screen: TerminalScreenSnapshot,
+	revision: number,
 	callbacks: WorkspaceTrustCallbacks,
 ): void {
-	if (!active.claudeWorkspaceTrust) {
+	const state = active.claudeWorkspaceTrust;
+	if (!state || callbacks.getActive(taskId) !== active || state.outputRevision !== revision) {
 		return;
 	}
-	observeClaudeWorkspaceTrustScreen(active.claudeWorkspaceTrust, screen, Date.now());
+	if (retireClaudeWorkspaceTrustIfDone(active)) return;
+	observeClaudeWorkspaceTrustScreen(state, screen, Date.now());
 	advanceClaudeWorkspaceTrust(active, taskId, callbacks);
 }
 
@@ -204,7 +236,7 @@ function advanceClaudeWorkspaceTrust(
 	callbacks: WorkspaceTrustCallbacks,
 ): void {
 	const state = active.claudeWorkspaceTrust;
-	if (!state || callbacks.getActive(taskId) !== active) {
+	if (!state || callbacks.getActive(taskId) !== active || retireClaudeWorkspaceTrustIfDone(active)) {
 		return;
 	}
 	stopWorkspaceTrustTimers(active);
@@ -213,12 +245,16 @@ function advanceClaudeWorkspaceTrust(
 	switch (action.type) {
 		case "idle":
 			return;
-		case "wait":
+		case "wait": {
+			const revision = state.outputRevision;
 			active.workspaceTrustConfirmTimer = setTimeout(() => {
 				active.workspaceTrustConfirmTimer = null;
+				// New output cancels this timer; recheck in case a chunk raced it.
+				if (active.claudeWorkspaceTrust !== state || state.outputRevision !== revision) return;
 				advanceClaudeWorkspaceTrust(active, taskId, callbacks);
 			}, action.until - now);
 			return;
+		}
 		case "select_confirm":
 			sessionLog.debug("claude workspace trust dialog focused on decline, selecting confirm", {
 				taskId,

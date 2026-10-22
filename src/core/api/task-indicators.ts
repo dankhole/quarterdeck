@@ -1,6 +1,8 @@
 import {
+	getWaitingSubagentInteraction,
 	hasPendingInitialWorkConfirmation,
 	type RuntimeTaskHookActivity,
+	type RuntimeTaskInteractionKind,
 	type RuntimeTaskSessionSummary,
 } from "./task-session.js";
 
@@ -119,8 +121,34 @@ export function isPermissionActivity(activity: RuntimeTaskHookActivity | null | 
 	);
 }
 
+function createWaitingInteractionIndicatorState(kind: RuntimeTaskInteractionKind): RuntimeTaskIndicatorState {
+	if (kind === "permission") {
+		return createIndicatorState("approval_required", {
+			tone: "needs_input",
+			column: "stopped",
+			notification: "permission",
+			approvalRequired: true,
+			needsInput: true,
+			hookReview: true,
+		});
+	}
+	return createIndicatorState("needs_input", {
+		tone: "review",
+		column: "stopped",
+		notification: "review",
+		needsInput: true,
+	});
+}
+
 export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): RuntimeTaskIndicatorState {
 	const interaction = summary.outstandingInteraction ?? null;
+	// A subagent prompt shown in the main TUI blocks the user even while the
+	// foreground turn is Running or its own answered prompt awaits provider
+	// confirmation. An unanswered foreground interaction keeps precedence.
+	const subagentInteraction = interaction?.status === "waiting" ? null : getWaitingSubagentInteraction(summary);
+	if (subagentInteraction) {
+		return createWaitingInteractionIndicatorState(subagentInteraction.kind);
+	}
 	if (interaction?.status === "response_submitted") {
 		return createIndicatorState("response_pending", {
 			tone: "review",
@@ -136,22 +164,7 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 		});
 	}
 	if (interaction?.status === "waiting") {
-		if (interaction.kind === "permission") {
-			return createIndicatorState("approval_required", {
-				tone: "needs_input",
-				column: "stopped",
-				notification: "permission",
-				approvalRequired: true,
-				needsInput: true,
-				hookReview: true,
-			});
-		}
-		return createIndicatorState("needs_input", {
-			tone: "review",
-			column: "stopped",
-			notification: "review",
-			needsInput: true,
-		});
+		return createWaitingInteractionIndicatorState(interaction.kind);
 	}
 
 	if (summary.state === "running") {

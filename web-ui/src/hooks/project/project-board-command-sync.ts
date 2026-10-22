@@ -1,5 +1,5 @@
 import { applyProjectBoardCommands } from "@runtime-board-commands";
-import type { RuntimeProjectBoardCommand } from "@runtime-contract";
+import { type RuntimeProjectBoardCommand, toRuntimeClaudeOptions } from "@runtime-contract";
 
 import type { BoardCard, BoardColumnId, BoardData, TaskImage } from "@/types";
 import { areOptionalPathIdentitiesEqual } from "@/utils/path-identity";
@@ -92,6 +92,7 @@ export function deriveProjectBoardCommands(before: BoardData, after: BoardData):
 				baseRef: card.baseRef,
 				agentId: card.agentId,
 				codexOptions: card.codexOptions,
+				claudeOptions: toRuntimeClaudeOptions(card.claudeOptions),
 				useWorktree: card.useWorktree,
 				branch: card.branch ?? undefined,
 				pinned: card.pinned,

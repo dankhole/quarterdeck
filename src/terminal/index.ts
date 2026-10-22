@@ -17,6 +17,19 @@ export {
 } from "./codex-workspace-trust";
 export { shouldRetainHookEventOrderObservation } from "./hook-event-order";
 export {
+	getActiveHookHttpChannel,
+	HOOK_HTTP_NOTIFY_PATH,
+	HOOK_HTTP_PROJECT_ID_HEADER,
+	HOOK_HTTP_SESSION_INSTANCE_ID_HEADER,
+	HOOK_HTTP_TASK_ID_HEADER,
+	HOOK_HTTP_TOKEN_HEADER,
+	HookHttpChannel,
+	type HookHttpLaunch,
+	type HookHttpTransport,
+	QUARTERDECK_HOOK_HTTP_TOKEN_ENV,
+	setActiveHookHttpChannel,
+} from "./hook-http-channel";
+export {
 	createHookRuntimeEnv,
 	type HookRuntimeContext,
 	parseHookRuntimeContextFromEnv,

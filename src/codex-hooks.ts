@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { RuntimeHookEvent } from "./core";
-import { buildQuarterdeckCommandLine } from "./core";
+import { buildQuarterdeckHookCommandLine } from "./core";
 
 export const CODEX_HOOKS_FEATURE_NAME = "hooks";
 export const CODEX_HOOK_TIMEOUT_SECONDS = 5;
@@ -36,7 +36,7 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: { source?: string;
 	if (metadata?.source) {
 		parts.push("--source", metadata.source);
 	}
-	return buildQuarterdeckCommandLine(parts);
+	return buildQuarterdeckHookCommandLine(parts);
 }
 
 type CodexHookCommand = {

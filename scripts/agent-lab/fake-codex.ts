@@ -115,16 +115,8 @@ async function emitHook(
 		return;
 	}
 	const reliableActivity = options.hookEventName === "SessionStart" || options.hookEventName === "PermissionDenied";
-	const hookArgs = [
-		tsxCliPath,
-		cliEntrypointPath,
-		"hooks",
-		event === "activity" && !reliableActivity ? "notify" : "ingest",
-		"--event",
-		event,
-		"--source",
-		provider,
-	];
+	const delivery = event === "activity" && !reliableActivity ? "notify" : "ingest";
+	const hookArgs = [tsxCliPath, cliEntrypointPath, "hooks", delivery, "--event", event, "--source", provider];
 	const claudePayload =
 		provider === "claude"
 			? buildClaudeHookPayload(options.hookEventName, {
@@ -146,6 +138,12 @@ async function emitHook(
 					sessionSource: options.sessionSource,
 				})
 			: null;
+	const claudeHttpHook =
+		claudePayload && delivery === "notify" ? claudeHttpHooks.get(options.hookEventName) : undefined;
+	if (claudeHttpHook) {
+		await postClaudeHttpHook(claudeHttpHook, claudePayload);
+		return;
+	}
 	if (provider === "codex") hookArgs.push("--transcript-path", historyPath);
 	if (!claudePayload) {
 		hookArgs.push("--hook-event-name", options.hookEventName, "--session-id", sessionId);
@@ -704,12 +702,85 @@ async function assertClaudeLaunchContract(): Promise<void> {
 		Stop: ["ingest", "to_review"],
 		StopFailure: ["ingest", "to_review"],
 	} as const;
+	for (const [hookName, groups] of Object.entries(parsed.hooks ?? {})) {
+		const httpHook = readClaudeHttpHook(groups);
+		if (httpHook) claudeHttpHooks.set(hookName, httpHook);
+	}
 	for (const [hookName, [delivery, event]] of Object.entries(expectedHookCommands)) {
+		const httpHook = claudeHttpHooks.get(hookName);
+		if (httpHook) {
+			// Best-effort hooks may use Claude's HTTP transport instead of `hooks notify`.
+			const url = new URL(httpHook.url);
+			if (
+				delivery !== "notify" ||
+				url.pathname !== "/api/hooks/notify" ||
+				url.searchParams.get("event") !== event ||
+				url.searchParams.get("source") !== "claude"
+			) {
+				throw new Error(`Fake Claude settings do not map ${hookName} to ${delivery}:${event}.`);
+			}
+			continue;
+		}
 		const serializedHook = JSON.stringify(parsed.hooks?.[hookName]);
 		const expectedCommand = `'hooks' '${delivery}' '--event' '${event}' '--source' 'claude'`;
 		if (!serializedHook.includes(expectedCommand)) {
 			throw new Error(`Fake Claude settings do not map ${hookName} to ${delivery}:${event}.`);
 		}
+	}
+}
+
+interface FakeClaudeHttpHook {
+	url: string;
+	headers: Record<string, string>;
+	allowedEnvVars: string[];
+}
+
+const claudeHttpHooks = new Map<string, FakeClaudeHttpHook>();
+
+function readClaudeHttpHook(groups: unknown): FakeClaudeHttpHook | null {
+	const group: unknown = Array.isArray(groups) ? groups[0] : null;
+	const handlers: unknown = group && typeof group === "object" ? (group as { hooks?: unknown }).hooks : null;
+	const handler: unknown = Array.isArray(handlers) ? handlers[0] : null;
+	if (!handler || typeof handler !== "object") return null;
+	const { type, url, headers, allowedEnvVars } = handler as Record<string, unknown>;
+	if (type !== "http" || typeof url !== "string" || !headers || typeof headers !== "object") return null;
+	const allowed = Array.isArray(allowedEnvVars)
+		? allowedEnvVars.filter((name): name is string => typeof name === "string")
+		: [];
+	return {
+		url,
+		headers: Object.fromEntries(
+			Object.entries(headers).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+		),
+		allowedEnvVars: allowed,
+	};
+}
+
+/** Delivers a hook the way Claude does for `type: "http"`: interpolate allowlisted env into headers, then POST. */
+async function postClaudeHttpHook(hook: FakeClaudeHttpHook, payload: unknown): Promise<void> {
+	const headers = Object.fromEntries(
+		Object.entries(hook.headers).map(([name, template]) => [
+			name,
+			template.replace(
+				/\$\{([A-Z0-9_]+)\}|\$([A-Z0-9_]+)/g,
+				(_, braced: string | undefined, bare: string | undefined) => {
+					const envName = braced ?? bare ?? "";
+					return hook.allowedEnvVars.includes(envName) ? (process.env[envName] ?? "") : "";
+				},
+			),
+		]),
+	);
+	try {
+		const response = await fetch(hook.url, {
+			method: "POST",
+			headers: { ...headers, "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+			signal: AbortSignal.timeout(5_000),
+		});
+		await response.arrayBuffer();
+		if (!response.ok) writeLine(`[agent-lab hook error] HTTP ${response.status}`);
+	} catch (error) {
+		writeLine(`[agent-lab hook error] ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 

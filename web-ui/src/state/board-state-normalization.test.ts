@@ -65,6 +65,28 @@ describe("normalizeBoardData", () => {
 		).toBeUndefined();
 	});
 
+	it("retains Claude starting options only for Claude cards through authoritative hydration", () => {
+		const claudeOptions = { model: "sonnet", effort: "xhigh" };
+		const card = parsePersistedBoardCard(
+			{ id: "task-1", prompt: "Task", baseRef: "main", agentId: "claude", claudeOptions },
+			{ createTaskId: () => "unused" },
+		);
+		expect(card?.claudeOptions).toEqual(claudeOptions);
+		expect(
+			parsePersistedBoardCard({ ...card, claudeOptions: { effort: "ultra" } }, { createTaskId: () => "unused" })
+				?.claudeOptions,
+		).toBeUndefined();
+		expect(
+			parsePersistedBoardCard(
+				{ ...card, claudeOptions: { model: "opus", effort: "future_level" } },
+				{ createTaskId: () => "unused" },
+			)?.claudeOptions,
+		).toEqual({ model: "opus" });
+		expect(
+			parsePersistedBoardCard({ ...card, agentId: "codex" }, { createTaskId: () => "unused" })?.claudeOptions,
+		).toBeUndefined();
+	});
+
 	it("retains title ownership during authoritative board hydration without inventing legacy ownership", () => {
 		const board = normalizeBoardData({
 			columns: [

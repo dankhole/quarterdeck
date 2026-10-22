@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ConversationProgressCursor, ConversationProgressReadResult } from "../../../src/conversation";
 import type { TaskResourceOperationCoordinator } from "../../../src/core";
-import { getQuarterdeckRuntimePort, setQuarterdeckRuntimePort } from "../../../src/core";
+import {
+	getQuarterdeckRuntimeHost,
+	getQuarterdeckRuntimePort,
+	setQuarterdeckRuntimeHost,
+	setQuarterdeckRuntimePort,
+} from "../../../src/core";
 import { CodexStructuredOwnerRegistry } from "../../../src/execution/codex-structured-owner";
 import * as nativeInput from "../../../src/execution/native-terminal-input";
 import { StructuredOwnerRegistry } from "../../../src/execution/structured-owner-registry";
@@ -43,6 +48,7 @@ function createDependencies() {
 		runtimeSessionPersistence: {
 			disposeProject: vi.fn(async () => {}),
 			persistRuntimeSessions: vi.fn(async () => {}),
+			awaitRuntimeSessionsDurable: vi.fn(async () => {}),
 			close: persistenceClose,
 		},
 		boardCommands: {
@@ -68,7 +74,9 @@ function createDependencies() {
 	return { deps, persistenceClose, hubClose, diagnosticsClose, markFailed };
 }
 
-function stubRuntimeBoundaries() {
+function stubRuntimeBoundaries(
+	boundAddress: { address: string; family: string } = { address: "127.0.0.1", family: "IPv4" },
+) {
 	vi.spyOn(ownedProcesses, "stopRuntimeOwnedProcessTrees").mockImplementation(async ({ stopSessions }) => {
 		stopSessions();
 		return { status: "stopped" };
@@ -77,7 +85,7 @@ function stubRuntimeBoundaries() {
 	const listen = vi.fn((_port: number, _host: string, callback: () => void) => callback());
 	const server = Object.assign(new EventEmitter(), {
 		listen,
-		address: () => ({ port: 9999, address: "127.0.0.1", family: "IPv4" }),
+		address: () => ({ port: 9999, ...boundAddress }),
 		close: httpClose,
 	});
 	vi.spyOn(http, "createServer").mockReturnValue(server as unknown as http.Server);
@@ -147,6 +155,59 @@ describe("runtime server composition", () => {
 			expect(server.url).toBe("http://127.0.0.1:9999");
 		} finally {
 			await server.close();
+		}
+	});
+
+	it("offers the best-effort hook endpoint to launches only between listening and shutdown", async () => {
+		const { listen } = stubRuntimeBoundaries();
+		listen.mockImplementation((_port: number, _host: string, callback: () => void) => {
+			expect(terminal.getActiveHookHttpChannel()).toBeNull();
+			callback();
+		});
+		const { deps } = createDependencies();
+		deps.listenPort = 0;
+		const server = await createRuntimeServer(deps);
+		try {
+			expect(terminal.getActiveHookHttpChannel()?.getNotifyUrl()).toBe("http://127.0.0.1:9999/api/hooks/notify");
+
+			const handler = vi.mocked(http.createServer).mock.calls[0]?.[0] as http.RequestListener;
+			const response = Object.assign(new EventEmitter(), {
+				statusCode: 200,
+				setHeader: vi.fn(),
+				writeHead: vi.fn(function (this: { statusCode: number }, status: number) {
+					this.statusCode = status;
+				}),
+				end: vi.fn(),
+			});
+			const request = Object.assign(new EventEmitter(), {
+				method: "POST",
+				url: "/api/hooks/notify?event=activity&source=claude",
+				headers: { host: "127.0.0.1:9999", "content-type": "application/json" },
+				socket: { remoteAddress: "127.0.0.1" },
+			});
+			await handler(request as unknown as http.IncomingMessage, response as unknown as http.ServerResponse);
+			expect(response.writeHead).toHaveBeenCalledWith(401, expect.anything());
+		} finally {
+			await server.close();
+		}
+		expect(terminal.getActiveHookHttpChannel()).toBeNull();
+	});
+
+	it("publishes the hook endpoint from the bound IPv6 address rather than the configured host name", async () => {
+		const configuredHost = getQuarterdeckRuntimeHost();
+		setQuarterdeckRuntimeHost("localhost");
+		stubRuntimeBoundaries({ address: "::1", family: "IPv6" });
+		const { deps } = createDependencies();
+		deps.listenPort = 0;
+		try {
+			const server = await createRuntimeServer(deps);
+			try {
+				expect(terminal.getActiveHookHttpChannel()?.getNotifyUrl()).toBe("http://[::1]:9999/api/hooks/notify");
+			} finally {
+				await server.close();
+			}
+		} finally {
+			setQuarterdeckRuntimeHost(configuredHost);
 		}
 	});
 
@@ -331,7 +392,10 @@ describe("runtime server composition", () => {
 		const server = await createRuntimeServer(deps);
 		try {
 			expect(createHooksApi).toHaveBeenCalledWith(
-				expect.objectContaining({ persistSessionState: deps.runtimeSessionPersistence.persistRuntimeSessions }),
+				expect.objectContaining({
+					persistSessionState: deps.runtimeSessionPersistence.persistRuntimeSessions,
+					awaitSessionStateDurable: deps.runtimeSessionPersistence.awaitRuntimeSessionsDurable,
+				}),
 			);
 		} finally {
 			await server.close();
@@ -401,6 +465,47 @@ describe("runtime server composition", () => {
 			await expect(queuedWrite).rejects.toThrow("project folder changed");
 			expect(write).toHaveBeenCalledTimes(100);
 			writer.dispose();
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("admits hook bursts without Git probes and still fences relocation", async () => {
+		stubRuntimeBoundaries();
+		const { deps } = createDependencies();
+		const indexed = { projectId: "hook-project", repoPath: "/synthetic/project", statePath: "/synthetic/state" };
+		const checkAvailability = vi.fn(async () => ({ status: "available" as const }));
+		deps.projectRegistry.checkProjectAvailability = checkAvailability;
+		const indexedScope = vi.spyOn(state, "loadProjectScopeById").mockResolvedValue(indexed);
+		const relocation = vi.spyOn(relocationJournal, "readProjectRelocationJournal").mockResolvedValue(null);
+		const unguardedIngest = vi.fn(async () => ({ ok: true as const }));
+		vi.spyOn(trpc, "createHooksApi").mockReturnValue({ ingest: unguardedIngest });
+		const server = await createRuntimeServer(deps);
+		try {
+			const ingest = vi.mocked(hookOutbox.createHookTransitionOutboxReplayer).mock.calls.at(-1)?.[0].ingest;
+			if (!ingest) throw new Error("Runtime must replay the outbox through guarded hook ingest.");
+			const hook = { taskId: "task", projectId: indexed.projectId, event: "to_in_progress" as const };
+
+			const burst = await Promise.all(Array.from({ length: 20 }, async () => await ingest(hook)));
+			expect(burst).toEqual(Array.from({ length: 20 }, () => ({ ok: true })));
+			expect(unguardedIngest).toHaveBeenCalledTimes(20);
+			expect(checkAvailability).not.toHaveBeenCalled();
+
+			relocation.mockResolvedValueOnce(
+				{} as Awaited<ReturnType<typeof relocationJournal.readProjectRelocationJournal>>,
+			);
+			await expect(ingest(hook)).resolves.toEqual({
+				ok: false,
+				error: "Project folder relocation is awaiting recovery.",
+			});
+			indexedScope
+				.mockResolvedValueOnce(indexed)
+				.mockResolvedValueOnce({ ...indexed, repoPath: "/synthetic/renamed" });
+			await expect(ingest(hook)).resolves.toEqual({
+				ok: false,
+				error: "The project folder changed. Refresh and try again.",
+			});
+			expect(unguardedIngest).toHaveBeenCalledTimes(20);
 		} finally {
 			await server.close();
 		}

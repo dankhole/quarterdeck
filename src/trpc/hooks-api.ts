@@ -85,6 +85,25 @@ function isForegroundCompletionMetadata(metadata: RuntimeHookMetadata | undefine
 	);
 }
 
+/**
+ * Records whether the store changed while a hook was being applied. Hook
+ * application is synchronous, so every change seen in that window belongs to
+ * this hook and must be durable before it is acknowledged.
+ */
+function observeSessionStoreChanges(store: SessionSummaryStore): { changed: () => boolean; stop: () => void } {
+	let changed = false;
+	let unsubscribe: (() => void) | null = store.onChange(() => {
+		changed = true;
+	});
+	return {
+		changed: () => changed,
+		stop: () => {
+			unsubscribe?.();
+			unsubscribe = null;
+		},
+	};
+}
+
 type HookBackgroundTaskScheduler = (task: () => void) => void;
 
 function scheduleHookBackgroundTask(task: () => void): void {
@@ -100,6 +119,13 @@ export interface CreateHooksApiDependencies {
 	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
 	/** Resolves only after the latest session-store generation is durable. */
 	persistSessionState?: (projectId: string) => Promise<void>;
+	/**
+	 * Resolves once session-store changes already made are durable without
+	 * forcing a new write. Acknowledges hooks that changed nothing, such as a
+	 * duplicate delivery whose first attempt may still be persisting. Falls back
+	 * to `persistSessionState` when omitted.
+	 */
+	awaitSessionStateDurable?: (projectId: string) => Promise<void>;
 	diagnostics?: RuntimeDiagnostics;
 	conversationSourceHints?: ConversationSourceHintRecorder;
 	observeProgress?: (input: {
@@ -126,6 +152,7 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				sessionInstanceId?: string;
 				deliveryId?: string;
 			} = {};
+			let sessionChanges: ReturnType<typeof observeSessionStoreChanges> | null = null;
 			try {
 				const body = parseHookIngestRequest(input);
 				const { taskId, projectId, event } = body;
@@ -181,10 +208,19 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
+				const observedSessionChanges = observeSessionStoreChanges(store);
+				sessionChanges = observedSessionChanges;
 				let providerSessionIdentityAccepted = false;
 				const completeHookIngest = async (advanceProviderOrder: boolean): Promise<RuntimeHookIngestResponse> => {
 					manager.commitHookEventOrder(taskId, body, advanceProviderOrder);
-					await deps.persistSessionState?.(projectId);
+					observedSessionChanges.stop();
+					// A hook that changed nothing (duplicate, rejected, or foreign) still
+					// waits for already-dirty state, which covers an earlier attempt of
+					// the same delivery, but must not force its own write.
+					const awaitDurable = observedSessionChanges.changed()
+						? deps.persistSessionState
+						: (deps.awaitSessionStateDurable ?? deps.persistSessionState);
+					await awaitDurable?.(projectId);
 					if (providerSessionIdentityAccepted && body.metadata?.sessionId?.trim()) {
 						scheduleBackgroundTask(() => {
 							void deps
@@ -242,12 +278,17 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 				providerSessionIdentityAccepted = true;
-				deps.conversationSourceHints?.recordProviderHookHint({
-					projectId,
-					taskId,
-					expectedProviderSessionId: body.metadata?.sessionId ?? previousSummary.resumeSessionId ?? null,
-					metadata: body.metadata,
-				});
+				// A Codex subagent hook carries the root session id beside the child
+				// thread's own transcript path; it must not redirect the task's
+				// conversation source.
+				if (!body.metadata?.providerAgentId?.trim()) {
+					deps.conversationSourceHints?.recordProviderHookHint({
+						projectId,
+						taskId,
+						expectedProviderSessionId: body.metadata?.sessionId ?? previousSummary.resumeSessionId ?? null,
+						metadata: body.metadata,
+					});
+				}
 
 				const transitionResult = manager.applyProviderHook(taskId, body);
 				if (!transitionResult) {
@@ -314,6 +355,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					{ level: "error", essential: true },
 				);
 				return { ok: false, error: message } satisfies RuntimeHookIngestResponse;
+			} finally {
+				sessionChanges?.stop();
 			}
 		},
 	};

@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { RuntimeSessionPersistence } from "../../src/server/runtime-session-persistence";
 import { loadProjectContext, loadProjectState, ProjectBoardCommandService } from "../../src/state";
@@ -72,22 +72,22 @@ describe("RuntimeSessionPersistence integration", { concurrent: false }, () => {
 						ensureTerminalManagerForProject: async () => manager,
 					},
 					persistSessionState: persistence.persistRuntimeSessions,
+					awaitSessionStateDurable: persistence.awaitRuntimeSessionsDurable,
 				});
 				const deliveryId = "00000000-0000-4000-8000-000000000001";
-				await expect(
-					api.ingest({
-						taskId,
-						projectId: context.projectId,
-						event: "to_review",
-						metadata: {
-							source: "codex",
-							hookEventName: "Stop",
-							sessionInstanceId,
-							turnId: "turn-1",
-						},
-						delivery: { id: deliveryId, occurredAt: 200 },
-					}),
-				).resolves.toEqual({ ok: true });
+				const stopHook = {
+					taskId,
+					projectId: context.projectId,
+					event: "to_review" as const,
+					metadata: {
+						source: "codex",
+						hookEventName: "Stop",
+						sessionInstanceId,
+						turnId: "turn-1",
+					},
+					delivery: { id: deliveryId, occurredAt: 200 },
+				};
+				await expect(api.ingest(stopHook)).resolves.toEqual({ ok: true });
 
 				// Read synchronously at acknowledgement: a later debounce cannot make this pass.
 				const acknowledged: unknown = JSON.parse(readFileSync(join(context.statePath, "sessions.json"), "utf8"));
@@ -103,6 +103,14 @@ describe("RuntimeSessionPersistence integration", { concurrent: false }, () => {
 						],
 					},
 				});
+
+				// A retry or replay of the durable delivery is acknowledged without rewriting state.
+				const reconcile = vi.spyOn(boardCommands, "reconcileRuntimeSessions");
+				const sessionsBeforeDuplicate = readFileSync(join(context.statePath, "sessions.json"), "utf8");
+				await expect(api.ingest(stopHook)).resolves.toEqual({ ok: true });
+				expect(reconcile).not.toHaveBeenCalled();
+				expect(readFileSync(join(context.statePath, "sessions.json"), "utf8")).toBe(sessionsBeforeDuplicate);
+				reconcile.mockRestore();
 
 				const newest = manager.store.update(taskId, { warningMessage: "Newest shutdown update" });
 				await persistence.close();

@@ -5,23 +5,79 @@ import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchem
 
 export { TASK_CARD_COLORS, taskColorSeed } from "../task-card-colors.js";
 
+const runtimeAgentModelIdSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(128)
+	.regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/);
+
+const runtimeAgentEffortTokenSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(32)
+	.regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/);
+
 export const runtimeCodexOptionsSchema = z.object({
-	model: z
-		.string()
-		.trim()
-		.min(1)
-		.max(128)
-		.regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/)
-		.optional(),
-	reasoningEffort: z
-		.string()
-		.trim()
-		.min(1)
-		.max(32)
-		.regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/)
-		.optional(),
+	model: runtimeAgentModelIdSchema.optional(),
+	reasoningEffort: runtimeAgentEffortTokenSchema.optional(),
 });
 export type RuntimeCodexOptions = z.infer<typeof runtimeCodexOptionsSchema>;
+
+/**
+ * Effort levels accepted by the Claude Code CLI `--effort` option. All predate the 2.1.198 launch
+ * minimum (Claude Code CHANGELOG): `--effort` by 2.1.72, `max` restored by 2.1.98, `xhigh` in 2.1.111.
+ */
+export const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const runtimeClaudeEffortSchema = z.enum(CLAUDE_EFFORT_LEVELS);
+export type RuntimeClaudeEffort = z.infer<typeof runtimeClaudeEffortSchema>;
+
+export function isRuntimeClaudeEffort(value: string | undefined): value is RuntimeClaudeEffort {
+	return runtimeClaudeEffortSchema.safeParse(value).success;
+}
+
+/** Per-task Claude Code launch choices accepted from clients. Omitted fields inherit Claude configuration. */
+export const runtimeClaudeOptionsSchema = z.object({
+	model: runtimeAgentModelIdSchema.optional(),
+	effort: runtimeClaudeEffortSchema.optional(),
+});
+export type RuntimeClaudeOptions = z.infer<typeof runtimeClaudeOptionsSchema>;
+
+/**
+ * Persisted Claude choices. Effort is a bounded token rather than the enum so a level written by a newer
+ * runtime cannot make the whole board unreadable; launch passes only known levels.
+ */
+export const runtimePersistedClaudeOptionsSchema = z.object({
+	model: runtimeAgentModelIdSchema.optional(),
+	effort: runtimeAgentEffortTokenSchema.optional(),
+});
+export type RuntimePersistedClaudeOptions = z.infer<typeof runtimePersistedClaudeOptionsSchema>;
+
+/** Narrows persisted choices to what this runtime can submit or launch, dropping an unknown effort level. */
+export function toRuntimeClaudeOptions(
+	options: RuntimePersistedClaudeOptions | undefined,
+): RuntimeClaudeOptions | undefined {
+	if (!options) {
+		return undefined;
+	}
+	const effort = isRuntimeClaudeEffort(options.effort) ? options.effort : undefined;
+	return {
+		...(options.model ? { model: options.model } : {}),
+		...(effort ? { effort } : {}),
+	};
+}
+
+/**
+ * Static Claude model choices offered at task creation. Values are Claude CLI `--model` aliases that
+ * resolve to the latest model in each family, so no runtime catalog is needed.
+ */
+export const CLAUDE_MODEL_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
+	{ value: "fable", label: "Fable" },
+	{ value: "opus", label: "Opus" },
+	{ value: "sonnet", label: "Sonnet" },
+	{ value: "haiku", label: "Haiku" },
+];
 
 export const runtimeBoardCardSchema = z.object({
 	id: z.string(),
@@ -36,6 +92,7 @@ export const runtimeBoardCardSchema = z.object({
 	baseRefPinned: z.boolean().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
 	codexOptions: runtimeCodexOptionsSchema.optional(),
+	claudeOptions: runtimePersistedClaudeOptionsSchema.optional(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
 	branch: z.string().min(1).nullable().optional(),

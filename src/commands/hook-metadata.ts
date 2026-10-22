@@ -1,4 +1,6 @@
-import type { RuntimeHookEvent, RuntimeHookMetadata } from "../core";
+import { randomUUID } from "node:crypto";
+
+import type { RuntimeHookEvent, RuntimeHookIngestRequest, RuntimeHookMetadata } from "../core";
 import { runtimeCodexSessionStartSourceSchema } from "../core";
 
 const HOOK_METADATA_TEXT_MAX_LENGTH = 500;
@@ -529,6 +531,48 @@ export function normalizeHookMetadata(
 
 export function readPayloadStringField(payload: Record<string, unknown>, key: string): string | null {
 	return readStringField(payload, key);
+}
+
+/** The launch-scoped identity a native hook invocation reports for. */
+export interface HookIngestIdentity {
+	taskId: string;
+	projectId: string;
+	sessionInstanceId?: string | null;
+}
+
+/**
+ * Builds the `hooks.ingest` request for one native hook invocation. The hook
+ * CLI and the runtime's HTTP hook endpoint share this, so a provider payload
+ * carries identical meaning on every delivery transport.
+ */
+export function buildHookIngestRequest(input: {
+	event: RuntimeHookEvent;
+	identity: HookIngestIdentity;
+	flagMetadata: RuntimeHookMetadata;
+	payload: Record<string, unknown> | null;
+}): RuntimeHookIngestRequest {
+	const { identity, flagMetadata, payload } = input;
+	const sessionInstanceId = identity.sessionInstanceId?.trim() || null;
+	const payloadSessionId = payload
+		? (readStringField(payload, "session_id") ?? readStringField(payload, "sessionId"))
+		: null;
+	const metadataContext = {
+		...flagMetadata,
+		sessionId: flagMetadata.sessionId ?? payloadSessionId ?? null,
+		sessionInstanceId: flagMetadata.sessionInstanceId ?? sessionInstanceId,
+	};
+	const event = resolveHookEventFromPayload(
+		input.event,
+		payload,
+		metadataContext.source ?? inferHookSourceFromPayload(payload),
+	);
+	return {
+		taskId: identity.taskId,
+		projectId: identity.projectId,
+		event,
+		metadata: normalizeHookMetadata(event, payload, metadataContext),
+		delivery: sessionInstanceId ? { id: randomUUID(), occurredAt: Date.now() } : undefined,
+	};
 }
 
 export function appendMetadataFlags(args: string[], metadata?: RuntimeHookMetadata): string[] {

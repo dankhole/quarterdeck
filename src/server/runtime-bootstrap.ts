@@ -20,6 +20,7 @@ import { cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts } fro
 import { createHookTransitionOutboxReplayer, loadPendingHookTransitions } from "../hook-transition-outbox";
 import { resolveProjectInputPath } from "../projects/project-path";
 import { listProjectIndexEntries, ProjectBoardCommandService, pruneProjectSessionsForBoard } from "../state";
+import { readProjectRelocationJournal } from "../state/project-relocation-journal";
 import {
 	createBackup,
 	listBackups,
@@ -249,10 +250,16 @@ async function createRuntimeBootstrapState(
 					terminals: projectRegistry,
 					config: projectRegistry,
 					persistSessionState: runtimeSessionPersistence.persistRuntimeSessions,
+					awaitSessionStateDurable: runtimeSessionPersistence.awaitRuntimeSessionsDurable,
 					diagnostics,
 				});
 				const startupOutboxReplayer = createHookTransitionOutboxReplayer({
-					ingest: startupHooksApi.ingest,
+					// Live hook ingest is fenced by a pending relocation journal; hold the
+					// same records here so they stay pending and keep their tasks' recovery held.
+					ingest: async (request) =>
+						(await readProjectRelocationJournal(request.projectId))
+							? { ok: false, error: "Project folder relocation is awaiting recovery." }
+							: await startupHooksApi.ingest(request),
 				});
 				try {
 					await startupOutboxReplayer.replayOnce();

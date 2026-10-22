@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../src/title/codex-client", () => ({ callCodex: vi.fn() }));
+vi.mock("../../../src/title/claude-client", () => ({ callClaude: vi.fn() }));
 
+import { callClaude } from "../../../src/title/claude-client";
 import { callCodex } from "../../../src/title/codex-client";
 
 const callCodexMock = vi.mocked(callCodex);
+const callClaudeMock = vi.mocked(callClaude);
 
 import type { RuntimeBoardData, RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "../../../src/core";
 import type { TerminalSessionManager } from "../../../src/terminal";
+import { resetGenerationHelperPolicyForTests } from "../../../src/title";
 import { type DisplaySummaryPolishDeps, polishTaskDisplaySummary } from "../../../src/trpc";
 import { createDefaultMockConfig } from "../../utilities/runtime-config-factory";
 
@@ -146,7 +150,9 @@ function createLlmResponse(text: string): Response {
 
 describe("polishTaskDisplaySummary", () => {
 	beforeEach(() => {
+		resetGenerationHelperPolicyForTests();
 		callCodexMock.mockReset().mockResolvedValue(null);
+		callClaudeMock.mockReset().mockResolvedValue(null);
 		process.env.QUARTERDECK_LLM_BASE_URL = LLM_ENV.QUARTERDECK_LLM_BASE_URL;
 		process.env.QUARTERDECK_LLM_API_KEY = LLM_ENV.QUARTERDECK_LLM_API_KEY;
 		process.env.QUARTERDECK_LLM_MODEL = LLM_ENV.QUARTERDECK_LLM_MODEL;

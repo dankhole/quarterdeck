@@ -70,8 +70,11 @@ export { countProjectTasksByColumn, deriveProjectSummary } from "./project-summa
 export {
 	buildQuarterdeckCommandLine,
 	buildQuarterdeckCommandParts,
+	buildQuarterdeckHookCommandLine,
+	buildQuarterdeckHookCommandParts,
 	type RuntimeInvocationContext,
 	resolveQuarterdeckCommandParts,
+	resolveQuarterdeckHookCommandParts,
 } from "./quarterdeck-command";
 export {
 	projectRuntimeSessionsOntoBoard,

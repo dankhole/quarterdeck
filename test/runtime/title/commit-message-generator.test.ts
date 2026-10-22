@@ -4,6 +4,10 @@ vi.mock("../../../src/title/codex-client", () => ({
 	callCodex: vi.fn(),
 }));
 
+vi.mock("../../../src/title/claude-client", () => ({
+	callClaude: vi.fn(),
+}));
+
 vi.mock("../../../src/title/llm-client", () => ({
 	callLlm: vi.fn(),
 }));
@@ -13,11 +17,14 @@ import {
 	callLlm,
 	generateCommitMessage,
 	type RuntimeCommitMessageGenerationContext,
+	resetGenerationHelperPolicyForTests,
 } from "../../../src/title";
 
+import { callClaude } from "../../../src/title/claude-client";
 import { callCodex } from "../../../src/title/codex-client";
 
 const callCodexMock = vi.mocked(callCodex);
+const callClaudeMock = vi.mocked(callClaude);
 const callLlmMock = vi.mocked(callLlm);
 
 const SINGLE_FILE_DIFF = `diff --git a/src/auth.ts b/src/auth.ts
@@ -53,8 +60,10 @@ function createContext(
 
 describe("generateCommitMessage", () => {
 	beforeEach(() => {
+		resetGenerationHelperPolicyForTests();
 		callLlmMock.mockReset();
 		callCodexMock.mockReset().mockResolvedValue(null);
+		callClaudeMock.mockReset().mockResolvedValue(null);
 	});
 
 	afterEach(() => {
@@ -69,7 +78,7 @@ describe("generateCommitMessage", () => {
 			expect.objectContaining({
 				userPrompt: expect.stringContaining(SINGLE_FILE_DIFF.trim()),
 				model: "gpt-6-luna",
-				timeoutMs: 20_000,
+				timeoutMs: 12_000,
 			}),
 		);
 		expect(callLlmMock).not.toHaveBeenCalled();
@@ -100,7 +109,7 @@ describe("generateCommitMessage", () => {
 		await expect(generateCommitMessage(createContext())).resolves.toBe("fix auth mode");
 	});
 
-	it("returns null when both providers fail", async () => {
+	it("returns null when all providers fail", async () => {
 		callLlmMock.mockResolvedValue(null);
 		await expect(generateCommitMessage(createContext())).resolves.toBeNull();
 	});
@@ -116,6 +125,7 @@ describe("generateCommitMessage", () => {
 		).resolves.toBeNull();
 		expect(callLlmMock).not.toHaveBeenCalled();
 		expect(callCodexMock).not.toHaveBeenCalled();
+		expect(callClaudeMock).not.toHaveBeenCalled();
 	});
 
 	it("sends selected files and a larger bounded change context to the LLM", async () => {

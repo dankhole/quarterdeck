@@ -21,16 +21,31 @@ const OUTBOX_RECORD_VERSION = 1;
 
 export const HOOK_TRANSITION_OUTBOX_TTL_MS = 10 * 60 * 1000;
 export const HOOK_TRANSITION_REPLAY_INTERVAL_MS = 2_000;
+/**
+ * Periodic replay adopts a record as soon as its `hooks ingest` writer marks it
+ * abandoned. An unmarked record may still be in delivery, so replay waits this
+ * long after enqueue: more than the writer's total delivery budget, which also
+ * bounds the delay when the writer died without marking it (for example, killed
+ * by a provider hook timeout). Replaying sooner would race the live delivery,
+ * whose full metadata the minimal replay copy could pre-empt.
+ */
+export const HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS = 5_000;
 
 export interface PersistedHookTransition {
 	version: typeof OUTBOX_RECORD_VERSION;
 	expiresAt: number;
+	/** Writer clock at enqueue; records from older writers derive it from `expiresAt`. */
+	enqueuedAt: number;
+	/** Set once the writer stops delivering without an acknowledgement. */
+	abandonedAt?: number;
 	request: RuntimeHookIngestRequest & { delivery: RuntimeHookDelivery };
 }
 
 const persistedHookTransitionSchema = z.object({
 	version: z.literal(OUTBOX_RECORD_VERSION),
 	expiresAt: z.number().int().nonnegative(),
+	enqueuedAt: z.number().int().nonnegative().optional(),
+	abandonedAt: z.number().int().nonnegative().optional(),
 	request: runtimeHookIngestRequestSchema,
 });
 
@@ -102,6 +117,7 @@ export function createPersistedHookTransition(
 	return {
 		version: OUTBOX_RECORD_VERSION,
 		expiresAt: now + HOOK_TRANSITION_OUTBOX_TTL_MS,
+		enqueuedAt: now,
 		request: {
 			...request,
 			metadata: minimalReplayMetadata(request.metadata),
@@ -124,6 +140,40 @@ export async function enqueueHookTransition(request: RuntimeHookIngestRequest): 
 
 export async function acknowledgeHookTransition(deliveryId: string): Promise<void> {
 	await rm(getOutboxRecordPath(deliveryId), { force: true });
+}
+
+/**
+ * Called by a writer that stops delivering without an acknowledgement, so live
+ * replay may adopt the record immediately. A record already removed by replay
+ * stays removed. If replay removes it between this read and the atomic rewrite,
+ * the restored copy is replayed once more as a duplicate delivery, which the
+ * runtime acknowledges without applying it again.
+ */
+export async function abandonHookTransition(deliveryId: string, now: number = Date.now()): Promise<void> {
+	const path = getOutboxRecordPath(deliveryId);
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (error) {
+		if (isNodeError(error, "ENOENT")) {
+			return;
+		}
+		throw error;
+	}
+	const record: unknown = JSON.parse(raw);
+	if (typeof record !== "object" || record === null || !persistedHookTransitionSchema.safeParse(record).success) {
+		return;
+	}
+	await lockedFileSystem.writeJsonFileAtomic(path, { ...record, abandonedAt: now }, { mode: 0o600, lock: null });
+}
+
+function isLiveReplayCandidate(record: PersistedHookTransition, now: number, minRecordAgeMs: number): boolean {
+	if (minRecordAgeMs <= 0 || record.abandonedAt !== undefined) {
+		return true;
+	}
+	// A future enqueue time (clock moved backwards) cannot prove a live writer.
+	const ageMs = now - record.enqueuedAt;
+	return ageMs < 0 || ageMs >= minRecordAgeMs;
 }
 
 async function removeInvalidRecord(path: string, reason: string): Promise<void> {
@@ -189,6 +239,8 @@ export async function loadPendingHookTransitions(now: number = Date.now()): Prom
 		records.push({
 			version: parsed.data.version,
 			expiresAt: parsed.data.expiresAt,
+			enqueuedAt: parsed.data.enqueuedAt ?? parsed.data.expiresAt - HOOK_TRANSITION_OUTBOX_TTL_MS,
+			...(parsed.data.abandonedAt !== undefined ? { abandonedAt: parsed.data.abandonedAt } : {}),
 			request: {
 				...parsed.data.request,
 				delivery: parsed.data.request.delivery,
@@ -266,6 +318,8 @@ function matchesDiagnosticScope(
 export function createHookTransitionOutboxReplayer(deps: {
 	ingest: (request: RuntimeHookIngestRequest) => Promise<RuntimeHookIngestResponse>;
 	intervalMs?: number;
+	/** Minimum age since enqueue of an unabandoned record for periodic passes started by `start()`. */
+	liveReplayMinAgeMs?: number;
 	/** Called after every successful scan, including an empty one. */
 	onReplayPassCompleted?: (result: HookTransitionReplayPassResult) => void;
 }): HookTransitionOutboxReplayer {
@@ -278,18 +332,30 @@ export function createHookTransitionOutboxReplayer(deps: {
 	let lastPendingRecords: HookTransitionDiagnosticIdentity[] | null = null;
 	let lastAttempts: HookTransitionDiagnosticAttempt[] = [];
 
-	const replayOnce = async (): Promise<void> => {
-		if (activeReplay) {
+	/**
+	 * A periodic pass may join any active pass. A complete pass (`replayOnce`)
+	 * must cover every record, so it waits for an active pass and runs its own.
+	 */
+	const replay = async (minRecordAgeMs: number, options: { joinActive: boolean }): Promise<void> => {
+		if (activeReplay && options.joinActive) {
 			return await activeReplay;
 		}
+		while (activeReplay) {
+			await activeReplay.catch(() => undefined);
+		}
 		activeReplay = (async () => {
-			lastScanStartedAt = Date.now();
+			const scanStartedAt = Date.now();
+			lastScanStartedAt = scanStartedAt;
 			lastScanErrorClass = null;
 			lastAttempts = [];
 			try {
 				const records = await loadPendingHookTransitions();
 				lastPendingRecords = records.map(diagnosticIdentity);
 				for (const record of records) {
+					// Records a live writer may still be delivering stay pending for a later pass.
+					if (!isLiveReplayCandidate(record, scanStartedAt, minRecordAgeMs)) {
+						continue;
+					}
 					const identity = diagnosticIdentity(record);
 					const attempt: HookTransitionDiagnosticAttempt = { ...identity, outcome: "attempting" };
 					lastAttempts.push(attempt);
@@ -346,13 +412,14 @@ export function createHookTransitionOutboxReplayer(deps: {
 				return;
 			}
 			running = true;
-			void replayOnce().catch((error) => {
+			const liveReplayMinAgeMs = deps.liveReplayMinAgeMs ?? HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS;
+			void replay(liveReplayMinAgeMs, { joinActive: true }).catch((error) => {
 				outboxLog.warn("initial hook transition replay failed", {
 					error: error instanceof Error ? error.message : String(error),
 				});
 			});
 			timer = setInterval(() => {
-				void replayOnce().catch((error) => {
+				void replay(liveReplayMinAgeMs, { joinActive: true }).catch((error) => {
 					outboxLog.warn("hook transition replay scan failed", {
 						error: error instanceof Error ? error.message : String(error),
 					});
@@ -360,14 +427,15 @@ export function createHookTransitionOutboxReplayer(deps: {
 			}, deps.intervalMs ?? HOOK_TRANSITION_REPLAY_INTERVAL_MS);
 			timer.unref();
 		},
-		replayOnce,
+		replayOnce: async () => await replay(0, { joinActive: false }),
 		close: async () => {
 			running = false;
 			if (timer) {
 				clearInterval(timer);
 				timer = null;
 			}
-			if (activeReplay) {
+			// Drain a complete pass that was waiting behind the active one.
+			while (activeReplay) {
 				await activeReplay;
 			}
 		},

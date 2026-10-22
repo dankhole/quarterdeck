@@ -1,5 +1,6 @@
 import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
+import { canApplyClaudeRenderedInterruption, retireInterruptedClaudePrompt } from "./hook-event-order";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import {
 	clearInitialWorkConfirmation,
@@ -100,11 +101,9 @@ export class SessionTransitionController {
 		if ((source !== "codex" && source !== "claude" && source !== "pi") || source !== active.agentId) {
 			return false;
 		}
-		// Claude's agent_id marks hooks fired inside a subagent. Those hooks prove
-		// neither foreground resumption nor foreground interrupt recovery.
-		if (source === "claude" && event.metadata?.providerAgentId?.trim()) {
-			return false;
-		}
+		// Claude subagent hooks (agent_id) are current-launch evidence only for
+		// their own keyed waits: the reducer confines them there, so they never
+		// prove foreground work, completion, or interrupt recovery.
 		const interruptStartedAt = active.lastInterruptAt ?? active.interruptRecoveryStartedAt;
 		return interruptStartedAt === null || (event.occurredAt !== undefined && event.occurredAt > interruptStartedAt);
 	}
@@ -152,6 +151,16 @@ export class SessionTransitionController {
 		event: SessionTransitionEvent,
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
 		this.captureProcessExitReplayBoundary(entry, event);
+		if (
+			event.type === "agent.rendered-turn-interrupted" &&
+			event.provider === "claude" &&
+			!canApplyClaudeRenderedInterruption(entry.hookEventOrder)
+		) {
+			// A newer foreground prompt superseded the Escape that armed detection.
+			transitionLog.debug("claude rendered interruption superseded by a newer prompt", { taskId: entry.taskId });
+			const summary = this.store.getSummary(entry.taskId);
+			return summary ? { changed: false, patch: {}, clearAttentionBuffer: false, summary } : null;
+		}
 		const confirmedEvent = this.withSessionEvidence(entry, event);
 		const result = this.store.applySessionEvent(entry.taskId, confirmedEvent);
 		if (
@@ -182,6 +191,20 @@ export class SessionTransitionController {
 				entry.active.lastInterruptAt = confirmedEvent.occurredAt ?? Date.now();
 				entry.suppressAutoRestartOnExit = true;
 			}
+		}
+		if (
+			confirmedEvent.type === "agent.rendered-turn-interrupted" &&
+			confirmedEvent.provider === "claude" &&
+			entry.active &&
+			result?.changed
+		) {
+			// Claude emits no hook for a user interrupt. Fence everything that
+			// occurred before the visible result and close the interrupted turn's
+			// prompt and tools, so only a newer foreground prompt can establish
+			// Running again.
+			const interruptedAt = Date.now();
+			entry.active.lastInterruptAt = Math.max(entry.active.lastInterruptAt ?? interruptedAt, interruptedAt);
+			retireInterruptedClaudePrompt(entry.hookEventOrder, interruptedAt);
 		}
 
 		if (!result?.changed) {

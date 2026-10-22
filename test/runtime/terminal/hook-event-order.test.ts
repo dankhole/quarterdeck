@@ -3,14 +3,17 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeHookEvent, RuntimeHookIngestRequest, RuntimeHookMetadata } from "../../../src/core";
 import { runtimeTaskProviderHookOrderObservationSchema } from "../../../src/core";
 import {
+	canApplyClaudeRenderedInterruption,
 	commitHookEventOrder,
 	correlateClaudePermissionToolUseId,
 	correlateCodexPermissionToolUseId,
 	createHookEventOrderState,
 	createProviderHookOrderObservation,
 	evaluateHookEventOrder,
+	recordClaudeInterruptKey,
 	recordHookUserSubmission,
 	restoreHookEventOrderState,
+	retireInterruptedClaudePrompt,
 } from "../../../src/terminal/hook-event-order";
 
 const SESSION_INSTANCE_ID = "process-1";
@@ -1863,5 +1866,180 @@ describe("Claude hook event ordering", () => {
 				}),
 			),
 		).toEqual({ accepted: false, reason: "completed_interaction" });
+	});
+});
+
+describe("Claude rendered interruption ordering", () => {
+	const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
+
+	it("closes interrupted tools and refuses identity-free work until a new prompt", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(state, claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", deliveryIndex: 1 }));
+		acceptAndCommit(
+			state,
+			claude({ event: "activity", hookEventName: "PreToolUse", toolUseId: "tool-1", deliveryIndex: 2 }),
+		);
+		recordClaudeInterruptKey(state, 250);
+		expect(canApplyClaudeRenderedInterruption(state)).toBe(true);
+		retireInterruptedClaudePrompt(state, 300);
+
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "PostToolUseFailure",
+					toolUseId: "tool-1",
+					deliveryIndex: 3,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "interrupted_prompt" });
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({ event: "to_in_progress", hookEventName: "PostToolUse", toolUseId: "tool-9", deliveryIndex: 4 }),
+			),
+		).toEqual({ accepted: false, reason: "interrupted_prompt" });
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "PreToolUse",
+					providerAgentId: "agent-1",
+					deliveryIndex: 5,
+				}),
+			),
+		).toEqual({ accepted: true });
+
+		acceptAndCommit(state, claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", deliveryIndex: 6 }));
+		// The interrupted tool stays closed after the next prompt begins.
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "PostToolUseFailure",
+					toolUseId: "tool-1",
+					deliveryIndex: 8,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "completed_tool" });
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({ event: "to_in_progress", hookEventName: "PostToolUse", toolUseId: "tool-10", deliveryIndex: 7 }),
+			),
+		).toEqual({ accepted: true });
+	});
+
+	it("retires the interrupted prompt and admits a newer one", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "prompt-1", deliveryIndex: 1 }),
+		);
+		recordClaudeInterruptKey(state, 150);
+		retireInterruptedClaudePrompt(state, 200);
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "PostToolUseFailure",
+					promptId: "prompt-1",
+					deliveryIndex: 2,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "completed_prompt" });
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "UserPromptSubmit",
+					promptId: "prompt-2",
+					deliveryIndex: 3,
+				}),
+			),
+		).toEqual({ accepted: true });
+	});
+
+	it("drops an interruption when a newer foreground prompt follows the Escape", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "prompt-1", deliveryIndex: 1 }),
+		);
+		recordClaudeInterruptKey(state, 150);
+		acceptAndCommit(
+			state,
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "prompt-2", deliveryIndex: 2 }),
+		);
+		expect(canApplyClaudeRenderedInterruption(state)).toBe(false);
+
+		const withoutIds = createHookEventOrderState(SESSION_INSTANCE_ID);
+		recordClaudeInterruptKey(withoutIds, 100);
+		acceptAndCommit(
+			withoutIds,
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", deliveryIndex: 3 }),
+		);
+		expect(canApplyClaudeRenderedInterruption(withoutIds)).toBe(false);
+		expect(canApplyClaudeRenderedInterruption(createHookEventOrderState(SESSION_INSTANCE_ID))).toBe(false);
+	});
+
+	it("keeps a prompt with unbounded background work wakeable after an interruption", () => {
+		const state = createHookEventOrderState(SESSION_INSTANCE_ID);
+		acceptAndCommit(
+			state,
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "prompt-1", deliveryIndex: 1 }),
+		);
+		acceptAndCommit(
+			state,
+			claude({
+				event: "to_review",
+				hookEventName: "Stop",
+				promptId: "prompt-1",
+				unboundedBackgroundWorkPending: true,
+				deliveryIndex: 2,
+			}),
+		);
+		acceptAndCommit(
+			state,
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "prompt-1",
+				toolUseId: "tool-1",
+				deliveryIndex: 3,
+			}),
+		);
+		recordClaudeInterruptKey(state, 350);
+		retireInterruptedClaudePrompt(state, 400);
+
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "PostToolUse",
+					promptId: "prompt-1",
+					toolUseId: "tool-1",
+					deliveryIndex: 4,
+				}),
+			),
+		).toEqual({ accepted: false, reason: "completed_tool" });
+		expect(
+			evaluateHookEventOrder(
+				state,
+				claude({
+					event: "to_in_progress",
+					hookEventName: "PreToolUse",
+					promptId: "prompt-1",
+					toolUseId: "tool-2",
+					deliveryIndex: 5,
+				}),
+			),
+		).toEqual({ accepted: true });
 	});
 });

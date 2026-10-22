@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { buildClaudeHooksSettings } from "../claude-hooks";
+import { buildClaudeHooksSettings, buildClaudeHttpHooksSettings } from "../claude-hooks";
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
 import { buildStatuslineCommand } from "../commands/statusline";
 import type {
@@ -9,15 +9,23 @@ import type {
 	ManagedClaudePermissionMode,
 	RuntimeAgentId,
 	RuntimeCodexOptions,
+	RuntimePersistedClaudeOptions,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core";
-import { buildQuarterdeckCommandParts, createTaggedLogger } from "../core";
+import {
+	buildQuarterdeckHookCommandParts,
+	createTaggedLogger,
+	mergeProcessEnvironment,
+	toRuntimeClaudeOptions,
+} from "../core";
 import { lockedFileSystem } from "../fs";
 import { getRuntimeHomePath } from "../state";
 import { createClaudeRendererEnvironment } from "./claude-renderer-policy";
+import { createClaudeOutputTransitionHooks } from "./claude-turn-interruption";
 import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
+import { getActiveHookHttpChannel } from "./hook-http-channel";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
 import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
@@ -43,6 +51,7 @@ export interface AgentAdapterLaunchInput {
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	codexOptions?: RuntimeCodexOptions;
+	claudeOptions?: RuntimePersistedClaudeOptions;
 	worktreeSystemPromptTemplate?: string;
 }
 
@@ -61,6 +70,8 @@ export interface PreparedAgentLaunch {
 	detectOutputTransition?: AgentOutputTransitionDetector;
 	shouldInspectOutputForTransition?: AgentOutputTransitionInspectionPredicate;
 	resetOutputTransitionDetection?: () => void;
+	/** Observes a bare Escape written to the provider before the PTY write. */
+	observeBareEscapeInput?: (summary: RuntimeTaskSessionSummary, occurredAt: number) => void;
 }
 
 interface HookContext {
@@ -169,6 +180,10 @@ function removeCodexConfigOverrides(args: string[], configKey: string): void {
 	}
 }
 
+// Per-state-home files: runtime admission allows one owner, and only that owner writes them.
+const CLAUDE_COMMAND_HOOK_SETTINGS_FILE = "settings.json";
+const CLAUDE_HTTP_HOOK_SETTINGS_FILE = "settings-http.json";
+
 function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 	return join(getRuntimeHomePath(), "hooks", agentId);
 }
@@ -237,6 +252,30 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 	};
 }
 
+/**
+ * Applies per-task Claude choices over configured `--model` / `--effort` args, as Codex does. Unlike
+ * Codex, they also apply on resume: a Claude conversation does not retain its launch model, so
+ * `--resume` without them would fall back to the configured default.
+ */
+function applyClaudeTaskOptions(args: string[], persisted: RuntimePersistedClaudeOptions | undefined): void {
+	// Persisted effort is an open token; an unknown level (for example from a newer runtime) is dropped
+	// so the configured effort applies instead of the CLI rejecting the launch.
+	const options = toRuntimeClaudeOptions(persisted);
+	const effort = options?.effort;
+	const values: string[] = [];
+	if (options?.model) values.push("--model", options.model);
+	if (effort) values.push("--effort", effort);
+	if (values.length === 0) {
+		return;
+	}
+	const originalOptionTerminatorIndex = args.indexOf("--");
+	const optionArgCount = originalOptionTerminatorIndex === -1 ? args.length : originalOptionTerminatorIndex;
+	const optionArgs = args.slice(0, optionArgCount);
+	if (options?.model) removeCliOptionWithValue(optionArgs, "--model");
+	if (effort) removeCliOptionWithValue(optionArgs, "--effort");
+	args.splice(0, optionArgCount, ...optionArgs, ...values);
+}
+
 const log = createTaggedLogger("agent-launch");
 
 const claudeAdapter: AgentSessionAdapter = {
@@ -245,6 +284,7 @@ const claudeAdapter: AgentSessionAdapter = {
 		if (input.claudeLaunchPermissionMode && input.claudeLaunchPermissionMode !== "inherit") {
 			applyManagedClaudePermissionMode(args, input.claudeLaunchPermissionMode);
 		}
+		applyClaudeTaskOptions(args, input.claudeOptions);
 		const env: Record<string, string | undefined> = {
 			FORCE_HYPERLINK: "1",
 			...createClaudeRendererEnvironment({ args, envOverrides: input.env }),
@@ -272,20 +312,25 @@ const claudeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const settingsPath = join(getHookAgentDirectory("claude"), "settings.json");
-			const hooksSettings = buildClaudeHooksSettings({
-				statusLineCommand: input.statuslineEnabled === true ? buildStatuslineCommand() : null,
-			});
+			// Best-effort hooks POST to this runtime's published loopback endpoint;
+			// without one, they keep `hooks notify` commands. Claude watches settings
+			// files, so each variant has its own file: rewriting a shared file would
+			// switch the transport of sessions launched with the other variant. The
+			// inherited env (process plus request overrides) seeds the proxy bypass.
+			const httpNotify =
+				getActiveHookHttpChannel()?.prepareLaunch(hooks, mergeProcessEnvironment(process.env, input.env ?? {})) ??
+				null;
+			const settingsPath = join(
+				getHookAgentDirectory("claude"),
+				httpNotify ? CLAUDE_HTTP_HOOK_SETTINGS_FILE : CLAUDE_COMMAND_HOOK_SETTINGS_FILE,
+			);
+			const statusLineCommand = input.statuslineEnabled === true ? buildStatuslineCommand() : null;
+			const hooksSettings = httpNotify
+				? buildClaudeHttpHooksSettings({ statusLineCommand, httpNotify: httpNotify.transport })
+				: buildClaudeHooksSettings({ statusLineCommand });
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
 			args.push("--settings", settingsPath);
-			Object.assign(
-				env,
-				createHookRuntimeEnv({
-					taskId: hooks.taskId,
-					projectId: hooks.projectId,
-					sessionInstanceId: hooks.sessionInstanceId,
-				}),
-			);
+			Object.assign(env, createHookRuntimeEnv(hooks), httpNotify?.env);
 		}
 
 		// Inject worktree context so the agent knows it's in an isolated worktree,
@@ -320,6 +365,7 @@ const claudeAdapter: AgentSessionAdapter = {
 				...withPromptLaunch.env,
 				...env,
 			},
+			...createClaudeOutputTransitionHooks(input.hookSessionInstanceId),
 		};
 	},
 };
@@ -529,7 +575,7 @@ const piAdapter: AgentSessionAdapter = {
 					sessionInstanceId: hooks.sessionInstanceId,
 				}),
 				{
-					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckCommandParts(["hooks", "notify"])),
+					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckHookCommandParts(["hooks", "notify"])),
 				},
 			);
 		}

@@ -2,6 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+
+/** Connected Claude and Codex tasks can export their exact saved conversation. */
+export function canCopyFullConversation(
+	session: Pick<RuntimeTaskSessionSummary, "agentId" | "pid" | "resumeSessionId"> | null | undefined,
+): boolean {
+	return (
+		(session?.agentId === "codex" || session?.agentId === "claude") &&
+		session.pid !== null &&
+		Boolean(session.resumeSessionId)
+	);
+}
 
 export function useCopyConversation(projectId: string | null, taskId: string | null, sessionInstanceId: string | null) {
 	const [isCopying, setIsCopying] = useState(false);
@@ -31,7 +43,7 @@ export function useCopyConversation(projectId: string | null, taskId: string | n
 				return result.text;
 			})
 			.catch((error: unknown) => {
-				readError ??= "Could not read the full Codex conversation. Try again.";
+				readError ??= "Could not read the full conversation. Try again.";
 				throw error;
 			});
 		try {

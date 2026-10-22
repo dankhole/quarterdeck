@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeAgentId } from "../../../src/core";
-import { WORKSPACE_TRUST_CONFIRM_DELAY_MS } from "../../../src/terminal/claude-workspace-trust";
+import {
+	CLAUDE_WORKSPACE_TRUST_INPUT_GUARD_MS,
+	WORKSPACE_TRUST_CONFIRM_DELAY_MS,
+} from "../../../src/terminal/claude-workspace-trust";
 import type { PtySession } from "../../../src/terminal/pty-session";
 import { processSessionInput } from "../../../src/terminal/session-input-pipeline";
 import {
@@ -304,5 +307,132 @@ describe("legacy Codex timer launch identity", () => {
 		await confirmDelay();
 		expect(test.write).not.toHaveBeenCalled();
 		expect(replacement.write).not.toHaveBeenCalled();
+	});
+});
+
+describe("Claude trust output and input fencing", () => {
+	const renderClaudeTrust = (focus: "confirm" | "cancel") =>
+		[
+			"\u001b[2J\u001b[H Accessing workspace:",
+			" /tmp/workspace",
+			"",
+			` ${focus === "cancel" ? "❯" : " "} No, exit`,
+			` ${focus === "confirm" ? "❯" : " "} Yes, I trust this folder`,
+			"",
+			" Enter to confirm · Esc to cancel",
+		].join("\r\n");
+	const CLAUDE_CLEARED = "\u001b[2J\u001b[H❯ ";
+	const pastInputGuard = () => vi.advanceTimersByTimeAsync(CLAUDE_WORKSPACE_TRUST_INPUT_GUARD_MS + 1);
+	const input = (test: ReturnType<typeof fixture>, data: string) => {
+		const buffer = Buffer.from(data);
+		processSessionInput(test.entry, test.entry.taskId, buffer, {
+			getSummary: test.deps.getSummary,
+			getEntry: () => test.entry,
+			applyTransitionEvent: test.deps.applyTransitionEvent,
+		});
+		return buffer;
+	};
+
+	it("confirms only the newest rendered frame when older frames are still queued", async () => {
+		const test = fixture("claude");
+		output(test, renderClaudeTrust("confirm"));
+		output(test, CLAUDE_CLEARED);
+		await flushMirror(test);
+		await pastInputGuard();
+		expect(test.active.claudeWorkspaceTrust?.outputRevision).toBe(2);
+		expect(test.write).not.toHaveBeenCalled();
+
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		await pastInputGuard();
+		expect(test.write.mock.calls).toEqual([["\r"]]);
+	});
+
+	it("cancels a pending key as soon as new output arrives", async () => {
+		const test = fixture("claude");
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		expect(test.active.workspaceTrustConfirmTimer).not.toBeNull();
+		output(test, CLAUDE_CLEARED);
+		expect(test.active.workspaceTrustConfirmTimer).toBeNull();
+		await flushMirror(test);
+		await pastInputGuard();
+		expect(test.write).not.toHaveBeenCalled();
+	});
+
+	it("lets direct keyboard input own the dialog until it disappears", async () => {
+		const test = fixture("claude");
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		const typed = input(test, "x");
+		await pastInputGuard();
+		// A redraw of the same dialog keeps it user-owned.
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		await pastInputGuard();
+		expect(test.write.mock.calls).toEqual([[typed]]);
+
+		output(test, CLAUDE_CLEARED);
+		await flushMirror(test);
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		await pastInputGuard();
+		expect(test.write.mock.calls).toEqual([[typed], ["\r"]]);
+	});
+
+	it("does not treat mouse reports or terminal protocol replies as direct input", async () => {
+		const test = fixture("claude");
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		const replies = [
+			"\u001b[<65;10;5M",
+			"\u001b[<80;10;5M\u001b[<64;10;5M",
+			"\u001b[<35;12;6M",
+			"\u001b[M`!!",
+			"\u001b[?62;22c",
+			"\u001b[?1u",
+			"\u001b]11;rgb:1717/1717/2121\u001b\\",
+			"\u001bP>|xterm.js(6.0.0)\u001b\\",
+			"\u001b[I",
+		].map((reply) => input(test, reply));
+		await pastInputGuard();
+		expect(test.write.mock.calls).toEqual([...replies.map((reply) => [reply]), ["\r"]]);
+	});
+
+	it.each([
+		["SGR", "\u001b[<0;10;5M\u001b[<0;10;5m"],
+		["X10", "\u001b[M !!"],
+	])("lets a %s mouse click take over the dialog", async (_encoding, click) => {
+		const test = fixture("claude");
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		const clicked = input(test, click);
+		await pastInputGuard();
+		expect(test.write.mock.calls).toEqual([[clicked]]);
+	});
+
+	it("does not treat input before the dialog renders as an answer to it", async () => {
+		const test = fixture("claude");
+		const typed = input(test, "x");
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		await pastInputGuard();
+		expect(test.write.mock.calls).toEqual([[typed], ["\r"]]);
+	});
+
+	it.each(["native work", "interrupted stop"] as const)("retires the observer after %s", async (kind) => {
+		const test = fixture("claude");
+		output(test, renderClaudeTrust("confirm"));
+		await flushMirror(test);
+		if (kind === "native work") test.active.nativeWorkConfirmed = true;
+		else vi.mocked(test.active.session.wasInterrupted).mockReturnValue(true);
+		await pastInputGuard();
+		expect(test.write).not.toHaveBeenCalled();
+		expect(test.active.claudeWorkspaceTrust).toBeNull();
+		const mirror = test.entry.terminalStateMirror;
+		if (!mirror) throw new Error("Missing test mirror");
+		const apply = vi.spyOn(mirror, "applyOutput");
+		output(test, "steady-state output");
+		expect(apply.mock.calls[0]?.[1]).toBeUndefined();
 	});
 });

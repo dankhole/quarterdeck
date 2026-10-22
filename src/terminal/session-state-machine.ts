@@ -1,5 +1,6 @@
 import {
 	deriveTaskIndicatorState,
+	getWaitingSubagentInteraction,
 	type RuntimeHookEvent,
 	type RuntimeHookMetadata,
 	type RuntimeTaskInteractionKind,
@@ -12,6 +13,7 @@ import {
 } from "../core";
 import { isCodexForegroundSessionStart } from "./codex-hook-session-scope";
 import { removeLegacySemanticStateWarning, type StartupRecoveryReviewState } from "./session-startup-recovery-policy";
+import { getSubagentId, reduceSubagentHook, reduceSubagentInteractionResponse } from "./subagent-interactions";
 
 export type HookSessionReviewReason = Extract<RuntimeTaskSessionReviewReason, "hook" | "attention" | "error">;
 
@@ -25,6 +27,8 @@ export type ProviderHookSessionTransitionEvent = {
 	deliveryId?: string;
 	/** Tool identity correlated from the provider's preceding PreToolUse event. */
 	correlatedToolUseId?: string | null;
+	/** Open same-agent tools an uncorrelated subagent PermissionRequest may belong to. */
+	subagentToolUseCandidates?: readonly string[] | null;
 	/** Controller-authored process/launch evidence; callers cannot self-assert authority. */
 	sessionEvidence?: ProviderHookSessionEvidence;
 	/** Controller-authored wall-clock time at which live hook evidence was accepted. */
@@ -39,8 +43,13 @@ export type ProviderHookSessionTransitionEvent = {
 
 export type SessionTransitionEvent =
 	| ProviderHookSessionTransitionEvent
-	| { type: "agent.permission-prompt"; occurredAt?: number }
-	| { type: "agent.rendered-turn-interrupted" }
+	| {
+			type: "agent.permission-prompt";
+			occurredAt?: number;
+			/** The overlay names another thread (`Thread:` header): a Codex subagent's request. */
+			threadLabeled?: boolean;
+	  }
+	| { type: "agent.rendered-turn-interrupted"; provider: RenderedTurnInterruptionProvider }
 	| {
 			type: "interaction.response_submitted";
 			responseKind: Exclude<RuntimeTaskInteractionResponseKind, "provider_denied">;
@@ -87,6 +96,9 @@ export type SessionTransitionEvent =
 			fallbackReviewState: StartupRecoveryReviewState | null;
 	  };
 
+/** Providers whose rendered turn-interruption result is bounded compatibility evidence. */
+export type RenderedTurnInterruptionProvider = "codex" | "claude";
+
 export function canApplyCodexRenderedTurnInterruption(summary: RuntimeTaskSessionSummary): boolean {
 	if (summary.agentId !== "codex") return false;
 	const interaction = summary.outstandingInteraction;
@@ -98,6 +110,33 @@ export function canApplyCodexRenderedTurnInterruption(summary: RuntimeTaskSessio
 			interaction.providerAgentId === null &&
 			(interaction.status === "waiting" || interaction.status === "response_submitted"))
 	);
+}
+
+/**
+ * Claude's rendered Esc interruption may end Running or the current foreground
+ * Claude permission wait (Esc rejects it, and Claude emits no hook for a manual
+ * rejection). It never rewrites ordinary Review or another interaction.
+ */
+export function canApplyClaudeRenderedTurnInterruption(summary: RuntimeTaskSessionSummary): boolean {
+	if (summary.agentId !== "claude") return false;
+	const interaction = summary.outstandingInteraction;
+	return (
+		summary.state === "running" ||
+		(summary.state === "awaiting_review" &&
+			interaction?.provider === "claude" &&
+			interaction.kind === "permission" &&
+			interaction.providerAgentId === null &&
+			(interaction.status === "waiting" || interaction.status === "response_submitted"))
+	);
+}
+
+function canApplyRenderedTurnInterruption(
+	summary: RuntimeTaskSessionSummary,
+	provider: RenderedTurnInterruptionProvider,
+): boolean {
+	return provider === "claude"
+		? canApplyClaudeRenderedTurnInterruption(summary)
+		: canApplyCodexRenderedTurnInterruption(summary);
 }
 
 export type HookMetadataMode = "apply" | "identity_only" | "preserve";
@@ -497,10 +536,6 @@ function isNonAuthoritativeClaudeNotification(event: ProviderHookSessionTransiti
 	);
 }
 
-function isClaudeSubagentHook(event: ProviderHookSessionTransitionEvent): boolean {
-	return providerFromMetadata(event.metadata) === "claude" && Boolean(event.metadata?.providerAgentId?.trim());
-}
-
 function isIdentityBearingClaudeOrderObservation(event: ProviderHookSessionTransitionEvent): boolean {
 	if (providerFromMetadata(event.metadata) !== "claude") return false;
 	const hookEventName = normalized(event.metadata?.hookEventName);
@@ -588,12 +623,14 @@ function reduceProviderHook(
 	const interactionKind = getInteractionKind(metadata);
 	const currentInteraction = summary.outstandingInteraction ?? inferLegacyOutstandingInteraction(summary);
 	if (!live && !replayed) return unchanged("preserve");
-	// Claude documents agent_id as a subagent marker. A task can have several
-	// concurrent background agents, while RuntimeTaskSessionSummary currently
-	// owns one foreground interaction. Never let one subagent overwrite or
-	// resolve that foreground wait; a future typed multi-owner interaction
-	// service must model those identities explicitly.
-	if (isClaudeSubagentHook(event)) return unchanged("preserve");
+	// Claude and Codex document agent_id as a subagent marker. Several subagents
+	// can run beside the foreground turn, and both providers render their prompts
+	// in the main TUI. Each subagent owns at most one keyed wait; its hooks never
+	// overwrite or resolve the foreground interaction or author foreground state.
+	if (getSubagentId(event)) {
+		const request = interactionKind ? buildOutstandingInteraction(event, interactionKind) : null;
+		return reduceSubagentHook(summary, event, request);
+	}
 	// Claude notifications are delayed presentation signals. In particular,
 	// Agent View notifications describe independent background conversations
 	// and carry no structured identity for the affected session. They may be
@@ -667,7 +704,8 @@ function reduceProviderHook(
 	}
 
 	// An admitted persistent Codex SessionStart changes the foreground owner.
-	// Retire the old owner's wait without claiming the new session is working.
+	// Retire the old owner's waits, including its subagents' approvals, without
+	// claiming the new session is working.
 	if (
 		live &&
 		isCodexForegroundSessionStart(metadata) &&
@@ -682,6 +720,7 @@ function reduceProviderHook(
 				state: "awaiting_review",
 				reviewReason: "unconfirmed",
 				outstandingInteraction: null,
+				...(summary.subagentInteractions?.length ? { subagentInteractions: [] } : {}),
 				nativeWorkEvidence: null,
 			},
 			clearAttentionBuffer: true,
@@ -1027,7 +1066,11 @@ export function reduceSessionTransition(
 					summary.reviewReason !== "unconfirmed" &&
 					summary.startupRecoverySemanticStateUncertain !== true &&
 					!followsSubmittedCodexInteraction) ||
-				summary.agentId !== "codex"
+				summary.agentId !== "codex" ||
+				// Codex renders a subagent's approval in the main TUI with a Thread
+				// label. A waiting native subagent wait already owns that overlay and
+				// its answer routing; an unlabelled overlay is a foreground request.
+				(event.threadLabeled === true && getWaitingSubagentInteraction(summary) !== null)
 			) {
 				return unchanged();
 			}
@@ -1072,6 +1115,13 @@ export function reduceSessionTransition(
 		}
 		case "interaction.response_submitted": {
 			const interaction = summary.outstandingInteraction ?? inferLegacyOutstandingInteraction(summary);
+			const subagentResponse = reduceSubagentInteractionResponse(
+				summary,
+				interaction,
+				event.responseKind,
+				event.occurredAt ?? Date.now(),
+			);
+			if (subagentResponse) return subagentResponse;
 			if (summary.state !== "awaiting_review" || !interaction || interaction.status !== "waiting") {
 				return unchanged();
 			}
@@ -1106,7 +1156,7 @@ export function reduceSessionTransition(
 			};
 		}
 		case "agent.rendered-turn-interrupted": {
-			if (!canApplyCodexRenderedTurnInterruption(summary)) return unchanged();
+			if (!canApplyRenderedTurnInterruption(summary, event.provider)) return unchanged();
 			return {
 				changed: true,
 				patch: {

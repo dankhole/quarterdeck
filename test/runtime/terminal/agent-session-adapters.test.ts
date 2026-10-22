@@ -4,7 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildClaudeHooksSettings } from "../../../src/claude-hooks";
+import {
+	buildClaudeHooksSettings,
+	buildClaudeHttpHooksSettings,
+	CLAUDE_INGEST_HOOK_TIMEOUT_SECONDS,
+	type ClaudeHookHandler,
+	type ClaudeHooksSettings,
+} from "../../../src/claude-hooks";
 import { buildCodexHookConfigOverrides, buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { buildStatuslineCommand } from "../../../src/commands/statusline";
 import {
@@ -14,6 +20,11 @@ import {
 	setRuntimeDiagnosticLogSink,
 } from "../../../src/core";
 import { prepareAgentLaunch } from "../../../src/terminal";
+import {
+	HookHttpChannel,
+	QUARTERDECK_HOOK_HTTP_TOKEN_ENV,
+	setActiveHookHttpChannel,
+} from "../../../src/terminal/hook-http-channel";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
@@ -608,6 +619,90 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(commands).toContain(claudeHookCommand("to_review"));
 		expect(commands).toContain(claudeHookCommand("to_in_progress"));
 		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).toBe(claudeHookCommand("activity", { reliable: true }));
+	});
+
+	it("delivers Claude best-effort hooks to the published runtime endpoint with a launch-scoped credential", async () => {
+		setupTempHome();
+		const channel = new HookHttpChannel();
+		channel.publishEndpoint("http://127.0.0.1:43123");
+		setActiveHookHttpChannel(channel);
+		vi.stubEnv("NO_PROXY", undefined);
+		vi.stubEnv("no_proxy", undefined);
+		try {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-http",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp",
+				prompt: "",
+				projectId: "project-1",
+				hookSessionInstanceId: "instance-http",
+				env: { NO_PROXY: "corp.example", HTTPS_PROXY: "http://proxy.example:8080" },
+			});
+
+			// An inherited proxy must not intercept the loopback hook POST; existing bypasses are kept.
+			expect(launch.env.NO_PROXY).toBe("corp.example,127.0.0.1,localhost,::1");
+			expect(launch.env.no_proxy).toBe("corp.example,127.0.0.1,localhost,::1");
+
+			const hooksDirectory = join(homedir(), ".quarterdeck", "hooks", "claude");
+			const settingsPath = join(hooksDirectory, "settings-http.json");
+			expect(launch.args[launch.args.indexOf("--settings") + 1]).toBe(settingsPath);
+			expect(existsSync(join(hooksDirectory, "settings.json"))).toBe(false);
+			const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as ClaudeHooksSettings<ClaudeHookHandler>;
+			const transport = channel.prepareLaunch({ taskId: "task-http", projectId: "project-1" })?.transport;
+			if (!transport) throw new Error("Expected a published hook HTTP channel.");
+			expect(settings).toEqual(buildClaudeHttpHooksSettings({ httpNotify: transport, statusLineCommand: null }));
+			expect(settings.hooks.SubagentStart[0]?.hooks[0]?.type).toBe("http");
+			expect(settings.hooks.SubagentStop[0]?.hooks[0]?.type).toBe("command");
+			expect(settings.hooks.PostToolUse[0]?.hooks[0]).toEqual({
+				type: "command",
+				command: claudeHookCommand("to_in_progress"),
+				timeout: CLAUDE_INGEST_HOOK_TIMEOUT_SECONDS,
+			});
+
+			const credential = launch.env[QUARTERDECK_HOOK_HTTP_TOKEN_ENV];
+			expect(launch.env).toMatchObject({
+				QUARTERDECK_HOOK_TASK_ID: "task-http",
+				QUARTERDECK_HOOK_PROJECT_ID: "project-1",
+				QUARTERDECK_HOOK_SESSION_INSTANCE_ID: "instance-http",
+			});
+			expect(
+				channel.verifyCredential(
+					{ taskId: "task-http", projectId: "project-1", sessionInstanceId: "instance-http" },
+					credential,
+				),
+			).toBe(true);
+		} finally {
+			setActiveHookHttpChannel(null);
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("falls back to Claude command hooks without a published runtime endpoint", async () => {
+		setupTempHome();
+		const channel = new HookHttpChannel();
+		setActiveHookHttpChannel(channel);
+		try {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-command",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp",
+				prompt: "",
+				projectId: "project-1",
+				hookSessionInstanceId: "instance-command",
+			});
+
+			const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
+			expect(launch.args[launch.args.indexOf("--settings") + 1]).toBe(settingsPath);
+			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual(buildClaudeHooksSettings());
+			expect(launch.env[QUARTERDECK_HOOK_HTTP_TOKEN_ENV]).toBeUndefined();
+			expect(launch.env.NO_PROXY).toBeUndefined();
+		} finally {
+			setActiveHookHttpChannel(null);
+		}
 	});
 
 	it("keeps Claude SessionStart reliable so session ids are not best-effort", () => {
@@ -1366,5 +1461,136 @@ describe("worktree context system prompt", () => {
 		const configArgs = launch.args.filter((arg) => arg.startsWith("developer_instructions="));
 		expect(configArgs).toEqual(['developer_instructions="Custom prompt"']);
 		expect(launch.args.join("\n")).not.toContain("Should not appear");
+	});
+});
+
+describe("Claude task model and effort options", () => {
+	function optionValues(args: string[], optionName: string): string[] {
+		const values: string[] = [];
+		const terminatorIndex = args.indexOf("--");
+		const optionArgs = terminatorIndex === -1 ? args : args.slice(0, terminatorIndex);
+		optionArgs.forEach((arg, index) => {
+			if (arg === optionName) values.push(optionArgs[index + 1] ?? "");
+			else if (arg.startsWith(`${optionName}=`)) values.push(arg.slice(optionName.length + 1));
+		});
+		return values;
+	}
+
+	it("applies task model and effort before the prompt separator", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-options",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "--test prompt",
+			claudeOptions: { model: "opus", effort: "xhigh" },
+		});
+		expect(optionValues(launch.args, "--model")).toEqual(["opus"]);
+		expect(optionValues(launch.args, "--effort")).toEqual(["xhigh"]);
+		expect(launch.args.slice(-2)).toEqual(["--", "--test prompt"]);
+	});
+
+	it("overrides configured model and effort args, leaving text after -- untouched", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-options-configured",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--model=sonnet", "--effort", "low", "--verbose", "--", "--model", "kept"],
+			cwd: "/tmp",
+			prompt: "",
+			claudeOptions: { model: "opus", effort: "max" },
+		});
+		expect(optionValues(launch.args, "--model")).toEqual(["opus"]);
+		expect(optionValues(launch.args, "--effort")).toEqual(["max"]);
+		expect(launch.args).toContain("--verbose");
+		expect(launch.args.slice(launch.args.indexOf("--"))).toEqual(["--", "--model", "kept"]);
+	});
+
+	it("inherits configured model and effort when task options are unset", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-options-inherit",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--model", "sonnet", "--effort=low"],
+			cwd: "/tmp",
+			prompt: "",
+			claudeOptions: { effort: "high" },
+		});
+		expect(optionValues(launch.args, "--model")).toEqual(["sonnet"]);
+		expect(optionValues(launch.args, "--effort")).toEqual(["high"]);
+	});
+
+	it("drops a persisted effort level the CLI does not know and keeps the configured effort", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-options-unknown-effort",
+			agentId: "claude",
+			binary: "claude",
+			args: ["--effort", "low"],
+			cwd: "/tmp",
+			prompt: "",
+			claudeOptions: { model: "opus", effort: "future_level" },
+		});
+		expect(optionValues(launch.args, "--model")).toEqual(["opus"]);
+		expect(optionValues(launch.args, "--effort")).toEqual(["low"]);
+		expect(launch.args).not.toContain("future_level");
+	});
+
+	// Unlike a Codex thread, a resumed Claude conversation does not keep its launch model.
+	it.each([
+		["managed resume", [] as string[], true],
+		["configured --continue", ["--continue"], false],
+	])("reapplies task options on %s", async (_mode, args, resumeConversation) => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-options-resume",
+			agentId: "claude",
+			binary: "claude",
+			args,
+			cwd: "/tmp",
+			prompt: "",
+			resumeConversation,
+			resumeSessionId: "session-id",
+			claudeOptions: { model: "opus", effort: "high" },
+		});
+		expect(optionValues(launch.args, "--model")).toEqual(["opus"]);
+		expect(optionValues(launch.args, "--effort")).toEqual(["high"]);
+		expect(launch.args.some((arg) => arg === "--resume" || arg === "--continue")).toBe(true);
+	});
+});
+
+describe("Claude rendered interruption launch hooks", () => {
+	it("inspects Claude output only after a bare Escape for the same launch", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-claude-escape",
+			agentId: "claude",
+			binary: "claude",
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+			projectId: "project-1",
+			hookSessionInstanceId: "process-1",
+		});
+		const running = createTestTaskSessionSummary({
+			state: "running",
+			agentId: "claude",
+			sessionInstanceId: "process-1",
+		});
+
+		expect(launch.shouldInspectOutputForTransition?.(running)).toBe(false);
+		launch.observeBareEscapeInput?.(running, Date.now());
+		expect(launch.shouldInspectOutputForTransition?.(running)).toBe(true);
+		expect(
+			launch.shouldInspectOutputForTransition?.(
+				createTestTaskSessionSummary({ state: "running", agentId: "claude", sessionInstanceId: "process-2" }),
+			),
+		).toBe(false);
+		launch.resetOutputTransitionDetection?.();
+		expect(launch.shouldInspectOutputForTransition?.(running)).toBe(false);
 	});
 });

@@ -114,6 +114,9 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 		recentProviderHookOrderObservations: summary.recentProviderHookOrderObservations.map((entry) => ({ ...entry })),
 		latestHookActivity: summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
 		outstandingInteraction: summary.outstandingInteraction ? { ...summary.outstandingInteraction } : null,
+		...(summary.subagentInteractions
+			? { subagentInteractions: summary.subagentInteractions.map((entry) => ({ ...entry })) }
+			: {}),
 		initialWorkConfirmation: summary.initialWorkConfirmation ? { ...summary.initialWorkConfirmation } : null,
 		nativeWorkEvidence: summary.nativeWorkEvidence ? { ...summary.nativeWorkEvidence } : null,
 		conversationSummaries: summary.conversationSummaries.map((entry) => ({ ...entry })),

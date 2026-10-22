@@ -6,6 +6,7 @@ import type { RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 // dependency bag each handler needs.
 
 import { CodexModelCatalogCache } from "../config/codex-model-catalog-cache";
+import type { ConversationSourceHintReader } from "../conversation/types";
 import type {
 	IRuntimeBroadcaster,
 	IRuntimeConfigProvider,
@@ -40,6 +41,7 @@ export interface CreateRuntimeApiDependencies {
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
 	hostIntegrations: IRuntimeHostIntegrations;
 	onCodeNavigationConfigChanged: () => Promise<void>;
+	conversationSourceHints?: ConversationSourceHintReader;
 	taskLifecycle?: Pick<ProjectTaskLifecycleService, "execute" | "getOperation" | "clearTrash">;
 	assertNativeStartAllowed?: (scope: RuntimeTrpcProjectScope, taskId: string) => Promise<void>;
 	onTaskSessionStarted?: (scope: RuntimeTrpcProjectScope, result: TaskSessionStartServiceResult) => Promise<void>;

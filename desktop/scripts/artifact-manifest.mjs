@@ -17,6 +17,7 @@ export async function recordPackagedApp(outputPath, arch) {
 		"runtime/bin/node",
 		"runtime/bin/nodeHost",
 		"runtime/dist/cli.js",
+		"runtime/dist/hooks.js",
 		"runtime/dist/build-manifest.json",
 		"runtime/installation-admission",
 		"runtime/dist/web-ui/index.html",

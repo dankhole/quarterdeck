@@ -47,20 +47,38 @@ export class RuntimeSessionPersistence {
 		}
 	};
 
+	/** Durability barrier for a caller that just changed the session store. */
 	persistRuntimeSessions = (projectId: string): Promise<void> => {
 		if (this.sessionPersistenceClosed) {
 			return Promise.reject(new Error("Runtime session persistence is closed."));
 		}
-		const persistence = (async () => {
-			// Explicit persistence is also a write barrier. Mark a fresh generation so
-			// callers that run after the automatic store listener has been detached
-			// still capture the current session snapshot before they resolve.
-			this.scheduleRuntimeSessionPersistence(projectId, 0);
-			await this.flushRuntimeSessionPersistence(projectId);
-		})();
-		const tracked = persistence.finally(() => this.sessionPersistenceBarriers.delete(tracked));
-		this.sessionPersistenceBarriers.add(tracked);
-		return tracked;
+		return this.trackBarrier(
+			(async () => {
+				// Explicit persistence is also a write barrier. Mark a fresh generation so
+				// callers that run after the automatic store listener has been detached
+				// still capture the current session snapshot before they resolve.
+				this.scheduleRuntimeSessionPersistence(projectId, 0);
+				await this.flushRuntimeSessionPersistence(projectId);
+			})(),
+		);
+	};
+
+	/**
+	 * Durability barrier for a caller that made no session-store change itself,
+	 * such as a duplicate or rejected hook delivery. It resolves once every
+	 * generation already marked dirty is durable, so an earlier delivery's state
+	 * is still covered, but it never forces a write when nothing is pending.
+	 * Without a live writer for the project it falls back to the forcing barrier.
+	 */
+	awaitRuntimeSessionsDurable = (projectId: string): Promise<void> => {
+		if (this.sessionPersistenceClosed) {
+			return Promise.reject(new Error("Runtime session persistence is closed."));
+		}
+		const state = this.sessionPersistenceStates.get(projectId);
+		if (!state || state.disposed) {
+			return this.persistRuntimeSessions(projectId);
+		}
+		return this.trackBarrier(this.flushRuntimeSessionPersistence(projectId));
 	};
 
 	disposeProject = async (projectId: string): Promise<void> => {
@@ -114,6 +132,12 @@ export class RuntimeSessionPersistence {
 			throw new AggregateError(persistenceFailures, "Runtime session persistence did not finish during shutdown.");
 		}
 	};
+
+	private trackBarrier(barrier: Promise<void>): Promise<void> {
+		const tracked = barrier.finally(() => this.sessionPersistenceBarriers.delete(tracked));
+		this.sessionPersistenceBarriers.add(tracked);
+		return tracked;
+	}
 
 	private scheduleRuntimeSessionPersistence(projectId: string, delayMs = 100): void {
 		let state = this.sessionPersistenceStates.get(projectId);

@@ -2,10 +2,51 @@ import { describe, expect, it } from "vitest";
 
 import {
 	appendMetadataFlags,
+	buildHookIngestRequest,
 	normalizeHookMetadata,
 	parseMetadataFromOptions,
 	resolveHookEventFromPayload,
 } from "../../src/commands/hook-metadata";
+
+describe("buildHookIngestRequest", () => {
+	it("binds a provider payload to the launch identity shared by every hook transport", () => {
+		const request = buildHookIngestRequest({
+			event: "to_review",
+			identity: { taskId: "task-1", projectId: "project-1", sessionInstanceId: " instance-1 " },
+			flagMetadata: parseMetadataFromOptions({ source: "claude" }),
+			payload: {
+				hook_event_name: "Stop",
+				session_id: "claude-session-1",
+				background_tasks: [{ type: "subagent" }],
+			},
+		});
+
+		// Pending background work keeps a Claude Stop activity-only, as for the CLI.
+		expect(request).toMatchObject({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: { source: "claude", sessionId: "claude-session-1", sessionInstanceId: "instance-1" },
+			delivery: { id: expect.stringMatching(/^[0-9a-f-]{36}$/), occurredAt: expect.any(Number) },
+		});
+	});
+
+	it("omits delivery ordering identity without a session instance", () => {
+		const request = buildHookIngestRequest({
+			event: "activity",
+			identity: { taskId: "task-1", projectId: "project-1", sessionInstanceId: null },
+			flagMetadata: {},
+			payload: null,
+		});
+		expect(request).toEqual({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: undefined,
+			delivery: undefined,
+		});
+	});
+});
 
 describe("hook metadata", () => {
 	it.each(["startup", "resume", "clear", "compact", "fork"])(

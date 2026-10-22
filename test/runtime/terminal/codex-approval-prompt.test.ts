@@ -60,12 +60,37 @@ describe("createCodexApprovalPromptDetector", () => {
 		expect(isCodexApprovalScreen(screen(lines, { cols: 167, rows: 50 }))).toBe(true);
 	});
 
+	it("recognizes a subagent approval routed to the main TUI with its thread label", () => {
+		// Codex 0.163.0 labels another thread's request with a `Thread:` header
+		// and adds an open-thread hint to the footer.
+		const lines = [
+			"",
+			"  Would you like to run the following command?",
+			"",
+			"  Thread: Robie [explorer]",
+			"",
+			"  Reason: Run the synthetic check outside the sandbox?",
+			"",
+			"  $ npm test",
+			"",
+			"› 1. Yes, proceed (y)",
+			"  2. No, and tell Codex what to do differently (esc)",
+			"",
+			"  Press enter to confirm or esc to cancel or o to open thread",
+		];
+		expect(isCodexApprovalScreen(screen(lines))).toBe(true);
+		// A narrow terminal clips the longer footer rather than wrapping it.
+		expect(
+			isCodexApprovalScreen(screen([...lines.slice(0, -1), "  Press enter to confirm or esc to cancel or o"])),
+		).toBe(true);
+	});
+
 	it("detects a rendered canonical command approval bottom pane", () => {
 		const detector = createCodexApprovalPromptDetector();
 
 		expect(
 			detector.detect(approvalScreen("Would you like to run the following command?"), runningCodexSummary),
-		).toEqual({ type: "agent.permission-prompt" });
+		).toEqual({ type: "agent.permission-prompt", threadLabeled: false });
 	});
 
 	it.each([
@@ -119,18 +144,69 @@ describe("createCodexApprovalPromptDetector", () => {
 		const detector = createCodexApprovalPromptDetector();
 		const prompt = approvalScreen("Would you like to run the following command?");
 
-		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
+		expect(detector.detect(prompt, runningCodexSummary)).toEqual({
+			type: "agent.permission-prompt",
+			threadLabeled: false,
+		});
 		expect(detector.detect(prompt, runningCodexSummary)).toBeNull();
 		expect(detector.detect(screen(["Working…"]), runningCodexSummary)).toBeNull();
-		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
+		expect(detector.detect(prompt, runningCodexSummary)).toEqual({
+			type: "agent.permission-prompt",
+			threadLabeled: false,
+		});
+	});
+
+	it("re-arms when a different queued approval replaces the overlay without an empty frame", () => {
+		const detector = createCodexApprovalPromptDetector();
+		const subagent = screen([
+			"",
+			"  Would you like to run the following command?",
+			"",
+			"  Thread: Robie [explorer]",
+			"",
+			"  $ npm test",
+			"",
+			"› 1. Yes, proceed (y)",
+			"  2. No, and tell Codex what to do differently (esc)",
+			"",
+			"  Press enter to confirm or esc to cancel or o to open thread",
+		]);
+		const subagentSecondRow = screen(
+			subagent.lines.map((line) =>
+				line.startsWith("›")
+					? line.replace("›", " ")
+					: line.startsWith("  2.")
+						? line.replace("  2.", "› 2.")
+						: line,
+			),
+		);
+		const foreground = approvalScreen("Would you like to make the following edits?");
+
+		expect(detector.detect(subagent, runningCodexSummary)).toEqual({
+			type: "agent.permission-prompt",
+			threadLabeled: true,
+		});
+		// Moving the selection is the same request.
+		expect(detector.detect(subagentSecondRow, runningCodexSummary)).toBeNull();
+		expect(detector.detect(foreground, runningCodexSummary)).toEqual({
+			type: "agent.permission-prompt",
+			threadLabeled: false,
+		});
+		expect(detector.detect(foreground, runningCodexSummary)).toBeNull();
 	});
 
 	it("can still be explicitly reset after provider-confirmed work", () => {
 		const detector = createCodexApprovalPromptDetector();
 		const prompt = approvalScreen("Would you like to run the following command?");
 
-		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
+		expect(detector.detect(prompt, runningCodexSummary)).toEqual({
+			type: "agent.permission-prompt",
+			threadLabeled: false,
+		});
 		detector.reset();
-		expect(detector.detect(prompt, runningCodexSummary)).toEqual({ type: "agent.permission-prompt" });
+		expect(detector.detect(prompt, runningCodexSummary)).toEqual({
+			type: "agent.permission-prompt",
+			threadLabeled: false,
+		});
 	});
 });

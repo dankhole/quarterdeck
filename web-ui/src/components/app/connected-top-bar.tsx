@@ -15,7 +15,7 @@ import {
 	shouldShowHomeBranchTracking,
 } from "@/hooks/git/git-actions";
 import { useOpenProject } from "@/hooks/project";
-import { useCopyConversation } from "@/hooks/terminal/use-copy-conversation";
+import { canCopyFullConversation, useCopyConversation } from "@/hooks/terminal/use-copy-conversation";
 import { useBoardContext } from "@/providers/board-provider";
 import { useDialogContext } from "@/providers/dialog-provider";
 import { useGitContext } from "@/providers/git-provider";
@@ -176,10 +176,7 @@ export function ConnectedTopBar({
 			}
 			onOpenSettings={dialog.handleOpenSettings}
 			onCopyConversation={
-				selectedSession?.agentId === "codex" &&
-				selectedSession.pid !== null &&
-				selectedSession.resumeSessionId &&
-				!shouldHideProjectDependentTopBarActions
+				canCopyFullConversation(selectedSession) && !shouldHideProjectDependentTopBarActions
 					? () => {
 							void copyConversation.copyConversation();
 						}

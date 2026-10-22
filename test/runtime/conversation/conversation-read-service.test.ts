@@ -228,6 +228,22 @@ describe("ConversationReadService", () => {
 		expect(JSON.stringify(result)).not.toContain("abandoned");
 	});
 
+	it("does not let a trailing parentless custom-title entry become the Claude leaf", async () => {
+		const history = [
+			claudeLinkedMessage({ uuid: "root", parentUuid: null, role: "user", text: "root" }),
+			claudeLinkedMessage({ uuid: "abandoned", parentUuid: "root", role: "assistant", text: "abandoned" }),
+			claudeLinkedMessage({ uuid: "active", parentUuid: "root", role: "assistant", text: "active" }),
+			JSON.stringify({ type: "custom-title", customTitle: "Renamed", uuid: "title", sessionId: CLAUDE_SESSION_ID }),
+		].join("\n");
+		const harness = await createHarness({ providerId: "claude", history: `${history}\n` });
+		const result = await harness.read();
+
+		expect(meaningfulEntries(result).map((entry) => (entry.type === "message" ? entry.text : null))).toEqual([
+			"root",
+			"active",
+		]);
+	});
+
 	it("degrades to the resolvable Claude suffix when a parentUuid chain is broken", async () => {
 		const history = claudeLinkedMessage({
 			uuid: "current-answer",

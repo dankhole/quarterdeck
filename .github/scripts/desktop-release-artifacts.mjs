@@ -74,6 +74,7 @@ export async function validateRelease(directory, version, sourceSha) {
 			"runtime/bin/node",
 		"runtime/bin/nodeHost",
 			"runtime/dist/cli.js",
+			"runtime/dist/hooks.js",
 			"runtime/dist/build-manifest.json",
 			"runtime/installation-admission",
 			"runtime/dist/web-ui/index.html",

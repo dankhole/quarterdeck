@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
 	areFileSystemPathsEqual,
 	buildGitCommandArgs,
-	buildQuarterdeckCommandLine,
+	buildQuarterdeckHookCommandLine,
 	createGitProcessEnv,
 	resolveWindowsCompatibleCommand,
 } from "../core";
@@ -453,7 +453,7 @@ async function runStatusline(): Promise<void> {
 }
 
 export function buildStatuslineCommand(): string {
-	return buildQuarterdeckCommandLine(["statusline"]);
+	return buildQuarterdeckHookCommandLine(["statusline"]);
 }
 
 export function registerStatuslineCommand(program: Command): void {

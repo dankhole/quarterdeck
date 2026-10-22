@@ -25,20 +25,21 @@ import type {
 import { normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import {
-	STORED_CLAUDE_RESUME_FAILED_WARNING,
-	STORED_CODEX_RESUME_FAILED_WARNING,
-	STORED_PI_RESUME_FAILED_WARNING,
-} from "./codex-resume-failure";
-import {
 	commitHookEventOrder,
 	correlateClaudePermissionToolUseId,
 	correlateCodexPermissionToolUseId,
 	createHookEventOrderState,
 	createProviderHookOrderObservation,
 	evaluateHookEventOrder,
+	getSubagentPermissionToolUseCandidates,
 	type HookEventOrderDecision,
 	restoreHookEventOrderState,
 } from "./hook-event-order";
+import {
+	STORED_CLAUDE_RESUME_FAILED_WARNING,
+	STORED_CODEX_RESUME_FAILED_WARNING,
+	STORED_PI_RESUME_FAILED_WARNING,
+} from "./resume-failure";
 import {
 	isExplicitUserSubmission,
 	isImmediateInteractionSubmission,
@@ -122,6 +123,17 @@ function isProcessAliveForDiagnostics(pid: number): boolean {
 	} catch (error) {
 		return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
 	}
+}
+
+function countSubagentInteractions(summary: RuntimeTaskSessionSummary | null): {
+	waiting: number;
+	responseSubmitted: number;
+} {
+	const interactions = summary?.subagentInteractions ?? [];
+	return {
+		waiting: interactions.filter((interaction) => interaction.status === "waiting").length,
+		responseSubmitted: interactions.filter((interaction) => interaction.status === "response_submitted").length,
+	};
 }
 
 export class TerminalSessionManager implements TerminalSessionService {
@@ -363,6 +375,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 			correlatedToolUseId:
 				correlateClaudePermissionToolUseId(entry.hookEventOrder, input) ??
 				correlateCodexPermissionToolUseId(entry.hookEventOrder, input),
+			subagentToolUseCandidates: getSubagentPermissionToolUseCandidates(entry.hookEventOrder, input),
 			codexPermissionRequiresRenderedPrompt:
 				entry.restartRequest?.kind === "task" &&
 				entry.restartRequest.request.agentId === "codex" &&
@@ -881,6 +894,28 @@ export class TerminalSessionManager implements TerminalSessionService {
 					previousReviewReason: previous.reviewReason,
 					nextState: summary.state,
 					nextReviewReason: summary.reviewReason,
+				},
+				summary.taskId,
+				{ sessionInstanceId: sessionInstanceId ?? undefined },
+			);
+		}
+		// Subagent waits change user-visible Needs Input without changing the
+		// foreground state, so record their content-free counts separately.
+		const previousSubagentWaits = countSubagentInteractions(previous);
+		const subagentWaits = countSubagentInteractions(summary);
+		if (
+			previous &&
+			(previousSubagentWaits.waiting !== subagentWaits.waiting ||
+				previousSubagentWaits.responseSubmitted !== subagentWaits.responseSubmitted)
+		) {
+			this.record(
+				"session.subagent_interactions_changed",
+				{
+					previousWaiting: previousSubagentWaits.waiting,
+					previousResponseSubmitted: previousSubagentWaits.responseSubmitted,
+					waiting: subagentWaits.waiting,
+					responseSubmitted: subagentWaits.responseSubmitted,
+					state: summary.state,
 				},
 				summary.taskId,
 				{ sessionInstanceId: sessionInstanceId ?? undefined },

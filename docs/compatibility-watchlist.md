@@ -7,3 +7,10 @@ This file tracks useful upstream capabilities that Quarterdeck cannot implement 
 - **Effective reviewer identity:** `PermissionRequest` currently fires before auto-review routing and does not identify whether a request reached a person. Quarterdeck can suppress false Needs Input for its exact launch-scoped Approve for me mode, but inherited user configuration remains conservatively actionable until Codex exposes effective reviewer or post-decision identity.
 
 The rendered-screen approval fallback and unpaired slash-command behavior remain actionable local compatibility work tracked in the primary checkout's local `docs/qDeck.yaml`. That gitignored list is not distributed with documentation or copied into worktrees.
+
+## Claude native hooks
+
+- **Interrupt hook:** Claude emits no hook when the user interrupts a turn with Esc, and `Stop` does not fire. Quarterdeck retires Running from bounded rendered evidence instead; a native interrupt event would replace that compatibility detector.
+- **Manual permission decisions:** `PermissionDenied` fires only for automatic permission-mode denials. A person's manual denial, or a direct approval hotkey, emits no hook, so Quarterdeck cannot confirm when a manual permission wait was answered.
+- **Permission request identity:** `PermissionRequest` carries no `tool_use_id`; correlation depends on the preceding reliable `PreToolUse`. An identity on the request itself would remove that ordering dependency.
+- **Workspace trust:** the trust dialog has no hook or launch flag, so Quarterdeck confirms it from the rendered option rows.

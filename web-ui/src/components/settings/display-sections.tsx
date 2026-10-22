@@ -28,9 +28,9 @@ export function AiFeaturesSection({
 			</h6>
 			{!llmConfigured ? (
 				<div className="mb-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-secondary">
-					AI text generation tries your saved Codex/ChatGPT login first. To configure an optional fallback gateway,
-					set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code> and{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code>, and explicitly choose{" "}
+					AI text generation tries your saved Codex/ChatGPT login first, then your saved Claude Code login. To
+					configure an optional fallback gateway, set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code>{" "}
+					and <code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code>, and explicitly choose{" "}
 					<code className="text-[12px]">QUARTERDECK_LLM_MODEL</code>. An existing team gateway, local{" "}
 					<a
 						href="https://docs.litellm.ai/"
@@ -45,7 +45,8 @@ export function AiFeaturesSection({
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
 					Titles, branch names, commit messages, and enabled summary polish try your saved Codex/ChatGPT login
-					first, then the configured gateway. Explicit task-title provider overrides still apply.
+					first, then your saved Claude Code login, then the configured gateway. Explicit task-title provider
+					overrides still apply.
 				</p>
 			)}
 
@@ -88,7 +89,8 @@ export function AiFeaturesSection({
 			</label>
 			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
 				When enabled, task state changes can trigger background summary polish using your saved Codex/ChatGPT login,
-				with the configured gateway as fallback. Without a usable provider, existing summaries are retained.
+				then your saved Claude Code login, with the configured gateway as fallback. Without a usable provider,
+				existing summaries are retained.
 			</p>
 		</>
 	);

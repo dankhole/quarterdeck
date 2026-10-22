@@ -93,6 +93,21 @@ export const runtimeTaskOutstandingInteractionSchema = z.object({
 });
 export type RuntimeTaskOutstandingInteraction = z.infer<typeof runtimeTaskOutstandingInteractionSchema>;
 
+/** Upper bound on concurrently tracked subagent waits for one task. */
+export const MAX_RUNTIME_TASK_SUBAGENT_INTERACTIONS = 32;
+/** Upper bound on the open sibling tools one uncorrelated subagent request may belong to. */
+export const MAX_RUNTIME_TASK_SUBAGENT_TOOL_CANDIDATES = 16;
+
+/**
+ * A subagent wait. A request that could not be bound to exactly one open tool
+ * retains every open same-agent candidate; only completion of all of them proves
+ * the request is gone.
+ */
+export const runtimeTaskSubagentInteractionSchema = runtimeTaskOutstandingInteractionSchema.extend({
+	candidateToolUseIds: z.array(z.string()).max(MAX_RUNTIME_TASK_SUBAGENT_TOOL_CANDIDATES).optional(),
+});
+export type RuntimeTaskSubagentInteraction = z.infer<typeof runtimeTaskSubagentInteractionSchema>;
+
 export const runtimeCodexSessionStartSourceSchema = z.enum(["startup", "resume", "clear", "compact", "fork"]);
 
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
@@ -185,6 +200,17 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
 	/** Current provider interaction, if user input was requested or its resolution remains unconfirmed. */
 	outstandingInteraction: runtimeTaskOutstandingInteractionSchema.nullable().default(null),
+	/**
+	 * Claude and Codex subagent prompts rendered in the main TUI, one per
+	 * `agent_id`. They suspend user-visible Running without replacing the
+	 * foreground lifecycle or the foreground interaction above. Claude waits exist
+	 * only while that foreground turn is active on a live process; Codex waits
+	 * exist while the live process does.
+	 */
+	subagentInteractions: z
+		.array(runtimeTaskSubagentInteractionSchema)
+		.max(MAX_RUNTIME_TASK_SUBAGENT_INTERACTIONS)
+		.optional(),
 	/** Current launch-scoped proof that admitted a native Codex/Claude/Pi foreground execution. */
 	nativeWorkEvidence: runtimeTaskNativeWorkEvidenceSchema.nullable().default(null),
 	/** Optimistic explicit Start; never provider work evidence and invalidated on cold hydration. */
@@ -222,6 +248,43 @@ export function hasPendingInitialWorkConfirmation(summary: ParsedRuntimeTaskSess
 		summary.initialWorkConfirmation?.sessionInstanceId === summary.sessionInstanceId &&
 		summary.pid !== null
 	);
+}
+
+/**
+ * Returns the subagent prompt that currently blocks the user, if any. Claude
+ * renders queued permission prompts oldest first, so the oldest unanswered
+ * subagent request owns the dialog. Summaries from older runtimes omit the list.
+ */
+export function getWaitingSubagentInteraction(summary: {
+	subagentInteractions?: readonly RuntimeTaskSubagentInteraction[] | null;
+}): RuntimeTaskSubagentInteraction | null {
+	let oldest: RuntimeTaskSubagentInteraction | null = null;
+	for (const interaction of summary.subagentInteractions ?? []) {
+		if (interaction.status === "waiting" && (!oldest || interaction.openedAt < oldest.openedAt)) {
+			oldest = interaction;
+		}
+	}
+	return oldest;
+}
+
+/**
+ * Claude subagents belong to the foreground turn that launched them. Their
+ * prompts can only be on screen while that turn is still Running or blocked on
+ * its own interaction in a live process; completion, interruption, exit,
+ * replacement, and cold hydration retire every subagent wait with it.
+ *
+ * Codex thread-spawned agents outlive the root turn: Codex keeps routing their
+ * approvals to the main TUI after a root Stop or Interrupt. Their waits last
+ * while the live process does; exit, replacement, cold hydration, and
+ * foreground session navigation retire them.
+ */
+export function canSummaryHoldSubagentInteractions(
+	summary: Pick<NormalizedRuntimeTaskSessionSummary, "agentId" | "pid" | "state" | "outstandingInteraction">,
+): boolean {
+	if (summary.pid === null) return false;
+	if (summary.agentId === "codex") return true;
+	const foregroundStatus = summary.outstandingInteraction?.status;
+	return summary.state === "running" || foregroundStatus === "waiting" || foregroundStatus === "response_submitted";
 }
 
 export interface NormalizeRuntimeTaskSessionSummaryOptions {
@@ -318,6 +381,12 @@ export function normalizeRuntimeTaskSessionSummary(
 		(next.state !== "running" || !next.nativeWorkEvidence || options.invalidateNativeWorkEvidence)
 	) {
 		next = { ...next, progressMessage: null };
+	}
+	if (
+		next.subagentInteractions?.length &&
+		(options.invalidateNativeWorkEvidence === true || !canSummaryHoldSubagentInteractions(next))
+	) {
+		next = { ...next, subagentInteractions: [] };
 	}
 	return next;
 }

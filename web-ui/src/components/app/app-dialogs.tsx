@@ -43,6 +43,8 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 		setNewTaskImages,
 		newTaskCodexOptions,
 		setNewTaskCodexOptions,
+		newTaskClaudeOptions,
+		setNewTaskClaudeOptions,
 		newTaskAgentId,
 		setNewTaskAgentId,
 		newTaskUseWorktree,
@@ -95,6 +97,8 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 						agentOptions={projectRuntime.runtimeProjectConfig?.agents ?? []}
 						codexOptions={newTaskCodexOptions}
 						onCodexOptionsChange={setNewTaskCodexOptions}
+						claudeOptions={newTaskClaudeOptions}
+						onClaudeOptionsChange={setNewTaskClaudeOptions}
 						agentId={newTaskAgentId}
 						onAgentIdChange={setNewTaskAgentId}
 						onCreate={handleCreateTask}

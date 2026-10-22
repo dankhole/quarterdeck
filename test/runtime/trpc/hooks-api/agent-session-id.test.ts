@@ -37,6 +37,32 @@ describe("createHooksApi — agent session persistence", () => {
 		},
 	);
 
+	it("does not record a subagent transcript as the task conversation source", async () => {
+		const manager = createMockManager({
+			getSummary: vi.fn(() => createSummary({ agentId: "codex", state: "running", resumeSessionId: "codex-root" })),
+			appendConversationSummary: vi.fn(),
+			setDisplaySummary: vi.fn(),
+		});
+		const recordProviderHookHint = vi.fn();
+		const api = createTestApi(manager, { conversationSourceHints: { recordProviderHookHint } });
+
+		await expect(
+			api.ingest({
+				taskId: "task-1",
+				projectId: "project-1",
+				event: "to_in_progress",
+				metadata: {
+					hookEventName: "PostToolUse",
+					source: "codex",
+					sessionId: "codex-root",
+					providerAgentId: "codex-child",
+					transcriptPath: "/untrusted/.codex/sessions/child.jsonl",
+				},
+			}),
+		).resolves.toEqual({ ok: true });
+		expect(recordProviderHookHint).not.toHaveBeenCalled();
+	});
+
 	it("passes an incoming session id through the atomic hook transition", async () => {
 		const update = vi.fn();
 		const manager = createMockManager({

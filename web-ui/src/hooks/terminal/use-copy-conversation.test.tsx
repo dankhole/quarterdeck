@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCopyConversation } from "./use-copy-conversation";
+import { canCopyFullConversation, useCopyConversation } from "./use-copy-conversation";
 
 const { query, writeClipboardText, toast } = vi.hoisted(() => ({
 	query: vi.fn(),
@@ -92,5 +92,26 @@ describe("copy conversation", () => {
 		await act(async () => current.copyConversation());
 		await expect(writeClipboardText.mock.calls[0]?.[0]).rejects.toThrow("Conversation changed");
 		expect(toast).toHaveBeenCalledWith({ intent: "danger", message: "Conversation changed" });
+	});
+	it("reports a provider-neutral error when the request itself fails", async () => {
+		query.mockRejectedValue(new Error("network"));
+		await act(async () => current.copyConversation());
+		expect(toast).toHaveBeenCalledWith({
+			intent: "danger",
+			message: "Could not read the full conversation. Try again.",
+		});
+	});
+});
+
+describe("canCopyFullConversation", () => {
+	it.each([
+		[{ agentId: "codex", pid: 1, resumeSessionId: "thread" }, true],
+		[{ agentId: "claude", pid: 1, resumeSessionId: "session" }, true],
+		[{ agentId: "claude", pid: null, resumeSessionId: "session" }, false],
+		[{ agentId: "claude", pid: 1, resumeSessionId: null }, false],
+		[{ agentId: "pi", pid: 1, resumeSessionId: "session" }, false],
+		[null, false],
+	] as const)("%j -> %s", (session, expected) => {
+		expect(canCopyFullConversation(session)).toBe(expected);
 	});
 });

@@ -16,6 +16,7 @@ import { useId, useState } from "react";
 import type { BranchSelectOption } from "@/components/git/branch-select-dropdown";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
 import { TaskAgentSelector } from "@/components/task/task-agent-selector";
+import { TaskClaudeOptions } from "@/components/task/task-claude-options";
 import { TaskCodexOptions } from "@/components/task/task-codex-options";
 import { ButtonShortcut, DIALOG_STYLE } from "@/components/task/task-create-dialog-utils";
 import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
@@ -25,7 +26,12 @@ import { cn } from "@/components/ui/cn";
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useTaskCreateDialog } from "@/hooks/board/use-task-create-dialog";
-import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeCodexOptions } from "@/runtime/types";
+import type {
+	RuntimeAgentDefinition,
+	RuntimeAgentId,
+	RuntimeClaudeOptions,
+	RuntimeCodexOptions,
+} from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
 
@@ -41,6 +47,8 @@ export function TaskCreateDialog({
 	onAgentIdChange,
 	codexOptions,
 	onCodexOptionsChange,
+	claudeOptions,
+	onClaudeOptionsChange,
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
@@ -74,6 +82,8 @@ export function TaskCreateDialog({
 	onAgentIdChange: (value: RuntimeAgentId) => void;
 	codexOptions?: RuntimeCodexOptions;
 	onCodexOptionsChange?: (value: RuntimeCodexOptions | undefined) => void;
+	claudeOptions?: RuntimeClaudeOptions;
+	onClaudeOptionsChange?: (value: RuntimeClaudeOptions | undefined) => void;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -207,6 +217,13 @@ export function TaskCreateDialog({
 								projectId={projectId}
 								value={codexOptions}
 								onValueChange={onCodexOptionsChange}
+								portalContainer={dropdownPortalContainer}
+							/>
+						) : null}
+						{open && agentId === "claude" && onClaudeOptionsChange ? (
+							<TaskClaudeOptions
+								value={claudeOptions}
+								onValueChange={onClaudeOptionsChange}
 								portalContainer={dropdownPortalContainer}
 							/>
 						) : null}

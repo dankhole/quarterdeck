@@ -3,7 +3,7 @@ import {
 	type RuntimeTaskIndicatorColumn,
 	type RuntimeTaskIndicatorNotification,
 } from "../core/api/task-indicators.js";
-import type { RuntimeTaskSessionSummary } from "../core/api/task-session.js";
+import { getWaitingSubagentInteraction, type RuntimeTaskSessionSummary } from "../core/api/task-session.js";
 
 export const TASK_NOTIFICATION_EVENT_PRIORITY: Record<RuntimeTaskIndicatorNotification, number> = {
 	review: 0,
@@ -40,7 +40,12 @@ export function taskNotificationEventIdentity(
 	summary: RuntimeTaskSessionSummary,
 	eventType: RuntimeTaskIndicatorNotification,
 ): string {
-	const interaction = summary.outstandingInteraction;
+	// Mirror the indicator's precedence so successive subagent prompts are
+	// distinct events even when no foreground hook arrived between them.
+	const foregroundInteraction = summary.outstandingInteraction;
+	const interaction =
+		(foregroundInteraction?.status === "waiting" ? null : getWaitingSubagentInteraction(summary)) ??
+		foregroundInteraction;
 	return JSON.stringify([
 		projectId,
 		summary.taskId,

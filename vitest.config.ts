@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => ({
 			"**/node_modules/**",
 			"**/dist/**",
 			".worktrees/**",
+			".claude/**", // Claude Code agent worktrees live under .claude/worktrees.
 		],
 		testTimeout: 15_000,
 		coverage: {

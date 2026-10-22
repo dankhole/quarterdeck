@@ -4,15 +4,30 @@ const codexMocks = vi.hoisted(() => ({
 	callCodex: vi.fn(),
 }));
 
+const claudeMocks = vi.hoisted(() => ({
+	callClaude: vi.fn(),
+}));
+
 vi.mock("../../src/title/codex-client", () => ({
 	callCodex: codexMocks.callCodex,
 }));
 
-import { generateBranchName, generateTaskTitle, _testing as llmTesting } from "../../src/title";
+vi.mock("../../src/title/claude-client", () => ({
+	callClaude: claudeMocks.callClaude,
+}));
+
+import {
+	generateBranchName,
+	generateTaskTitle,
+	_testing as llmTesting,
+	resetGenerationHelperPolicyForTests,
+} from "../../src/title";
 
 beforeEach(() => {
 	llmTesting.resetRateLimiter();
+	resetGenerationHelperPolicyForTests();
 	codexMocks.callCodex.mockReset().mockResolvedValue(null);
+	claudeMocks.callClaude.mockReset().mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -29,6 +44,8 @@ describe("generateTaskTitle", () => {
 		process.env.QUARTERDECK_LLM_MODEL = "test-model";
 		codexMocks.callCodex.mockReset();
 		codexMocks.callCodex.mockResolvedValue(null);
+		claudeMocks.callClaude.mockReset();
+		claudeMocks.callClaude.mockResolvedValue(null);
 	});
 
 	afterEach(() => {
@@ -60,7 +77,61 @@ describe("generateTaskTitle", () => {
 
 		expect(title).toBe("Improve Title Reliability");
 		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(claudeMocks.callClaude).not.toHaveBeenCalled();
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("falls back from Codex to a saved Claude login before the gateway", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		codexMocks.callCodex.mockResolvedValue(null);
+		claudeMocks.callClaude.mockResolvedValue("Improve Title Reliability");
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		const title = await generateTaskTitle("make automatic title generation more reliable");
+
+		expect(title).toBe("Improve Title Reliability");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(claudeMocks.callClaude).toHaveBeenCalledOnce();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("backs off Codex for later calls after one failure, to bound Codex -> Claude -> gateway latency", async () => {
+		delete process.env.QUARTERDECK_TITLE_PROVIDER;
+		codexMocks.callCodex.mockResolvedValue(null);
+		claudeMocks.callClaude.mockResolvedValue("Improve Title Reliability");
+
+		await generateTaskTitle("make automatic title generation more reliable");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+
+		await generateTaskTitle("make automatic title generation more reliable again");
+		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(claudeMocks.callClaude).toHaveBeenCalledTimes(2);
+	});
+
+	it("skips Codex when the title provider is explicitly claude", async () => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "claude";
+		claudeMocks.callClaude.mockResolvedValue("Claude Title");
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe("Claude Title");
+		expect(codexMocks.callCodex).not.toHaveBeenCalled();
+		expect(claudeMocks.callClaude).toHaveBeenCalledOnce();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("falls back from an explicit claude provider to the gateway", async () => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "claude";
+		claudeMocks.callClaude.mockResolvedValue(null);
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				new Response(JSON.stringify({ choices: [{ message: { content: "Gateway Title" } }] }), { status: 200 }),
+			);
+
+		expect(await generateTaskTitle("make titles reliable")).toBe("Gateway Title");
+		expect(codexMocks.callCodex).not.toHaveBeenCalled();
+		expect(claudeMocks.callClaude).toHaveBeenCalledOnce();
+		expect(fetchSpy).toHaveBeenCalledOnce();
 	});
 
 	it("supports opt-in ephemeral Codex title generation", async () => {
@@ -75,7 +146,9 @@ describe("generateTaskTitle", () => {
 		expect(codexMocks.callCodex).toHaveBeenCalledWith(
 			expect.objectContaining({
 				userPrompt: "make automatic title generation more reliable",
-				timeoutMs: 20_000,
+				// Capped by the caller's own 6s title budget, not Codex's own 20s default; see
+				// generation-helper.ts's per-provider budget clamp.
+				timeoutMs: 6_000,
 				model: "gpt-6-luna",
 			}),
 		);
@@ -94,6 +167,7 @@ describe("generateTaskTitle", () => {
 	it("falls back from the default Codex provider to the gateway", async () => {
 		delete process.env.QUARTERDECK_TITLE_PROVIDER;
 		codexMocks.callCodex.mockResolvedValue(null);
+		claudeMocks.callClaude.mockResolvedValue(null);
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(
@@ -101,16 +175,18 @@ describe("generateTaskTitle", () => {
 			);
 		expect(await generateTaskTitle("make titles reliable")).toBe("Gateway Title");
 		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(claudeMocks.callClaude).toHaveBeenCalledOnce();
 		expect(fetchSpy).toHaveBeenCalledOnce();
 	});
 
-	it("uses a deterministic title if both default providers fail", async () => {
+	it("uses a deterministic title if all default providers fail", async () => {
 		delete process.env.QUARTERDECK_TITLE_PROVIDER;
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
 		expect(await generateTaskTitle("make automatic title generation more reliable")).toBe(
 			"Make Automatic Title Generation",
 		);
 		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(claudeMocks.callClaude).toHaveBeenCalledOnce();
 	});
 
 	it("supports a local-only title provider", async () => {
@@ -401,6 +477,7 @@ describe("generateBranchName", () => {
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 		expect(await generateBranchName("fix auth")).toBe("fix-auth-bug");
 		expect(codexMocks.callCodex).toHaveBeenCalledOnce();
+		expect(claudeMocks.callClaude).not.toHaveBeenCalled();
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 

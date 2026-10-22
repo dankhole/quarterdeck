@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core";
-import { STORED_CODEX_RESUME_FAILED_WARNING } from "../../../src/terminal/codex-resume-failure";
+import {
+	STORED_CLAUDE_RESUME_FAILED_WARNING,
+	STORED_CODEX_RESUME_FAILED_WARNING,
+	STORED_PI_RESUME_FAILED_WARNING,
+} from "../../../src/terminal/resume-failure";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -293,6 +297,45 @@ describe("createRuntimeApi startTaskSession", () => {
 				agentId: "codex",
 				binary: "codex",
 				codexOptions: { model: "test-model", reasoningEffort: "high" },
+				claudeOptions: undefined,
+			}),
+		);
+	});
+
+	it("passes starting Claude options only to Claude launches", async () => {
+		const card = createCard({
+			agentId: "claude",
+			workingDirectory: "/tmp/claude-worktree",
+			codexOptions: { model: "stale-codex-model" },
+			claudeOptions: { model: "opus", effort: "high" },
+		});
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "claude",
+			label: "Claude Code",
+			command: "claude",
+			binary: "claude",
+			args: [],
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary()),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Do something",
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "claude",
+				claudeOptions: { model: "opus", effort: "high" },
+				codexOptions: undefined,
 			}),
 		);
 	});
@@ -629,6 +672,57 @@ describe("createRuntimeApi startTaskSession", () => {
 			}),
 		);
 		expect(response.summary?.warningMessage).toBe(STORED_CODEX_RESUME_FAILED_WARNING);
+	});
+
+	it.each([
+		{ agentId: "claude", warning: STORED_CLAUDE_RESUME_FAILED_WARNING },
+		{ agentId: "pi", warning: STORED_PI_RESUME_FAILED_WARNING },
+	] as const)("does not retry a $agentId stored session id that already failed", async ({ agentId, warning }) => {
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId,
+			label: agentId,
+			command: agentId,
+			binary: agentId,
+			args: [],
+		});
+		const card = createCard({ agentId, workingDirectory: `/tmp/${agentId}-worktree`, useWorktree: true });
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+
+		const failedSummary = createSummary({
+			taskId: "task-1",
+			agentId,
+			state: "awaiting_review",
+			reviewReason: "error",
+			sessionLaunchPath: `/tmp/${agentId}-worktree`,
+			resumeSessionId: "missing-session-id",
+			warningMessage: "Resume failed before opening an interactive session (exit code 1).",
+		});
+		const update = vi.fn((taskId: string, patch: Record<string, unknown>) =>
+			createSummary({ taskId, agentId, warningMessage: String(patch.warningMessage ?? ""), resumeSessionId: null }),
+		);
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ taskId: "task-1", agentId, resumeSessionId: null })),
+			getSummary: vi.fn(() => failedSummary),
+			update,
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "",
+			resumeConversation: true,
+			awaitReview: true,
+			useWorktree: true,
+		});
+
+		expect(response.ok).toBe(true);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({ agentId, resumeConversation: true, resumeSessionId: undefined }),
+		);
+		expect(update).toHaveBeenCalledWith("task-1", expect.objectContaining({ warningMessage: warning }));
+		expect(response.summary?.warningMessage).toBe(warning);
 	});
 
 	it("pins a bounded startup retry to the original stored Codex session id", async () => {

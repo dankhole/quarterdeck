@@ -17,6 +17,7 @@ export interface RuntimeCreateTaskInput {
 	baseRef: string;
 	agentId?: RuntimeAgentId;
 	codexOptions?: RuntimeBoardCard["codexOptions"];
+	claudeOptions?: RuntimeBoardCard["claudeOptions"];
 	useWorktree?: boolean;
 	branch?: string;
 	pinned?: boolean;
@@ -157,7 +158,9 @@ export function addTaskToColumn(
 		images: cloneTaskImages(input.images),
 		baseRef,
 		...(input.agentId ? { agentId: input.agentId } : {}),
-		...(input.codexOptions ? { codexOptions: { ...input.codexOptions } } : {}),
+		// Provider starting options are kept only for the provider that owns them, matching browser drafts.
+		...(input.agentId === "codex" && input.codexOptions ? { codexOptions: { ...input.codexOptions } } : {}),
+		...(input.agentId === "claude" && input.claudeOptions ? { claudeOptions: { ...input.claudeOptions } } : {}),
 		useWorktree: input.useWorktree,
 		branch: input.branch?.trim() || undefined,
 		pinned: input.pinned || undefined,

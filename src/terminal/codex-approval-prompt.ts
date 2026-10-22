@@ -39,7 +39,8 @@ function findSelectedChoice(lines: readonly string[], footerIndex: number): numb
 	return -1;
 }
 
-function hasApprovalTitleBeforeChoice(lines: readonly string[], selectedChoiceIndex: number): boolean {
+/** Row index where the canonical approval title begins, or -1. */
+function findApprovalTitleBeforeChoice(lines: readonly string[], selectedChoiceIndex: number): number {
 	for (let start = 0; start < selectedChoiceIndex; start += 1) {
 		let candidate = "";
 		for (let end = start; end < selectedChoiceIndex && end < start + MAX_WRAPPED_TITLE_ROWS; end += 1) {
@@ -49,11 +50,28 @@ function hasApprovalTitleBeforeChoice(lines: readonly string[], selectedChoiceIn
 			}
 			candidate = `${candidate} ${fragment}`.trim();
 			if (isApprovalTitle(candidate)) {
-				return true;
+				return start;
 			}
 		}
 	}
-	return false;
+	return -1;
+}
+
+function findFirstChoice(lines: readonly string[], titleIndex: number, selectedChoiceIndex: number): number {
+	for (let index = titleIndex; index <= selectedChoiceIndex; index += 1) {
+		if (/^(?:›|>)?\s*\d+\.\s+\S/.test((lines[index] ?? "").trimStart())) {
+			return index;
+		}
+	}
+	return selectedChoiceIndex;
+}
+
+/** A recognized approval overlay and the request it describes. */
+export interface CodexApprovalScreen {
+	/** Title and request rows above the choices; moving the selection does not change it. */
+	signature: string;
+	/** The overlay names another thread (a subagent's request) with a `Thread:` header. */
+	threadLabeled: boolean;
 }
 
 /**
@@ -62,17 +80,31 @@ function hasApprovalTitleBeforeChoice(lines: readonly string[], selectedChoiceIn
  * title prevents ordinary transcript/source output from becoming lifecycle
  * truth while still accepting narrow, clipped footer text.
  */
-export function isCodexApprovalScreen(screen: TerminalScreenSnapshot): boolean {
+export function readCodexApprovalScreen(screen: TerminalScreenSnapshot): CodexApprovalScreen | null {
 	const footerIndex = findLastNonEmptyLine(screen.lines);
 	if (footerIndex < Math.max(0, screen.rows - 2)) {
-		return false;
+		return null;
 	}
 	const footer = normalizeLine(screen.lines[footerIndex] ?? "");
 	if (!footer.startsWith(APPROVAL_FOOTER_PREFIX)) {
-		return false;
+		return null;
 	}
 	const selectedChoiceIndex = findSelectedChoice(screen.lines, footerIndex);
-	return selectedChoiceIndex >= 0 && hasApprovalTitleBeforeChoice(screen.lines, selectedChoiceIndex);
+	if (selectedChoiceIndex < 0) return null;
+	const titleIndex = findApprovalTitleBeforeChoice(screen.lines, selectedChoiceIndex);
+	if (titleIndex < 0) return null;
+	const requestRows = screen.lines
+		.slice(titleIndex, findFirstChoice(screen.lines, titleIndex, selectedChoiceIndex))
+		.map(normalizeLine)
+		.filter(Boolean);
+	return {
+		signature: requestRows.join("\n"),
+		threadLabeled: requestRows.some((row) => /^thread: \S/.test(row)),
+	};
+}
+
+export function isCodexApprovalScreen(screen: TerminalScreenSnapshot): boolean {
+	return readCodexApprovalScreen(screen) !== null;
 }
 
 export interface CodexApprovalPromptDetector {
@@ -92,27 +124,30 @@ export interface CodexApprovalPromptDetector {
  * inherited reviewer configuration; do not broaden it to other output.
  */
 export function createCodexApprovalPromptDetector(): CodexApprovalPromptDetector {
-	let detected = false;
+	let detectedSignature: string | null = null;
 
 	return {
 		detect(screen) {
-			const approvalVisible = isCodexApprovalScreen(screen);
-			if (!approvalVisible) {
+			const approval = readCodexApprovalScreen(screen);
+			if (!approval) {
 				// A submitted response can leave the task response-pending while
 				// Codex clears the old overlay and later opens another one. Re-arm
-				// only on that visible falling edge so redraws of one prompt cannot
+				// on that visible falling edge so redraws of one prompt cannot
 				// manufacture duplicate interactions.
-				detected = false;
+				detectedSignature = null;
 				return null;
 			}
-			if (detected) {
+			// Codex can replace one queued approval with the next without an empty
+			// frame (for example a subagent's labelled request followed by a
+			// foreground one). A different request re-arms detection.
+			if (detectedSignature === approval.signature) {
 				return null;
 			}
-			detected = true;
-			return { type: "agent.permission-prompt" };
+			detectedSignature = approval.signature;
+			return { type: "agent.permission-prompt", threadLabeled: approval.threadLabeled };
 		},
 		reset() {
-			detected = false;
+			detectedSignature = null;
 		},
 	};
 }

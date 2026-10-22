@@ -91,7 +91,9 @@ export function createCodexTurnInterruptionDetector(): CodexTurnInterruptionDete
 			}
 			if (detected) return null;
 			detected = true;
-			return canApplyCodexRenderedTurnInterruption(summary) ? { type: "agent.rendered-turn-interrupted" } : null;
+			return canApplyCodexRenderedTurnInterruption(summary)
+				? { type: "agent.rendered-turn-interrupted", provider: "codex" }
+				: null;
 		},
 	};
 }

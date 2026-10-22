@@ -58,6 +58,7 @@ async function fixture(run, productVersion = version) {
 							"runtime/bin/node",
 							"runtime/bin/nodeHost",
 							"runtime/dist/cli.js",
+							"runtime/dist/hooks.js",
 							"runtime/dist/build-manifest.json",
 							"runtime/installation-admission",
 							"runtime/dist/web-ui/index.html",

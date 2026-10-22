@@ -218,6 +218,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
 		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
 		expect(document.body.textContent).toContain("saved Codex/ChatGPT login first");
+		expect(document.body.textContent).toContain("saved Claude Code login");
 	});
 
 	it("keeps harness selection out of settings and keeps worktree context tuning", async () => {
@@ -379,6 +380,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(warningText).toContain("QUARTERDECK_LLM_API_KEY");
 		expect(warningText).toContain("QUARTERDECK_LLM_MODEL");
 		expect(warningText).toContain("saved Codex/ChatGPT login first");
+		expect(warningText).toContain("saved Claude Code login");
 		const summaryPolishCheckbox = document.body.querySelector(
 			"#runtime-settings-llm-summary-polish",
 		) as HTMLButtonElement | null;

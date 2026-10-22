@@ -39,11 +39,15 @@ describe("project board command sync", () => {
 			prompt: "Second",
 			baseRef: "main",
 			agentId: "claude",
+			claudeOptions: { model: "opus", effort: "high" },
 			useWorktree: false,
 		});
 
 		const result = applyDerived(before, second.board);
 
+		expect(result.commands).toContainEqual(
+			expect.objectContaining({ kind: "create_task", claudeOptions: { model: "opus", effort: "high" } }),
+		);
 		expect(result.commands.filter((command) => command.kind === "create_task")).toHaveLength(2);
 		expect(result.board).toEqual(second.board);
 	});

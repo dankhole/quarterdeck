@@ -4,15 +4,20 @@
 // detection → PTY write → provider-ordering fence.
 
 import { deriveTaskIndicatorState, type RuntimeTaskSessionSummary } from "../core";
-import { recordHookUserSubmission } from "./hook-event-order";
+import { recordClaudeInterruptKey, recordHookUserSubmission } from "./hook-event-order";
 import { detectInterruptSignal, type InterruptSignal, scheduleInterruptRecovery } from "./session-interrupt-recovery";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
-import { cancelCodexWorkspaceTrustForUserInput } from "./session-workspace-trust";
+import { cancelWorkspaceTrustForUserInput } from "./session-workspace-trust";
+import { resolveAlternateInteractionResponseTarget, resolveInteractionResponseTarget } from "./subagent-interactions";
 import type { TerminalSessionInputOptions } from "./terminal-session-service";
 
 const ESC = 0x1b;
 const CSI_BRACKET = 0x5b; // [
+const OSC_BRACKET = 0x5d; // ]
+const DCS_INTRODUCER = 0x50; // P
+const BEL = 0x07;
+const ST_FINAL = 0x5c; // \ in ESC \
 const CARRIAGE_RETURN = 0x0d;
 const LOWERCASE_Y = 0x79;
 const UPPERCASE_Y = 0x59;
@@ -29,8 +34,15 @@ const LAST_NUMBERED_CHOICE = 0x39; // 9
  *   \x1b[I    — focus-in  (DECSET 1004)
  *   \x1b[O    — focus-out (DECSET 1004)
  *   \x1b[r;cR — DSR cursor position report
+ *   \x1b[?…c / \x1b[>…c — primary/secondary device attributes replies
+ *   \x1b[?…u / \x1b[?…$y — kitty keyboard flags and DECRPM mode replies
+ *   \x1b]…BEL / \x1b]…ST — OSC replies (for example color queries)
+ *   \x1bP…ST — DCS replies (for example XTVERSION)
  */
 export function isTerminalProtocolResponse(data: Buffer): boolean {
+	if (data.length >= 3 && data[0] === ESC && (data[1] === OSC_BRACKET || data[1] === DCS_INTRODUCER)) {
+		return data[data.length - 1] === BEL || (data[data.length - 2] === ESC && data[data.length - 1] === ST_FINAL);
+	}
 	if (data.length < 3 || data[0] !== ESC || data[1] !== CSI_BRACKET) {
 		return false;
 	}
@@ -41,15 +53,71 @@ export function isTerminalProtocolResponse(data: Buffer): boolean {
 	}
 	// DSR cursor position report: \x1b[<digits>;<digits>R
 	if (finalByte === 0x52 /* R */) {
-		for (let i = 2; i < data.length - 1; i++) {
-			const byte = data[i] as number;
-			if (byte !== 0x3b /* ; */ && (byte < 0x30 || byte > 0x39) /* 0-9 */) {
-				return false;
-			}
+		return hasOnlyCsiParameterDigits(data, 2, data.length - 1);
+	}
+	// Private-mode replies: device attributes (\x1b[?…c, \x1b[>…c), kitty
+	// keyboard flags (\x1b[?…u), and DECRPM mode reports (\x1b[?…$y).
+	if (data[2] === 0x3f /* ? */ || data[2] === 0x3e /* > */) {
+		if (finalByte === 0x63 /* c */ || finalByte === 0x75 /* u */) {
+			return hasOnlyCsiParameterDigits(data, 3, data.length - 1);
 		}
-		return true;
+		if (finalByte === 0x79 /* y */ && data[data.length - 2] === 0x24 /* $ */) {
+			return hasOnlyCsiParameterDigits(data, 3, data.length - 2);
+		}
 	}
 	return false;
+}
+
+function hasOnlyCsiParameterDigits(data: Buffer, start: number, end: number): boolean {
+	for (let i = start; i < end; i++) {
+		const byte = data[i] as number;
+		if (byte !== 0x3b /* ; */ && (byte < 0x30 || byte > 0x39) /* 0-9 */) {
+			return false;
+		}
+	}
+	return true;
+}
+
+const MOUSE_MOTION_FLAG = 32;
+const MOUSE_WHEEL_FLAG = 64;
+
+function isPassiveMouseButtonCode(code: number): boolean {
+	// Wheel (64-67) and motion reports carry modifier bits (4, 8, 16) on top;
+	// presses and releases of buttons 0-2 are deliberate clicks.
+	return (code & MOUSE_WHEEL_FLAG) !== 0 || (code & MOUSE_MOTION_FLAG) !== 0;
+}
+
+/**
+ * Detects a buffer made only of passive xterm mouse reports: wheel scrolling
+ * or pointer motion, in SGR (`\x1b[<b;x;yM|m`) or X10 (`\x1b[M` plus three
+ * bytes) encoding. Fullscreen providers enable mouse tracking, so scrolling
+ * arrives as terminal input; clicks remain direct user input.
+ */
+export function isTerminalPassiveMouseReport(data: Buffer): boolean {
+	let offset = 0;
+	while (offset < data.length) {
+		if (data[offset] !== ESC || data[offset + 1] !== CSI_BRACKET) return false;
+		if (data[offset + 2] === 0x4d /* M */) {
+			if (offset + 6 > data.length) return false;
+			if (!isPassiveMouseButtonCode((data[offset + 3] as number) - 32)) return false;
+			offset += 6;
+			continue;
+		}
+		if (data[offset + 2] !== 0x3c /* < */) return false;
+		let index = offset + 3;
+		let separators = 0;
+		let buttonCode = 0;
+		while (index < data.length && data[index] !== 0x4d /* M */ && data[index] !== 0x6d /* m */) {
+			const byte = data[index] as number;
+			if (byte === 0x3b /* ; */) separators += 1;
+			else if (byte < 0x30 || byte > 0x39) return false;
+			else if (separators === 0) buttonCode = buttonCode * 10 + (byte - 0x30);
+			index += 1;
+		}
+		if (index >= data.length || separators !== 2 || !isPassiveMouseButtonCode(buttonCode)) return false;
+		offset = index + 1;
+	}
+	return data.length > 0;
 }
 
 /** A normal Enter submission. Shift+Enter/newline remains ordinary editing. */
@@ -61,16 +129,28 @@ export function isExplicitUserSubmission(data: Buffer): boolean {
  * Codex approval panes expose `y` and numbered rows as immediate actions: the
  * TUI acts on those bytes without waiting for Enter. Recognize them only for
  * the exact foreground permission interaction already owned by the current
- * Codex session. Arbitrary terminal bytes, question text, and other providers
- * remain ordinary input and cannot manufacture a semantic response boundary.
+ * Codex session, or for a waiting Codex subagent approval that owns the dialog.
+ * Claude's numbered permission rows count only while a waiting subagent
+ * permission owns the dialog. Arbitrary terminal bytes, question text, and
+ * other providers remain ordinary input and cannot manufacture a semantic
+ * response boundary.
  */
 export function isImmediateInteractionSubmission(summary: RuntimeTaskSessionSummary | null, data: Buffer): boolean {
 	const interaction = summary?.outstandingInteraction;
 	const inputByte = data.length === 1 ? data[0] : undefined;
-	const isCodexApprovalChoice =
-		inputByte === LOWERCASE_Y ||
-		inputByte === UPPERCASE_Y ||
-		(inputByte !== undefined && inputByte >= FIRST_NUMBERED_CHOICE && inputByte <= LAST_NUMBERED_CHOICE);
+	const isNumberedChoice =
+		inputByte !== undefined && inputByte >= FIRST_NUMBERED_CHOICE && inputByte <= LAST_NUMBERED_CHOICE;
+	const isCodexApprovalChoice = inputByte === LOWERCASE_Y || inputByte === UPPERCASE_Y || isNumberedChoice;
+	if (summary?.agentId === "claude" && isNumberedChoice) {
+		const target = resolveInteractionResponseTarget(summary, interaction ?? null);
+		return target?.provider === "claude" && target.kind === "permission" && target.providerAgentId !== null;
+	}
+	if (summary?.agentId === "codex" && isCodexApprovalChoice) {
+		const target = resolveInteractionResponseTarget(summary, interaction ?? null);
+		if (target?.provider === "codex" && target.kind === "permission" && target.providerAgentId !== null) {
+			return true;
+		}
+	}
 	return (
 		summary?.state === "awaiting_review" &&
 		summary.agentId === "codex" &&
@@ -113,14 +193,17 @@ export function processSessionInput(
 	const summary = deps.getSummary(taskId);
 
 	const protocolResponse = isTerminalProtocolResponse(data);
-	if (!protocolResponse) cancelCodexWorkspaceTrustForUserInput(entry.active);
+	// Wheel scrolling and pointer motion in fullscreen providers are not intent
+	// to answer a trust dialog; keys and clicks take it over.
+	if (!protocolResponse && !isTerminalPassiveMouseReport(data)) cancelWorkspaceTrustForUserInput(entry.active);
 	const explicitSubmission =
 		!protocolResponse &&
 		(options.explicitUserSubmission === true ||
 			isExplicitUserSubmission(data) ||
 			isImmediateInteractionSubmission(summary, data));
 	const { isCtrlC, isBareEscape } = detectInterruptSignal(data);
-	const waitsForActionableInput = summary?.state === "awaiting_review" && deriveTaskIndicatorState(summary).needsInput;
+	// A subagent prompt can need input while the foreground turn is still Running.
+	const waitsForActionableInput = summary ? deriveTaskIndicatorState(summary).needsInput : false;
 	const resolvesInputWait = waitsForActionableInput && (explicitSubmission || isCtrlC || isBareEscape);
 	const recordsProviderSubmission =
 		(summary?.agentId === "codex" || summary?.agentId === "claude" || summary?.agentId === "pi") && resolvesInputWait;
@@ -138,6 +221,14 @@ export function processSessionInput(
 			onRecoveryApplied: deps.onInterruptRecoveryApplied,
 		});
 	}
+	// Arm the adapter's bounded rendered-result detector before the write so
+	// the provider's response frame is inspected. The detector, not Escape,
+	// decides whether a turn was interrupted.
+	if (isBareEscape && summary) {
+		const escapeAt = Date.now();
+		if (entry.active.agentId === "claude") recordClaudeInterruptKey(entry.hookEventOrder, escapeAt);
+		entry.active.observeBareEscapeInput?.(summary, escapeAt);
+	}
 
 	// 2. PTY write. Only mark the response after it has been handed to the
 	//    process; a failed write must not claim the wait was resolved.
@@ -146,12 +237,19 @@ export function processSessionInput(
 	// 3. Record the direct user submission as an ordering boundary.
 	//    This prevents an older PermissionRequest that was delayed in transport
 	//    from restoring the wait after the user already answered it.
+	//    When a foreground and a subagent prompt both wait, the answer is routed
+	//    to one of them, but either may have been on screen: fence both domains.
 	if (recordsProviderSubmission) {
+		const submittedAt = responseOccurredAt ?? Date.now();
 		recordHookUserSubmission(
 			entry.hookEventOrder,
-			responseOccurredAt ?? Date.now(),
-			summary?.outstandingInteraction ?? null,
+			submittedAt,
+			summary ? resolveInteractionResponseTarget(summary, summary.outstandingInteraction) : null,
 		);
+		const alternate = summary
+			? resolveAlternateInteractionResponseTarget(summary, summary.outstandingInteraction)
+			: null;
+		if (alternate) recordHookUserSubmission(entry.hookEventOrder, submittedAt, alternate);
 	}
 
 	// 4. Record that the actionable wait received a response without claiming

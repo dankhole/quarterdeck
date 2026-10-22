@@ -349,3 +349,110 @@ describe("RuntimeSessionPersistence", () => {
 		expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe("RuntimeSessionPersistence durability barrier without a new change", () => {
+	function createTrackedPersistence() {
+		const dependencies = createDependencies();
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			"task-1": createTestTaskSessionSummary({ taskId: "task-1", state: "running", sessionLaunchPath: "/repo" }),
+		});
+		persistence.trackTerminalManager("project-1", new TerminalSessionManager(store));
+		return { persistence, store, reconcileRuntimeSessions };
+	}
+
+	it("acknowledges without writing when every store change is already durable", async () => {
+		const { persistence, reconcileRuntimeSessions } = createTrackedPersistence();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+
+			await expect(persistence.awaitRuntimeSessionsDurable("project-1")).resolves.toBeUndefined();
+			await expect(persistence.awaitRuntimeSessionsDurable("project-1")).resolves.toBeUndefined();
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("waits for an in-flight write that covers earlier changes without starting another", async () => {
+		const { persistence, store, reconcileRuntimeSessions } = createTrackedPersistence();
+		const write = createDeferred<ReturnType<typeof createBoardCommandResult>>();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			reconcileRuntimeSessions.mockImplementationOnce(async () => await write.promise);
+			store.update("task-1", { warningMessage: "first delivery" });
+			const firstDelivery = persistence.persistRuntimeSessions("project-1");
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2));
+
+			let duplicateSettled = false;
+			const duplicateDelivery = persistence.awaitRuntimeSessionsDurable("project-1").finally(() => {
+				duplicateSettled = true;
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(duplicateSettled).toBe(false);
+
+			write.resolve(createBoardCommandResult());
+			await expect(firstDelivery).resolves.toBeUndefined();
+			await expect(duplicateDelivery).resolves.toBeUndefined();
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+		} finally {
+			write.resolve(createBoardCommandResult());
+			await persistence.close();
+		}
+	});
+
+	it("flushes a debounced store change immediately instead of acknowledging it early", async () => {
+		vi.useFakeTimers();
+		const { persistence, store, reconcileRuntimeSessions } = createTrackedPersistence();
+		try {
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+			store.update("task-1", { warningMessage: "debounced change" });
+
+			await persistence.awaitRuntimeSessionsDurable("project-1");
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+		} finally {
+			await persistence.close();
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps rejecting until a failed earlier generation becomes durable", async () => {
+		const { persistence, store, reconcileRuntimeSessions } = createTrackedPersistence();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			reconcileRuntimeSessions
+				.mockRejectedValueOnce(new Error("disk full"))
+				.mockRejectedValueOnce(new Error("disk full"));
+			store.update("task-1", { warningMessage: "first delivery" });
+			await expect(persistence.persistRuntimeSessions("project-1")).rejects.toThrow("disk full");
+
+			reconcileRuntimeSessions
+				.mockRejectedValueOnce(new Error("disk full"))
+				.mockRejectedValueOnce(new Error("disk full"));
+			await expect(persistence.awaitRuntimeSessionsDurable("project-1")).rejects.toThrow("disk full");
+
+			await expect(persistence.awaitRuntimeSessionsDurable("project-1")).resolves.toBeUndefined();
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(6);
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("falls back to a forced write when the project has no live writer", async () => {
+		const dependencies = createDependencies();
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		try {
+			await persistence.awaitRuntimeSessionsDurable("project-1");
+			expect(dependencies.boardCommands.reconcileRuntimeSessions).toHaveBeenCalledOnce();
+		} finally {
+			await persistence.close();
+		}
+		await expect(persistence.awaitRuntimeSessionsDurable("project-1")).rejects.toThrow("persistence is closed");
+	});
+});

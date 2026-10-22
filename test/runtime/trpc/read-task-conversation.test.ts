@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { TerminalSessionManager } from "../../../src/terminal";
+import type { NativeTaskSessionProfileEnvironment, TerminalSessionManager } from "../../../src/terminal";
 import { handleReadTaskConversation } from "../../../src/trpc/handlers/read-task-conversation";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
@@ -20,7 +20,7 @@ function fixture() {
 		sessionInstanceId: "launch-1",
 		agentId: "codex",
 		binary: "codex",
-		profileEnvironment: { HOME: "/tmp/home", CODEX_HOME: "profile" },
+		profileEnvironment: { HOME: "/tmp/home", CODEX_HOME: "profile" } as NativeTaskSessionProfileEnvironment,
 	};
 	const getSummary = vi.fn(() => summary);
 	const getTaskSessionProcessIdentity = vi.fn(() => identity);
@@ -85,5 +85,83 @@ describe("read task conversation", () => {
 			false,
 		);
 		expect(f.exportConversation).not.toHaveBeenCalled();
+	});
+});
+
+describe("read Claude task conversation", () => {
+	function claudeFixture() {
+		const f = fixture();
+		const summary = { ...f.summary, agentId: "claude" as const, resumeSessionId: "claude-session-1" };
+		const identity = {
+			...f.identity,
+			agentId: "claude",
+			binary: "claude",
+			profileEnvironment: { HOME: "/tmp/home", CLAUDE_CONFIG_DIR: "claude-profile" },
+		};
+		f.getSummary.mockReturnValue(summary);
+		f.getTaskSessionProcessIdentity.mockReturnValue(identity);
+		const exportClaudeConversation = vi.fn(async () => "claude history");
+		const hint = { providerId: "claude" as const, providerSessionId: "claude-session-1", sourcePath: "/hint.jsonl" };
+		const getHint = vi.fn(() => hint);
+		return {
+			...f,
+			summary,
+			hint,
+			getHint,
+			exportClaudeConversation,
+			dependencies: { ...f.dependencies, exportClaudeConversation, conversationSourceHints: { getHint } },
+		};
+	}
+
+	it("reads the exact Claude session from the launch profile without resolving a command", async () => {
+		const f = claudeFixture();
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: true,
+			text: "claude history",
+		});
+		expect(f.getHint).toHaveBeenCalledWith("project-1", "task-1", "claude-session-1");
+		expect(f.exportClaudeConversation).toHaveBeenCalledWith({
+			profileRoot: resolve("/tmp/worktree", "claude-profile"),
+			sessionId: "claude-session-1",
+			hint: f.hint,
+		});
+		expect(f.dependencies.resolveCommand).not.toHaveBeenCalled();
+		expect(f.exportConversation).not.toHaveBeenCalled();
+	});
+
+	it("uses Claude wording for stale sessions and unexpected failures", async () => {
+		const f = claudeFixture();
+		await expect(
+			handleReadTaskConversation(scope, { ...request, sessionInstanceId: "old" }, f.dependencies),
+		).resolves.toEqual({
+			ok: false,
+			error: "The Claude session is no longer connected. Open the task and try again.",
+		});
+		f.exportClaudeConversation.mockRejectedValue(new Error("private path"));
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: false,
+			error: "Could not read the full Claude conversation. Try again.",
+		});
+	});
+
+	it("discards the result if the Claude session changes during the read", async () => {
+		const f = claudeFixture();
+		f.exportClaudeConversation.mockImplementation(async () => {
+			f.getSummary.mockReturnValue({ ...f.summary, resumeSessionId: "claude-session-2" });
+			return "stale";
+		});
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: false,
+			error: "The Claude conversation changed while copying. Try again.",
+		});
+	});
+
+	it("rejects unsupported providers", async () => {
+		const f = fixture();
+		f.getSummary.mockReturnValue({ ...f.summary, agentId: "pi" });
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: false,
+			error: "Full conversation copying is available for Claude and Codex tasks.",
+		});
 	});
 });

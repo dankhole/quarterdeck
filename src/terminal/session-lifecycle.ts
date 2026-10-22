@@ -10,15 +10,14 @@ import { cleanStaleIndexLockForWorktree } from "../fs";
 import type { PreparedAgentLaunch } from "./agent-session-adapters";
 import { prepareAgentLaunch } from "./agent-session-adapters";
 import { shouldAutoConfirmClaudeWorkspaceTrust, stopWorkspaceTrustTimers } from "./claude-workspace-trust";
-import {
-	isCodexResumeFailureSummary,
-	STORED_CLAUDE_RESUME_FAILED_WARNING,
-	STORED_CODEX_RESUME_FAILED_WARNING,
-	STORED_PI_RESUME_FAILED_WARNING,
-} from "./codex-resume-failure";
 import { shouldAutoConfirmCodexWorkspaceTrust } from "./codex-workspace-trust";
 import { createHookEventOrderState } from "./hook-event-order";
 import { type PtyExitEvent, PtySession, type PtySession as PtySessionInstance } from "./pty-session";
+import {
+	getStoredResumeFailedWarning,
+	isResumeFailureSummary,
+	RESUME_EXITED_BEFORE_INTERACTIVE_SESSION_WARNING,
+} from "./resume-failure";
 import { scheduleAutoRestart, shouldAutoRestart } from "./session-auto-restart";
 import { clearInterruptRecoveryTimer, type InterruptSignal } from "./session-interrupt-recovery";
 import {
@@ -135,6 +134,7 @@ export async function spawnTaskSession(
 			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			codexOptions: request.codexOptions,
+			claudeOptions: request.claudeOptions,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 
@@ -528,7 +528,7 @@ export function handleTaskSessionExit(
 			hasResumeSessionId: Boolean(request.resumeSessionId?.trim()),
 		};
 		if (event.exitCode === 0 && !request.startupRecoveryToken) {
-			const message = "Resume exited before opening an interactive session; no replacement prompt was replayed.";
+			const message = RESUME_EXITED_BEFORE_INTERACTIVE_SESSION_WARNING;
 			sessionLog.warn("resume exited before interactive session; preserving failed resume", resumeExitData);
 			const failedSummary =
 				deps.applyTransitionEvent(currentEntry, {
@@ -538,16 +538,13 @@ export function handleTaskSessionExit(
 				})?.summary ?? deps.getSummary(request.taskId);
 			writeSystemOutput(currentEntry, message, failedSummary);
 		} else if (event.exitCode !== 0) {
-			const failedStoredTargetedResume =
-				(request.agentId === "codex" || request.agentId === "claude" || request.agentId === "pi") &&
-				Boolean(request.resumeSessionId?.trim());
-			const message = failedStoredTargetedResume
-				? request.agentId === "claude"
-					? STORED_CLAUDE_RESUME_FAILED_WARNING
-					: request.agentId === "pi"
-						? STORED_PI_RESUME_FAILED_WARNING
-						: STORED_CODEX_RESUME_FAILED_WARNING
-				: `Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
+			const storedResumeFailedWarning = request.resumeSessionId?.trim()
+				? getStoredResumeFailedWarning(request.agentId)
+				: null;
+			const failedStoredTargetedResume = storedResumeFailedWarning !== null;
+			const message =
+				storedResumeFailedWarning ??
+				`Resume failed before opening an interactive session (exit code ${event.exitCode}).`;
 			sessionLog.warn("resume exited before interactive session; preserving failed resume", {
 				...resumeExitData,
 				clearedResumeSessionId: failedStoredTargetedResume,
@@ -762,7 +759,11 @@ export function recoverStaleSession(taskId: string, deps: RecoverStaleSessionDep
 			entry?.restartRequest?.kind === "task" &&
 			!entry.pendingAutoRestart &&
 			summary.reviewReason === "error" &&
-			!isCodexResumeFailureSummary(summary)
+			// A failed resume (stored-id or best-effort) would only repeat itself.
+			!isResumeFailureSummary(summary) &&
+			// The summary owns the exact resume identity. Never fall back to the
+			// launch request's id after the summary cleared it as unusable.
+			summary.resumeSessionId?.trim()
 		) {
 			scheduleAutoRestart(
 				entry,

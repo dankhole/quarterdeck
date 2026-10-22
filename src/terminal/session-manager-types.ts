@@ -52,6 +52,7 @@ export interface ActiveProcessState {
 	detectOutputTransition: AgentOutputTransitionDetector | null;
 	shouldInspectOutputForTransition: AgentOutputTransitionInspectionPredicate | null;
 	resetOutputTransitionDetection: (() => void) | null;
+	observeBareEscapeInput: ((summary: RuntimeTaskSessionSummary, occurredAt: number) => void) | null;
 	autoConfirmedWorkspaceTrust: boolean;
 	workspaceTrustConfirmCount: number;
 	workspaceTrustConfirmTimer: NodeJS.Timeout | null;
@@ -120,6 +121,7 @@ export interface StartTaskSessionRequest {
 	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
+	claudeOptions?: AgentAdapterLaunchInput["claudeOptions"];
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
 	/** Server-derived task meaning to preserve while replacing only the provider process. */
@@ -311,6 +313,7 @@ export function createActiveProcessState(opts: CreateActiveProcessStateOptions):
 		detectOutputTransition: opts.launch?.detectOutputTransition ?? null,
 		shouldInspectOutputForTransition: opts.launch?.shouldInspectOutputForTransition ?? null,
 		resetOutputTransitionDetection: opts.launch?.resetOutputTransitionDetection ?? null,
+		observeBareEscapeInput: opts.launch?.observeBareEscapeInput ?? null,
 		autoConfirmedWorkspaceTrust: false,
 		workspaceTrustConfirmCount: 0,
 		workspaceTrustConfirmTimer: null,

@@ -7,6 +7,7 @@ import type { RuntimeTaskSessionSummary } from "../core";
 import type { ProcessEntry } from "./session-manager-types";
 import type { SessionTransitionEvent, SessionTransitionResult } from "./session-summary-store";
 import {
+	beginClaudeWorkspaceTrustOutput,
 	beginCodexWorkspaceTrustOutput,
 	MAX_WORKSPACE_TRUST_BUFFER_CHARS,
 	processClaudeWorkspaceTrustScreen,
@@ -14,9 +15,17 @@ import {
 	processWorkspaceTrustOutput,
 } from "./session-workspace-trust";
 import { disableOscColorQueryIntercept, filterTerminalProtocolOutput } from "./terminal-protocol-filter";
+import type { TerminalStateMirror } from "./terminal-state-mirror";
 
 const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
+
+/**
+ * Broadcasts still queued behind the mirror for render-inspected chunks. While
+ * any are pending, later chunks are broadcast through the same FIFO so an
+ * inspection predicate flip cannot deliver output to listeners out of order.
+ */
+const pendingDeferredBroadcasts = new WeakMap<TerminalStateMirror, number>();
 
 export interface OutputPipelineDeps {
 	getSummary: (taskId: string) => RuntimeTaskSessionSummary | null;
@@ -57,12 +66,16 @@ export function processTaskSessionOutput(
 	const liveSummary = deps.getSummary(taskId);
 	const activeAtWrite = entry.active;
 	const codexTrustRevision = beginCodexWorkspaceTrustOutput(activeAtWrite);
+	const claudeTrustRevision = beginClaudeWorkspaceTrustOutput(activeAtWrite);
 	const inspectRenderedScreen =
 		entry.terminalStateMirror !== null &&
 		activeAtWrite.detectOutputTransition !== null &&
 		liveSummary !== null &&
 		(activeAtWrite.shouldInspectOutputForTransition?.(liveSummary) ?? true);
-	const outputListeners = inspectRenderedScreen
+	const mirror = entry.terminalStateMirror;
+	const deferBroadcast =
+		mirror !== null && (inspectRenderedScreen || (pendingDeferredBroadcasts.get(mirror) ?? 0) > 0);
+	const outputListeners = deferBroadcast
 		? Array.from(entry.listeners.entries()).filter(([, listener]) => listener.onOutput)
 		: [];
 
@@ -70,40 +83,48 @@ export function processTaskSessionOutput(
 	//    When inspection is required, transition before the same chunk becomes
 	//    visible to listeners so the card cannot briefly claim it is Running.
 	//    Claude and modern Codex workspace trust also use the rendered screen.
-	const inspectClaudeTrust = activeAtWrite.claudeWorkspaceTrust !== null;
-	if (entry.terminalStateMirror) {
-		entry.terminalStateMirror.applyOutput(
+	if (mirror) {
+		if (deferBroadcast) pendingDeferredBroadcasts.set(mirror, (pendingDeferredBroadcasts.get(mirror) ?? 0) + 1);
+		mirror.applyOutput(
 			filteredChunk,
-			inspectRenderedScreen || inspectClaudeTrust || codexTrustRevision !== null
+			deferBroadcast || claudeTrustRevision !== null || codexTrustRevision !== null
 				? (screen) => {
-						if (entry.active !== activeAtWrite) {
-							return;
-						}
-						if (inspectClaudeTrust) {
-							processClaudeWorkspaceTrustScreen(activeAtWrite, taskId, screen, {
-								updateStore: (id, patch) => deps.updateStore(id, patch),
-								getActive: (id) => (id === taskId ? entry.active : null),
-							});
-						}
-						if (codexTrustRevision !== null) {
-							processCodexWorkspaceTrustScreen(activeAtWrite, taskId, screen, codexTrustRevision, {
-								updateStore: (id, patch) => deps.updateStore(id, patch),
-								getActive: (id) => (id === taskId ? entry.active : null),
-							});
-						}
-						if (!inspectRenderedScreen) {
-							return;
-						}
-						const summary = deps.getSummary(taskId);
-						if (summary && (activeAtWrite.shouldInspectOutputForTransition?.(summary) ?? true)) {
-							const adapterEvent = activeAtWrite.detectOutputTransition?.(screen, summary) ?? null;
-							if (adapterEvent) {
-								deps.applyTransitionEvent(entry, adapterEvent);
+						try {
+							if (entry.active !== activeAtWrite) {
+								return;
 							}
-						}
-						for (const [listenerId, listener] of outputListeners) {
-							if (entry.listeners.get(listenerId) === listener) {
-								listener.onOutput?.(filteredChunk);
+							if (claudeTrustRevision !== null) {
+								processClaudeWorkspaceTrustScreen(activeAtWrite, taskId, screen, claudeTrustRevision, {
+									updateStore: (id, patch) => deps.updateStore(id, patch),
+									getActive: (id) => (id === taskId ? entry.active : null),
+								});
+							}
+							if (codexTrustRevision !== null) {
+								processCodexWorkspaceTrustScreen(activeAtWrite, taskId, screen, codexTrustRevision, {
+									updateStore: (id, patch) => deps.updateStore(id, patch),
+									getActive: (id) => (id === taskId ? entry.active : null),
+								});
+							}
+							if (inspectRenderedScreen) {
+								const summary = deps.getSummary(taskId);
+								if (summary && (activeAtWrite.shouldInspectOutputForTransition?.(summary) ?? true)) {
+									const adapterEvent = activeAtWrite.detectOutputTransition?.(screen, summary) ?? null;
+									if (adapterEvent) {
+										deps.applyTransitionEvent(entry, adapterEvent);
+									}
+								}
+							}
+							for (const [listenerId, listener] of outputListeners) {
+								if (entry.listeners.get(listenerId) === listener) {
+									listener.onOutput?.(filteredChunk);
+								}
+							}
+						} finally {
+							if (deferBroadcast) {
+								pendingDeferredBroadcasts.set(
+									mirror,
+									Math.max(0, (pendingDeferredBroadcasts.get(mirror) ?? 1) - 1),
+								);
 							}
 						}
 					}
@@ -126,9 +147,10 @@ export function processTaskSessionOutput(
 		},
 	});
 
-	// 6. Listener broadcast. Render-inspected output is broadcast from the
-	//    mirror callback after any state transition has been applied.
-	if (!inspectRenderedScreen) {
+	// 6. Listener broadcast. Render-inspected output, and any output queued
+	//    behind it, is broadcast from the mirror callback in arrival order after
+	//    any state transition has been applied.
+	if (!deferBroadcast) {
 		for (const taskListener of entry.listeners.values()) {
 			taskListener.onOutput?.(filteredChunk);
 		}

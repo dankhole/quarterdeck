@@ -16,6 +16,7 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import type { RuntimeDiagnostics } from "../../../src/diagnostics";
 import { InMemorySessionSummaryStore, reduceSessionTransition, TerminalSessionManager } from "../../../src/terminal";
+import { createClaudeOutputTransitionHooks } from "../../../src/terminal/claude-turn-interruption";
 import { createHooksApi } from "../../../src/trpc";
 import { createTestProviderHookRequest, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -262,6 +263,198 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			});
 		},
 	);
+
+	describe("Claude rendered Escape interruption", () => {
+		const RULE = "─".repeat(60);
+		const CLEAR = "\u001b[2J\u001b[H";
+		const INTERRUPTED_FRAME = [
+			"> Fix the bug",
+			"",
+			"⏺ Bash(npm test)",
+			"  ⎿  Interrupted · What should Claude do instead?",
+			"",
+			RULE,
+			"❯ ",
+			RULE,
+		].join("\r\n");
+		const WORKING_FRAME = ["> Fix the bug", "", "✻ Working… (esc to interrupt)", "", RULE, "❯ ", RULE].join("\r\n");
+
+		async function startClaudeWithRenderedDetection() {
+			prepareAgentLaunchMock.mockImplementation(
+				async (input: { args: string[]; binary?: string; hookSessionInstanceId?: string }) => ({
+					binary: input.binary,
+					args: [...input.args],
+					env: {},
+					...createClaudeOutputTransitionHooks(input.hookSessionInstanceId),
+				}),
+			);
+			const spawnedSessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			const statesSeenInOnOutput: Array<string | undefined> = [];
+			manager.attach("task-1", {
+				onState: vi.fn(),
+				onOutput: () => statesSeenInOnOutput.push(manager.store.getSummary("task-1")?.state),
+			});
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId: "claude",
+				binary: "claude",
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Fix the bug",
+			});
+			const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId ?? undefined;
+			const api = createHooksApi({
+				runProjectOperation: async (_scope, operation) => await operation(),
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+			});
+			let deliveryCount = 0;
+			const hook = async (
+				event: "to_in_progress" | "to_review",
+				hookEventName: string,
+				metadata: { promptId?: string; toolUseId?: string; toolName?: string },
+				occurredAt = Date.now(),
+			) => {
+				deliveryCount += 1;
+				await api.ingest({
+					taskId: "task-1",
+					projectId: "project-1",
+					event,
+					metadata: { source: "claude", hookEventName, sessionInstanceId, sessionId: "claude-1", ...metadata },
+					delivery: {
+						id: `00000000-0000-4000-8000-${String(900 + deliveryCount).padStart(12, "0")}`,
+						occurredAt,
+					},
+				});
+			};
+			const render = async (frame: string) => {
+				spawnedSessions[0]?.triggerData(`${CLEAR}${frame}`);
+				await vi.advanceTimersByTimeAsync(200);
+			};
+			return { manager, spawnedSessions, hook, render, statesSeenInOnOutput };
+		}
+
+		it("moves Running to interrupted Review only after Escape and Claude's rendered result", async () => {
+			const { manager, spawnedSessions, hook, render, statesSeenInOnOutput } =
+				await startClaudeWithRenderedDetection();
+			await hook("to_in_progress", "UserPromptSubmit", { promptId: "prompt-1" });
+			const preEscapeHookAt = Date.now();
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+
+			// Without Escape, even a matching frame is not inspected.
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			await render(WORKING_FRAME);
+
+			await vi.advanceTimersByTimeAsync(100);
+			manager.writeInput("task-1", Buffer.from([0x1b]));
+			expect(spawnedSessions[0]?.write).toHaveBeenLastCalledWith(Buffer.from([0x1b]));
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+
+			statesSeenInOnOutput.length = 0;
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				nativeWorkEvidence: null,
+			});
+			// The transition is applied before the frame reaches listeners.
+			expect(statesSeenInOnOutput).toEqual(["awaiting_review"]);
+
+			// Delayed hooks from before the result, and the interrupted prompt's own
+			// tool failure, cannot revive Running.
+			await hook("to_in_progress", "PreToolUse", { promptId: "prompt-1", toolUseId: "tool-1" }, preEscapeHookAt);
+			await hook(
+				"to_in_progress",
+				"PostToolUseFailure",
+				{ promptId: "prompt-1", toolUseId: "tool-2" },
+				Date.now() + 5,
+			);
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+			});
+
+			// A newer prompt resumes, and a stale redraw of the old result stays inert.
+			await hook("to_in_progress", "UserPromptSubmit", { promptId: "prompt-2" }, Date.now() + 10);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		});
+
+		it("fences the interrupted turn when Claude hooks carry no prompt identity", async () => {
+			const { manager, hook, render } = await startClaudeWithRenderedDetection();
+			await hook("to_in_progress", "UserPromptSubmit", {});
+			await hook("to_in_progress", "PreToolUse", { toolUseId: "tool-1", toolName: "Bash" });
+			manager.writeInput("task-1", Buffer.from([0x1b]));
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+
+			// Stamped after detection, the interrupted tool's own completion and any
+			// identity-free work cannot revive Running.
+			await hook("to_in_progress", "PostToolUseFailure", { toolUseId: "tool-1" }, Date.now() + 5);
+			await hook("to_in_progress", "PostToolUse", { toolUseId: "tool-2" }, Date.now() + 6);
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+			});
+
+			await hook("to_in_progress", "UserPromptSubmit", {}, Date.now() + 10);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		});
+
+		it.each([
+			{ name: "with prompt ids", first: { promptId: "prompt-1" }, next: { promptId: "prompt-2" } },
+			{ name: "without prompt ids", first: {}, next: {} },
+		])("ignores an interruption superseded by a type-ahead prompt $name", async ({ first, next }) => {
+			const { manager, hook, render } = await startClaudeWithRenderedDetection();
+			await hook("to_in_progress", "UserPromptSubmit", first);
+			manager.writeInput("task-1", Buffer.from([0x1b]));
+			await hook("to_in_progress", "UserPromptSubmit", next, Date.now() + 5);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+			await hook("to_in_progress", "PostToolUse", { ...next, toolUseId: "tool-3" }, Date.now() + 10);
+			expect(manager.store.getSummary("task-1")?.state).toBe("running");
+		});
+
+		it("lets a later completion converge an interrupted result to ordinary Review", async () => {
+			const { manager, hook, render } = await startClaudeWithRenderedDetection();
+			await hook("to_in_progress", "UserPromptSubmit", { promptId: "prompt-1" });
+			manager.writeInput("task-1", Buffer.from([0x1b]));
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+
+			await hook("to_in_progress", "UserPromptSubmit", { promptId: "prompt-2" }, Date.now() + 10);
+			await hook("to_review", "Stop", { promptId: "prompt-2" }, Date.now() + 20);
+			expect(manager.store.getSummary("task-1")).toMatchObject({ state: "awaiting_review", reviewReason: "hook" });
+		});
+
+		it("retires a foreground Claude permission rejected with Escape", async () => {
+			const { manager, hook, render } = await startClaudeWithRenderedDetection();
+			await hook("to_in_progress", "UserPromptSubmit", { promptId: "prompt-1" });
+			await hook("to_in_progress", "PreToolUse", { promptId: "prompt-1", toolUseId: "tool-1", toolName: "Bash" });
+			await hook("to_in_progress", "PermissionRequest", { promptId: "prompt-1", toolName: "Bash" }, Date.now() + 1);
+			expect(manager.store.getSummary("task-1")?.outstandingInteraction).toMatchObject({
+				kind: "permission",
+				status: "waiting",
+			});
+
+			manager.writeInput("task-1", Buffer.from([0x1b]));
+			expect(manager.store.getSummary("task-1")?.outstandingInteraction?.status).toBe("response_submitted");
+			await render(INTERRUPTED_FRAME);
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				outstandingInteraction: null,
+			});
+		});
+	});
 
 	it("returns a live interrupted review to running on the next confirmed provider hook", async () => {
 		const spawnedSessions = setupMockPtySpawn();

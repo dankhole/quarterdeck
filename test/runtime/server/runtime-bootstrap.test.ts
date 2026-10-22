@@ -1,11 +1,19 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createRuntimeCapabilities } from "../../../src/core";
+import { createRuntimeCapabilities, type RuntimeHookIngestRequest } from "../../../src/core";
+import { enqueueHookTransition } from "../../../src/hook-transition-outbox";
 import { RuntimeStartupCleanupError, startRuntime } from "../../../src/server/runtime-bootstrap";
+import type { CreateRuntimeServerDependencies } from "../../../src/server/runtime-server";
 import type {
 	RuntimeShutdownCoordinatorDependencies,
 	RuntimeShutdownResult,
 } from "../../../src/server/shutdown-coordinator";
+import * as relocationJournal from "../../../src/state/project-relocation-journal";
+import { createHooksApi } from "../../../src/trpc/hooks-api";
 
 const mocks = vi.hoisted(() => {
 	const calls: string[] = [];
@@ -278,6 +286,53 @@ describe("runtime bootstrap entry points", () => {
 			persistenceAllowed: false,
 		});
 		expect(mocks.server.close).toHaveBeenCalledExactlyOnceWith({ persistenceAllowed: false });
+	});
+
+	it("holds startup outbox replay for a project whose relocation journal is pending", async () => {
+		const stateHome = await mkdtemp(join(tmpdir(), "quarterdeck-bootstrap-outbox-"));
+		vi.stubEnv("QUARTERDECK_STATE_HOME", stateHome);
+		const journal = vi
+			.spyOn(relocationJournal, "readProjectRelocationJournal")
+			.mockImplementation(async (projectId) =>
+				projectId === "relocating-project" ? ({} as relocationJournal.ProjectRelocationJournal) : null,
+			);
+		try {
+			const hook = (projectId: string, index: number): RuntimeHookIngestRequest => ({
+				taskId: "task-1",
+				projectId,
+				event: "to_review",
+				metadata: { source: "claude", hookEventName: "Stop", sessionInstanceId: "process-1" },
+				delivery: { id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, occurredAt: index },
+			});
+			await enqueueHookTransition(hook("relocating-project", 1));
+			await enqueueHookTransition(hook("settled-project", 2));
+			const ingest = vi.fn(async (_request: RuntimeHookIngestRequest) => ({ ok: true as const }));
+			vi.mocked(createHooksApi).mockReturnValue({ ingest });
+			const runtime = await startRuntime({
+				capabilities: createRuntimeCapabilities("unavailable"),
+				quarterdeckVersion: "test-version",
+			});
+			try {
+				const [serverDeps] = mocks.createRuntimeServer.mock.calls[0] as unknown as [
+					Pick<CreateRuntimeServerDependencies, "initializeProjectsForStartup">,
+				];
+				await serverDeps.initializeProjectsForStartup?.(async (_scope, operation) => await operation());
+				const [startup] = mocks.projectRegistry.initializeIndexedProjectsForStartup.mock.calls[0] as unknown as [
+					{ beforeRecovery: () => Promise<unknown> },
+				];
+
+				await expect(startup.beforeRecovery()).resolves.toEqual({
+					blockAllRecovery: false,
+					blockedTasks: [{ projectId: "relocating-project", taskId: "task-1" }],
+				});
+				expect(ingest).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectId: "settled-project" }));
+			} finally {
+				await runtime.shutdown();
+			}
+		} finally {
+			journal.mockRestore();
+			await rm(stateHome, { recursive: true, force: true });
+		}
 	});
 
 	it("retains an incomplete startup cleanup outcome for the lifetime owner", async () => {

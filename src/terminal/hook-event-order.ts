@@ -4,6 +4,18 @@ import type {
 	RuntimeTaskProviderHookOrderObservation,
 } from "../core";
 import { isCodexForegroundSessionStart } from "./codex-hook-session-scope";
+import {
+	commitSubagentHookOrder,
+	correlateSubagentPermissionToolUseId,
+	createSubagentHookOrderState,
+	evaluateSubagentHookOrder,
+	getClaudeSubagentHookAgentId,
+	getCodexSubagentHookAgentId,
+	getSubagentHookAgentId,
+	recordSubagentUserSubmission,
+	type SubagentHookOrderState,
+	subagentPermissionToolUseCandidates,
+} from "./subagent-hook-order";
 
 // Ordering is additive: only launch-scoped events with documented Codex turn
 // identity participate. Older/third-party payloads fall through unchanged.
@@ -61,6 +73,15 @@ export interface HookEventOrderState {
 	completedClaudeElicitationIds: Map<string, number>;
 	completedClaudeElicitationPromptOccurredAt: Map<string, number>;
 	completedClaudeElicitationOccurredAt: number | null;
+	/** The latest bare Escape written to Claude and the foreground prompt it targeted. */
+	claudeInterruptKey: { promptId: string | null; occurredAt: number } | null;
+	/** Claude visibly ended a turn on Escape; identity-free work hooks wait for a new prompt. */
+	claudeAwaitingPromptAfterInterrupt: boolean;
+	/** Prompts whose completed Stop left unbounded shell or monitor work that may wake them. */
+	claudeUnboundedBackgroundPromptIds: Map<string, number>;
+	claudeUnboundedBackgroundWorkWithoutPrompt: boolean;
+	/** In-memory subagent tool/answer/stop identity; never mixed into foreground ordering. */
+	subagents: SubagentHookOrderState;
 	processedDeliveryIds: Map<string, number>;
 }
 
@@ -76,6 +97,7 @@ export type HookEventOrderRejectionReason =
 	| "completed_tool"
 	| "completed_interaction"
 	| "resolved_by_user_input"
+	| "interrupted_prompt"
 	| "unrelated_tool_completion";
 
 export type HookEventOrderDecision = { accepted: true } | { accepted: false; reason: HookEventOrderRejectionReason };
@@ -118,6 +140,11 @@ export function createHookEventOrderState(sessionInstanceId: string): HookEventO
 		completedClaudeElicitationIds: new Map(),
 		completedClaudeElicitationPromptOccurredAt: new Map(),
 		completedClaudeElicitationOccurredAt: null,
+		claudeInterruptKey: null,
+		claudeAwaitingPromptAfterInterrupt: false,
+		claudeUnboundedBackgroundPromptIds: new Map(),
+		claudeUnboundedBackgroundWorkWithoutPrompt: false,
+		subagents: createSubagentHookOrderState(),
 		processedDeliveryIds: new Map(),
 	};
 }
@@ -139,6 +166,9 @@ export function createProviderHookOrderObservation(
 	if ((source !== "codex" && source !== "claude" && source !== "pi") || !sessionInstanceId || !input.delivery) {
 		return null;
 	}
+	// Subagent identity is launch-scoped and absent from this schema; persisting
+	// it would replay subagent hooks into the foreground domain after restart.
+	if (getSubagentHookAgentId(input)) return null;
 	return {
 		event: input.event,
 		deliveryId: input.delivery.id,
@@ -275,6 +305,15 @@ function normalizedToolName(input: RuntimeHookIngestRequest): string | null {
 	return input.metadata?.toolName?.trim().toLowerCase() || null;
 }
 
+/** Codex hooks that a thread-spawned subagent can emit with its own identity. */
+const CODEX_SUBAGENT_LANE_HOOK_EVENTS: ReadonlySet<string> = new Set([
+	"pretooluse",
+	"permissionrequest",
+	"posttooluse",
+	"userpromptsubmit",
+	"subagentstop",
+]);
+
 function isCodexInput(input: RuntimeHookIngestRequest): boolean {
 	return input.metadata?.source?.trim().toLowerCase() === "codex";
 }
@@ -361,6 +400,10 @@ export function correlateClaudePermissionToolUseId(
 	if (!state || !isClaudeInput(input) || normalizedHookEventName(input) !== "permissionrequest") {
 		return null;
 	}
+	const subagentAgentId = getClaudeSubagentHookAgentId(input);
+	if (subagentAgentId) {
+		return correlateSubagentPermissionToolUseId(state.subagents, input, subagentAgentId);
+	}
 	const occurredAt = input.delivery?.occurredAt ?? Date.now();
 	const candidates: string[] = [];
 	for (const [toolUseId, observation] of state.claudePendingToolUses) {
@@ -369,6 +412,19 @@ export function correlateClaudePermissionToolUseId(
 		}
 	}
 	return candidates.length === 1 ? (candidates[0] ?? null) : null;
+}
+
+/**
+ * Open same-agent tools an uncorrelated subagent PermissionRequest may belong
+ * to. Returns null for foreground hooks, other events, and other providers.
+ */
+export function getSubagentPermissionToolUseCandidates(
+	state: HookEventOrderState | null,
+	input: RuntimeHookIngestRequest,
+): string[] | null {
+	const agentId = getSubagentHookAgentId(input);
+	if (!state || !agentId || normalizedHookEventName(input) !== "permissionrequest") return null;
+	return subagentPermissionToolUseCandidates(state.subagents, input, agentId);
 }
 
 /**
@@ -383,6 +439,10 @@ export function correlateCodexPermissionToolUseId(
 ): string | null {
 	if (!state || !isCodexInput(input) || normalizedHookEventName(input) !== "permissionrequest") {
 		return null;
+	}
+	const subagentAgentId = getCodexSubagentHookAgentId(input);
+	if (subagentAgentId) {
+		return correlateSubagentPermissionToolUseId(state.subagents, input, subagentAgentId);
 	}
 	const turnId = input.metadata?.turnId?.trim() || null;
 	if (!turnId) return null;
@@ -418,6 +478,10 @@ export function recordHookUserSubmission(
 	if (!state) {
 		return;
 	}
+	if ((interaction?.provider === "claude" || interaction?.provider === "codex") && interaction.providerAgentId) {
+		recordSubagentUserSubmission(state.subagents, interaction.providerAgentId, occurredAt, interaction.toolUseId);
+		return;
+	}
 	state.latestUserSubmissionAt = Math.max(state.latestUserSubmissionAt ?? occurredAt, occurredAt);
 	// This only retires the ordering guard. Semantic state remains response-
 	// pending until a current native provider hook confirms resumed work or a
@@ -434,6 +498,65 @@ export function recordHookUserSubmission(
 			state.codexPendingToolUses.delete(interaction.toolUseId);
 		}
 	}
+}
+
+/** Records a bare Escape written to Claude and the foreground prompt it can interrupt. */
+export function recordClaudeInterruptKey(state: HookEventOrderState | null, occurredAt = Date.now()): void {
+	if (!state) return;
+	state.claudeInterruptKey = { promptId: state.activeClaudePromptId, occurredAt };
+}
+
+/**
+ * True when Claude's rendered interruption still answers the latest Escape:
+ * no foreground prompt was submitted or became active since that key.
+ */
+export function canApplyClaudeRenderedInterruption(state: HookEventOrderState | null): boolean {
+	if (!state) return true;
+	const key = state.claudeInterruptKey;
+	return key !== null && key.promptId === state.activeClaudePromptId;
+}
+
+/**
+ * Closes the interrupted Claude turn after Claude visibly reported it. Claude
+ * emits no Stop for interrupts but may still deliver hooks for interrupted
+ * tools (for example PostToolUseFailure); those tool identities become
+ * completed, the prompt is retired, and identity-free work hooks are refused
+ * until a new foreground prompt. A prompt that may be woken by unbounded
+ * background work stays admissible and relies on the timestamp and tool fences.
+ */
+export function retireInterruptedClaudePrompt(state: HookEventOrderState | null, now = Date.now()): void {
+	if (!state) return;
+	const promptId = state.claudeInterruptKey?.promptId ?? state.activeClaudePromptId;
+	state.claudeInterruptKey = null;
+	for (const [toolUseId, pending] of state.claudePendingToolUses) {
+		if (promptId && pending.promptId && pending.promptId !== promptId) continue;
+		state.claudePendingToolUses.delete(toolUseId);
+		state.claudeCompletedToolUses.set(toolUseId, { ...pending, occurredAt: Math.max(pending.occurredAt, now) });
+	}
+	const backgroundWakeExpected = promptId
+		? state.claudeUnboundedBackgroundPromptIds.has(promptId)
+		: state.claudeUnboundedBackgroundWorkWithoutPrompt;
+	if (backgroundWakeExpected) return;
+	if (promptId) state.retiredClaudePromptIds.set(promptId, now);
+	if (!promptId || state.activeClaudePromptId === promptId) {
+		state.activeClaudePromptId = null;
+		state.activeClaudePromptLatestOccurredAt = null;
+	}
+	state.claudeAwaitingPromptAfterInterrupt = true;
+}
+
+function isClaudeInterruptedWorkHook(input: RuntimeHookIngestRequest, hookEventName: string): boolean {
+	if (hookEventName === "userpromptsubmit" || input.metadata?.providerAgentId?.trim()) return false;
+	return (
+		input.event === "to_in_progress" ||
+		hookEventName === "pretooluse" ||
+		hookEventName === "posttooluse" ||
+		hookEventName === "posttoolusefailure" ||
+		hookEventName === "permissionrequest" ||
+		hookEventName === "permissiondenied" ||
+		hookEventName === "elicitation" ||
+		hookEventName === "elicitationresult"
+	);
 }
 
 export function evaluateHookEventOrder(
@@ -465,12 +588,19 @@ export function evaluateHookEventOrder(
 		const toolUseId = normalizedToolUseId(input);
 		const occurredAt = input.delivery?.occurredAt ?? Date.now();
 		const toolName = normalizedToolName(input);
+		const subagentAgentId = getClaudeSubagentHookAgentId(input);
 		if (
 			state.latestClaudeRootCompletionOccurredAt !== null &&
 			occurredAt <= state.latestClaudeRootCompletionOccurredAt
 		) {
 			return { accepted: false, reason: "stale_observation" };
 		}
+		// Subagents share only the root-completion fence. A subagent may keep
+		// working, and keep a wait open, after a new foreground prompt retires the
+		// prompt that launched it; prompt retirement and interrupted-prompt fences
+		// would otherwise reject the hooks that resolve that wait. Whether a wait may
+		// open at all is decided by the reducer from the foreground lifecycle.
+		if (subagentAgentId) return evaluateSubagentHookOrder(state.subagents, input, subagentAgentId);
 		if (
 			(hookEventName === "stop" || hookEventName === "stopfailure") &&
 			!promptId &&
@@ -488,6 +618,9 @@ export function evaluateHookEventOrder(
 		}
 		if (promptId && state.retiredClaudePromptIds.has(promptId)) {
 			return { accepted: false, reason: "completed_prompt" };
+		}
+		if (state.claudeAwaitingPromptAfterInterrupt && !promptId && isClaudeInterruptedWorkHook(input, hookEventName)) {
+			return { accepted: false, reason: "interrupted_prompt" };
 		}
 		if (
 			promptId &&
@@ -535,7 +668,25 @@ export function evaluateHookEventOrder(
 	const hookEventName = normalizedHookEventName(input);
 	const occurredAt = input.delivery?.occurredAt ?? Date.now();
 	const providerSessionId = optionalIdentity(input.metadata?.sessionId);
-	if (input.metadata?.providerAgentId?.trim()) return { accepted: false, reason: "non_foreground_session" };
+	const subagentAgentId = getCodexSubagentHookAgentId(input);
+	if (subagentAgentId) {
+		// Thread-spawned subagents report the root session id. Admit their tool,
+		// approval, and turn hooks only into their per-agent lane, and only for the
+		// known foreground session: /btw forks, their children, unverifiable scope,
+		// and root-only events (Interrupt, Stop, SessionStart, compaction) stay
+		// non-foreground. Root completion and turn fences do not apply because a
+		// child keeps running, and may keep waiting on the person, after the root
+		// turn ends.
+		if (
+			!CODEX_SUBAGENT_LANE_HOOK_EVENTS.has(hookEventName) ||
+			!providerSessionId ||
+			!state.codexSessionId ||
+			providerSessionId !== state.codexSessionId
+		) {
+			return { accepted: false, reason: "non_foreground_session" };
+		}
+		return evaluateSubagentHookOrder(state.subagents, input, subagentAgentId);
+	}
 	if (providerSessionId && state.codexSessionId && providerSessionId !== state.codexSessionId) {
 		// Native main-chat navigation can precede transcript materialization.
 		// Ephemeral /btw forks lack both navigation source and transcript evidence.
@@ -680,9 +831,20 @@ export function commitHookEventOrder(
 		return;
 	}
 	if (isClaudeInput(input)) {
+		const subagentAgentId = getClaudeSubagentHookAgentId(input);
+		if (subagentAgentId) {
+			commitSubagentHookOrder(state.subagents, input, subagentAgentId, now);
+			return;
+		}
 		const occurredAt = input.delivery?.occurredAt ?? now;
 		const hookEventName = normalizedHookEventName(input);
 		const promptId = normalizedPromptId(input);
+		if (hookEventName === "userpromptsubmit" && !input.metadata?.providerAgentId?.trim()) {
+			// A new foreground prompt supersedes any pending Escape and interrupted turn.
+			state.claudeInterruptKey = null;
+			state.claudeAwaitingPromptAfterInterrupt = false;
+			state.claudeUnboundedBackgroundWorkWithoutPrompt = false;
+		}
 		if (promptId) {
 			if (
 				state.activeClaudePromptId !== promptId &&
@@ -691,6 +853,7 @@ export function commitHookEventOrder(
 				if (state.activeClaudePromptId) state.retiredClaudePromptIds.set(state.activeClaudePromptId, now);
 				state.activeClaudePromptId = promptId;
 				state.activeClaudePromptLatestOccurredAt = occurredAt;
+				state.claudeAwaitingPromptAfterInterrupt = false;
 			} else if (state.activeClaudePromptId === promptId) {
 				state.activeClaudePromptLatestOccurredAt = Math.max(
 					state.activeClaudePromptLatestOccurredAt ?? occurredAt,
@@ -725,7 +888,10 @@ export function commitHookEventOrder(
 			);
 			const completedPromptId = promptId ?? state.activeClaudePromptId;
 			// A shell or monitor may wake this prompt again, so keep its later hooks admissible.
-			if (completedPromptId && !input.metadata?.unboundedBackgroundWorkPending) {
+			if (input.metadata?.unboundedBackgroundWorkPending) {
+				if (completedPromptId) state.claudeUnboundedBackgroundPromptIds.set(completedPromptId, now);
+				else state.claudeUnboundedBackgroundWorkWithoutPrompt = true;
+			} else if (completedPromptId) {
 				state.retiredClaudePromptIds.set(completedPromptId, now);
 			}
 			if (!promptId || state.activeClaudePromptId === promptId) {
@@ -748,6 +914,7 @@ export function commitHookEventOrder(
 			);
 		}
 		pruneTrackedIds(state.retiredClaudePromptIds, now);
+		pruneTrackedIds(state.claudeUnboundedBackgroundPromptIds, now);
 		pruneTrackedIds(state.completedClaudeElicitationIds, now);
 		pruneTrackedIds(state.completedClaudeElicitationPromptOccurredAt, occurredAt);
 		pruneClaudeToolObservations(state.claudePendingToolUses, occurredAt);
@@ -755,6 +922,11 @@ export function commitHookEventOrder(
 		return;
 	}
 	if (!isCodexInput(input)) {
+		return;
+	}
+	const codexSubagentAgentId = getCodexSubagentHookAgentId(input);
+	if (codexSubagentAgentId) {
+		commitSubagentHookOrder(state.subagents, input, codexSubagentAgentId, now);
 		return;
 	}
 	const occurredAt = input.delivery?.occurredAt ?? now;

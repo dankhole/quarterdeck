@@ -886,7 +886,13 @@ describe("provider interaction lifecycle", () => {
 				providerAgentId: "subagent-1",
 			}),
 		);
-		expect(request).toMatchObject({ changed: false, hookMetadataMode: "preserve" });
+		// The subagent's question becomes its own keyed wait, not the foreground one.
+		expect(request).toMatchObject({ changed: true, hookMetadataMode: "preserve" });
+		expect(request.patch).toEqual({
+			subagentInteractions: [
+				expect.objectContaining({ kind: "question", providerAgentId: "subagent-1", toolUseId: "subagent-tool-1" }),
+			],
+		});
 
 		const foregroundWaiting = apply(
 			running("claude"),

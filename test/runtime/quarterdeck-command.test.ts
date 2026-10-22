@@ -11,6 +11,7 @@ import { buildStatuslineCommand } from "../../src/commands/statusline";
 import {
 	buildQuarterdeckCommandLine,
 	buildQuarterdeckCommandParts,
+	buildQuarterdeckHookCommandParts,
 	buildShellCommandLine,
 	resolveQuarterdeckCommandParts,
 } from "../../src/core";
@@ -56,7 +57,8 @@ function createBundledInvocation() {
 	admissionFd = openSync(lock, "r");
 	vi.stubEnv("QUARTERDECK_INSTALLATION_LOCK_FD", String(admissionFd));
 	vi.stubEnv("QUARTERDECK_INSTALLATION_LOCK_PATH", lock);
-	return { execPath, argv: [execPath, cli], execArgv: [], wrapper, cli, lock };
+	const hooksEntry = join(dirname(cli), "hooks.js");
+	return { execPath, argv: [execPath, cli], execArgv: [], wrapper, cli, hooksEntry, lock };
 }
 
 function createSyntheticInvocation() {
@@ -125,6 +127,28 @@ describe("resolveQuarterdeckCommandParts", () => {
 			argv: ["/usr/local/bin/node", "/repo/src/cli.ts", "--no-open"],
 		});
 		expect(parts).toEqual(["/usr/local/bin/node", "--import", "tsx", "/repo/src/cli.ts"]);
+	});
+
+	it("routes tsx-launched hook commands to the sibling hooks entrypoint", () => {
+		expect(
+			buildQuarterdeckHookCommandParts(["hooks", "notify"], {
+				execPath: "/usr/local/bin/node",
+				argv: ["/usr/local/bin/node", "/repo/node_modules/tsx/dist/cli.mjs", "/repo/src/cli.ts", "--no-open"],
+			}),
+		).toEqual([
+			"/usr/local/bin/node",
+			"/repo/node_modules/tsx/dist/cli.mjs",
+			"/repo/src/hooks.ts",
+			"hooks",
+			"notify",
+		]);
+		expect(
+			buildQuarterdeckHookCommandParts(["hooks", "notify"], {
+				execPath: "/usr/local/bin/node",
+				execArgv: ["--import", "tsx"],
+				argv: ["/usr/local/bin/node", "/repo/src/cli.ts", "--no-open"],
+			}),
+		).toEqual(["/usr/local/bin/node", "--import", "tsx", "/repo/src/hooks.ts", "hooks", "notify"]);
 	});
 
 	it("falls back to execPath when no entrypoint path is available", () => {
@@ -251,7 +275,7 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		}
 	});
 
-	it("routes Claude, Codex, Pi, and statusline commands through admission without rewriting the provider", async () => {
+	it("routes Claude, Codex, Pi, and statusline through the lean hooks entrypoint without rewriting the provider", async () => {
 		const context = createBundledInvocation();
 		Object.defineProperty(process, "execPath", { configurable: true, value: context.execPath });
 		process.argv = context.argv;
@@ -260,15 +284,17 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		vi.stubEnv("USERPROFILE", fixtureRoot);
 		vi.stubEnv("QUARTERDECK_STATE_HOME", undefined);
 
-		const prefix = buildShellCommandLine(context.wrapper, [context.cli], process.platform);
+		// Hook/statusline commands are rewritten to the small hooks.js entrypoint
+		// (not cli.js) so provider hooks avoid starting the full server bundle.
+		const hooksPrefix = buildShellCommandLine(context.wrapper, [context.hooksEntry], process.platform);
 		for (const groups of [buildClaudeHooksSettings().hooks, buildCodexHooksConfig()]) {
 			for (const matchers of Object.values(groups)) {
 				for (const matcher of matchers) {
-					for (const hook of matcher.hooks) expect(hook.command.startsWith(`${prefix} `)).toBe(true);
+					for (const hook of matcher.hooks) expect(hook.command.startsWith(`${hooksPrefix} `)).toBe(true);
 				}
 			}
 		}
-		expect(buildStatuslineCommand()).toBe(`${prefix} 'statusline'`);
+		expect(buildStatuslineCommand()).toBe(`${hooksPrefix} 'statusline'`);
 
 		const launch = await prepareAgentLaunch({
 			taskId: "synthetic-pi-task",
@@ -281,7 +307,7 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		});
 		expect(JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "null")).toEqual([
 			context.wrapper,
-			context.cli,
+			context.hooksEntry,
 			"hooks",
 			"notify",
 		]);

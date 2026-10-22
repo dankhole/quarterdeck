@@ -1,5 +1,5 @@
 import { lstatSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { desktopStableAppPath, getDesktopAdmissionDescriptor } from "../desktop-install/admission.js";
 import { readLabLaunchConfig } from "../shared/desktop-lab-launch-config.js";
@@ -133,6 +133,69 @@ export function buildQuarterdeckCommandLine(
 	const [binary, ...commandArgs] = buildQuarterdeckCommandParts(args, context);
 	if (!binary) {
 		throw new Error("Quarterdeck command resolution produced no executable.");
+	}
+	return buildShellCommandLine(binary, commandArgs, platform, env);
+}
+
+/** `cli.js`'s sibling entrypoint bundle that only wires the hook/statusline commands. */
+const CLI_TO_HOOK_ENTRYPOINT: Readonly<Record<string, string>> = {
+	"cli.js": "hooks.js",
+	"cli.ts": "hooks.ts",
+};
+
+/**
+ * `hooks ingest|notify` and `statusline` only need the small `hooks.js`
+ * bundle, not the full server/router graph `cli.js` pulls in to start the
+ * runtime. Swap the resolved entrypoint for its `hooks.js`/`hooks.ts` sibling
+ * when `resolveQuarterdeckCommandParts` resolved to a recognized `cli.js` or
+ * `cli.ts` file; every other shape (a bare `quarterdeck` binary, a
+ * tsx-launched source file that is not `cli.ts`, or no entrypoint at all)
+ * keeps the unmodified result so already-generated settings that still
+ * reference `cli.js`, and invocation shapes this module does not recognize,
+ * keep working exactly as before.
+ */
+function deriveHookEntrypoint(entrypoint: string): string | null {
+	const hookBasename = CLI_TO_HOOK_ENTRYPOINT[basename(entrypoint)];
+	return hookBasename ? join(dirname(entrypoint), hookBasename) : null;
+}
+
+export function resolveQuarterdeckHookCommandParts(
+	context: RuntimeInvocationContext = {
+		execPath: process.execPath,
+		argv: process.argv,
+		execArgv: process.execArgv,
+	},
+): string[] {
+	const parts = resolveQuarterdeckCommandParts(context);
+	const entrypoint = parts.at(-1);
+	const hookEntrypoint = entrypoint ? deriveHookEntrypoint(entrypoint) : null;
+	return hookEntrypoint ? [...parts.slice(0, -1), hookEntrypoint] : parts;
+}
+
+export function buildQuarterdeckHookCommandParts(
+	args: string[],
+	context: RuntimeInvocationContext = {
+		execPath: process.execPath,
+		argv: process.argv,
+		execArgv: process.execArgv,
+	},
+): string[] {
+	return [...resolveQuarterdeckHookCommandParts(context), ...args];
+}
+
+export function buildQuarterdeckHookCommandLine(
+	args: string[],
+	context: RuntimeInvocationContext = {
+		execPath: process.execPath,
+		argv: process.argv,
+		execArgv: process.execArgv,
+	},
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	const [binary, ...commandArgs] = buildQuarterdeckHookCommandParts(args, context);
+	if (!binary) {
+		throw new Error("Quarterdeck hook command resolution produced no executable.");
 	}
 	return buildShellCommandLine(binary, commandArgs, platform, env);
 }

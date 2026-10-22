@@ -522,7 +522,10 @@ describe("reduceSessionTransition", () => {
 	describe("agent.rendered-turn-interrupted", () => {
 		it("conservatively moves Running to interrupted Review", () => {
 			const summary = createSummary({ state: "running", agentId: "codex", reviewReason: null });
-			const result = reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted" });
+			const result = reduceSessionTransition(summary, {
+				type: "agent.rendered-turn-interrupted",
+				provider: "codex",
+			});
 
 			expect(result).toMatchObject({
 				changed: true,
@@ -556,7 +559,9 @@ describe("reduceSessionTransition", () => {
 					}),
 				});
 
-				expect(reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted" })).toMatchObject({
+				expect(
+					reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "codex" }),
+				).toMatchObject({
 					changed: true,
 					patch: {
 						state: "awaiting_review",
@@ -573,7 +578,9 @@ describe("reduceSessionTransition", () => {
 
 		it("cannot rewrite ordinary Review", () => {
 			const summary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
-			expect(reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted" }).changed).toBe(false);
+			expect(
+				reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "codex" }).changed,
+			).toBe(false);
 		});
 
 		it("cannot retire another provider's interaction", () => {
@@ -582,12 +589,88 @@ describe("reduceSessionTransition", () => {
 				reviewReason: "hook",
 				outstandingInteraction: createTestTaskOutstandingInteraction(),
 			});
-			expect(reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted" }).changed).toBe(false);
+			expect(
+				reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "codex" }).changed,
+			).toBe(false);
 		});
 
 		it("cannot rewrite another provider's Running session", () => {
 			const summary = createSummary({ state: "running", agentId: "claude" });
-			expect(reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted" }).changed).toBe(false);
+			expect(
+				reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "codex" }).changed,
+			).toBe(false);
+			const codexSummary = createSummary({ state: "running", agentId: "codex" });
+			expect(
+				reduceSessionTransition(codexSummary, { type: "agent.rendered-turn-interrupted", provider: "claude" })
+					.changed,
+			).toBe(false);
+		});
+
+		it("moves a Running Claude turn to interrupted Review", () => {
+			const summary = createSummary({ state: "running", agentId: "claude", reviewReason: null });
+			expect(
+				reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "claude" }),
+			).toMatchObject({
+				changed: true,
+				patch: {
+					state: "awaiting_review",
+					reviewReason: "interrupted",
+					latestHookActivity: null,
+					outstandingInteraction: null,
+					nativeWorkEvidence: null,
+					stalledSince: null,
+				},
+				clearAttentionBuffer: true,
+			});
+		});
+
+		it.each(["waiting", "response_submitted"] as const)(
+			"retires a current foreground Claude permission in %s",
+			(status) => {
+				const summary = createSummary({
+					state: "awaiting_review",
+					agentId: "claude",
+					reviewReason: "hook",
+					outstandingInteraction: createTestTaskOutstandingInteraction({ kind: "permission", status }),
+				});
+				expect(
+					reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "claude" }),
+				).toMatchObject({
+					changed: true,
+					patch: { state: "awaiting_review", reviewReason: "interrupted", outstandingInteraction: null },
+				});
+			},
+		);
+
+		it("cannot retire a Claude subagent permission", () => {
+			const summary = createSummary({
+				state: "awaiting_review",
+				agentId: "claude",
+				reviewReason: "hook",
+				outstandingInteraction: createTestTaskOutstandingInteraction({
+					kind: "permission",
+					providerAgentId: "agent-1",
+				}),
+			});
+			expect(
+				reduceSessionTransition(summary, { type: "agent.rendered-turn-interrupted", provider: "claude" }).changed,
+			).toBe(false);
+		});
+
+		it("cannot retire a Claude wait or rewrite Claude Review", () => {
+			const waiting = createSummary({
+				state: "awaiting_review",
+				agentId: "claude",
+				reviewReason: "hook",
+				outstandingInteraction: createTestTaskOutstandingInteraction(),
+			});
+			expect(
+				reduceSessionTransition(waiting, { type: "agent.rendered-turn-interrupted", provider: "claude" }).changed,
+			).toBe(false);
+			const review = createSummary({ state: "awaiting_review", agentId: "claude", reviewReason: "hook" });
+			expect(
+				reduceSessionTransition(review, { type: "agent.rendered-turn-interrupted", provider: "claude" }).changed,
+			).toBe(false);
 		});
 	});
 

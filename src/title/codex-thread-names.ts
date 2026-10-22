@@ -2,16 +2,9 @@ import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import { openValidatedContainedRegularFile } from "../fs/validated-file-open";
+import { hasControlCharacters, normalizeProviderTaskTitle } from "./provider-task-title";
 
 export const CODEX_THREAD_NAME_READ_LIMIT_BYTES = 1024 * 1024;
-const MAX_TITLE_LENGTH = 80;
-
-function hasControlCharacters(value: string): boolean {
-	return Array.from(value).some((character) => {
-		const code = character.codePointAt(0) ?? 0;
-		return code < 32 || code === 127;
-	});
-}
 
 function isMissingPath(error: unknown): boolean {
 	return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
@@ -72,11 +65,11 @@ export async function readCodexThreadNames(
 					(rawName !== null && typeof rawName !== "string")
 				)
 					continue;
-				const name = rawName?.replace(/\s+/gu, " ").trim() ?? "";
-				if (hasControlCharacters(name)) continue;
+				const name = normalizeProviderTaskTitle(rawName ?? "");
+				if (name === null) continue;
 				// An explicit cleared name must not resurrect an older index entry.
 				seen.add(id);
-				if (name) names.set(id, Array.from(name).slice(0, MAX_TITLE_LENGTH).join("").trimEnd());
+				if (name) names.set(id, name);
 				if (seen.size === threadIds.size) break;
 			}
 			return names;

@@ -19,7 +19,7 @@ import {
 	type StartTaskSessionRequest,
 	type TerminalSessionManager,
 } from "../terminal";
-import { hasFailedStoredCodexResume, STORED_CODEX_RESUME_FAILED_WARNING } from "../terminal/codex-resume-failure";
+import { getStoredResumeFailedWarning, hasFailedStoredResume } from "../terminal/resume-failure";
 import { assertTaskWorktreeRegistration, pathExists, resolveTaskCwd } from "../workdir";
 
 import { finishTaskWorktreeSetup } from "../workdir/task-worktree-setup";
@@ -116,10 +116,10 @@ function getResumeSessionWarning(options: {
 	if (!options.resumeConversation) {
 		return null;
 	}
+	if (options.failedStoredResumeSession) {
+		return getStoredResumeFailedWarning(options.agentId);
+	}
 	if (options.agentId === "codex") {
-		if (options.failedStoredResumeSession) {
-			return STORED_CODEX_RESUME_FAILED_WARNING;
-		}
 		if (options.resumeSessionId) {
 			return null;
 		}
@@ -242,7 +242,7 @@ export async function prepareTaskSessionStart(
 	const previousResumeSessionId = previousSummary?.resumeSessionId ?? null;
 	const effectiveAgentId = previousTerminalAgentId ?? taskAgentId ?? scopedRuntimeConfig.selectedAgentId;
 	const hasResumeOverride = Object.hasOwn(options, "resumeSessionIdOverride");
-	const failedStoredResumeSession = !hasResumeOverride && hasFailedStoredCodexResume(previousSummary);
+	const failedStoredResumeSession = !hasResumeOverride && hasFailedStoredResume(previousSummary);
 	const resumeSessionIdForStart = hasResumeOverride
 		? options.resumeSessionIdOverride
 		: failedStoredResumeSession
@@ -274,8 +274,8 @@ export async function prepareTaskSessionStart(
 			effectiveAgentId,
 		});
 	}
-	if (body.resumeConversation && effectiveAgentId === "codex" && failedStoredResumeSession) {
-		log.warn("stored Codex resumeSessionId disabled after previous resume failure", {
+	if (body.resumeConversation && failedStoredResumeSession) {
+		log.warn("stored resumeSessionId disabled after previous resume failure", {
 			taskId: body.taskId,
 			agentId: effectiveAgentId,
 			hasPreviousResumeSessionId: Boolean(previousResumeSessionId),
@@ -360,6 +360,7 @@ export async function prepareTaskSessionStart(
 		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		codexOptions: resolved.agentId === "codex" ? existingCard?.codexOptions : undefined,
+		claudeOptions: resolved.agentId === "claude" ? existingCard?.claudeOptions : undefined,
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		startupRecoveryToken: options.startupRecoveryToken,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeBoardData, RuntimeProjectBoardCommand } from "../../src/core";
 import {
 	applyProjectBoardCommand,
+	runtimeClaudeOptionsSchema,
 	runtimeCodexOptionsSchema,
 	runtimeProjectBoardCommandSchema,
 	runtimeTaskLifecycleCommandSchema,
@@ -352,5 +353,81 @@ describe("starting Codex option validation", () => {
 		{ reasoningEffort: "high\nother" },
 	])("rejects malformed options %j", (options) => {
 		expect(runtimeCodexOptionsSchema.safeParse(options).success).toBe(false);
+	});
+});
+
+describe("starting Claude options", () => {
+	it("accepts Claude CLI model aliases or full ids and documented effort levels", () => {
+		expect(runtimeClaudeOptionsSchema.parse({ model: " opus ", effort: "xhigh" })).toEqual({
+			model: "opus",
+			effort: "xhigh",
+		});
+		expect(runtimeClaudeOptionsSchema.parse({ model: "claude-opus-4-5-20251101" }).model).toBe(
+			"claude-opus-4-5-20251101",
+		);
+	});
+
+	it.each([{ model: "" }, { model: "-invalid" }, { effort: "ultra" }, { effort: "" }])(
+		"rejects malformed options %j",
+		(options) => {
+			expect(runtimeClaudeOptionsSchema.safeParse(options).success).toBe(false);
+		},
+	);
+
+	it("round-trips claudeOptions through create_task commands", () => {
+		const command = runtimeProjectBoardCommandSchema.parse({
+			...createTaskCommand("task-claude", "Ship it", 100),
+			agentId: "claude",
+			claudeOptions: { model: "sonnet", effort: "high" },
+		});
+		const result = applyProjectBoardCommand(createBoard(), command);
+		const card = result.board.columns.find((column) => column.id === "review")?.cards[0];
+		expect(card?.claudeOptions).toEqual({ model: "sonnet", effort: "high" });
+		expect(applyProjectBoardCommand(result.board, command).changed).toBe(false);
+	});
+
+	it("stores provider starting options only for the owning agent", () => {
+		const command = runtimeProjectBoardCommandSchema.parse({
+			...createTaskCommand("task-codex", "Ship it", 100),
+			agentId: "codex",
+			codexOptions: { model: "codex-model" },
+			claudeOptions: { model: "sonnet", effort: "high" },
+		});
+		const card = applyProjectBoardCommand(createBoard(), command).board.columns.find(
+			(column) => column.id === "review",
+		)?.cards[0];
+		expect(card?.codexOptions).toEqual({ model: "codex-model" });
+		expect(card?.claudeOptions).toBeUndefined();
+	});
+
+	it("accepts claudeOptions on create_and_start lifecycle commands", () => {
+		const parsed = runtimeTaskLifecycleCommandSchema.parse({
+			kind: "create_and_start",
+			operationId: "operation-1",
+			expectedRevision: 0,
+			startedAt: 100,
+			task: {
+				taskId: "task-claude",
+				prompt: "Ship it",
+				baseRef: "main",
+				agentId: "claude",
+				claudeOptions: { model: "fable", effort: "max" },
+				createdAt: 100,
+			},
+		});
+		expect(parsed.kind === "create_and_start" ? parsed.task.claudeOptions : undefined).toEqual({
+			model: "fable",
+			effort: "max",
+		});
+	});
+
+	// Runtimes that predate claudeOptions use non-strict command schemas, which strip rather than reject it.
+	it("strips unknown task fields instead of rejecting the command", () => {
+		const parsed = runtimeProjectBoardCommandSchema.safeParse({
+			...createTaskCommand("task-future", "Ship it", 100),
+			futureAgentOptions: { model: "next" },
+		});
+		expect(parsed.success).toBe(true);
+		expect(parsed.success && "futureAgentOptions" in parsed.data).toBe(false);
 	});
 });
