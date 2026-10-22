@@ -569,33 +569,32 @@ describe("agent-registry", () => {
 	// (no execFile mock deciding the outcome).
 	describe("runProbeCommand against real child processes", () => {
 		beforeEach((context) => {
-			context.onTestFailed(async () => {
-				// CI-only evidence for platform-specific probe failures: rerun the same
-				// child directly and report its exit shape (content is synthetic).
-				await new Promise<void>((resolveRerun) => {
-					childProcessMocks.realExecFile(
-						process.execPath,
-						["-e", "process.stdout.write('2.1.198'); process.exit(0);"],
-						{ encoding: "utf8", windowsHide: true },
-						(error: ExecFileException | null, stdout: string, stderr: string) => {
-							console.error(
-								"probe child rerun",
-								JSON.stringify({
-									execPath: process.execPath,
-									nodeOptions: process.env.NODE_OPTIONS ?? null,
-									code: error?.code ?? null,
-									signal: error?.signal ?? null,
-									killed: error?.killed ?? null,
-									stdout,
-									stderr: stderr.slice(0, 2000),
-								}),
-							);
-							resolveRerun();
-						},
-					);
-				});
+			// CI-only evidence for platform-specific probe failures: record the exact
+			// execFile outcome each real probe child reports (content is synthetic).
+			const outcomes: unknown[] = [];
+			context.onTestFailed(() => {
+				console.error("probe execFile outcomes", JSON.stringify(outcomes));
 			});
-			childProcessMocks.execFile.mockImplementation(childProcessMocks.realExecFile);
+			childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+				const callback = args.at(-1);
+				if (typeof callback === "function") {
+					const startedAt = Date.now();
+					args[args.length - 1] = (error: ExecFileException | null, stdout: string, stderr: string) => {
+						outcomes.push({
+							file: args[0],
+							elapsedMs: Date.now() - startedAt,
+							code: error?.code ?? null,
+							signal: error?.signal ?? null,
+							killed: error?.killed ?? null,
+							message: error?.message?.slice(0, 300) ?? null,
+							stdout: String(stdout ?? "").slice(0, 200),
+							stderr: String(stderr ?? "").slice(0, 500),
+						});
+						(callback as ExecFileCallback)(error, stdout, stderr);
+					};
+				}
+				return (childProcessMocks.realExecFile as (...forwarded: unknown[]) => ChildProcess)(...args);
+			});
 			// These tests pass their own explicit timeoutMs to prove real timing
 			// behavior end to end; undo the file-level test-seam override (which
 			// takes priority over an explicit arg) so it doesn't shadow it.
