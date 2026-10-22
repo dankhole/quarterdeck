@@ -422,21 +422,25 @@ describe("resolveBundledHookEntryPath", () => {
 		expect(resolveBundledHookEntryPath(cli)).toBeNull();
 	});
 
-	it("recognizes a Windows-style path separator independently of the host platform", () => {
-		// POSIX filenames may literally contain a backslash character, so a real file
-		// can end in "\\cli.js" without the directory actually being Windows-shaped.
-		// This exercises the suffix check with an injected Windows separator exactly
-		// as it would run on win32, where realpathSync already returns "\\"-joined paths.
-		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
-		const cli = join(hookFixtureRoot, "dist\\cli.js");
-		const hooks = join(hookFixtureRoot, "hooks.js");
-		writeFileSync(cli, "synthetic cli");
-		writeFileSync(hooks, "synthetic hooks entry");
+	// A literal backslash in a filename is POSIX-only; on win32 "dist\\cli.js" is a real subdirectory path.
+	it.runIf(process.platform !== "win32")(
+		"recognizes a Windows-style path separator independently of the host platform",
+		() => {
+			// POSIX filenames may literally contain a backslash character, so a real file
+			// can end in "\\cli.js" without the directory actually being Windows-shaped.
+			// This exercises the suffix check with an injected Windows separator exactly
+			// as it would run on win32, where realpathSync already returns "\\"-joined paths.
+			hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+			const cli = join(hookFixtureRoot, "dist\\cli.js");
+			const hooks = join(hookFixtureRoot, "hooks.js");
+			writeFileSync(cli, "synthetic cli");
+			writeFileSync(hooks, "synthetic hooks entry");
 
-		expect(resolveBundledHookEntryPath(cli, "\\")).toBe(hooks);
-		// The default (host-native) separator must not match this backslash-suffixed name.
-		expect(resolveBundledHookEntryPath(cli)).toBeNull();
-	});
+			expect(resolveBundledHookEntryPath(cli, "\\")).toBe(hooks);
+			// The default (host-native) separator must not match this backslash-suffixed name.
+			expect(resolveBundledHookEntryPath(cli)).toBeNull();
+		},
+	);
 });
 
 describe("buildQuarterdeckHookCommandParts / buildQuarterdeckHookCommandLine", () => {

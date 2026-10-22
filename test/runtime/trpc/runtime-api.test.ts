@@ -291,6 +291,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		expect(response.ok).toBe(true);
 		expect(agentRegistryMocks.resolveAgentCommand).toHaveBeenCalledWith(
 			expect.objectContaining({ selectedAgentId: "codex" }),
+			{ retryTransient: true },
 		);
 		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
 			expect.objectContaining({
