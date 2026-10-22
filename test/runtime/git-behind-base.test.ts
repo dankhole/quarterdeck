@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadTaskWorktreeMetadata } from "../../src/server/project-metadata-loaders";
 import { getCommitsBehindBase } from "../../src/workdir";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 describe("behind-base commit counts", () => {
 	let repo: ReturnType<typeof createTempDir>;

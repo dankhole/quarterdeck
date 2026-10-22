@@ -19,6 +19,7 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 import {
+	discardGitChanges,
 	type GitWorkdirProbe,
 	getCommitsBehindBase,
 	getGitSyncSummary,
@@ -186,6 +187,22 @@ describe("git-sync --no-optional-locks", () => {
 		assertFlagBeforeSubcommand(stashListCall, "stash");
 	});
 
+	it("stashCount returns null (not 0) when the list command is indeterminate, so a caller never shows a false-empty badge", async () => {
+		childProcessMocks.execFilePromise.mockImplementation((_cmd: string, args: string[]) => {
+			if (args.includes("--show-toplevel")) {
+				return Promise.resolve({ stdout: `${FAKE_REPO}\n`, stderr: "" });
+			}
+			if (args.includes("stash") && args.includes("list")) {
+				return Promise.reject(
+					Object.assign(new Error("Git command timed out after 5000ms"), { code: "ETIMEDOUT" }),
+				);
+			}
+			return Promise.resolve({ stdout: "", stderr: "" });
+		});
+
+		await expect(stashCount(FAKE_REPO)).resolves.toBeNull();
+	});
+
 	it("probeGitWorkdirState output is unchanged with --no-optional-locks", async () => {
 		const statusOutput = [
 			`# branch.oid ${FAKE_COMMIT}`,
@@ -205,6 +222,54 @@ describe("git-sync --no-optional-locks", () => {
 		expect(result.behindCount).toBe(1);
 		expect(result.changedFiles).toBe(2);
 		expect(result.untrackedPaths).toContain("untracked.txt");
+	});
+
+	it("discardGitChanges reports success with a stale summary when the post-action summary probe fails", async () => {
+		// The restore/clean action itself succeeds; only the follow-up summary
+		// probe (the second `status` call) fails, simulating a timeout under load.
+		let statusCallCount = 0;
+		childProcessMocks.execFilePromise.mockImplementation((_cmd: string, args: string[]) => {
+			if (args.includes("--show-toplevel")) {
+				return Promise.resolve({ stdout: `${FAKE_REPO}\n`, stderr: "" });
+			}
+			if (args.includes("status")) {
+				statusCallCount += 1;
+				if (statusCallCount > 1) {
+					return Promise.reject(
+						Object.assign(new Error("Git command timed out after 30000ms"), { code: "ETIMEDOUT" }),
+					);
+				}
+				return Promise.resolve({
+					stdout: [
+						`# branch.oid ${FAKE_COMMIT}`,
+						"# branch.head main",
+						"# branch.upstream origin/main",
+						"# branch.ab +0 -0",
+						"1 .M N... 100644 100644 100644 abc123 def456 file.ts",
+					].join("\0"),
+					stderr: "",
+				});
+			}
+			if (args.includes("--verify") && args.includes("HEAD")) {
+				return Promise.resolve({ stdout: `${FAKE_COMMIT}\n`, stderr: "" });
+			}
+			if (args.includes("diff")) {
+				return Promise.resolve({ stdout: "1\t0\tfile.ts\n", stderr: "" });
+			}
+			if (args.includes("restore") || args.includes("clean")) {
+				return Promise.resolve({ stdout: "", stderr: "" });
+			}
+			return Promise.resolve({ stdout: "", stderr: "" });
+		});
+
+		const response = await discardGitChanges({ cwd: FAKE_REPO });
+
+		expect(response.ok).toBe(true);
+		expect(response.summary.stale).toBe(true);
+		// Falls back to the last known-good (pre-action) summary rather than an
+		// empty one, since the action ran after a successful initial probe.
+		expect(response.summary.currentBranch).toBe("main");
+		expect(response.summary.changedFiles).toBe(1);
 	});
 
 	it("preserves leading filename whitespace and rename source paths in status records", async () => {

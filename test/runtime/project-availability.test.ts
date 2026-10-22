@@ -111,11 +111,19 @@ describe("project availability", () => {
 			initGitRepository(root.path);
 			const child = join(root.path, "child");
 			await mkdir(child);
-			await expect(observeProjectAvailability({ repoPath: child })).resolves.toEqual({
+			// Inject a deterministic probe: the real `probeGitRepository` spawns
+			// git and can legitimately report `indeterminate` under heavy load
+			// (see 1df4c352), which this test must not depend on. The mock still
+			// distinguishes the repository root from its non-repository child,
+			// which is the actual invariant under test.
+			const probeGitRepository = async (path: string) => (path === root.path ? "repository" : "not_repository");
+			await expect(observeProjectAvailability({ repoPath: child }, { probeGitRepository })).resolves.toEqual({
 				status: "unavailable",
 				reason: "not_git_repository",
 			});
-			await expect(observeProjectAvailability({ repoPath: root.path })).resolves.toEqual({ status: "available" });
+			await expect(observeProjectAvailability({ repoPath: root.path }, { probeGitRepository })).resolves.toEqual({
+				status: "available",
+			});
 		} finally {
 			root.cleanup();
 		}

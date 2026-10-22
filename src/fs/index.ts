@@ -1,3 +1,4 @@
+export { IN_PROCESS_LOCK_SLOW_WAIT_MS } from "./in-process-lock-owners";
 export {
 	cleanStaleGitIndexLocks,
 	cleanStaleIndexLockForWorktree,

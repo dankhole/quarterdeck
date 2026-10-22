@@ -31,6 +31,21 @@ function runNpm(args, cwd, env, captureOutput = false) {
 	return captureOutput ? String(result.stdout) : "";
 }
 
+/** Last stderr lines with URL queries, long tokens, and quoted values removed. */
+function redactStartupDiagnostics(text) {
+	return text
+		.split(/\r?\n/)
+		.filter((line) => line.trim().length > 0)
+		.slice(-12)
+		.map((line) =>
+			line
+				.replace(/\?[^\s"']*/g, "?<redacted>")
+				.replace(/[A-Za-z0-9+/_=-]{24,}/g, "<redacted>")
+				.slice(0, 300),
+		)
+		.join("\n");
+}
+
 function waitForStart(child) {
 	return new Promise((resolveStart, rejectStart) => {
 		let stdout = "";
@@ -49,8 +64,12 @@ function waitForStart(child) {
 			resolveStart(runtimeUrl);
 		};
 		child.stdout?.on("data", inspect);
-		// Drain stderr without exposing startup capabilities or credential-bearing errors.
-		child.stderr?.on("data", () => {});
+		// Keep only a bounded stderr tail for early-exit evidence; it is redacted
+		// before printing so startup capabilities and credentials never appear.
+		let stderrTail = "";
+		child.stderr?.on("data", (chunk) => {
+			stderrTail = (stderrTail + String(chunk)).slice(-8 * 1024);
+		});
 		child.once("error", () => {
 			if (settled) return;
 			settled = true;
@@ -61,7 +80,14 @@ function waitForStart(child) {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
-			rejectStart(new Error(`Installed CLI exited before startup (code=${String(code)} signal=${String(signal)}).`));
+			const evidence = redactStartupDiagnostics(stderrTail);
+			rejectStart(
+				new Error(
+					`Installed CLI exited before startup (code=${String(code)} signal=${String(signal)}).${
+						evidence ? `\nRedacted stderr tail:\n${evidence}` : ""
+					}`,
+				),
+			);
 		});
 	});
 }

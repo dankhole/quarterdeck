@@ -239,7 +239,7 @@ async function countUntrackedFileLines(repoRoot: string, path: string): Promise<
 }
 
 export async function createEmptyWorkdirChangesResponse(cwd: string): Promise<RuntimeWorkdirChangesResponse> {
-	const repoRoot = await resolveRepoRoot(cwd);
+	const repoRoot = await resolveRepoRoot(cwd, GIT_INSPECTION_OPTIONS);
 	return {
 		repoRoot,
 		generatedAt: Date.now(),
@@ -248,7 +248,7 @@ export async function createEmptyWorkdirChangesResponse(cwd: string): Promise<Ru
 }
 
 export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChangesResponse> {
-	const repoRoot = await resolveRepoRoot(cwd);
+	const repoRoot = await resolveRepoRoot(cwd, GIT_INSPECTION_OPTIONS);
 	const repoCacheKey = normalizeFileSystemPathForComparison(repoRoot);
 
 	const [trackedChangesOutput, untrackedOutput, headCommitOutput] = await Promise.all([
@@ -320,7 +320,7 @@ export async function getWorkdirChangesForPaths(
 	paths: string[],
 	options: { countUntrackedLines?: boolean } = {},
 ): Promise<RuntimeWorkdirChangesResponse> {
-	const repoRoot = await resolveRepoRoot(cwd);
+	const repoRoot = await resolveRepoRoot(cwd, GIT_INSPECTION_OPTIONS);
 	const selectedPaths = paths.filter(Boolean);
 	if (selectedPaths.length === 0) {
 		return {
@@ -396,7 +396,7 @@ export async function getWorkdirChangesForPaths(
 export async function getWorkdirChangesBetweenRefs(
 	input: ChangesBetweenRefsInput,
 ): Promise<RuntimeWorkdirChangesResponse> {
-	const repoRoot = await resolveRepoRoot(input.cwd);
+	const repoRoot = await resolveRepoRoot(input.cwd, GIT_INSPECTION_OPTIONS);
 	const repoCacheKey = normalizeFileSystemPathForComparison(repoRoot);
 	const threeDot = input.threeDot ?? false;
 
@@ -472,7 +472,7 @@ function pruneFromRefChangesCache(): void {
 }
 
 export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Promise<RuntimeWorkdirChangesResponse> {
-	const repoRoot = await resolveRepoRoot(input.cwd);
+	const repoRoot = await resolveRepoRoot(input.cwd, GIT_INSPECTION_OPTIONS);
 	const repoCacheKey = normalizeFileSystemPathForComparison(repoRoot);
 	const threeDot = input.threeDot ?? false;
 
@@ -579,7 +579,7 @@ export interface WorkdirFileDiffInput {
 export async function getWorkdirFileDiff(
 	input: WorkdirFileDiffInput,
 ): Promise<{ path: string; oldText: string | null; newText: string | null }> {
-	const repoRoot = await resolveRepoRoot(input.cwd);
+	const repoRoot = await resolveRepoRoot(input.cwd, GIT_INSPECTION_OPTIONS);
 	const basePath = input.previousPath ?? input.path;
 	const isNew = input.status === "added" || input.status === "untracked";
 	const isDeleted = input.status === "deleted";

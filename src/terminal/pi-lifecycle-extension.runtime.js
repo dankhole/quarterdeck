@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 
 const HOOK_COMMAND_ENV = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 const MAX_TEXT_LENGTH = 600;
-const DURABLE_HOOK_TIMEOUT_MS = 8_000;
+// Durable `hooks ingest` is `waitForExit`-blocking and can lose a to_review
+// transition if it is killed before it durably persists. 30s gives a slow CLI
+// under heavy machine load room to finish; non-durable `notify` calls never use
+// this timeout (see `selectHookCommandArgs`/`spawnHookCommand`'s `waitForExit`
+// branch) and stay fire-and-forget short.
+const DURABLE_HOOK_TIMEOUT_MS = 30_000;
 const toolInputsById = new Map();
 let durableHookQueue = Promise.resolve();
 let activeRunId = null;

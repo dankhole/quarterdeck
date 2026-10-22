@@ -5,11 +5,10 @@ import { isAbsolute, join } from "node:path";
 import ignore from "ignore";
 
 import { isNodeError, lockedFileSystem } from "../fs";
-import { getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
+import { GIT_USER_ACTION_OPTIONS, getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_START = "# quarterdeck-managed-symlinked-ignored-paths:start";
 const QUARTERDECK_MANAGED_EXCLUDE_BLOCK_END = "# quarterdeck-managed-symlinked-ignored-paths:end";
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 const SYMLINK_PATH_SEGMENT_BLACKLIST_VALUES = [
 	".git",
@@ -104,7 +103,7 @@ async function listIgnoredPaths(repoPath: string): Promise<string[]> {
 	const output = await getGitStdout(
 		["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
 		repoPath,
-		{ trimStdout: false, ...USER_GIT_ACTION_OPTIONS },
+		{ trimStdout: false, ...GIT_USER_ACTION_OPTIONS },
 	);
 	return splitNullSeparatedGitOutput(output)
 		.map((line) => toPlatformRelativePath(line))
@@ -144,7 +143,7 @@ async function syncManagedIgnoredPathExcludes(repoPath: string, relativePaths: s
 	const excludePathOutput = await getGitStdout(
 		["rev-parse", "--git-path", "info/exclude"],
 		repoPath,
-		USER_GIT_ACTION_OPTIONS,
+		GIT_USER_ACTION_OPTIONS,
 	);
 	if (!excludePathOutput) {
 		return;
@@ -291,7 +290,7 @@ async function worktreeHasConfiguredSubmodules(worktreePath: string): Promise<bo
 	const result = await runGit(
 		worktreePath,
 		["config", "--file", gitmodulesPath, "--get-regexp", "^submodule\\..*\\.path$"],
-		USER_GIT_ACTION_OPTIONS,
+		GIT_USER_ACTION_OPTIONS,
 	);
 	return result.ok && result.stdout.length > 0;
 }
@@ -301,5 +300,5 @@ export async function initializeSubmodulesIfNeeded(worktreePath: string): Promis
 		return;
 	}
 
-	await getGitStdout(["submodule", "update", "--init", "--recursive"], worktreePath, USER_GIT_ACTION_OPTIONS);
+	await getGitStdout(["submodule", "update", "--init", "--recursive"], worktreePath, GIT_USER_ACTION_OPTIONS);
 }

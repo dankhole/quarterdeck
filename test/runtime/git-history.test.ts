@@ -9,7 +9,10 @@ import {
 	initGitRepository as initRepository,
 	runGit,
 } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 describe("git history runtime", { concurrent: false }, () => {
 	it("returns correct metadata for root commit diffs", async () => {

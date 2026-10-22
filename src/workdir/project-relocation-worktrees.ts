@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { areFileSystemPathsEqual, type RuntimeBoardData } from "../core";
 import { isNodeError } from "../fs/node-error";
 import type { ProjectRelocationPlan } from "../state/project-relocation-journal";
-import { runGit } from "./git-utils";
+import { GIT_USER_ACTION_OPTIONS, runGit } from "./git-utils";
 import { projectPathExists, relocateProjectPath } from "./project-relocation-paths";
 import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
 import { getTaskWorktreePath } from "./task-worktree-lifecycle";
@@ -142,9 +142,7 @@ export async function repairProjectWorktrees(plan: ProjectRelocationPlan): Promi
 		const repaired = await runGit(
 			plan.newPath,
 			["worktree", "repair", ...plan.worktrees.map((worktree) => worktree.path)],
-			{
-				timeoutClass: "userAction",
-			},
+			GIT_USER_ACTION_OPTIONS,
 		);
 		if (!repaired.ok)
 			throw new Error(

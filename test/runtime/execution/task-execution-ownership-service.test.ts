@@ -236,20 +236,21 @@ class ProtocolTransport implements CodexAppServerTransport {
 const originalStateHome = process.env.QUARTERDECK_STATE_HOME;
 const originalCodexHome = process.env.CODEX_HOME;
 const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-let cleanup = () => {};
+let cleanup: () => Promise<void> = async () => {};
 let root = "";
 
 beforeEach(() => {
 	const temp = createTempDir("quarterdeck-ownership-service-");
 	root = temp.path;
-	cleanup = temp.cleanup;
+	cleanup = temp.cleanupAsync;
 	process.env.QUARTERDECK_STATE_HOME = root;
 	process.env.CODEX_HOME = `${root}/codex-home`;
 	process.env.CLAUDE_CONFIG_DIR = `${root}/claude-home`;
 });
 
-afterEach(() => {
-	cleanup();
+afterEach(async () => {
+	// Async: pending lock releases must run before the state directory is removed.
+	await cleanup();
 	if (originalStateHome === undefined) delete process.env.QUARTERDECK_STATE_HOME;
 	else process.env.QUARTERDECK_STATE_HOME = originalStateHome;
 	if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
@@ -1990,6 +1991,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 				return transport;
 			},
 		});
+		const taskResourceOperations = new TaskResourceOperationCoordinator();
 		const service = new TaskExecutionOwnershipService({
 			store,
 			structuredOwners: registry,
@@ -1998,7 +2000,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 			assertDurableHistoryAvailable: async () => true,
 			resolveProviderVersion: async () => "0.149.1",
 			isLaunchPathAvailable: async () => true,
-			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			taskResourceOperations,
 		});
 		const scope = { projectId: "project-1", projectPath: `${root}/project` };
 		await expect(
@@ -2025,6 +2027,9 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 			});
 		});
 
+		// Startup recovery runs in a fresh process; here, let any structured
+		// owner event from the shutdown finish on the task queue before recovering.
+		await taskResourceOperations.run(scope.projectId, "task-1", async () => {});
 		await expect(service.recoverProject(scope)).resolves.toEqual([
 			{ taskId: "task-1", outcome: "turn_outcome_unknown" },
 		]);

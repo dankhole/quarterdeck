@@ -11,6 +11,13 @@ import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
+import { useProcessTestBudget } from "../../utilities/process-test-budget";
+
+// captureLifecycleHooks below spawns several real, serial Node child
+// processes per test. Heavy machine load can push that well past the fast
+// lane's default testTimeout/hookTimeout even though nothing is actually
+// hung.
+useProcessTestBudget();
 
 const HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 const PI_LIFECYCLE_RUNTIME_ASSET_URL = new URL(
@@ -98,7 +105,9 @@ async function captureLifecycleHooks(
 			async () => {
 				expect((await readFile(outputPath, "utf8")).trim().split("\n")).toHaveLength(expectedCount);
 			},
-			{ timeout: 5_000 },
+			// Up to 5 serial real Node spawns; 5s raced heavy load even though
+			// each hook was progressing normally, just more slowly.
+			{ timeout: 30_000 },
 		);
 		return (await readFile(outputPath, "utf8"))
 			.trim()
@@ -138,6 +147,16 @@ describe("Pi lifecycle extension source", () => {
 		} finally {
 			await rm(tempDir, { recursive: true, force: true });
 		}
+	});
+
+	it("gives durable `hooks ingest` enough budget to survive heavy machine load without losing a to_review", () => {
+		const source = buildPiLifecycleExtensionSource();
+
+		// Durable (waitForExit) hooks are killed and treated as finished once this
+		// timer fires, which can drop a to_review transition if a slow CLI under
+		// load hasn't durably persisted yet. Keep it generous; non-durable
+		// `notify` hooks never pass through this timeout at all.
+		expect(source).toContain("const DURABLE_HOOK_TIMEOUT_MS = 30_000;");
 	});
 
 	it("registers the Pi lifecycle events Quarterdeck maps into hook state", () => {

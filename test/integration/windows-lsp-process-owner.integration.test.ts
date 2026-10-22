@@ -17,7 +17,8 @@ describe.skipIf(process.platform !== "win32")("native Windows language process o
 			owner.kill("SIGKILL");
 			await closed;
 		}
-		if (directory) await rm(directory, { force: true, recursive: true });
+		// Windows can hold handles briefly after a forced kill; retry EBUSY/EPERM.
+		if (directory) await rm(directory, { force: true, recursive: true, maxRetries: 20, retryDelay: 250 });
 	});
 
 	it("closes the kernel job when its supervisor is forcibly terminated", async () => {

@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,21 +17,42 @@ afterEach(() => {
 
 describe("armChildProcessTimeout against real child processes", () => {
 	it("tolerates a real event-loop stall without reporting a false timeout", async () => {
-		const settled = await new Promise<boolean>((resolve) => {
-			const child = execFile(process.execPath, ["-e", "process.exit(0);"], {}, () => {
-				resolve(guard.isTimedOut());
+		// Heavy machine load can slow a trivial child's fork/exec well past a
+		// fixed guess, which would otherwise race the probe's own deadline and
+		// have it kill a child that was merely slow, not hung. Block on a marker
+		// the child writes right before it exits (bounded generously) instead of
+		// assuming a fixed duration always outlasts the child's real exit.
+		const markerDir = mkdtempSync(join(tmpdir(), "qd-stall-marker-"));
+		const marker = join(markerDir, "exited");
+		try {
+			const resultPromise = new Promise<boolean>((resolve) => {
+				const child = execFile(
+					process.execPath,
+					["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, ""); process.exit(0);`],
+					{},
+					() => {
+						resolve(guard.isTimedOut());
+					},
+				);
+				const guard = armChildProcessTimeout(child, 150);
 			});
-			const guard = armChildProcessTimeout(child, 150);
-		});
-		// Real event-loop stall: the child exits almost immediately, but we only
-		// read the settled result after blocking the main thread synchronously
-		// well past the probe timeout.
-		const blockUntil = Date.now() + 300;
-		while (Date.now() < blockUntil) {
-			// busy-wait
+			// Real event-loop stall: block the main thread synchronously until the
+			// child has actually written its marker (bounded for heavy load), then
+			// a fixed margin past that, before the exec callback or the probe's
+			// own timer ever get a chance to run.
+			const markerDeadline = Date.now() + 10_000;
+			while (!existsSync(marker) && Date.now() < markerDeadline) {
+				// busy-wait
+			}
+			const blockUntil = Date.now() + 300;
+			while (Date.now() < blockUntil) {
+				// busy-wait
+			}
+			expect(await resultPromise).toBe(false);
+		} finally {
+			rmSync(markerDir, { recursive: true, force: true });
 		}
-		expect(settled).toBe(false);
-	}, 10_000);
+	}, 15_000);
 
 	it.runIf(process.platform !== "win32")(
 		"terminates a real hung child and reports a timeout",

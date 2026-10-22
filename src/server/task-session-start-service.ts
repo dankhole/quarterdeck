@@ -301,9 +301,10 @@ export async function prepareTaskSessionStart(
 		effectiveAgentId !== scopedRuntimeConfig.selectedAgentId
 			? { ...scopedRuntimeConfig, selectedAgentId: effectiveAgentId }
 			: scopedRuntimeConfig;
-	const resolved = options.startupRecoveryToken
-		? await resolveAgentCommandForLaunch(resolvedConfig, { retryTransient: true })
-		: await resolveAgentCommandForLaunch(resolvedConfig);
+	// A transient probe failure (timeout, launcher hiccup) under load says nothing
+	// durable about whether the agent is runnable, so every task launch — not only
+	// startup recovery — gets one bounded retry before surfacing it to the user.
+	const resolved = await resolveAgentCommandForLaunch(resolvedConfig, { retryTransient: true });
 
 	const resumeContextWarning = getResumeContextWarning({
 		resumeConversation: body.resumeConversation,

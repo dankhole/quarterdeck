@@ -1,5 +1,5 @@
 import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +26,8 @@ vi.mock("proper-lockfile", () => ({
 	lock: lockfileMocks.lock,
 }));
 
-import { cleanupStaleLockAndTempFiles, LockedFileSystem } from "../../src/fs";
+import { setRuntimeDiagnosticLogSink } from "../../src/core/runtime-logger";
+import { cleanupStaleLockAndTempFiles, IN_PROCESS_LOCK_SLOW_WAIT_MS, LockedFileSystem } from "../../src/fs";
 
 describe("LockedFileSystem", () => {
 	beforeEach(() => {
@@ -88,6 +89,233 @@ describe("LockedFileSystem", () => {
 		} finally {
 			tempDir.cleanup();
 		}
+	});
+
+	describe("in-process owner serialization", () => {
+		const heldLockfiles = new Set<string>();
+		beforeEach(() => {
+			heldLockfiles.clear();
+			// An exclusive filesystem lock whose retry budget is already exhausted:
+			// any overlapping acquisition fails exactly like proper-lockfile's ELOCKED.
+			lockfileMocks.lock.mockImplementation(async (_path: string, options: { lockfilePath: string }) => {
+				const key = options.lockfilePath.toLowerCase();
+				if (heldLockfiles.has(key)) {
+					throw Object.assign(new Error("Lock file is already being held"), { code: "ELOCKED" });
+				}
+				heldLockfiles.add(key);
+				return async () => {
+					heldLockfiles.delete(key);
+				};
+			});
+		});
+
+		async function holdThenRequest(
+			lockedFileSystem: LockedFileSystem,
+			tempPath: string,
+			serializeInProcess: boolean,
+		): Promise<{ owner: Promise<void>; queued: Promise<string>; release: () => void }> {
+			let release = () => {};
+			const blocker = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const request = (lockfileName: string) => ({
+				path: join(tempPath, "project"),
+				type: "directory" as const,
+				lockfilePath: join(tempPath, lockfileName),
+				serializeInProcess,
+			});
+			const owner = lockedFileSystem.withLock(request("Project.lock"), () => blocker);
+			await vi.waitFor(() => expect(lockfileMocks.lock).toHaveBeenCalledTimes(1));
+			// Windows spells one lockfile with different case; both owners must share a turn.
+			const queued = lockedFileSystem.withLock(request("PROJECT.LOCK"), async () => "queued result");
+			return { owner, queued, release };
+		}
+
+		it("queues same-process owners of a serialized Windows lock instead of exhausting its retry budget", async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-in-process-");
+			try {
+				const { owner, queued, release } = await holdThenRequest(new LockedFileSystem("win32"), tempDir.path, true);
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				expect(lockfileMocks.lock).toHaveBeenCalledTimes(1);
+				release();
+				await owner;
+				await expect(queued).resolves.toBe("queued result");
+				expect(lockfileMocks.lock).toHaveBeenCalledTimes(2);
+				expect(heldLockfiles.size).toBe(0);
+			} finally {
+				tempDir.cleanup();
+			}
+		});
+
+		const serialized = (tempPath: string, lockfileName: string) => ({
+			path: join(tempPath, "project"),
+			type: "directory" as const,
+			lockfilePath: join(tempPath, lockfileName),
+			serializeInProcess: true,
+		});
+		const lockfileNames = () =>
+			lockfileMocks.lock.mock.calls.map(([, options]) =>
+				basename((options as { lockfilePath: string }).lockfilePath),
+			);
+
+		it("advances the queue after the head loses to another process or its operation fails", async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-queue-failure-");
+			try {
+				const lockedFileSystem = new LockedFileSystem("win32");
+				let exhaustBudget = () => {};
+				const otherProcessHolds = new Promise<void>((resolve) => {
+					exhaustBudget = resolve;
+				});
+				lockfileMocks.lock.mockImplementationOnce(async () => {
+					await otherProcessHolds;
+					throw Object.assign(new Error("Lock file is already being held"), { code: "ELOCKED" });
+				});
+				const head = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "unreachable");
+				const headFailure = expect(head).rejects.toThrow("Lock file is already being held");
+				await vi.waitFor(() => expect(lockfileMocks.lock).toHaveBeenCalledTimes(1));
+				const failing = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => {
+					throw new Error("Synthetic operation failure");
+				});
+				const failingFailure = expect(failing).rejects.toThrow("Synthetic operation failure");
+				const queued = lockedFileSystem.withLock(serialized(tempDir.path, "P.LOCK"), async () => "queued result");
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				expect(lockfileMocks.lock).toHaveBeenCalledTimes(1);
+				exhaustBudget();
+				await headFailure;
+				await failingFailure;
+				await expect(queued).resolves.toBe("queued result");
+				expect(lockfileMocks.lock).toHaveBeenCalledTimes(3);
+				expect(heldLockfiles.size).toBe(0);
+			} finally {
+				tempDir.cleanup();
+			}
+		});
+
+		it("takes a serialized member's turn in sorted multi-lock order and releases in reverse", async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-multi-");
+			try {
+				const lockedFileSystem = new LockedFileSystem();
+				const released: string[] = [];
+				lockfileMocks.lock.mockImplementation(async (_path: string, options: { lockfilePath: string }) => {
+					return async () => {
+						released.push(basename(options.lockfilePath));
+					};
+				});
+				let finish = () => {};
+				const blocker = new Promise<void>((resolve) => {
+					finish = resolve;
+				});
+				const multi = lockedFileSystem.withLocks(
+					[
+						serialized(tempDir.path, "b.lock"),
+						{ path: join(tempDir.path, "a.json"), lockfilePath: join(tempDir.path, "a.lock") },
+					],
+					() => blocker,
+				);
+				await vi.waitFor(() => expect(lockfileMocks.lock).toHaveBeenCalledTimes(2));
+				expect(lockfileNames()).toEqual(["a.lock", "b.lock"]);
+				const single = lockedFileSystem.withLock(serialized(tempDir.path, "b.lock"), async () => "single result");
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				expect(lockfileMocks.lock).toHaveBeenCalledTimes(2);
+				finish();
+				await multi;
+				await expect(single).resolves.toBe("single result");
+				expect(released).toEqual(["b.lock", "a.lock", "b.lock"]);
+			} finally {
+				tempDir.cleanup();
+			}
+		});
+
+		it("bounds re-entry of a held serialized lock by the filesystem retry budget while allowing sequential, detached, and lock-free nested work", async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-reentry-");
+			try {
+				const lockedFileSystem = new LockedFileSystem("win32");
+				let detached: Promise<string> | null = null;
+				await lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => {
+					await expect(
+						lockedFileSystem.withLock(serialized(tempDir.path, "P.LOCK"), async () => "nested"),
+					).rejects.toThrow("Lock file is already being held");
+					await expect(
+						lockedFileSystem.withLocks(
+							[{ path: join(tempDir.path, "other.json") }, serialized(tempDir.path, "p.lock")],
+							async () => "nested multi",
+						),
+					).rejects.toThrow("Lock file is already being held");
+					await lockedFileSystem.writeTextFileAtomic(join(tempDir.path, "state.json"), "{}", { lock: null });
+					await lockedFileSystem.withLock(serialized(tempDir.path, "other.lock"), async () => {});
+					// Detached work started under the lock acquires it after the release.
+					detached = new Promise<void>((resolve) => setTimeout(resolve, 10)).then(() =>
+						lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "detached result"),
+					);
+				});
+				await expect(detached).resolves.toBe("detached result");
+				await expect(
+					lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "sequential result"),
+				).resolves.toBe("sequential result");
+				expect(heldLockfiles.size).toBe(0);
+			} finally {
+				tempDir.cleanup();
+			}
+		});
+
+		it("reports one content-free warning for a slow queued wait without failing it", async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-slow-wait-");
+			const records: Array<{ level: string; tag: string; message: string; data?: unknown }> = [];
+			setRuntimeDiagnosticLogSink({ recordLog: (record) => records.push(record) });
+			try {
+				const lockedFileSystem = new LockedFileSystem();
+				let release = () => {};
+				const blocker = new Promise<void>((resolve) => {
+					release = resolve;
+				});
+				const owner = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), () => blocker);
+				await vi.waitFor(() => expect(lockfileMocks.lock).toHaveBeenCalledTimes(1));
+				vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+				const queued = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "queued result");
+				// The waiter arms its slow-wait timer after async admission; on a slow
+				// runner that can land after an immediate advance, so wait for it.
+				for (let tick = 0; tick < 200 && vi.getTimerCount() === 0; tick += 1) {
+					await new Promise<void>((resolveTick) => setImmediate(resolveTick));
+				}
+				expect(vi.getTimerCount()).toBeGreaterThan(0);
+				await vi.advanceTimersByTimeAsync(IN_PROCESS_LOCK_SLOW_WAIT_MS - 1);
+				expect(records).toEqual([]);
+				await vi.advanceTimersByTimeAsync(IN_PROCESS_LOCK_SLOW_WAIT_MS * 3);
+				expect(records).toEqual([
+					{
+						level: "warn",
+						tag: "locked-file-system",
+						message: "in-process lock wait is slow",
+						data: { lock: "p.lock", waitMs: IN_PROCESS_LOCK_SLOW_WAIT_MS, queueDepth: 2 },
+					},
+				]);
+				vi.useRealTimers();
+				release();
+				await owner;
+				await expect(queued).resolves.toBe("queued result");
+				expect(records).toHaveLength(1);
+			} finally {
+				vi.useRealTimers();
+				setRuntimeDiagnosticLogSink(null);
+				tempDir.cleanup();
+			}
+		});
+
+		it("leaves unserialized locks to the filesystem retry budget", async () => {
+			const tempDir = createTempDir("quarterdeck-locked-fs-unserialized-");
+			try {
+				const { owner, queued, release } = await holdThenRequest(
+					new LockedFileSystem("win32"),
+					tempDir.path,
+					false,
+				);
+				await expect(queued).rejects.toThrow("Lock file is already being held");
+				release();
+				await owner;
+			} finally {
+				tempDir.cleanup();
+			}
+		});
 	});
 
 	it.skipIf(process.platform === "win32")(

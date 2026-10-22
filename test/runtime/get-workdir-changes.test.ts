@@ -10,7 +10,10 @@ import {
 	readWorkdirFileExcerpt,
 } from "../../src/workdir";
 import { commitAll, initGitRepository } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 describe("get workdir changes runtime", () => {
 	it("updates content revision when working-tree content changes with unchanged diff stats", async () => {

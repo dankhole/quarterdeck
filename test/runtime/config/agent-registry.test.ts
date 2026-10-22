@@ -1,5 +1,6 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { extname } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
 	isBinaryAvailableOnPath: vi.fn(),
@@ -35,6 +36,7 @@ import {
 	runProbeCommand,
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
+	setAgentProbeTimeoutMsForTests,
 	waitForPendingAgentAvailabilityProbes,
 } from "../../../src/config";
 import { getRuntimeAgentCatalogEntry } from "../../../src/core";
@@ -90,6 +92,10 @@ beforeEach(() => {
 	vi.useRealTimers();
 	resetAgentAvailabilityCache();
 	setAgentAvailabilityDiagnosticSink(null);
+	// This file's fake-timer tests advance by a fixed 3_001ms to clear the probe
+	// timeout; pin that timeout to match instead of the production default so
+	// those advances don't depend on (and don't have to track) that default.
+	setAgentProbeTimeoutMsForTests(3_000);
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReset();
@@ -102,6 +108,10 @@ beforeEach(() => {
 	delete process.env.QUARTERDECK_DEBUG_MODE;
 	delete process.env.DEBUG_MODE;
 	delete process.env.debug_mode;
+});
+
+afterEach(() => {
+	setAgentProbeTimeoutMsForTests(null);
 });
 
 describe("agent-registry", () => {
@@ -312,7 +322,11 @@ describe("agent-registry", () => {
 
 		expect(stale.agents.find((agent) => agent.id === "codex")?.installed).toBe(true);
 		expect(versionCalls).toHaveLength(2);
-		expect(featuresCalls).toHaveLength(1);
+		// Codex's version and features probes run concurrently (see
+		// `computeAgentAvailability`), so the stale-while-revalidate refresh starts
+		// both even though its hung version probe's result is what's ultimately
+		// used; the first (successful) pass already issued one of each.
+		expect(featuresCalls).toHaveLength(2);
 	});
 
 	it("does not cache a transient timeout as agent unavailability", async () => {
@@ -460,16 +474,14 @@ describe("agent-registry", () => {
 		vi.useFakeTimers();
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
 		const kill = vi.fn(() => true);
-		let capturedProbeCallback = false;
-		let probeCallback: ExecFileCallback = () => {
-			throw new Error("Expected the version probe callback.");
-		};
+		// Codex's version and features probes now run concurrently (see
+		// `computeAgentAvailability`), so capture every probe callback, not just one.
+		const probeCallbacks: ExecFileCallback[] = [];
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			if (args.includes("/pid")) return {} as ChildProcess;
 			const options = rest[0] as Record<string, unknown>;
 			expect(options).not.toHaveProperty("timeout");
-			probeCallback = readExecFileCallback(rest);
-			capturedProbeCallback = true;
+			probeCallbacks.push(readExecFileCallback(rest));
 			return { pid: 4321, kill, exitCode: null, signalCode: null } as unknown as ChildProcess;
 		});
 
@@ -481,15 +493,17 @@ describe("agent-registry", () => {
 		} else {
 			expect(kill).toHaveBeenCalledWith("SIGTERM");
 		}
-		expect(capturedProbeCallback).toBe(true);
-		probeCallback(
-			Object.assign(new Error("terminated after timeout"), {
-				killed: true,
-				signal: "SIGTERM" as NodeJS.Signals,
-			}),
-			"",
-			"",
-		);
+		expect(probeCallbacks).toHaveLength(2);
+		for (const probeCallback of probeCallbacks) {
+			probeCallback(
+				Object.assign(new Error("terminated after timeout"), {
+					killed: true,
+					signal: "SIGTERM" as NodeJS.Signals,
+				}),
+				"",
+				"",
+			);
+		}
 
 		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
 	});
@@ -504,12 +518,12 @@ describe("agent-registry", () => {
 		const diagnostics = vi.fn();
 		setAgentAvailabilityDiagnosticSink(diagnostics);
 		const kill = vi.fn(() => true);
-		let probeCallback: ExecFileCallback = () => {
-			throw new Error("Expected the version probe callback.");
-		};
+		// Codex's version and features probes now run concurrently (see
+		// `computeAgentAvailability`), so capture every probe callback, not just one.
+		const probeCallbacks: ExecFileCallback[] = [];
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			if (args.includes("/pid")) return {} as ChildProcess;
-			probeCallback = readExecFileCallback(rest);
+			probeCallbacks.push(readExecFileCallback(rest));
 			return { pid: 4321, kill, exitCode: null, signalCode: null } as unknown as ChildProcess;
 		});
 
@@ -521,7 +535,10 @@ describe("agent-registry", () => {
 		} else {
 			expect(kill).toHaveBeenCalledWith("SIGTERM");
 		}
-		probeCallback(null, "", "");
+		expect(probeCallbacks).toHaveLength(2);
+		for (const probeCallback of probeCallbacks) {
+			probeCallback(null, "", "");
+		}
 
 		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
 		expect(diagnostics).toHaveBeenCalledWith({
@@ -554,28 +571,56 @@ describe("agent-registry", () => {
 	describe("runProbeCommand against real child processes", () => {
 		beforeEach(() => {
 			childProcessMocks.execFile.mockImplementation(childProcessMocks.realExecFile);
+			// The file-level stub maps every binary to C:\tools\<binary>.exe; these
+			// tests launch the real absolute Node executable, so resolve it as itself.
+			commandDiscoveryMocks.resolveWindowsBinaryPath.mockImplementation((binary: string) => ({
+				extension: extname(binary).toLowerCase(),
+				path: binary,
+			}));
+			// These tests pass their own explicit timeoutMs to prove real timing
+			// behavior end to end; undo the file-level test-seam override (which
+			// takes priority over an explicit arg) so it doesn't shadow it.
+			setAgentProbeTimeoutMsForTests(null);
 		});
 
 		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
-			const resultPromise = runProbeCommand("claude", "version", process.execPath, [
-				"-e",
-				"process.stdout.write('2.1.198'); process.exit(0);",
-			]);
-			// Real event-loop stall: the child exits almost immediately, then the main
-			// thread is blocked synchronously well past the probe timeout before we
-			// ever look at the result.
-			const blockUntil = Date.now() + 3_200;
+			// Explicit timeout rather than the production default, so this doesn't
+			// depend on that value. Generous, not short: a real `node` spawn
+			// normally exits in well under a second, but Windows process creation
+			// under heavy CI load can take well over 500ms, and the stall margin
+			// below must stay comfortably past it so the stall — not a slow spawn —
+			// is what's under test.
+			const probeTimeoutMs = 5_000;
+			const resultPromise = runProbeCommand(
+				"claude",
+				"version",
+				process.execPath,
+				["-e", "process.stdout.write('2.1.198'); process.exit(0);"],
+				probeTimeoutMs,
+			);
+			// Real event-loop stall: the child exits on its own, then the main thread
+			// is blocked synchronously well past the probe timeout before we ever
+			// look at the result.
+			const blockUntil = Date.now() + probeTimeoutMs + 1_000;
 			while (Date.now() < blockUntil) {
 				// busy-wait
 			}
 			await expect(resultPromise).resolves.toMatchObject({ stdout: "2.1.198" });
-		}, 10_000);
+		}, 15_000);
 
 		it("still terminates a real hung child and reports a timeout", async () => {
+			// Generous timeout for the same spawn-latency reason as above: it must
+			// guarantee the child is actually running (not still starting) before the
+			// timer fires, on every platform, or this tests a failed spawn instead of
+			// a real hang. `armChildProcessTimeout`'s `timedOut` flag is set
+			// synchronously when its timer fires — before Windows tree termination
+			// (taskkill) even starts — and `finish` checks `guard.isTimedOut()` first,
+			// so this is `probe_timeout` on every platform regardless of how the OS
+			// reports the eventual kill.
 			await expect(
-				runProbeCommand("claude", "version", process.execPath, ["-e", "setInterval(() => {}, 1_000);"]),
+				runProbeCommand("claude", "version", process.execPath, ["-e", "setInterval(() => {}, 1_000);"], 5_000),
 			).rejects.toMatchObject({ reason: "probe_timeout" });
-		}, 10_000);
+		}, 15_000);
 	});
 
 	it("treats a timer-fired Codex feature probe that exits 0 with empty output as a timeout, not feature_missing", async () => {

@@ -2,7 +2,13 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { RuntimeGitSyncSummary } from "../core";
-import { resolveRepoRoot, runGit, splitNullSeparatedGitOutput } from "./git-utils";
+import {
+	GIT_INSPECTION_OPTIONS,
+	type RunGitOptions,
+	resolveRepoRoot,
+	runGit,
+	splitNullSeparatedGitOutput,
+} from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -111,13 +117,26 @@ function parseStatusPath(record: string): string | null {
 	return null;
 }
 
-export async function probeGitWorkdirState(cwd: string): Promise<GitWorkdirProbe> {
-	const repoRoot = await resolveRepoRoot(cwd);
+/**
+ * Probe the working tree's branch/status state.
+ *
+ * `options` defaults to background `inspection` priority/timeout for metadata
+ * and polling callers. A caller inside a user-initiated action (push, pull,
+ * checkout, discard, ...) should pass `GIT_USER_ACTION_PREFLIGHT_OPTIONS` so
+ * this preflight queues at foreground priority with a moderate timeout
+ * instead of behind unbounded background work.
+ */
+export async function probeGitWorkdirState(
+	cwd: string,
+	options: RunGitOptions = GIT_INSPECTION_OPTIONS,
+): Promise<GitWorkdirProbe> {
+	const repoRoot = await resolveRepoRoot(cwd, options);
 	const [statusResult, headCommitResult] = await Promise.all([
 		runGit(repoRoot, ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z"], {
 			trimStdout: false,
+			...options,
 		}),
-		runGit(repoRoot, ["--no-optional-locks", "rev-parse", "--verify", "HEAD"]),
+		runGit(repoRoot, ["--no-optional-locks", "rev-parse", "--verify", "HEAD"], options),
 	]);
 
 	if (!statusResult.ok) {
@@ -260,12 +279,22 @@ async function countUntrackedAdditions(
 	return counts.reduce((total, value) => total + value, 0);
 }
 
+/**
+ * `options.runOptions` governs admission priority/timeout for the probe (when
+ * `options.probe` isn't already computed) and the diff command. Defaults to
+ * background `inspection` behavior for metadata/polling callers; a caller
+ * inside a user-initiated action should pass `GIT_USER_ACTION_PREFLIGHT_OPTIONS`.
+ */
 export async function getGitSyncSummary(
 	cwd: string,
-	options?: { probe?: GitWorkdirProbe },
+	options?: { probe?: GitWorkdirProbe; runOptions?: RunGitOptions },
 ): Promise<RuntimeGitSyncSummary> {
-	const probe = options?.probe ?? (await probeGitWorkdirState(cwd));
-	const diffResult = await runGit(probe.repoRoot, ["--no-optional-locks", "diff", "--numstat", "HEAD", "--"]);
+	const probe = options?.probe ?? (await probeGitWorkdirState(cwd, options?.runOptions));
+	const diffResult = await runGit(
+		probe.repoRoot,
+		["--no-optional-locks", "diff", "--numstat", "HEAD", "--"],
+		options?.runOptions,
+	);
 	const trackedTotals = diffResult.ok ? parseNumstatTotals(diffResult.stdout) : { additions: 0, deletions: 0 };
 	const untrackedAdditions = await countUntrackedAdditions(
 		probe.repoRoot,

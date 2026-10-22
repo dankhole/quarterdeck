@@ -870,24 +870,31 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				},
 			});
 			expect(taskInputResponse.payload.ok).toBe(true);
-			await waitUntil(async () => {
-				const state = await requestJson<RuntimeProjectStateResponse>({
-					baseUrl,
-					headers: server.browserHeaders,
-					procedure: "project.getState",
-					type: "query",
-					projectId,
-				});
-				const session = state.payload.sessions[taskId];
-				return (
-					session?.state === "running" &&
-					session.nativeWorkEvidence != null &&
-					state.payload.board.columns.some(
-						(column) =>
-							column.id === "in_progress" && column.cards.some((card) => card.id === taskId && !card.unstarted),
-					)
-				);
-			}, "native Codex hook transition");
+			await waitUntil(
+				async () => {
+					const state = await requestJson<RuntimeProjectStateResponse>({
+						baseUrl,
+						headers: server.browserHeaders,
+						procedure: "project.getState",
+						type: "query",
+						projectId,
+					});
+					const session = state.payload.sessions[taskId];
+					return (
+						session?.state === "running" &&
+						session.nativeWorkEvidence != null &&
+						state.payload.board.columns.some(
+							(column) =>
+								column.id === "in_progress" &&
+								column.cards.some((card) => card.id === taskId && !card.unstarted),
+						)
+					);
+					// Process startup, the bounded first ingest attempt, launch-handoff
+					// deferral, and outbox replay can together exceed 10s on a busy runner.
+				},
+				"native Codex hook transition",
+				30_000,
+			);
 
 			const stopTaskResponse = await requestJson<RuntimeTaskSessionStopResponse>({
 				baseUrl,

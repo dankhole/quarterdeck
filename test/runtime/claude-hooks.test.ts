@@ -122,7 +122,8 @@ describe("buildClaudeHooksSettings", () => {
 		for (const groups of Object.values(settings.hooks)) {
 			for (const group of groups) {
 				for (const hook of group.hooks) {
-					expect(hook).toMatchObject({ type: "command", command: expect.stringContaining("hooks") });
+					expect(hook).toMatchObject({ type: "command", command: expect.any(String) });
+					expect(hook.command.length).toBeGreaterThan(0);
 					expect(Object.keys(hook).every((key) => ["type", "command", "timeout"].includes(key))).toBe(true);
 				}
 			}

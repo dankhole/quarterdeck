@@ -1,12 +1,16 @@
 import {
+	closeSync,
 	existsSync,
+	ftruncateSync,
 	mkdirSync,
+	openSync,
 	readdirSync,
 	readFileSync,
 	renameSync,
 	rmSync,
 	unlinkSync,
 	writeFileSync,
+	writeSync,
 } from "node:fs";
 import { join } from "node:path";
 
@@ -30,12 +34,30 @@ import {
 } from "../../src/workdir/task-worktree-trash-branch";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { captureTaskPatch } from "../utilities/legacy-task-worktree-patch";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
+useProcessTestBudget();
+
+/**
+ * Rewrites an existing file in place. Git for Windows marks `.git` hidden
+ * (core.hideDotFiles=dotGitOnly), and Node's create-or-truncate open of a
+ * hidden file fails with EPERM on Windows, so open the existing file instead.
+ */
+function overwriteExistingFile(path: string, contents: Buffer): void {
+	const fd = openSync(path, "r+");
+	try {
+		ftruncateSync(fd, 0);
+		writeSync(fd, contents, 0, contents.length, 0);
+	} finally {
+		closeSync(fd);
+	}
+}
+
 async function withFixture(run: (repoPath: string) => Promise<void>): Promise<void> {
 	await withTemporaryHome(async () => {
-		const { path: repoPath, cleanup } = createTempDir("quarterdeck-trash-recovery-");
+		const { path: repoPath, cleanupAsync } = createTempDir("quarterdeck-trash-recovery-");
 		try {
 			initGitRepository(repoPath);
 			writeFileSync(join(repoPath, ".gitignore"), ".gradle/\n");
@@ -43,7 +65,14 @@ async function withFixture(run: (repoPath: string) => Promise<void>): Promise<vo
 			commitAll(repoPath, "initial");
 			await run(repoPath);
 		} finally {
-			cleanup();
+			// This fixture runs many real `git worktree`/registration operations
+			// (including deliberately corrupting a worktree's `.git` file). On
+			// Windows a just-exited git process can hold file handles open for a
+			// moment after Node observes it as closed; synchronous `cleanup()`
+			// retries block the event loop and can't let that handle close land,
+			// which surfaces as EPERM deleting `.git`. The async variant lets
+			// pending native handle closes actually run between retries.
+			await cleanupAsync();
 		}
 	});
 }
@@ -308,7 +337,7 @@ describe("Trash workspace recovery", { concurrent: false }, () => {
 				baseRef: "main",
 			});
 			if (!other.ok) throw new Error(other.error);
-			writeFileSync(join(path, ".git"), readFileSync(join(other.path, ".git")));
+			overwriteExistingFile(join(path, ".git"), readFileSync(join(other.path, ".git")));
 			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({
 				ok: false,
 				error: expect.stringContaining("registration"),

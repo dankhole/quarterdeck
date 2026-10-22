@@ -7,8 +7,11 @@ import type { RuntimeBoardData } from "../../src/core";
 import { loadProjectContext, loadProjectState, saveProjectState } from "../../src/state";
 import { initGitRepository } from "../utilities/git-env";
 import { getAvailablePort, startQuarterdeckServer } from "../utilities/integration-server";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 function createBoard(): RuntimeBoardData {
 	return {
@@ -115,6 +118,6 @@ describe("startup session pruning", { concurrent: false }, () => {
 				cleanupHome();
 			}
 		},
-		30_000,
+		60_000,
 	);
 });

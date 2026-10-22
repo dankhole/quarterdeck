@@ -1,6 +1,4 @@
-import { runGit } from "./git-utils";
-
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+import { GIT_USER_ACTION_OPTIONS, runGit } from "./git-utils";
 
 interface InitializeRepoResult {
 	ok: boolean;
@@ -8,7 +6,7 @@ interface InitializeRepoResult {
 }
 
 export async function initializeGitRepository(projectPath: string): Promise<InitializeRepoResult> {
-	const result = await runGit(projectPath, ["init"], USER_GIT_ACTION_OPTIONS);
+	const result = await runGit(projectPath, ["init"], GIT_USER_ACTION_OPTIONS);
 	if (!result.ok) {
 		return {
 			ok: false,
@@ -20,12 +18,12 @@ export async function initializeGitRepository(projectPath: string): Promise<Init
 }
 
 export async function ensureInitialCommit(projectPath: string): Promise<InitializeRepoResult> {
-	const headCheck = await runGit(projectPath, ["rev-parse", "--verify", "HEAD"], USER_GIT_ACTION_OPTIONS);
+	const headCheck = await runGit(projectPath, ["rev-parse", "--verify", "HEAD"], GIT_USER_ACTION_OPTIONS);
 	if (headCheck.ok) {
 		return { ok: true, error: null };
 	}
 
-	const addResult = await runGit(projectPath, ["add", "-A"], USER_GIT_ACTION_OPTIONS);
+	const addResult = await runGit(projectPath, ["add", "-A"], GIT_USER_ACTION_OPTIONS);
 	if (!addResult.ok) {
 		return {
 			ok: false,
@@ -36,7 +34,7 @@ export async function ensureInitialCommit(projectPath: string): Promise<Initiali
 	const commitResult = await runGit(
 		projectPath,
 		["commit", "--allow-empty", "-m", "Initial commit through Quarterdeck"],
-		USER_GIT_ACTION_OPTIONS,
+		GIT_USER_ACTION_OPTIONS,
 	);
 
 	if (!commitResult.ok) {

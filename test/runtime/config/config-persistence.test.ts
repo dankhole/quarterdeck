@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
 	loadGlobalRuntimeConfig,
 	loadRuntimeConfig,
 	saveRuntimeConfig,
+	setAgentProbeTimeoutMsForTests,
 	updateRuntimeConfig,
 } from "../../../src/config";
 import { createDefaultRuntimeConfigSaveRequest } from "../../utilities/runtime-config-factory";
@@ -14,6 +15,16 @@ import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
 describe("runtime-config persistence", { concurrent: false }, () => {
+	// These tests probe real (near-instant) fake binaries. Pin the probe timeout
+	// to a short value so a run never depends on the production default's
+	// duration or on how loaded the host machine is.
+	beforeEach(() => {
+		setAgentProbeTimeoutMsForTests(2_000);
+	});
+	afterEach(() => {
+		setAgentProbeTimeoutMsForTests(null);
+	});
+
 	it("treats null projectId as global-only config scope", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-home-scope-");
 		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-home-scope-");

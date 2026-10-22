@@ -7,6 +7,7 @@ import {
 	type GitActionErrorState,
 	getGitActionErrorTitle,
 	getGitSyncSuccessLabel,
+	isStaleGitSyncSummary,
 	isTaskGitActionInFlight,
 	isTopbarGitSyncDisabled,
 	matchesWorktreeInfoSelection,
@@ -104,6 +105,34 @@ describe("top-bar git sync policy", () => {
 		expect(shouldApplyHomeGitSummaryFromSync({ taskId: "task-1", baseRef: "main" })).toBe(false);
 		expect(
 			shouldApplyHomeGitSummaryFromSync({ taskId: "task-1", baseRef: "main" }, { updateHomeSummary: true }),
+		).toBe(true);
+	});
+
+	it("flags a summary as stale only when the server explicitly marked it so", () => {
+		expect(isStaleGitSyncSummary(null)).toBe(false);
+		expect(isStaleGitSyncSummary(undefined)).toBe(false);
+		expect(
+			isStaleGitSyncSummary({
+				currentBranch: "main",
+				upstreamBranch: null,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+			}),
+		).toBe(false);
+		expect(
+			isStaleGitSyncSummary({
+				currentBranch: "main",
+				upstreamBranch: null,
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				aheadCount: 0,
+				behindCount: 0,
+				stale: true,
+			}),
 		).toBe(true);
 	});
 

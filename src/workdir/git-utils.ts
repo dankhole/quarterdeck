@@ -140,6 +140,25 @@ export interface RunGitOptions {
 
 export const GIT_INSPECTION_OPTIONS = { timeoutClass: "inspection" } as const satisfies RunGitOptions;
 
+/** The Git command a user explicitly requested: commit, stash, merge, revert, cherry-pick, sync, etc. */
+export const GIT_USER_ACTION_OPTIONS = { timeoutClass: "userAction" } as const satisfies RunGitOptions;
+
+/**
+ * For a preflight (repo-root resolution, status/diff probe) nested inside a
+ * user action, not the action command itself. `inspection`'s `background`
+ * admission priority has no queue-wait bound, so under heavy load a
+ * foreground user action's own preflight could queue behind unlimited
+ * background work; `userAction`'s full 120s timeout is also far longer than
+ * a preflight should ever need. This runs at `foreground` priority (bounded
+ * by `GIT_FOREGROUND_QUEUE_MAX_WAIT_MS`) with a moderate 30s timeout, so a
+ * hung preflight surfaces "Git did not respond in time; retry." in ~30s
+ * instead of up to 120s, while still queuing ahead of background work.
+ */
+export const GIT_USER_ACTION_PREFLIGHT_OPTIONS = {
+	timeoutMs: 30_000,
+	priority: "foreground",
+} as const satisfies RunGitOptions;
+
 function normalizeProcessExitCode(code: unknown): number {
 	if (typeof code === "number" && Number.isFinite(code)) {
 		return code;
@@ -614,10 +633,27 @@ export async function getGitDir(cwd: string): Promise<string> {
 
 /**
  * Resolve the repository root directory for a given working directory.
+ *
+ * Runs on the `default` (5s) timeout class unless the caller supplies its own
+ * class/timeout. Preflights nested inside a longer-running action (commit, stash,
+ * merge, revert, cherry-pick) or a probe should pass that action's own timeout
+ * class (or `inspection` for probes) so a slow Git under load gets the same
+ * budget as the command that follows it.
+ *
+ * A timeout (or another indeterminate failure, such as a blocked launch or an
+ * external signal death) never proves the directory isn't a repository, so it
+ * surfaces as a distinct retryable error instead of the generic "no repository"
+ * message.
  */
-export async function resolveRepoRoot(cwd: string): Promise<string> {
-	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
-	if (!result.ok || !result.stdout) {
+export async function resolveRepoRoot(cwd: string, options: RunGitOptions = {}): Promise<string> {
+	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"], options);
+	if (!result.ok) {
+		if (isGitCommandIndeterminate(result)) {
+			throw new Error("Git did not respond in time; retry.");
+		}
+		throw new Error("No git repository detected for this project.");
+	}
+	if (!result.stdout) {
 		throw new Error("No git repository detected for this project.");
 	}
 	return result.stdout;

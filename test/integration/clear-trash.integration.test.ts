@@ -8,7 +8,10 @@ import { getProjectLifecycleOperationsPath } from "../../src/state/project-state
 import * as gitUtils from "../../src/workdir/git-utils";
 import { getTaskWorktreePath } from "../../src/workdir/task-worktree-lifecycle";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 it("clears exact Trash identities, retains cleanup failures, and safely replays child receipts", async () => {
 	await withTemporaryHome(async () => {

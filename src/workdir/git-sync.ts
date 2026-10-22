@@ -12,9 +12,64 @@ import type {
 } from "../core";
 import { getGitSyncSummary } from "./git-probe";
 import { commitSelectedPaths } from "./git-selected-commit";
-import { hasGitRef, resolveRepoRoot, runGit, validateGitPath, validateGitRef } from "./git-utils";
+import {
+	GIT_USER_ACTION_OPTIONS,
+	GIT_USER_ACTION_PREFLIGHT_OPTIONS,
+	hasGitRef,
+	resolveRepoRoot,
+	runGit,
+	validateGitPath,
+	validateGitRef,
+} from "./git-utils";
 
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+const LAST_KNOWN_GOOD_SYNC_SUMMARY_MAX_ENTRIES = 128;
+
+interface LastKnownGoodSyncSummaryEntry {
+	summary: RuntimeGitSyncSummary;
+	lastAccessedAt: number;
+}
+
+/** Keyed by the `cwd` passed to `getGitSyncSummaryOrStale`, not a resolved repo root. */
+const lastKnownGoodSyncSummaryByCwd = new Map<string, LastKnownGoodSyncSummaryEntry>();
+
+function rememberGoodGitSyncSummary(cwd: string, summary: RuntimeGitSyncSummary): void {
+	lastKnownGoodSyncSummaryByCwd.set(cwd, { summary, lastAccessedAt: Date.now() });
+	if (lastKnownGoodSyncSummaryByCwd.size <= LAST_KNOWN_GOOD_SYNC_SUMMARY_MAX_ENTRIES) return;
+	const entries = Array.from(lastKnownGoodSyncSummaryByCwd.entries()).sort(
+		(left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt,
+	);
+	const removeCount = entries.length - LAST_KNOWN_GOOD_SYNC_SUMMARY_MAX_ENTRIES;
+	for (let index = 0; index < removeCount; index += 1) {
+		const candidate = entries[index];
+		if (!candidate) break;
+		lastKnownGoodSyncSummaryByCwd.delete(candidate[0]);
+	}
+}
+
+/**
+ * Fetch the post-action summary, but never let a summary-probe failure (e.g. a
+ * timeout under load) reject an action whose own Git command already
+ * succeeded, or publish degraded (empty/zeroed) branch info as if it were
+ * fresh (never cache or publish degraded Git info for an indeterminate
+ * failure — see 799baf56). Prefers this repo's last known-good summary over
+ * the caller's fallback, since the fallback is sometimes an empty summary
+ * with nothing better available at that call site; either way the result is
+ * flagged `stale`.
+ */
+async function getGitSyncSummaryOrStale(
+	cwd: string,
+	staleFallback: RuntimeGitSyncSummary,
+): Promise<RuntimeGitSyncSummary> {
+	try {
+		const summary = await getGitSyncSummary(cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
+		rememberGoodGitSyncSummary(cwd, summary);
+		return summary;
+	} catch {
+		const lastKnownGood = lastKnownGoodSyncSummaryByCwd.get(cwd);
+		if (lastKnownGood) lastKnownGood.lastAccessedAt = Date.now();
+		return { ...(lastKnownGood?.summary ?? staleFallback), stale: true };
+	}
+}
 
 export async function runGitSyncAction(options: {
 	cwd: string;
@@ -29,7 +84,9 @@ export async function runGitSyncAction(options: {
 	// - explicit branch: isOtherBranch determines push target / fetch strategy
 	// For push/fetch without a target branch, skip the expensive probe.
 	const needsInitialProbe = options.action === "pull" || targetBranch !== null;
-	const initialSummary = needsInitialProbe ? await getGitSyncSummary(options.cwd) : null;
+	const initialSummary = needsInitialProbe
+		? await getGitSyncSummary(options.cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS })
+		: null;
 	const isOtherBranch = targetBranch !== null && targetBranch !== initialSummary?.currentBranch;
 
 	if (options.action === "pull" && !isOtherBranch && initialSummary && initialSummary.changedFiles > 0) {
@@ -63,8 +120,8 @@ export async function runGitSyncAction(options: {
 		gitArgs = argsByAction[options.action];
 	}
 
-	const commandResult = await runGit(options.cwd, gitArgs, USER_GIT_ACTION_OPTIONS);
-	const nextSummary = await getGitSyncSummary(options.cwd);
+	const commandResult = await runGit(options.cwd, gitArgs, GIT_USER_ACTION_OPTIONS);
+	const nextSummary = await getGitSyncSummaryOrStale(options.cwd, initialSummary ?? createEmptySummary());
 
 	if (!commandResult.ok) {
 		return {
@@ -89,7 +146,7 @@ export async function runGitCheckoutAction(options: {
 	branch: string;
 }): Promise<RuntimeGitCheckoutResponse> {
 	const requestedBranch = options.branch.trim();
-	const initialSummary = await getGitSyncSummary(options.cwd);
+	const initialSummary = await getGitSyncSummary(options.cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (!requestedBranch) {
 		return {
@@ -129,7 +186,7 @@ export async function runGitCheckoutAction(options: {
 		};
 	}
 
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const remoteTrackingRef = await resolveRemoteTrackingRef(repoRoot, requestedBranch, requestedRemoteRef);
 	const localBranchForRemote = remoteTrackingRef ? localBranchNameForRemoteRef(remoteTrackingRef.name) : null;
 
@@ -147,12 +204,12 @@ export async function runGitCheckoutAction(options: {
 		? await hasGitRef(repoRoot, `refs/heads/${localBranchForRemote}`)
 		: false;
 	let commandResult = hasLocalBranch
-		? await runGit(repoRoot, ["switch", "--", requestedBranch], USER_GIT_ACTION_OPTIONS)
+		? await runGit(repoRoot, ["switch", "--", requestedBranch], GIT_USER_ACTION_OPTIONS)
 		: remoteTrackingRef && localBranchForRemote && hasLocalBranchForRemote
-			? await runGit(repoRoot, ["switch", "--", localBranchForRemote], USER_GIT_ACTION_OPTIONS)
+			? await runGit(repoRoot, ["switch", "--", localBranchForRemote], GIT_USER_ACTION_OPTIONS)
 			: remoteTrackingRef
-				? await runGit(repoRoot, ["switch", "--track", remoteTrackingRef.name], USER_GIT_ACTION_OPTIONS)
-				: await runGit(repoRoot, ["switch", "--", requestedBranch], USER_GIT_ACTION_OPTIONS);
+				? await runGit(repoRoot, ["switch", "--track", remoteTrackingRef.name], GIT_USER_ACTION_OPTIONS)
+				: await runGit(repoRoot, ["switch", "--", requestedBranch], GIT_USER_ACTION_OPTIONS);
 	if (
 		!commandResult.ok &&
 		remoteTrackingRef?.explicit &&
@@ -163,10 +220,10 @@ export async function runGitCheckoutAction(options: {
 		commandResult = await runGit(
 			repoRoot,
 			["switch", "--detach", "--", remoteTrackingRef.name],
-			USER_GIT_ACTION_OPTIONS,
+			GIT_USER_ACTION_OPTIONS,
 		);
 	}
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, initialSummary);
 
 	if (!commandResult.ok) {
 		const dirtyTreePattern = /(?:local changes|uncommitted changes|overwritten by checkout)/i;
@@ -241,7 +298,7 @@ export async function createBranchFromRef(options: {
 	branchName: string;
 	startRef: string;
 }): Promise<RuntimeGitCreateBranchResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const branchName = options.branchName.trim();
 	const startRef = options.startRef.trim();
 
@@ -264,7 +321,7 @@ export async function createBranchFromRef(options: {
 		return { ok: false, branchName, error: `Branch "${branchName}" already exists.` };
 	}
 
-	const createResult = await runGit(repoRoot, ["branch", "--", branchName, startRef], USER_GIT_ACTION_OPTIONS);
+	const createResult = await runGit(repoRoot, ["branch", "--", branchName, startRef], GIT_USER_ACTION_OPTIONS);
 	if (!createResult.ok) {
 		return {
 			ok: false,
@@ -280,7 +337,7 @@ export async function deleteBranch(options: {
 	cwd: string;
 	branchName: string;
 }): Promise<RuntimeGitDeleteBranchResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const branchName = options.branchName.trim();
 
 	if (!branchName || !validateGitRef(branchName)) {
@@ -301,7 +358,7 @@ export async function deleteBranch(options: {
 
 	// Use -d (safe delete — requires branch to be fully merged).
 	// If the branch is unmerged, git will error with a helpful message.
-	const deleteResult = await runGit(repoRoot, ["branch", "-d", "--", branchName], USER_GIT_ACTION_OPTIONS);
+	const deleteResult = await runGit(repoRoot, ["branch", "-d", "--", branchName], GIT_USER_ACTION_OPTIONS);
 	if (!deleteResult.ok) {
 		return {
 			ok: false,
@@ -318,7 +375,7 @@ export async function renameBranch(options: {
 	oldName: string;
 	newName: string;
 }): Promise<RuntimeGitRenameBranchResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const oldName = options.oldName.trim();
 	const newName = options.newName.trim();
 
@@ -339,7 +396,7 @@ export async function renameBranch(options: {
 		return { ok: false, oldName, newName, error: `Branch "${newName}" already exists.` };
 	}
 
-	const renameResult = await runGit(repoRoot, ["branch", "-m", oldName, newName], USER_GIT_ACTION_OPTIONS);
+	const renameResult = await runGit(repoRoot, ["branch", "-m", oldName, newName], GIT_USER_ACTION_OPTIONS);
 	if (!renameResult.ok) {
 		return {
 			ok: false,
@@ -353,22 +410,22 @@ export async function renameBranch(options: {
 }
 
 export async function resetToRef(options: { cwd: string; ref: string }): Promise<RuntimeGitResetToRefResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const targetRef = options.ref.trim();
 
 	if (!targetRef || !validateGitRef(targetRef)) {
-		const summary = await getGitSyncSummary(repoRoot);
+		const summary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 		return { ok: false, ref: targetRef, summary, output: "", error: "Invalid ref." };
 	}
 
 	const verifyResult = await runGit(repoRoot, ["rev-parse", "--verify", targetRef]);
 	if (!verifyResult.ok) {
-		const summary = await getGitSyncSummary(repoRoot);
+		const summary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 		return { ok: false, ref: targetRef, summary, output: "", error: `Ref "${targetRef}" does not exist.` };
 	}
 
-	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef], USER_GIT_ACTION_OPTIONS);
-	const summary = await getGitSyncSummary(repoRoot);
+	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef], GIT_USER_ACTION_OPTIONS);
+	const summary = await getGitSyncSummaryOrStale(repoRoot, createEmptySummary());
 
 	if (!resetResult.ok) {
 		return {
@@ -384,8 +441,8 @@ export async function resetToRef(options: { cwd: string; ref: string }): Promise
 }
 
 export async function discardGitChanges(options: { cwd: string }): Promise<RuntimeGitDiscardResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
-	const initialSummary = await getGitSyncSummary(repoRoot);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
+	const initialSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (initialSummary.changedFiles === 0) {
 		return {
@@ -398,12 +455,12 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 	const restoreResult = await runGit(
 		repoRoot,
 		["restore", "--source=HEAD", "--staged", "--worktree", "--", "."],
-		USER_GIT_ACTION_OPTIONS,
+		GIT_USER_ACTION_OPTIONS,
 	);
 	const cleanResult = restoreResult.ok
-		? await runGit(repoRoot, ["clean", "-fd", "--", "."], USER_GIT_ACTION_OPTIONS)
+		? await runGit(repoRoot, ["clean", "-fd", "--", "."], GIT_USER_ACTION_OPTIONS)
 		: null;
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, initialSummary);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");
 
 	if (!restoreResult.ok) {
@@ -449,7 +506,7 @@ export async function commitSelectedFiles(options: {
 	message: string;
 	pushAfterCommit?: boolean;
 }): Promise<RuntimeGitCommitResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 
 	// Validate all paths before any git operations.
 	for (const p of options.paths) {
@@ -469,7 +526,7 @@ export async function commitSelectedFiles(options: {
 	if (!response.ok || !options.pushAfterCommit) return response;
 
 	try {
-		const pushResult = await runGit(repoRoot, ["push"], USER_GIT_ACTION_OPTIONS);
+		const pushResult = await runGit(repoRoot, ["push"], GIT_USER_ACTION_OPTIONS);
 		return {
 			...response,
 			pushOk: pushResult.ok,
@@ -489,7 +546,7 @@ export async function discardSingleFile(options: {
 	path: string;
 	fileStatus: string;
 }): Promise<RuntimeGitDiscardResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 
 	if (!validateGitPath(options.path)) {
 		return {
@@ -504,7 +561,7 @@ export async function discardSingleFile(options: {
 	if (options.fileStatus === "renamed" || options.fileStatus === "copied") {
 		return {
 			ok: false,
-			summary: await getGitSyncSummary(repoRoot),
+			summary: await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS }),
 			output: "",
 			error: "Cannot rollback renamed/copied files individually. Use Discard All instead.",
 		};
@@ -512,19 +569,19 @@ export async function discardSingleFile(options: {
 
 	// New staged files ("added") don't exist at HEAD — unstage before cleaning.
 	if (options.fileStatus === "added") {
-		await runGit(repoRoot, ["rm", "--cached", "--force", "--", options.path], USER_GIT_ACTION_OPTIONS);
+		await runGit(repoRoot, ["rm", "--cached", "--force", "--", options.path], GIT_USER_ACTION_OPTIONS);
 	}
 
 	const result =
 		options.fileStatus === "untracked" || options.fileStatus === "added"
-			? await runGit(repoRoot, ["clean", "-f", "--", options.path], USER_GIT_ACTION_OPTIONS)
+			? await runGit(repoRoot, ["clean", "-f", "--", options.path], GIT_USER_ACTION_OPTIONS)
 			: await runGit(
 					repoRoot,
 					["restore", "--source=HEAD", "--staged", "--worktree", "--", options.path],
-					USER_GIT_ACTION_OPTIONS,
+					GIT_USER_ACTION_OPTIONS,
 				);
 
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, createEmptySummary());
 
 	if (!result.ok) {
 		return {

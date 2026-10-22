@@ -9,7 +9,7 @@ import {
 } from "../core";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
-import { readGitHeadInfo, runGit } from "./git-utils";
+import { GIT_USER_ACTION_OPTIONS, readGitHeadInfo, runGit } from "./git-utils";
 import { resolveTaskWorktreeCleanupPath } from "./task-worktree-cleanup-path";
 import { assertTaskWorktreeRegistration, isGitWorktreePathRegistered } from "./task-worktree-identity";
 import { deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
@@ -31,8 +31,6 @@ import {
 import { withTaskWorktreeOperationLock, withTaskWorktreeSetupLock } from "./task-worktree-setup-lock";
 import { pathExists } from "./task-worktree-symlinks";
 import { detachTaskWorktreeBranchForTrash, restoreTaskWorktreeBranchFromTrash } from "./task-worktree-trash-branch";
-
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
 function isMissingInitialCommitError(message: string): boolean {
 	const normalizedMessage = message.trim().toLowerCase();
@@ -57,7 +55,7 @@ function getWorktreeBaseRefResolutionErrorMessage(baseRef: string, errorMessage:
 }
 
 async function tryRunGit(cwd: string, args: string[]): Promise<string | null> {
-	const result = await runGit(cwd, args, USER_GIT_ACTION_OPTIONS);
+	const result = await runGit(cwd, args, GIT_USER_ACTION_OPTIONS);
 	return result.ok ? result.stdout : null;
 }
 
@@ -83,13 +81,13 @@ async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string
 	const removeResult = await runGit(
 		repoPath,
 		["worktree", "remove", "--force", worktreePath],
-		USER_GIT_ACTION_OPTIONS,
+		GIT_USER_ACTION_OPTIONS,
 	);
 	await removeDirectoryWithRetries(worktreePath);
 	if (!removeResult.ok) {
 		// Git only prunes missing worktrees. Remove the directory first so a
 		// failed Git removal cannot leave the task's branch checked out forever.
-		const pruned = await runGit(repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
+		const pruned = await runGit(repoPath, ["worktree", "prune"], GIT_USER_ACTION_OPTIONS);
 		if (!pruned.ok) {
 			throw new Error(pruned.stderr || pruned.error || "Could not prune task worktree registration.");
 		}
@@ -214,7 +212,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			const baseRefResult = await runGit(
 				context.repoPath,
 				["rev-parse", "--verify", `${baseRef}^{commit}`],
-				USER_GIT_ACTION_OPTIONS,
+				GIT_USER_ACTION_OPTIONS,
 			);
 			if (!baseRefResult.ok) {
 				throw new Error(
@@ -232,7 +230,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 			// Clean up stale worktree registrations that can linger when git
 			// worktree remove fails or the process is interrupted. Without this,
 			// git worktree add refuses with "missing but already registered".
-			await runGit(context.repoPath, ["worktree", "prune"], USER_GIT_ACTION_OPTIONS);
+			await runGit(context.repoPath, ["worktree", "prune"], GIT_USER_ACTION_OPTIONS);
 
 			await mkdir(dirname(worktreePath), { recursive: true });
 
@@ -241,7 +239,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				const branchArgs = branchCommit
 					? ["worktree", "add", worktreePath, options.branch]
 					: ["worktree", "add", "-b", options.branch, worktreePath, baseCommit];
-				const added = await runGit(context.repoPath, branchArgs, USER_GIT_ACTION_OPTIONS);
+				const added = await runGit(context.repoPath, branchArgs, GIT_USER_ACTION_OPTIONS);
 				if (added.ok) branch = options.branch;
 				else if (await taskWorktreeEntryExists(worktreePath)) {
 					if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {
@@ -266,7 +264,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				const added = await runGit(
 					context.repoPath,
 					["worktree", "add", "--detach", worktreePath, baseCommit],
-					USER_GIT_ACTION_OPTIONS,
+					GIT_USER_ACTION_OPTIONS,
 				);
 				if (!added.ok) {
 					if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {

@@ -17,6 +17,9 @@ import {
 } from "../../../scripts/agent-lab/fake-invocation-receipt";
 import { writeAgentProviderLaunchers } from "../../../scripts/agent-lab/fixture";
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
+import { useProcessTestBudget } from "../../utilities/process-test-budget";
+
+useProcessTestBudget();
 
 const execFileAsync = promisify(execFile);
 const receipt: FakeInvocationReceipt = {
@@ -79,8 +82,11 @@ async function launchFake(
 		["--import", "tsx", resolve("scripts/agent-lab/fake-codex.ts"), ...launch.args],
 		{
 			env: { ...environment, ...launch.env },
-			timeout: 5_000,
-			maxBuffer: 16_384,
+			timeout: 20_000,
+			// fake-codex.ts can write hook-error detail to stdout; 16KB was tight
+			// even without heavy load and raced a real "maxBuffer exceeded" error
+			// unrelated to the behavior under test.
+			maxBuffer: 1024 * 1024,
 		},
 	);
 	execution.child.stdin?.end("/exit 0\n");
@@ -115,8 +121,8 @@ describe("fake invocation receipts", () => {
 						QUARTERDECK_AGENT_LAB_TSX_CLI: resolve("node_modules/tsx/dist/cli.mjs"),
 						QUARTERDECK_AGENT_LAB_FAKE_AGENT: resolve("scripts/agent-lab/fake-codex.ts"),
 					},
-					timeout: 8_000,
-					maxBuffer: 16_384,
+					timeout: 20_000,
+					maxBuffer: 1024 * 1024,
 				});
 				// Keep an early child failure handled while polling its startup evidence.
 				const completion = execution.then(
@@ -128,7 +134,7 @@ describe("fake invocation receipts", () => {
 					if (!rootPid) throw new Error("Generated synthetic launcher did not start.");
 					await expect
 						.poll(() => readFakeInvocationReceipt({ stateHome, sessionInstanceId: "launch-one" }), {
-							timeout: 5_000,
+							timeout: 20_000,
 						})
 						.not.toBeNull();
 					const captured = await readFakeInvocationReceipt({ stateHome, sessionInstanceId: "launch-one" });

@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runGitCheckoutAction } from "../../src/workdir";
 import { stageAndCommitAll as commitAll, initGitRepository, runGit } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 function setupRemoteClone(
 	prefix: string,

@@ -3,9 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeGitCherryPickResponse } from "../core";
-import { hasGitRef, resolveRepoRoot, runGit, validateGitRef } from "./git-utils";
-
-const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+import {
+	GIT_USER_ACTION_OPTIONS,
+	GIT_USER_ACTION_PREFLIGHT_OPTIONS,
+	hasGitRef,
+	resolveRepoRoot,
+	runGit,
+	validateGitRef,
+} from "./git-utils";
 
 /**
  * Parse `git worktree list --porcelain` output to find which directory
@@ -30,7 +35,7 @@ export async function cherryPickCommit(options: {
 	commitHash: string;
 	targetBranch: string;
 }): Promise<RuntimeGitCherryPickResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const commitHash = options.commitHash.trim();
 	const targetBranch = options.targetBranch.trim();
 
@@ -99,10 +104,10 @@ async function cherryPickInDirectory(
 		};
 	}
 
-	const pickResult = await runGit(targetDir, ["cherry-pick", "--no-edit", commitHash], USER_GIT_ACTION_OPTIONS);
+	const pickResult = await runGit(targetDir, ["cherry-pick", "--no-edit", commitHash], GIT_USER_ACTION_OPTIONS);
 	if (!pickResult.ok) {
 		// Abort to restore clean state
-		await runGit(targetDir, ["cherry-pick", "--abort"], USER_GIT_ACTION_OPTIONS);
+		await runGit(targetDir, ["cherry-pick", "--abort"], GIT_USER_ACTION_OPTIONS);
 		return {
 			ok: false,
 			commitHash,
@@ -133,7 +138,7 @@ async function cherryPickViaTempWorktree(
 	const tempPath = join(tmpdir(), `qd-cherry-pick-${randomUUID()}`);
 
 	// Create a temp worktree checked out to the target branch
-	const addResult = await runGit(repoRoot, ["worktree", "add", tempPath, targetBranch], USER_GIT_ACTION_OPTIONS);
+	const addResult = await runGit(repoRoot, ["worktree", "add", tempPath, targetBranch], GIT_USER_ACTION_OPTIONS);
 	if (!addResult.ok) {
 		return {
 			ok: false,
@@ -145,9 +150,9 @@ async function cherryPickViaTempWorktree(
 	}
 
 	try {
-		const pickResult = await runGit(tempPath, ["cherry-pick", "--no-edit", commitHash], USER_GIT_ACTION_OPTIONS);
+		const pickResult = await runGit(tempPath, ["cherry-pick", "--no-edit", commitHash], GIT_USER_ACTION_OPTIONS);
 		if (!pickResult.ok) {
-			await runGit(tempPath, ["cherry-pick", "--abort"], USER_GIT_ACTION_OPTIONS);
+			await runGit(tempPath, ["cherry-pick", "--abort"], GIT_USER_ACTION_OPTIONS);
 			return {
 				ok: false,
 				commitHash,
@@ -169,6 +174,6 @@ async function cherryPickViaTempWorktree(
 		};
 	} finally {
 		// Always clean up the temp worktree
-		await runGit(repoRoot, ["worktree", "remove", "--force", tempPath], USER_GIT_ACTION_OPTIONS);
+		await runGit(repoRoot, ["worktree", "remove", "--force", tempPath], GIT_USER_ACTION_OPTIONS);
 	}
 }

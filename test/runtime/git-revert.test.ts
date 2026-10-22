@@ -10,7 +10,10 @@ import {
 } from "../../src/workdir/git-conflict";
 import { revertCommit } from "../../src/workdir/git-revert";
 import { configureGitTestRepository, createGitTestEnv } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 describe("revertCommit with a real synthetic repository", () => {
 	let temp: ReturnType<typeof createTempDir>;

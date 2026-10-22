@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,20 +7,44 @@ import {
 	loadRuntimeConfig,
 	pickBestInstalledAgentIdFromDetected,
 	resetAgentAvailabilityCache,
+	setAgentProbeTimeoutMsForTests,
 	updateRuntimeConfig,
 } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeCommand, writeFakeVersionedCommand } from "./runtime-config-helpers";
+
+/**
+ * POSIX/Windows fake agent binary whose `--version` (and `features list`)
+ * invocation fails outright (nonzero exit, no parseable version), to
+ * deterministically produce a transient `probe_failed` availability result
+ * without depending on real subprocess timing.
+ */
+function writeFailingFakeCommand(binDir: string, command: string): void {
+	mkdirSync(binDir, { recursive: true });
+	if (process.platform === "win32") {
+		writeFileSync(join(binDir, `${command}.cmd`), "@echo off\r\nexit /b 1\r\n", "utf8");
+		writeFileSync(join(binDir, `${command}.ps1`), "exit 1\r\n", "utf8");
+		return;
+	}
+	const scriptPath = join(binDir, command);
+	writeFileSync(scriptPath, "#!/bin/sh\nexit 1\n", "utf8");
+	chmodSync(scriptPath, 0o755);
+}
 
 describe("runtime-config auto agent selection", { concurrent: false }, () => {
 	beforeEach(() => {
 		// Each test simulates a distinct PATH/HOME environment; clear the availability
 		// cache so probes are re-run against the freshly staged fake binaries.
 		resetAgentAvailabilityCache();
+		// These tests probe real (near-instant) fake binaries. Pin the probe timeout
+		// to a short value so a run never depends on the production default's
+		// duration or on how loaded the host machine is.
+		setAgentProbeTimeoutMsForTests(2_000);
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
+		setAgentProbeTimeoutMsForTests(null);
 	});
 
 	it("selects agents using the configured priority order", () => {
@@ -209,6 +233,30 @@ describe("runtime-config auto agent selection", { concurrent: false }, () => {
 			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin }, async () => {
 				const state = await loadRuntimeConfig(null);
 				expect(state.selectedAgentId).toBe("claude");
+			});
+		} finally {
+			cleanupBin();
+			cleanupHome();
+		}
+	});
+
+	it("surfaces a transient agent-availability probe failure during a Settings agent change with task-launch-neutral wording", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-runtime-config-transient-");
+		const { path: tempBin, cleanup: cleanupBin } = createTempDir("quarterdeck-bin-runtime-config-transient-");
+
+		try {
+			writeFailingFakeCommand(tempBin, "codex");
+
+			await withTemporaryEnv({ home: tempHome, pathPrefix: tempBin, replacePath: true }, async () => {
+				await expect(updateRuntimeConfig(null, { selectedAgentId: "codex" })).rejects.toThrow(
+					/could not confirm "codex" is runnable right now/,
+				);
+				// `availability.statusMessage`'s task-launch wording ("Retry the
+				// task.") reads oddly in Settings, which is only switching the
+				// selected agent, not retrying a task.
+				await expect(updateRuntimeConfig(null, { selectedAgentId: "codex" })).rejects.not.toThrow(
+					/retry the task/i,
+				);
 			});
 		} finally {
 			cleanupBin();
