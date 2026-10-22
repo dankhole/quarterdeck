@@ -18,11 +18,12 @@ interface QueueHarness {
 function createHarness(): QueueHarness {
 	const writes: TerminalWriteData[] = [];
 	const terminal = {
+		reset: vi.fn(() => writes.push("<reset>")),
 		write: vi.fn((data: TerminalWriteData, callback?: () => void) => {
 			writes.push(data);
 			callback?.();
 		}),
-	} satisfies Pick<Terminal, "write">;
+	} satisfies Pick<Terminal, "write" | "reset">;
 	const sendControlMessage = vi.fn(() => true);
 	const notifyOutputText = vi.fn();
 	const isDisposed = vi.fn(() => false);
@@ -152,6 +153,20 @@ describe("SlotWriteQueue", () => {
 		await batched;
 
 		expect(writes).toEqual(["live"]);
+	});
+
+	it("fences old batched output callbacks while preserving output after a reset", async () => {
+		const { queue, writes, sendControlMessage, notifyOutputText } = createHarness();
+		const oldOutput = queue.enqueue("old", { ackBytes: 3, notifyText: "old", batch: true });
+		queue.reset();
+		const newOutput = queue.enqueue("new", { ackBytes: 3, notifyText: "new", batch: true });
+		await queue.drain();
+		await oldOutput;
+		await newOutput;
+
+		expect(writes).toEqual(["old", "<reset>", "new"]);
+		expect(sendControlMessage.mock.calls).toEqual([[{ type: "output_ack", bytes: 3 }]]);
+		expect(notifyOutputText.mock.calls).toEqual([["new"]]);
 	});
 
 	it("flushes promptly with the timeout fallback", async () => {

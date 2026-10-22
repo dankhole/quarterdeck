@@ -47,6 +47,7 @@ export class TerminalAttachmentController {
 	private readonly viewport: TerminalViewport;
 	private readonly session: TerminalSessionHandle;
 	private showTimestamp: number | null = null;
+	private attachmentGeneration = 0;
 
 	constructor(
 		private readonly slotId: number,
@@ -113,11 +114,15 @@ export class TerminalAttachmentController {
 				void this.viewport.enqueueWrite(data, options);
 			},
 			applyRestore: async (snapshot, cols, rows) => {
+				const generation = this.attachmentGeneration;
 				await this.viewport.applyRestoreSnapshot(snapshot, cols, rows);
+				if (generation !== this.attachmentGeneration) {
+					return;
+				}
 				const isInteractive = await this.viewport.finalizeRestorePresentation({
 					hasActiveIoSocket: this.session.hasIoSocket,
 				});
-				if (isInteractive) {
+				if (isInteractive && generation === this.attachmentGeneration) {
 					this.session.notifyConnectionReadyAfterRestore(this.showTimestamp);
 					this.showTimestamp = null;
 				}
@@ -190,6 +195,9 @@ export class TerminalAttachmentController {
 	}
 
 	connectToTask(taskId: string, projectId: string): void {
+		if (this.connectedTaskId && (this.connectedTaskId !== taskId || this.connectedProjectId !== projectId)) {
+			void this.disconnectFromTask();
+		}
 		this.session.connectToTask(taskId, projectId);
 	}
 
@@ -199,11 +207,14 @@ export class TerminalAttachmentController {
 			return;
 		}
 		clearTerminalGeometry(previousTaskId);
-
+		this.attachmentGeneration += 1;
+		this.showTimestamp = null;
+		this.viewport.hide();
+		// Queue the reset before returning control to the pool. A slot can be
+		// rebound synchronously while old writes are still draining; the reset
+		// must separate those writes from the new task's output in either case.
+		this.viewport.resetBuffer();
 		await this.viewport.drainWrites();
-		if (!this.connectedTaskId) {
-			this.viewport.resetBuffer();
-		}
 	}
 
 	onceConnectionReady(callback: () => void): void {

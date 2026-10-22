@@ -107,6 +107,7 @@ export class SlotWriteQueue {
 	private pendingBatch: PendingWriteBatch | null = null;
 	private batchFrameId: number | null = null;
 	private batchTimeoutId: ReturnType<typeof setTimeout> | null = null;
+	private generation = 0;
 
 	constructor(
 		private readonly terminal: Terminal,
@@ -153,6 +154,7 @@ export class SlotWriteQueue {
 			notifyText: string | null;
 		},
 	): Promise<void> {
+		const generation = this.generation;
 		this.queue = this.queue
 			.catch(() => undefined)
 			.then(
@@ -163,6 +165,10 @@ export class SlotWriteQueue {
 							return;
 						}
 						this.terminal.write(data, () => {
+							if (generation !== this.generation || this.callbacks.isDisposed()) {
+								resolve();
+								return;
+							}
 							if (options.notifyText) {
 								this.callbacks.notifyOutputText(options.notifyText);
 							}
@@ -220,6 +226,14 @@ export class SlotWriteQueue {
 	async drain(): Promise<void> {
 		this.flushPendingBatch();
 		await this.queue.catch(() => undefined);
+	}
+
+	reset(): void {
+		this.flushPendingBatch();
+		// Pending old output still drains before the reset, but its completion
+		// cannot acknowledge bytes or publish text into the next attachment.
+		this.generation += 1;
+		this.chainAction((terminal) => terminal.reset(), this.callbacks.isDisposed);
 	}
 
 	chainAction(action: (terminal: Terminal) => void, isDisposed: () => boolean): void {

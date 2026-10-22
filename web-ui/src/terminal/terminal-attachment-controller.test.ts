@@ -87,16 +87,24 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 			hasRenderedContent: callbacks.hasRenderedContent,
 			sessionAgentId: nextSessionAgentId,
 			sessionState: null,
-			connectedTaskId: null,
-			connectedProjectId: null,
+			connectedTaskId: null as string | null,
+			connectedProjectId: null as string | null,
 			hasIoSocket: false,
 			hasControlSocket: false,
 			isIoOpen: false,
 			restoreCompleted: false,
 			ensureConnected: vi.fn(),
 			reconnect: vi.fn(),
-			connectToTask: vi.fn(),
-			disconnectFromTask: vi.fn(() => null),
+			connectToTask: vi.fn((taskId: string, projectId: string) => {
+				instance.connectedTaskId = taskId;
+				instance.connectedProjectId = projectId;
+			}),
+			disconnectFromTask: vi.fn(() => {
+				const taskId = instance.connectedTaskId;
+				instance.connectedTaskId = null;
+				instance.connectedProjectId = null;
+				return taskId;
+			}),
 			onceConnectionReady: vi.fn(),
 			subscribe: vi.fn(() => vi.fn()),
 			sendControl: vi.fn(),
@@ -270,6 +278,42 @@ describe("TerminalAttachmentController", () => {
 
 		expect(session.notifyConnectionReadyAfterRestore).not.toHaveBeenCalled();
 	});
+
+	it.each(["applying", "presenting"])(
+		"does not report old restore readiness after reassignment while %s",
+		async (phase) => {
+			const pending = createDeferred<void>();
+			const controller = new TerminalAttachmentController(
+				1,
+				{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+				{ isDisposed: () => false },
+			);
+			controller.connectToTask("old-task", "project");
+			const viewport = getLatestViewport();
+			const session = getLatestSession();
+			session.hasIoSocket = true;
+			if (phase === "applying") {
+				viewport.applyRestoreSnapshot.mockImplementationOnce(() => pending.promise);
+			} else {
+				viewport.finalizeRestorePresentation.mockImplementationOnce(async () => {
+					await pending.promise;
+					return true;
+				});
+			}
+			const oldRestore = session.emitRestore("old snapshot");
+			await Promise.resolve();
+			const disconnect = controller.disconnectFromTask();
+			controller.connectToTask("new-task", "project");
+			pending.resolve();
+			await oldRestore;
+			await disconnect;
+
+			expect(session.notifyConnectionReadyAfterRestore).not.toHaveBeenCalled();
+			if (phase === "applying") {
+				expect(viewport.finalizeRestorePresentation).not.toHaveBeenCalled();
+			}
+		},
+	);
 
 	it("does not report restore readiness before an IO socket exists", async () => {
 		new TerminalAttachmentController(

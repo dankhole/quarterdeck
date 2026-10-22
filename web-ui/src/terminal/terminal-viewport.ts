@@ -54,6 +54,7 @@ export class TerminalViewport {
 		resolve: (completed: boolean) => void;
 	} | null = null;
 	private revealSequence = 0;
+	private bufferGeneration = 0;
 	private appearance: PersistentTerminalAppearance;
 
 	constructor(
@@ -232,12 +233,16 @@ export class TerminalViewport {
 		cols: number | null | undefined,
 		rows: number | null | undefined,
 	): Promise<void> {
+		const generation = this.bufferGeneration;
 		this.resizer.invalidate();
 		// Live IO output and control restore messages can race. Drain queued
 		// writes before deciding whether an empty restore is safe; otherwise an
 		// empty stale snapshot can reset content that has reached the queue but
 		// not xterm yet.
 		await this.writeQueue.drain();
+		if (generation !== this.bufferGeneration || this.callbacks.isDisposed()) {
+			return;
+		}
 		if (shouldSkipEmptyRestoreSnapshot(snapshot, this.readBufferLines())) {
 			log.warn(`slot ${this.slotId} skipped empty restore over non-empty terminal buffer`, {
 				taskId: this.callbacks.getConnectedTaskId(),
@@ -351,10 +356,10 @@ export class TerminalViewport {
 	}
 
 	resetBuffer(): void {
-		this.writeQueue.chainAction(
-			(terminal) => terminal.reset(),
-			() => this.callbacks.isDisposed(),
-		);
+		// An old control restore may still be awaiting its write drain when the
+		// attachment changes. It must not repopulate this buffer after the reset.
+		this.bufferGeneration += 1;
+		this.writeQueue.reset();
 	}
 
 	input(text: string): void {
