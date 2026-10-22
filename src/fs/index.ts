@@ -1,4 +1,4 @@
-export { IN_PROCESS_LOCK_SLOW_WAIT_MS, InProcessLockReentryError } from "./in-process-lock-owners";
+export { IN_PROCESS_LOCK_SLOW_WAIT_MS } from "./in-process-lock-owners";
 export {
 	cleanStaleGitIndexLocks,
 	cleanStaleIndexLockForWorktree,

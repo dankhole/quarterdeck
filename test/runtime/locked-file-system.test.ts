@@ -27,12 +27,7 @@ vi.mock("proper-lockfile", () => ({
 }));
 
 import { setRuntimeDiagnosticLogSink } from "../../src/core/runtime-logger";
-import {
-	cleanupStaleLockAndTempFiles,
-	IN_PROCESS_LOCK_SLOW_WAIT_MS,
-	InProcessLockReentryError,
-	LockedFileSystem,
-} from "../../src/fs";
+import { cleanupStaleLockAndTempFiles, IN_PROCESS_LOCK_SLOW_WAIT_MS, LockedFileSystem } from "../../src/fs";
 
 describe("LockedFileSystem", () => {
 	beforeEach(() => {
@@ -231,7 +226,7 @@ describe("LockedFileSystem", () => {
 			}
 		});
 
-		it("rejects re-entry of a held serialized lock while allowing sequential, detached, and lock-free nested work", async () => {
+		it("bounds re-entry of a held serialized lock by the filesystem retry budget while allowing sequential, detached, and lock-free nested work", async () => {
 			const tempDir = createTempDir("quarterdeck-locked-fs-reentry-");
 			try {
 				const lockedFileSystem = new LockedFileSystem("win32");
@@ -239,15 +234,16 @@ describe("LockedFileSystem", () => {
 				await lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => {
 					await expect(
 						lockedFileSystem.withLock(serialized(tempDir.path, "P.LOCK"), async () => "nested"),
-					).rejects.toBeInstanceOf(InProcessLockReentryError);
+					).rejects.toThrow("Lock file is already being held");
 					await expect(
 						lockedFileSystem.withLocks(
 							[{ path: join(tempDir.path, "other.json") }, serialized(tempDir.path, "p.lock")],
 							async () => "nested multi",
 						),
-					).rejects.toBeInstanceOf(InProcessLockReentryError);
+					).rejects.toThrow("Lock file is already being held");
 					await lockedFileSystem.writeTextFileAtomic(join(tempDir.path, "state.json"), "{}", { lock: null });
 					await lockedFileSystem.withLock(serialized(tempDir.path, "other.lock"), async () => {});
+					// Detached work started under the lock acquires it after the release.
 					detached = new Promise<void>((resolve) => setTimeout(resolve, 10)).then(() =>
 						lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "detached result"),
 					);
@@ -276,6 +272,12 @@ describe("LockedFileSystem", () => {
 				await vi.waitFor(() => expect(lockfileMocks.lock).toHaveBeenCalledTimes(1));
 				vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
 				const queued = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "queued result");
+				// The waiter arms its slow-wait timer after async admission; on a slow
+				// runner that can land after an immediate advance, so wait for it.
+				for (let tick = 0; tick < 200 && vi.getTimerCount() === 0; tick += 1) {
+					await new Promise<void>((resolveTick) => setImmediate(resolveTick));
+				}
+				expect(vi.getTimerCount()).toBeGreaterThan(0);
 				await vi.advanceTimersByTimeAsync(IN_PROCESS_LOCK_SLOW_WAIT_MS - 1);
 				expect(records).toEqual([]);
 				await vi.advanceTimersByTimeAsync(IN_PROCESS_LOCK_SLOW_WAIT_MS * 3);

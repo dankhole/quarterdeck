@@ -27,9 +27,10 @@ interface BaseLockRequest {
 	 * is unfair: an owner that releases and immediately re-requests wins over
 	 * sleeping waiters, so heavily shared locks with slow holds (durable writes on
 	 * Windows) can exhaust a waiter's retry budget without any other process.
-	 * The retry budget still bounds cross-process contention. Re-entry from the
-	 * owning async context throws `InProcessLockReentryError`; still never nest
-	 * serialized locks in conflicting orders.
+	 * The retry budget still bounds cross-process contention. A request from an
+	 * async context that already holds the lock (re-entry, or detached work it
+	 * started) skips the queue and uses that budget, so re-entry fails visibly
+	 * instead of deadlocking; still never nest serialized locks in conflicting orders.
 	 */
 	serializeInProcess?: boolean;
 }
