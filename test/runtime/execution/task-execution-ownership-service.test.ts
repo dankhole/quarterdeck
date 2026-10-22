@@ -236,20 +236,21 @@ class ProtocolTransport implements CodexAppServerTransport {
 const originalStateHome = process.env.QUARTERDECK_STATE_HOME;
 const originalCodexHome = process.env.CODEX_HOME;
 const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-let cleanup = () => {};
+let cleanup: () => Promise<void> = async () => {};
 let root = "";
 
 beforeEach(() => {
 	const temp = createTempDir("quarterdeck-ownership-service-");
 	root = temp.path;
-	cleanup = temp.cleanup;
+	cleanup = temp.cleanupAsync;
 	process.env.QUARTERDECK_STATE_HOME = root;
 	process.env.CODEX_HOME = `${root}/codex-home`;
 	process.env.CLAUDE_CONFIG_DIR = `${root}/claude-home`;
 });
 
-afterEach(() => {
-	cleanup();
+afterEach(async () => {
+	// Async: pending lock releases must run before the state directory is removed.
+	await cleanup();
 	if (originalStateHome === undefined) delete process.env.QUARTERDECK_STATE_HOME;
 	else process.env.QUARTERDECK_STATE_HOME = originalStateHome;
 	if (originalCodexHome === undefined) delete process.env.CODEX_HOME;

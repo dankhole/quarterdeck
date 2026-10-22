@@ -1,4 +1,5 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
+import { extname } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandDiscoveryMocks = vi.hoisted(() => ({
@@ -568,33 +569,14 @@ describe("agent-registry", () => {
 	// implementation, proving `runProbeCommand`'s actual timing behavior end to end
 	// (no execFile mock deciding the outcome).
 	describe("runProbeCommand against real child processes", () => {
-		beforeEach((context) => {
-			// CI-only evidence for platform-specific probe failures: record the exact
-			// execFile outcome each real probe child reports (content is synthetic).
-			const outcomes: unknown[] = [];
-			context.onTestFailed(() => {
-				console.error("probe execFile outcomes", JSON.stringify(outcomes));
-			});
-			childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
-				const callback = args.at(-1);
-				if (typeof callback === "function") {
-					const startedAt = Date.now();
-					args[args.length - 1] = (error: ExecFileException | null, stdout: string, stderr: string) => {
-						outcomes.push({
-							file: args[0],
-							elapsedMs: Date.now() - startedAt,
-							code: error?.code ?? null,
-							signal: error?.signal ?? null,
-							killed: error?.killed ?? null,
-							message: error?.message?.slice(0, 300) ?? null,
-							stdout: String(stdout ?? "").slice(0, 200),
-							stderr: String(stderr ?? "").slice(0, 500),
-						});
-						(callback as ExecFileCallback)(error, stdout, stderr);
-					};
-				}
-				return (childProcessMocks.realExecFile as (...forwarded: unknown[]) => ChildProcess)(...args);
-			});
+		beforeEach(() => {
+			childProcessMocks.execFile.mockImplementation(childProcessMocks.realExecFile);
+			// The file-level stub maps every binary to C:\tools\<binary>.exe; these
+			// tests launch the real absolute Node executable, so resolve it as itself.
+			commandDiscoveryMocks.resolveWindowsBinaryPath.mockImplementation((binary: string) => ({
+				extension: extname(binary).toLowerCase(),
+				path: binary,
+			}));
 			// These tests pass their own explicit timeoutMs to prove real timing
 			// behavior end to end; undo the file-level test-seam override (which
 			// takes priority over an explicit arg) so it doesn't shadow it.
