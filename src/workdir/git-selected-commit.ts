@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 import { createGitProcessEnv } from "../core";
 import { removeDirectoryWithRetries } from "../fs/remove-path";
-import { getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
+import { GIT_USER_ACTION_OPTIONS, getGitStdout, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 
 async function copyIndex(source: string, target: string): Promise<void> {
 	const metadata = await stat(source);
@@ -17,7 +17,7 @@ async function copyIndex(source: string, target: string): Promise<void> {
 
 /** Build a selected-file commit without changing the user's index until it succeeds. */
 export async function commitSelectedPaths(repoRoot: string, paths: string[], message: string) {
-	const options = { timeoutClass: "userAction" } as const;
+	const options = GIT_USER_ACTION_OPTIONS;
 	let tempDir: string | undefined;
 	let indexLockPath: string | undefined;
 	let commitHash: string | undefined;
