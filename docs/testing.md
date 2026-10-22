@@ -8,9 +8,10 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 
 - Start from the changed ownership boundary and the failure the test must detect.
 - Prefer focused tests while implementing. Add one caller-path test when a pure unit test would miss wiring or ownership mistakes.
+- Locally, run focused tests plus the typecheck for each changed lane. Leave full root, web, and desktop suites to CI: the real Git, filesystem, and process tests time out or race when a busy workstation runs them alongside parallel agents, so a local full-suite failure is weak evidence either way.
 - Do not run an umbrella command and all of its constituent commands on the same unchanged tree.
 - Re-run only validation affected by files changed since the last successful run.
-- Reconcile or merge the final base before any broad final gate. A pre-merge full run does not validate the merged tree.
+- Reconcile or merge the final base before relying on a broad gate. A pre-merge full run does not validate the merged tree. CI on the pushed branch or pull request is the broad gate; dispatch the `Test` workflow for a branch without a pull request.
 - Do not repeat validation after a squash or history-only rewrite when the resulting tree is identical.
 - Treat documentation-only work as documentation work. It does not invalidate runtime or browser behavior.
 - In the handoff, report what ran, why it was selected, and any relevant layer deliberately not used.
@@ -30,7 +31,7 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | Provider TUI, hook schema, event ordering, version compatibility, or launcher uncertainty | One narrow, explicitly authorized real-provider Agent Lab scenario | Keep fake coverage for deterministic product behavior; never make the real lane a general regression suite. |
 | Visual layout, clipping, paint, stacking, contrast, or responsive behavior | Pixel screenshot at the affected viewport plus semantic state | Skip screenshots for lifecycle or semantic bugs whose visual rendering is not disputed. |
 | Documentation only | Formatting, `check:agent-instructions` when its bridge changed, and validation of links added or changed | Run code tests only when documentation tooling or executable examples changed. |
-| Broad final integration or release readiness | One appropriate umbrella gate on the final reconciled tree | Add web, E2E, or provider lanes only when those surfaces changed or the release gate requires them. |
+| Broad final integration or release readiness | CI on the final reconciled, pushed tree | Run a local umbrella command only to reproduce a CI failure or when CI cannot cover the surface. Add web, E2E, or provider lanes only when those surfaces changed or the release gate requires them. |
 
 ## Command scopes
 
