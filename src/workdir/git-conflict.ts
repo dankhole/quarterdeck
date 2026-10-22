@@ -399,7 +399,7 @@ export async function abortMergeOrRebase(cwd: string): Promise<RuntimeConflictAb
 
 export async function runGitRebaseAction(options: { cwd: string; onto: string }): Promise<RuntimeGitRebaseResponse> {
 	const ontoRef = options.onto.trim();
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const initialSummary = await getGitSyncSummary(repoRoot);
 
 	if (!ontoRef || !validateGitRef(ontoRef)) {
@@ -462,7 +462,7 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 
 export async function runGitMergeAction(options: { cwd: string; branch: string }): Promise<RuntimeGitMergeResponse> {
 	const branchToMerge = options.branch.trim();
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const initialSummary = await getGitSyncSummary(repoRoot);
 
 	if (!branchToMerge || !validateGitRef(branchToMerge)) {

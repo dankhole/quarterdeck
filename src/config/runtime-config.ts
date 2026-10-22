@@ -58,9 +58,25 @@ async function pickBestInstalledAgentId() {
 	return pickBestInstalledAgentIdFromDetected(await detectRunnableAgentIds());
 }
 
-async function assertSelectedAgentRunnable(selectedAgentId: RuntimeAgentId): Promise<void> {
-	const availability = await getAgentAvailability(selectedAgentId, { allowStale: false, forceRefresh: true });
+async function assertSelectedAgentRunnable(
+	selectedAgentId: RuntimeAgentId,
+	options: { forceRefresh?: boolean } = {},
+): Promise<void> {
+	const availability = await getAgentAvailability(selectedAgentId, {
+		allowStale: false,
+		forceRefresh: options.forceRefresh ?? true,
+	});
 	if (!availability.installed) {
+		if (availability.transient) {
+			// `availability.statusMessage` is written for the task-launch context
+			// ("Retry the task.") which reads oddly here: Settings is only switching
+			// the selected agent, not retrying a task.
+			throw new Error(
+				`Quarterdeck could not confirm "${selectedAgentId}" is runnable right now (the availability check ${
+					availability.reason === "probe_timeout" ? "timed out" : "failed"
+				}). Try again in a moment.`,
+			);
+		}
 		throw new Error(availability.statusMessage ?? `Selected agent "${selectedAgentId}" is not runnable.`);
 	}
 }
@@ -88,19 +104,28 @@ async function applyConfigUpdates({
 	projectId,
 	current,
 	updates,
+	agentAvailabilityPreValidated = false,
 }: {
 	globalConfigPath: string;
 	projectConfigPath: string | null;
 	projectId: string | null;
 	current: RuntimeConfigState;
 	updates: RuntimeConfigUpdateInput;
+	/**
+	 * The caller already ran a full `assertSelectedAgentRunnable` probe for this
+	 * exact `updates.selectedAgentId` before acquiring the config lock (see
+	 * `updateRuntimeConfig`), so a slow probe never holds the lock and starves
+	 * concurrent config writers. Re-validate here using only the now-warm cache
+	 * (no forced reprobe); a cache miss still falls back to a real probe.
+	 */
+	agentAvailabilityPreValidated?: boolean;
 }): Promise<RuntimeConfigState> {
 	const currentFields = extractGlobalConfigFields(current);
 	const mergedFields = mergeGlobalConfigFields(currentFields, updates);
 
 	const nextSelectedAgentId = updates.selectedAgentId ?? current.selectedAgentId;
 	if (updates.selectedAgentId !== undefined) {
-		await assertSelectedAgentRunnable(nextSelectedAgentId);
+		await assertSelectedAgentRunnable(nextSelectedAgentId, { forceRefresh: !agentAvailabilityPreValidated });
 	}
 	const nextSelectedShortcutLabel =
 		updates.selectedShortcutLabel === undefined ? current.selectedShortcutLabel : updates.selectedShortcutLabel;
@@ -274,6 +299,13 @@ export async function updateRuntimeConfig(
 	onUpdated?: RuntimeConfigUpdateObserver,
 ): Promise<RuntimeConfigState> {
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(projectId);
+	// Probe agent availability before acquiring the config lock. A slow probe
+	// (timeout under load) must never hold the lock, or concurrent config writers
+	// exhaust their bounded lock-retry budget. `applyConfigUpdates` re-validates
+	// this exact agent from the now-warm cache inside the lock.
+	if (updates.selectedAgentId !== undefined) {
+		await assertSelectedAgentRunnable(updates.selectedAgentId);
+	}
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(projectId), async () => {
 		const current = await loadRuntimeConfigLocked(projectId);
 		if (projectConfigPath === null && normalizeShortcuts(updates.shortcuts).length > 0) {
@@ -282,7 +314,14 @@ export async function updateRuntimeConfig(
 		if (projectConfigPath === null && normalizeWorktreeSetupScript(updates.worktreeSetupScript)) {
 			throw new Error("Cannot save a worktree setup script without a selected project.");
 		}
-		const next = await applyConfigUpdates({ globalConfigPath, projectConfigPath, projectId, current, updates });
+		const next = await applyConfigUpdates({
+			globalConfigPath,
+			projectConfigPath,
+			projectId,
+			current,
+			updates,
+			agentAvailabilityPreValidated: updates.selectedAgentId !== undefined,
+		});
 		// Capture changes under the persistence lock, before another save can replace them.
 		onUpdated?.(current, next);
 		return next;
@@ -295,6 +334,12 @@ export async function updateGlobalRuntimeConfig(
 	onUpdated?: RuntimeConfigUpdateObserver,
 ): Promise<RuntimeConfigState> {
 	const globalConfigPath = getRuntimeGlobalConfigPath();
+	// Probe agent availability before acquiring the config lock, for the same
+	// reason as `updateRuntimeConfig`: a slow probe must never hold the lock and
+	// starve concurrent config writers.
+	if (updates.selectedAgentId !== undefined) {
+		await assertSelectedAgentRunnable(updates.selectedAgentId);
+	}
 	return await lockedFileSystem.withLocks([{ path: globalConfigPath, type: "file" }], async () => {
 		// The caller's active state can predate a concurrent global save. Refresh global
 		// values inside the lock while retaining its project-only presentation state.
@@ -313,6 +358,7 @@ export async function updateGlobalRuntimeConfig(
 			projectId: null,
 			current: previous,
 			updates,
+			agentAvailabilityPreValidated: updates.selectedAgentId !== undefined,
 		});
 		const next = { ...result, projectConfigPath: current.projectConfigPath };
 		onUpdated?.(previous, next);

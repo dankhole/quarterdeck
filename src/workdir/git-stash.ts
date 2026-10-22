@@ -20,7 +20,7 @@ export async function stashPush(options: {
 	paths?: string[];
 	message?: string;
 }): Promise<RuntimeStashPushResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const paths = options.paths ?? [];
 
 	for (const p of paths) {
@@ -55,7 +55,7 @@ export async function stashPush(options: {
  * Uses a custom format to parse index, subject (branch + message), and date.
  */
 export async function stashList(cwd: string): Promise<RuntimeStashListResponse> {
-	const repoRoot = await resolveRepoRoot(cwd);
+	const repoRoot = await resolveRepoRoot(cwd, GIT_INSPECTION_OPTIONS);
 
 	const result = await runGit(repoRoot, ["stash", "list", "--format=%gd%x1f%gs%x1f%ci"], GIT_INSPECTION_OPTIONS);
 	if (!result.ok) {
@@ -104,7 +104,7 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
  * If conflicts occur, the entry is NOT removed (git's default behavior).
  */
 export async function stashPop(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const result = await runGit(repoRoot, ["stash", "pop", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
 
 	if (!result.ok) {
@@ -125,7 +125,7 @@ export async function stashPop(options: { cwd: string; index: number }): Promise
  * If conflicts occur, changes are partially applied.
  */
 export async function stashApply(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const result = await runGit(repoRoot, ["stash", "apply", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
 
 	if (!result.ok) {
@@ -145,7 +145,7 @@ export async function stashApply(options: { cwd: string; index: number }): Promi
  * Drop a stash entry by index without applying it.
  */
 export async function stashDrop(options: { cwd: string; index: number }): Promise<RuntimeStashDropResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const result = await runGit(repoRoot, ["stash", "drop", `stash@{${options.index}}`], USER_GIT_ACTION_OPTIONS);
 
 	if (!result.ok) {
@@ -159,7 +159,7 @@ export async function stashDrop(options: { cwd: string; index: number }): Promis
  * Show the diff of a stash entry.
  */
 export async function stashShow(options: { cwd: string; index: number }): Promise<RuntimeStashShowResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, GIT_INSPECTION_OPTIONS);
 	const result = await runGit(repoRoot, ["stash", "show", "-p", `stash@{${options.index}}`], GIT_INSPECTION_OPTIONS);
 
 	if (!result.ok) {

@@ -19,7 +19,10 @@ import {
 	initGitRepository as initRepository,
 	runGit,
 } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 /**
  * Like runGit but does not throw on non-zero exit — returns the exit code.

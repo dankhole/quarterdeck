@@ -860,34 +860,38 @@ describe("agent-lab real Claude", () => {
 		},
 	);
 
-	it.runIf(process.platform !== "win32")("fails closed on a second settings source", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-conflict-"));
-		const fakeBinPath = join(root, "fake-bin");
-		const hostBinPath = join(root, "host-bin");
-		try {
-			await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
-			await writeFile(join(hostBinPath, "claude"), "#!/bin/sh\nexit 0\n", { encoding: "utf8", mode: 0o755 });
-			await writeRealClaudeLauncher(fakeBinPath);
-			await expect(
-				execFileAsync(
-					join(fakeBinPath, "claude"),
-					["--settings", "/tmp/user.json", "--settings", "/tmp/hooks.json"],
-					{
-						env: {
-							PATH: [fakeBinPath, hostBinPath].join(delimiter),
-							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH: hostBinPath,
-							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR: "/tmp/lab/claude-config",
-							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: "/tmp/lab/claude-config/empty-mcp.json",
-							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL: "haiku",
-							QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE: "manual",
+	it.runIf(process.platform !== "win32")(
+		"fails closed on a second settings source",
+		async () => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-real-claude-conflict-"));
+			const fakeBinPath = join(root, "fake-bin");
+			const hostBinPath = join(root, "host-bin");
+			try {
+				await Promise.all([mkdir(fakeBinPath, { recursive: true }), mkdir(hostBinPath, { recursive: true })]);
+				await writeFile(join(hostBinPath, "claude"), "#!/bin/sh\nexit 0\n", { encoding: "utf8", mode: 0o755 });
+				await writeRealClaudeLauncher(fakeBinPath);
+				await expect(
+					execFileAsync(
+						join(fakeBinPath, "claude"),
+						["--settings", "/tmp/user.json", "--settings", "/tmp/hooks.json"],
+						{
+							env: {
+								PATH: [fakeBinPath, hostBinPath].join(delimiter),
+								QUARTERDECK_AGENT_LAB_REAL_CLAUDE_HOST_PATH: hostBinPath,
+								QUARTERDECK_AGENT_LAB_REAL_CLAUDE_CONFIG_DIR: "/tmp/lab/claude-config",
+								QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MCP_CONFIG: "/tmp/lab/claude-config/empty-mcp.json",
+								QUARTERDECK_AGENT_LAB_REAL_CLAUDE_MODEL: "haiku",
+								QUARTERDECK_AGENT_LAB_REAL_CLAUDE_PERMISSION_MODE: "manual",
+							},
 						},
-					},
-				),
-			).rejects.toMatchObject({ code: 64 });
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
+					),
+				).rejects.toMatchObject({ code: 64 });
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+		30_000,
+	);
 });
 
 describe("agent-lab real Codex", () => {

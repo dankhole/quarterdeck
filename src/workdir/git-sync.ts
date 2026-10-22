@@ -16,6 +16,24 @@ import { hasGitRef, resolveRepoRoot, runGit, validateGitPath, validateGitRef } f
 
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
+/**
+ * Fetch the post-action summary, but never let a summary-probe failure (e.g. a
+ * timeout under load) reject an action whose own Git command already succeeded.
+ * Falls back to the caller's best prior summary, flagged `stale`, so the response
+ * still reports success with the last known working-tree state instead of an
+ * unrelated error.
+ */
+async function getGitSyncSummaryOrStale(
+	cwd: string,
+	staleFallback: RuntimeGitSyncSummary,
+): Promise<RuntimeGitSyncSummary> {
+	try {
+		return await getGitSyncSummary(cwd);
+	} catch {
+		return { ...staleFallback, stale: true };
+	}
+}
+
 export async function runGitSyncAction(options: {
 	cwd: string;
 	action: RuntimeGitSyncAction;
@@ -64,7 +82,7 @@ export async function runGitSyncAction(options: {
 	}
 
 	const commandResult = await runGit(options.cwd, gitArgs, USER_GIT_ACTION_OPTIONS);
-	const nextSummary = await getGitSyncSummary(options.cwd);
+	const nextSummary = await getGitSyncSummaryOrStale(options.cwd, initialSummary ?? createEmptySummary());
 
 	if (!commandResult.ok) {
 		return {
@@ -129,7 +147,7 @@ export async function runGitCheckoutAction(options: {
 		};
 	}
 
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const remoteTrackingRef = await resolveRemoteTrackingRef(repoRoot, requestedBranch, requestedRemoteRef);
 	const localBranchForRemote = remoteTrackingRef ? localBranchNameForRemoteRef(remoteTrackingRef.name) : null;
 
@@ -166,7 +184,7 @@ export async function runGitCheckoutAction(options: {
 			USER_GIT_ACTION_OPTIONS,
 		);
 	}
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, initialSummary);
 
 	if (!commandResult.ok) {
 		const dirtyTreePattern = /(?:local changes|uncommitted changes|overwritten by checkout)/i;
@@ -241,7 +259,7 @@ export async function createBranchFromRef(options: {
 	branchName: string;
 	startRef: string;
 }): Promise<RuntimeGitCreateBranchResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const branchName = options.branchName.trim();
 	const startRef = options.startRef.trim();
 
@@ -280,7 +298,7 @@ export async function deleteBranch(options: {
 	cwd: string;
 	branchName: string;
 }): Promise<RuntimeGitDeleteBranchResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const branchName = options.branchName.trim();
 
 	if (!branchName || !validateGitRef(branchName)) {
@@ -318,7 +336,7 @@ export async function renameBranch(options: {
 	oldName: string;
 	newName: string;
 }): Promise<RuntimeGitRenameBranchResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const oldName = options.oldName.trim();
 	const newName = options.newName.trim();
 
@@ -353,7 +371,7 @@ export async function renameBranch(options: {
 }
 
 export async function resetToRef(options: { cwd: string; ref: string }): Promise<RuntimeGitResetToRefResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const targetRef = options.ref.trim();
 
 	if (!targetRef || !validateGitRef(targetRef)) {
@@ -368,7 +386,7 @@ export async function resetToRef(options: { cwd: string; ref: string }): Promise
 	}
 
 	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef], USER_GIT_ACTION_OPTIONS);
-	const summary = await getGitSyncSummary(repoRoot);
+	const summary = await getGitSyncSummaryOrStale(repoRoot, createEmptySummary());
 
 	if (!resetResult.ok) {
 		return {
@@ -384,7 +402,7 @@ export async function resetToRef(options: { cwd: string; ref: string }): Promise
 }
 
 export async function discardGitChanges(options: { cwd: string }): Promise<RuntimeGitDiscardResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const initialSummary = await getGitSyncSummary(repoRoot);
 
 	if (initialSummary.changedFiles === 0) {
@@ -403,7 +421,7 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 	const cleanResult = restoreResult.ok
 		? await runGit(repoRoot, ["clean", "-fd", "--", "."], USER_GIT_ACTION_OPTIONS)
 		: null;
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, initialSummary);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");
 
 	if (!restoreResult.ok) {
@@ -449,7 +467,7 @@ export async function commitSelectedFiles(options: {
 	message: string;
 	pushAfterCommit?: boolean;
 }): Promise<RuntimeGitCommitResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 
 	// Validate all paths before any git operations.
 	for (const p of options.paths) {
@@ -489,7 +507,7 @@ export async function discardSingleFile(options: {
 	path: string;
 	fileStatus: string;
 }): Promise<RuntimeGitDiscardResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 
 	if (!validateGitPath(options.path)) {
 		return {
@@ -524,7 +542,7 @@ export async function discardSingleFile(options: {
 					USER_GIT_ACTION_OPTIONS,
 				);
 
-	const nextSummary = await getGitSyncSummary(repoRoot);
+	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, createEmptySummary());
 
 	if (!result.ok) {
 		return {

@@ -30,7 +30,7 @@ export async function cherryPickCommit(options: {
 	commitHash: string;
 	targetBranch: string;
 }): Promise<RuntimeGitCherryPickResponse> {
-	const repoRoot = await resolveRepoRoot(options.cwd);
+	const repoRoot = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const commitHash = options.commitHash.trim();
 	const targetBranch = options.targetBranch.trim();
 

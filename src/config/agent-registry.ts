@@ -74,12 +74,33 @@ const MINIMUM_CODEX_VERSION = "0.157.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
 export const SUPPORTED_PI_VERSION = "1.4.0";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
-const CODEX_PROBE_TIMEOUT_MS = 3_000;
+/**
+ * Applies to every agent's `--version` probe and Codex's `features list` probe.
+ * Under heavy machine load a genuinely installed CLI can take several seconds to
+ * spawn and answer; keep this generous so load alone never reports an agent
+ * unavailable (see `resolveAgentAvailability`'s never-cache-timeouts policy).
+ */
+const DEFAULT_AGENT_PROBE_TIMEOUT_MS = 15_000;
+/** Test-only seam: real production code never calls this. */
+let agentProbeTimeoutMsOverrideForTests: number | null = null;
 const log = createTaggedLogger("agent-registry");
 let availabilityDiagnosticSink: AgentAvailabilityDiagnosticSink | null = null;
 
 export function setAgentAvailabilityDiagnosticSink(sink: AgentAvailabilityDiagnosticSink | null): void {
 	availabilityDiagnosticSink = sink;
+}
+
+/**
+ * Test-only seam so agent-availability tests are deterministic under machine
+ * load instead of depending on the production probe timeout's real duration.
+ * Pass `null` to restore the production default.
+ */
+export function setAgentProbeTimeoutMsForTests(timeoutMs: number | null): void {
+	agentProbeTimeoutMsOverrideForTests = timeoutMs;
+}
+
+function resolveDefaultAgentProbeTimeoutMs(): number {
+	return agentProbeTimeoutMsOverrideForTests ?? DEFAULT_AGENT_PROBE_TIMEOUT_MS;
 }
 
 function recordAvailabilityDiagnostic(event: AgentAvailabilityDiagnosticEvent): void {
@@ -211,11 +232,22 @@ class AgentProbeExecutionError extends Error {
 	}
 }
 
-function isProbeTimeout(error: ExecFileException): boolean {
+function isProbeTimeout(error: ExecFileException, durationMs: number, timeoutMs: number): boolean {
 	// Node's execFile timeout terminates the process and reports `killed: true`
 	// (normally with SIGTERM). A process that exits from an unrelated signal is
 	// an execution failure, not evidence that the timeout elapsed.
-	return error.killed === true || error.code === "ETIMEDOUT";
+	if (error.killed === true || error.code === "ETIMEDOUT") {
+		return true;
+	}
+	// Windows terminates the whole process tree through an external `taskkill`
+	// (see `terminateProcessForTimeout`), which Node's own child-process
+	// bookkeeping never observes, so `killed`/`code` do not reliably reflect our
+	// own termination there. A failure that only surfaced after waiting at least
+	// the full configured timeout was evidently caused by that termination
+	// regardless of how the OS reports the kill; a genuine execution failure
+	// (missing binary, bad arguments, early crash) fails in a small fraction of
+	// that budget.
+	return durationMs >= timeoutMs;
 }
 
 /** Exported for direct real-process timeout tests; otherwise only called internally. */
@@ -224,6 +256,7 @@ export function runProbeCommand(
 	probeKind: AgentAvailabilityProbeKind,
 	binary: string,
 	args: string[],
+	timeoutMs: number = resolveDefaultAgentProbeTimeoutMs(),
 ): Promise<ProbeCommandResult> {
 	return new Promise((resolve, reject) => {
 		const startedAt = Date.now();
@@ -257,7 +290,7 @@ export function runProbeCommand(
 					return;
 				}
 				if (error) {
-					const reason = isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
+					const reason = isProbeTimeout(error, durationMs, timeoutMs) ? "probe_timeout" : "probe_failed";
 					recordAvailabilityDiagnostic({
 						name: "agent.availability_probe_completed",
 						payload: { agentId, probeKind, durationMs, outcome: reason },
@@ -279,7 +312,7 @@ export function runProbeCommand(
 			},
 		);
 		if (!settled) {
-			guard = armChildProcessTimeout(child, CODEX_PROBE_TIMEOUT_MS);
+			guard = armChildProcessTimeout(child, timeoutMs);
 		}
 	});
 }
@@ -293,8 +326,12 @@ async function detectAgentVersion(
 	agentName: string,
 	binary: string,
 ): Promise<VersionProbeResult> {
+	const dbgT0 = Date.now();
 	try {
 		const result = await runProbeCommand(agentId, "version", binary, ["--version"]);
+		process.stderr.write(
+			`DBGDAV ${agentId} ${binary} resolved after ${Date.now() - dbgT0}ms stdout=${JSON.stringify(result.stdout)}\n`,
+		);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const version = extractVersion(output);
 		log.debug(`${agentName} version probe completed`, {
@@ -305,6 +342,9 @@ async function detectAgentVersion(
 		});
 		return version ? { ok: true, version } : { ok: false, reason: "unsupported_version" };
 	} catch (error) {
+		process.stderr.write(
+			`DBGDAV ${agentId} ${binary} rejected after ${Date.now() - dbgT0}ms error=${String(error)}\n`,
+		);
 		log.debug(`${agentName} version probe failed`, {
 			binary,
 			error: error instanceof Error ? error.message : String(error),
@@ -513,6 +553,7 @@ export function resetAgentAvailabilityCache(): void {
 }
 
 async function computeAgentAvailability(agentId: RuntimeAgentId, binary: string): Promise<AgentAvailability> {
+	process.stderr.write(`DBGCAA computeAgentAvailability start ${agentId} ${binary} ${Date.now()}\n`);
 	if (!isAgentAllowedByAgentLabPolicy(agentId)) {
 		const agentLabel =
 			getRuntimeLaunchSupportedAgentCatalog().find((entry) => entry.id === agentId)?.label ?? agentId;

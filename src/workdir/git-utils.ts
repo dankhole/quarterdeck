@@ -510,10 +510,33 @@ export async function getGitDir(cwd: string): Promise<string> {
 
 /**
  * Resolve the repository root directory for a given working directory.
+ *
+ * Runs on the `default` (5s) timeout class unless the caller supplies its own
+ * class/timeout. Preflights nested inside a longer-running action (commit, stash,
+ * merge, revert, cherry-pick) or a probe should pass that action's own timeout
+ * class (or `inspection` for probes) so a slow Git under load gets the same
+ * budget as the command that follows it.
+ *
+ * A timeout (or another indeterminate failure, such as a blocked launch or an
+ * external signal death) never proves the directory isn't a repository, so it
+ * surfaces as a distinct retryable error instead of the generic "no repository"
+ * message.
  */
-export async function resolveRepoRoot(cwd: string): Promise<string> {
-	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
-	if (!result.ok || !result.stdout) {
+export async function resolveRepoRoot(cwd: string, options: RunGitOptions = {}): Promise<string> {
+	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"], options);
+	if (!result.ok) {
+		if (
+			isIndeterminateGitCommandFailure({
+				failureKind: result.failureKind,
+				errorCode: result.errorCode,
+				terminatedBySignal: result.terminatedBySignal,
+			})
+		) {
+			throw new Error("Git did not respond in time; retry.");
+		}
+		throw new Error("No git repository detected for this project.");
+	}
+	if (!result.stdout) {
 		throw new Error("No git repository detected for this project.");
 	}
 	return result.stdout;

@@ -1,13 +1,23 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { loadRuntimeConfig, updateRuntimeConfig } from "../../../src/config";
+import { loadRuntimeConfig, setAgentProbeTimeoutMsForTests, updateRuntimeConfig } from "../../../src/config";
 import { createTempDir } from "../../utilities/temp-dir";
 import { withTemporaryEnv, writeFakeVersionedCommand } from "./runtime-config-helpers";
 
 describe("audible notification config", { concurrent: false }, () => {
+	// These tests probe real (near-instant) fake binaries. Pin the probe timeout
+	// to a short value so a run never depends on the production default's
+	// duration or on how loaded the host machine is.
+	beforeEach(() => {
+		setAgentProbeTimeoutMsForTests(2_000);
+	});
+	afterEach(() => {
+		setAgentProbeTimeoutMsForTests(null);
+	});
+
 	it("loads default audible notification settings when config is empty", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir(
 			"quarterdeck-home-runtime-config-audible-defaults-",

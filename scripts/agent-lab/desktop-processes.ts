@@ -24,6 +24,11 @@ export async function listDesktopProcesses(): Promise<DesktopLabProcess[]> {
 	const { stdout } = await execFileAsync("/bin/ps", ["-ax", "-o", "pid=,ppid=,stat=,lstart=,command="], {
 		encoding: "utf8",
 		timeout: 5_000,
+		// A busy machine under heavy load runs far more processes than Node's
+		// 1MB execFile default tolerates, which previously surfaced as a
+		// confusing "stdout maxBuffer length exceeded" failure unrelated to
+		// this helper's actual correctness.
+		maxBuffer: 10 * 1024 * 1024,
 	});
 	return parseDesktopProcessList(stdout);
 }

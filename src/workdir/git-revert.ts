@@ -4,6 +4,8 @@ import type { RuntimeGitRevertRequest, RuntimeGitRevertResponse } from "../core"
 import { getConflictState } from "./git-conflict";
 import { resolveRepoRoot, runGit } from "./git-utils";
 
+const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
+
 /** Revert one ordinary commit in the scoped checkout, leaving conflicts recoverable. */
 export async function revertCommit(
 	options: Omit<RuntimeGitRevertRequest, "taskScope"> & { cwd: string },
@@ -11,7 +13,7 @@ export async function revertCommit(
 	const { commitHash, expectedHead, expectedBranch } = options;
 	const fail = (error: string): RuntimeGitRevertResponse => ({ ok: false, commitHash, output: "", error });
 	if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(commitHash)) return fail("Invalid commit hash.");
-	const cwd = await resolveRepoRoot(options.cwd);
+	const cwd = await resolveRepoRoot(options.cwd, USER_GIT_ACTION_OPTIONS);
 	const head = await runGit(cwd, ["rev-parse", "HEAD"]);
 	const branch = await runGit(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
 	if (!branch.ok) return fail("Check out a branch before reverting a commit.");
@@ -36,7 +38,7 @@ export async function revertCommit(
 			if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
 		}
 	}
-	const status = await runGit(cwd, ["status", "--porcelain", "--untracked-files=normal"]);
+	const status = await runGit(cwd, ["status", "--porcelain", "--untracked-files=normal"], USER_GIT_ACTION_OPTIONS);
 	if (!status.ok) return fail(status.error ?? "Could not inspect working tree changes.");
 	if (status.stdout) return fail("Commit or stash your changes before reverting a commit.");
 	const parents = await runGit(cwd, ["rev-list", "--parents", "-n", "1", commitHash]);

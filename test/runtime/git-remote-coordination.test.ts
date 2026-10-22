@@ -25,7 +25,10 @@ import { ProjectMetadataRemoteFetchPolicy } from "../../src/server/project-metad
 import { runGitSyncAction } from "../../src/workdir/git-sync";
 import { runGit } from "../../src/workdir/git-utils";
 import { createGitTestEnv, runGit as fixtureGit, initGitRepository } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 interface RemoteProcess {
 	args: string[];
@@ -93,7 +96,7 @@ describe("Git remote command coordination", () => {
 	});
 
 	async function waitForCanonicalizations(count: number): Promise<void> {
-		await vi.waitFor(() => expect(fsMocks.realpath).toHaveBeenCalledTimes(count));
+		await vi.waitFor(() => expect(fsMocks.realpath).toHaveBeenCalledTimes(count), { timeout: 10_000 });
 		await Promise.all(fsMocks.realpath.mock.results.map((result) => result.value));
 		// Drain the identity continuations so a missing queue would have started
 		// the next remote process before the non-overlap assertion.
@@ -102,7 +105,7 @@ describe("Git remote command coordination", () => {
 
 	it("serializes fetch, pull and push across linked worktrees and symlink aliases, while probes and other repositories proceed", async () => {
 		const fetch = runGit(repo, ["fetch", "--all", "--prune"]);
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 		const pull = runGit(worktree, ["pull", "--ff-only"]);
 		await waitForCanonicalizations(2);
 		const push = runGit(alias, ["push"]);
@@ -110,7 +113,7 @@ describe("Git remote command coordination", () => {
 		expect(remoteProcesses).toHaveLength(1);
 
 		const otherFetch = runGit(otherRepo, ["fetch"]);
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2), { timeout: 10_000 });
 		expect(remoteProcesses[1].cwd).toBe(otherRepo);
 		await expect(runGit(worktree, ["--no-optional-locks", "status", "--porcelain"])).resolves.toMatchObject({
 			ok: true,
@@ -119,10 +122,10 @@ describe("Git remote command coordination", () => {
 		await expect(otherFetch).resolves.toMatchObject({ ok: true });
 
 		remoteProcesses[0].complete();
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(3));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(3), { timeout: 10_000 });
 		expect(remoteProcesses[2].args).toContain("pull");
 		remoteProcesses[2].complete();
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(4));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(4), { timeout: 10_000 });
 		expect(remoteProcesses[3].args).toContain("push");
 		remoteProcesses[3].complete();
 		expect((await Promise.all([fetch, pull, push])).every((result) => result.ok)).toBe(true);
@@ -136,7 +139,7 @@ describe("Git remote command coordination", () => {
 			onFetchSucceeded,
 		});
 		policy.requestFetch();
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 
 		const pull = runGitSyncAction({ cwd: worktree, action: "pull" });
 		await waitForCanonicalizations(2);
@@ -144,7 +147,7 @@ describe("Git remote command coordination", () => {
 		expect(remoteProcesses[0].args).toContain("fetch");
 		remoteProcesses[0].complete();
 
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2), { timeout: 10_000 });
 		expect(remoteProcesses[1].args).toContain("pull");
 		remoteProcesses[1].complete();
 		await expect(pull).resolves.toMatchObject({ ok: true, action: "pull" });
@@ -154,13 +157,13 @@ describe("Git remote command coordination", () => {
 
 	it("admits the next remote command after a failed command", async () => {
 		const fetch = runGit(repo, ["fetch"]);
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 		const pull = runGit(worktree, ["pull", "--ff-only"]);
 		await waitForCanonicalizations(2);
 		remoteProcesses[0].complete(Object.assign(new Error("synthetic failure"), { code: 128 }));
 		await expect(fetch).resolves.toMatchObject({ ok: false, error: "fatal: synthetic remote failure" });
 
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2), { timeout: 10_000 });
 		remoteProcesses[1].complete();
 		await expect(pull).resolves.toMatchObject({ ok: true });
 	});
@@ -168,7 +171,7 @@ describe("Git remote command coordination", () => {
 	it("does not spend a queued command's timeout before its process starts", async () => {
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		const fetch = runGit(repo, ["fetch"]);
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 		const pull = runGit(worktree, ["pull", "--ff-only"], { timeoutMs: 25 });
 		await waitForCanonicalizations(2);
 		await vi.advanceTimersByTimeAsync(250);
@@ -190,7 +193,7 @@ describe("Git remote command coordination", () => {
 		});
 		try {
 			const fetch = runGit(repo, ["fetch"]);
-			await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+			await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 			const pull = runGit(worktree, ["pull", "--ff-only"]);
 			await waitForCanonicalizations(2);
 			expect(remoteProcesses).toHaveLength(1);
@@ -211,12 +214,12 @@ describe("Git remote command coordination", () => {
 
 	it("uses global repository options for identity instead of the calling directory", async () => {
 		const fetch = runGit(repo, ["fetch"]);
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 		const push = runGit(otherRepo, ["-C", alias, "-c", "advice.detachedHead=false", "push"]);
 		await waitForCanonicalizations(2);
 		expect(remoteProcesses).toHaveLength(1);
 		remoteProcesses[0].complete();
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2), { timeout: 10_000 });
 		remoteProcesses[1].complete();
 		await expect(push).resolves.toMatchObject({ ok: true });
 		await fetch;
@@ -229,14 +232,14 @@ describe("Git remote command coordination", () => {
 
 	it("uses the remote process environment to resolve repository identity", async () => {
 		const fetch = runGit(repo, ["fetch"]);
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
 		const push = runGit(otherRepo, ["push"], {
 			env: createGitTestEnv({ GIT_DIR: join(repo, ".git"), GIT_WORK_TREE: repo }),
 		});
 		await waitForCanonicalizations(2);
 		expect(remoteProcesses).toHaveLength(1);
 		remoteProcesses[0].complete();
-		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2));
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(2), { timeout: 10_000 });
 		remoteProcesses[1].complete();
 		await expect(push).resolves.toMatchObject({ ok: true });
 		await fetch;

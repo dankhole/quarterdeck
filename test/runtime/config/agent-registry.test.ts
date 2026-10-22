@@ -531,14 +531,19 @@ describe("agent-registry", () => {
 		});
 
 		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
-			const resultPromise = runProbeCommand("claude", "version", process.execPath, [
-				"-e",
-				"process.stdout.write('2.1.198'); process.exit(0);",
-			]);
+			// Explicit short timeout: keeps this deterministic and fast regardless of
+			// the production default's value or how loaded the host machine is.
+			const resultPromise = runProbeCommand(
+				"claude",
+				"version",
+				process.execPath,
+				["-e", "process.stdout.write('2.1.198'); process.exit(0);"],
+				300,
+			);
 			// Real event-loop stall: the child exits almost immediately, then the main
 			// thread is blocked synchronously well past the probe timeout before we
 			// ever look at the result.
-			const blockUntil = Date.now() + 3_200;
+			const blockUntil = Date.now() + 500;
 			while (Date.now() < blockUntil) {
 				// busy-wait
 			}
@@ -546,8 +551,13 @@ describe("agent-registry", () => {
 		}, 10_000);
 
 		it("still terminates a real hung child and reports a timeout", async () => {
+			// Explicit short timeout for the same reason as above. On Windows the
+			// child tree is force-killed through an external `taskkill` that Node's
+			// own child-process bookkeeping never observes, so this also exercises
+			// the duration-based timeout fallback in `isProbeTimeout` rather than
+			// relying on `error.killed`.
 			await expect(
-				runProbeCommand("claude", "version", process.execPath, ["-e", "setInterval(() => {}, 1_000);"]),
+				runProbeCommand("claude", "version", process.execPath, ["-e", "setInterval(() => {}, 1_000);"], 300),
 			).rejects.toMatchObject({ reason: "probe_timeout" });
 		}, 10_000);
 	});

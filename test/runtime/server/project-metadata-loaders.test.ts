@@ -10,7 +10,10 @@ import {
 	resolveTaskWorktreeMetadataInput,
 } from "../../../src/server/project-metadata-loaders";
 import { commitAll, initGitRepository, runGit } from "../../utilities/git-env";
+import { useProcessTestBudget } from "../../utilities/process-test-budget";
 import { createTempDir } from "../../utilities/temp-dir";
+
+useProcessTestBudget();
 
 function createBoard(useWorktree: boolean): RuntimeBoardData {
 	return {

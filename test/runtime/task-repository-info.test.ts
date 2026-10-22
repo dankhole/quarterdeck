@@ -7,7 +7,10 @@ import type { RuntimeBoardData } from "../../src/core";
 import { loadProjectState, saveProjectState } from "../../src/state";
 import { ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo, resolveTaskWorkingDirectory } from "../../src/workdir";
 import { commitAll, initGitRepository } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 function createSharedCheckoutBoard(): RuntimeBoardData {
 	return {

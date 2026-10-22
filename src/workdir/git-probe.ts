@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { RuntimeGitSyncSummary } from "../core";
-import { resolveRepoRoot, runGit, splitNullSeparatedGitOutput } from "./git-utils";
+import { GIT_INSPECTION_OPTIONS, resolveRepoRoot, runGit, splitNullSeparatedGitOutput } from "./git-utils";
 
 interface GitPathFingerprint {
 	path: string;
@@ -112,12 +112,13 @@ function parseStatusPath(record: string): string | null {
 }
 
 export async function probeGitWorkdirState(cwd: string): Promise<GitWorkdirProbe> {
-	const repoRoot = await resolveRepoRoot(cwd);
+	const repoRoot = await resolveRepoRoot(cwd, GIT_INSPECTION_OPTIONS);
 	const [statusResult, headCommitResult] = await Promise.all([
 		runGit(repoRoot, ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z"], {
 			trimStdout: false,
+			...GIT_INSPECTION_OPTIONS,
 		}),
-		runGit(repoRoot, ["--no-optional-locks", "rev-parse", "--verify", "HEAD"]),
+		runGit(repoRoot, ["--no-optional-locks", "rev-parse", "--verify", "HEAD"], GIT_INSPECTION_OPTIONS),
 	]);
 
 	if (!statusResult.ok) {

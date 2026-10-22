@@ -20,6 +20,13 @@ export const runtimeGitSyncSummarySchema = z.object({
 	deletions: z.number(),
 	aheadCount: z.number(),
 	behindCount: z.number(),
+	/**
+	 * Set when the underlying Git action succeeded but the follow-up summary probe
+	 * could not complete (e.g. it timed out under load). The action's `ok` result
+	 * is authoritative; this flags that the attached summary is stale or empty
+	 * rather than a fresh read of the working tree.
+	 */
+	stale: z.boolean().optional(),
 });
 export type RuntimeGitSyncSummary = z.infer<typeof runtimeGitSyncSummarySchema>;
 

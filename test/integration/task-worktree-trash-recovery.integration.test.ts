@@ -30,12 +30,15 @@ import {
 } from "../../src/workdir/task-worktree-trash-branch";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { captureTaskPatch } from "../utilities/legacy-task-worktree-patch";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
+useProcessTestBudget();
+
 async function withFixture(run: (repoPath: string) => Promise<void>): Promise<void> {
 	await withTemporaryHome(async () => {
-		const { path: repoPath, cleanup } = createTempDir("quarterdeck-trash-recovery-");
+		const { path: repoPath, cleanupAsync } = createTempDir("quarterdeck-trash-recovery-");
 		try {
 			initGitRepository(repoPath);
 			writeFileSync(join(repoPath, ".gitignore"), ".gradle/\n");
@@ -43,7 +46,14 @@ async function withFixture(run: (repoPath: string) => Promise<void>): Promise<vo
 			commitAll(repoPath, "initial");
 			await run(repoPath);
 		} finally {
-			cleanup();
+			// This fixture runs many real `git worktree`/registration operations
+			// (including deliberately corrupting a worktree's `.git` file). On
+			// Windows a just-exited git process can hold file handles open for a
+			// moment after Node observes it as closed; synchronous `cleanup()`
+			// retries block the event loop and can't let that handle close land,
+			// which surfaces as EPERM deleting `.git`. The async variant lets
+			// pending native handle closes actually run between retries.
+			await cleanupAsync();
 		}
 	});
 }

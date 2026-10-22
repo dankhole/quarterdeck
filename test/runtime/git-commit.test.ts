@@ -12,7 +12,10 @@ import {
 	initGitRepository as initRepository,
 	runGit,
 } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 function gitStatus(cwd: string): string {
 	return runGit(cwd, ["status", "--porcelain"]);

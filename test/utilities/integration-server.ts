@@ -62,7 +62,11 @@ export function resolveIntegrationNodeArgs(source = "src/cli.ts"): string[] {
 
 export async function waitForProcessStart(
 	childProcess: ChildProcess,
-	timeoutMs = 10_000,
+	// Heavy machine load can slow process spawn/startup well past the fast-lane
+	// default; keep this consistent with the ~60s budget used by process-heavy
+	// fixtures (see test/utilities/process-test-budget.ts) rather than the
+	// previous 10s, which raced real load even for a correctly starting server.
+	timeoutMs = 30_000,
 ): Promise<{ runtimeUrl: string }> {
 	return await new Promise((resolveStart, rejectStart) => {
 		if (!childProcess.stdout || !childProcess.stderr) {

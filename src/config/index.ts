@@ -17,6 +17,7 @@ export {
 	runProbeCommand,
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
+	setAgentProbeTimeoutMsForTests,
 	waitForPendingAgentAvailabilityProbes,
 } from "./agent-registry";
 export {

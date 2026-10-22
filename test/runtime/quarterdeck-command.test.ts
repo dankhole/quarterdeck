@@ -138,7 +138,7 @@ describe("resolveQuarterdeckCommandParts", () => {
 		).toEqual([
 			"/usr/local/bin/node",
 			"/repo/node_modules/tsx/dist/cli.mjs",
-			"/repo/src/hooks.ts",
+			join("/repo/src", "hooks.ts"),
 			"hooks",
 			"notify",
 		]);
@@ -148,7 +148,7 @@ describe("resolveQuarterdeckCommandParts", () => {
 				execArgv: ["--import", "tsx"],
 				argv: ["/usr/local/bin/node", "/repo/src/cli.ts", "--no-open"],
 			}),
-		).toEqual(["/usr/local/bin/node", "--import", "tsx", "/repo/src/hooks.ts", "hooks", "notify"]);
+		).toEqual(["/usr/local/bin/node", "--import", "tsx", join("/repo/src", "hooks.ts"), "hooks", "notify"]);
 	});
 
 	it("falls back to execPath when no entrypoint path is available", () => {

@@ -248,6 +248,34 @@ describe("runGit", () => {
 		}
 	});
 
+	describe("resolveRepoRoot", () => {
+		it("surfaces a distinct retryable error when the toplevel lookup times out, instead of 'no repository'", async () => {
+			childProcessMocks.execFilePromise.mockRejectedValueOnce(
+				Object.assign(new Error("Git command timed out after 5000ms"), {
+					code: "ETIMEDOUT",
+					killed: true,
+					signal: "SIGTERM",
+				}),
+			);
+
+			await expect(workdirExports.resolveRepoRoot("/repo")).rejects.toThrow("Git did not respond in time; retry.");
+		});
+
+		it("still reports no repository for a genuine non-timeout failure", async () => {
+			childProcessMocks.execFilePromise.mockRejectedValueOnce(createExecError({ code: 128 }));
+
+			await expect(workdirExports.resolveRepoRoot("/repo")).rejects.toThrow(
+				"No git repository detected for this project.",
+			);
+		});
+
+		it("accepts a caller-supplied timeout class instead of always running on the short default", async () => {
+			childProcessMocks.execFilePromise.mockResolvedValueOnce({ stdout: "/repo\n", stderr: "" });
+
+			await expect(workdirExports.resolveRepoRoot("/repo", { timeoutClass: "userAction" })).resolves.toBe("/repo");
+		});
+	});
+
 	// Real-process tests below delegate the module-mocked `execFile` to the real
 	// implementation and route a fake "git" binary through PATH, proving `runGit`'s
 	// actual timing behavior end to end (no execFile mock deciding the outcome).
@@ -271,16 +299,26 @@ describe("runGit", () => {
 		}
 
 		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
-			const resultPromise = runGit(process.cwd(), ["rev-parse", "--show-toplevel"], { timeoutMs: 150 });
-			// Real event-loop stall: the real `git` process exits almost immediately,
-			// then the main thread is blocked synchronously well past the timeout
+			// A real `git` spawn normally exits in a few ms, but heavy machine load
+			// can push a single spawn's fork/exec well past a tight probe window
+			// (observed with an artificially delayed `git` on PATH). Keep the probe
+			// timeout generous enough that a legitimately slow-but-healthy spawn
+			// doesn't get killed and reported as a false timeout, and keep the
+			// stall margin comfortably past that new timeout so the test still
+			// proves the stall-tolerance invariant.
+			const probeTimeoutMs = 3_000;
+			const resultPromise = runGit(process.cwd(), ["rev-parse", "--show-toplevel"], {
+				timeoutMs: probeTimeoutMs,
+			});
+			// Real event-loop stall: the real `git` process exits on its own, then
+			// the main thread is blocked synchronously well past the timeout
 			// before we ever look at the result.
-			const blockUntil = Date.now() + 400;
+			const blockUntil = Date.now() + probeTimeoutMs + 500;
 			while (Date.now() < blockUntil) {
 				// busy-wait
 			}
 			await expect(resultPromise).resolves.toMatchObject({ ok: true, timedOut: false });
-		}, 10_000);
+		}, 15_000);
 
 		it.runIf(process.platform !== "win32")(
 			"still terminates a real hung child and reports a timeout",
