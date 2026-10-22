@@ -2,45 +2,54 @@ import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
+import type { DiagnosticCaptureScope } from "./core/api/diagnostics.js";
+import type { RuntimeHookIngestRequest, RuntimeHookIngestResponse } from "./core/api/task-session.js";
+import { runtimeHookIngestRequestSchema } from "./core/api/task-session.js";
+import { diagnosticErrorClassOf } from "./core/diagnostic-error-class.js";
+import { createTaggedLogger } from "./core/runtime-logger.js";
+import { isNodeError } from "./fs/node-error.js";
 import {
-	createTaggedLogger,
-	type DiagnosticCaptureScope,
-	normalizeDiagnosticErrorClass,
-	type RuntimeHookDelivery,
-	type RuntimeHookIngestRequest,
-	type RuntimeHookIngestResponse,
-	type RuntimeHookMetadata,
-	runtimeHookIngestRequestSchema,
-} from "./core";
-import { isNodeError, lockedFileSystem } from "./fs";
-import { getRuntimeHomePath } from "./state/project-state-utils";
+	abandonHookTransition,
+	acknowledgeHookTransition,
+	createPersistedHookTransition,
+	enqueueHookTransition,
+	getOutboxDirectoryPath,
+	HOOK_TRANSITION_OUTBOX_TTL_MS,
+	OUTBOX_RECORD_VERSION,
+	type PersistedHookTransition,
+} from "./hook-transition-outbox-core.js";
 
+// This module owns the replay scan (schema validation, diagnostics, logging) on top of
+// the zod-free primitives in `./hook-transition-outbox-core.js`. The lightweight hook
+// entry (`dist/hooks.js`) imports only that narrow core module and never this one, so
+// the zod/diagnostics cost below is paid only by the long-lived server process.
 const outboxLog = createTaggedLogger("hook-outbox");
-const OUTBOX_DIRECTORY_NAME = "hook-transition-outbox";
-const OUTBOX_RECORD_VERSION = 1;
 
-export const HOOK_TRANSITION_OUTBOX_TTL_MS = 10 * 60 * 1000;
+export {
+	abandonHookTransition,
+	acknowledgeHookTransition,
+	createPersistedHookTransition,
+	enqueueHookTransition,
+	HOOK_TRANSITION_OUTBOX_TTL_MS,
+	type PersistedHookTransition,
+};
+
 export const HOOK_TRANSITION_REPLAY_INTERVAL_MS = 2_000;
 /**
  * Periodic replay adopts a record as soon as its `hooks ingest` writer marks it
  * abandoned. An unmarked record may still be in delivery, so replay waits this
- * long after enqueue: more than the writer's total delivery budget, which also
- * bounds the delay when the writer died without marking it (for example, killed
- * by a provider hook timeout). Replaying sooner would race the live delivery,
- * whose full metadata the minimal replay copy could pre-empt.
+ * long after enqueue: more than the writer's total delivery budget
+ * (`HOOK_INGEST_TOTAL_TIMEOUT_MS`, 3.25s, in hooks-runtime-client.ts) plus slack
+ * for a CPU-starved writer under load, which also bounds the delay when the
+ * writer died without marking it (for example, killed by a provider hook
+ * timeout). Replaying sooner would race the live delivery, whose full metadata
+ * the minimal replay copy could pre-empt.
  */
-export const HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS = 5_000;
+export const HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS = 6_000;
 
-export interface PersistedHookTransition {
-	version: typeof OUTBOX_RECORD_VERSION;
-	expiresAt: number;
-	/** Writer clock at enqueue; records from older writers derive it from `expiresAt`. */
-	enqueuedAt: number;
-	/** Set once the writer stops delivering without an acknowledgement. */
-	abandonedAt?: number;
-	request: RuntimeHookIngestRequest & { delivery: RuntimeHookDelivery };
-}
-
+// Not .strict(): an older reader parsing a record written by a newer CLI build
+// simply drops any field it doesn't declare here (plain z.object() behavior),
+// and a newer reader parsing an older record derives the missing enqueuedAt.
 const persistedHookTransitionSchema = z.object({
 	version: z.literal(OUTBOX_RECORD_VERSION),
 	expiresAt: z.number().int().nonnegative(),
@@ -48,124 +57,6 @@ const persistedHookTransitionSchema = z.object({
 	abandonedAt: z.number().int().nonnegative().optional(),
 	request: runtimeHookIngestRequestSchema,
 });
-
-function getOutboxDirectoryPath(): string {
-	return join(getRuntimeHomePath(), OUTBOX_DIRECTORY_NAME);
-}
-
-function parseDeliveryId(deliveryId: string): string {
-	return z.string().uuid().parse(deliveryId);
-}
-
-function getOutboxRecordPath(deliveryId: string): string {
-	return join(getOutboxDirectoryPath(), `${parseDeliveryId(deliveryId)}.json`);
-}
-
-function minimalReplayMetadata(metadata: RuntimeHookMetadata | undefined): RuntimeHookMetadata | undefined {
-	if (!metadata) {
-		return undefined;
-	}
-	return {
-		source: metadata.source ?? null,
-		sessionId: metadata.sessionId ?? null,
-		sessionInstanceId: metadata.sessionInstanceId ?? null,
-		turnId: metadata.turnId ?? null,
-		promptId: metadata.promptId ?? null,
-		toolUseId: metadata.toolUseId ?? null,
-		elicitationId: metadata.elicitationId ?? null,
-		providerAgentId: metadata.providerAgentId ?? null,
-		hookEventName: metadata.hookEventName ?? null,
-		toolName: metadata.toolName ?? null,
-		notificationType: metadata.notificationType ?? null,
-		...(metadata.unboundedBackgroundWorkPending ? { unboundedBackgroundWorkPending: true } : undefined),
-		...(metadata.source?.trim().toLowerCase() === "codex" &&
-		metadata.hookEventName?.trim().toLowerCase() === "sessionstart"
-			? {
-					sessionStartSource: metadata.sessionStartSource,
-					sessionStartHasTranscript: Boolean(
-						metadata.transcriptPath?.trim() || metadata.sessionStartHasTranscript,
-					),
-				}
-			: undefined),
-	};
-}
-
-export function createPersistedHookTransition(
-	request: RuntimeHookIngestRequest,
-	now: number = Date.now(),
-): PersistedHookTransition | null {
-	// Reliable hook commands call this before delivery. Codex requires both
-	// process and turn identity; Claude and Pi use prompt/tool/run identities
-	// instead of requiring a Codex-style turn id on every event, so launch
-	// identity is the mandatory replay fence and the provider-specific order
-	// tracker handles the remaining correlation.
-	const source = request.metadata?.source?.trim().toLowerCase();
-	const hookEventName = request.metadata?.hookEventName?.trim().toLowerCase();
-	const isCodexSessionStart = source === "codex" && request.event === "activity" && hookEventName === "sessionstart";
-	const hasCodexReplayIdentity =
-		source === "codex" &&
-		((request.event !== "activity" && Boolean(request.metadata?.turnId)) || isCodexSessionStart);
-	const hasClaudeReplayIdentity = source === "claude";
-	const hasPiReplayIdentity = source === "pi";
-	if (
-		!request.delivery ||
-		!request.metadata?.sessionInstanceId ||
-		(!hasCodexReplayIdentity && !hasClaudeReplayIdentity && !hasPiReplayIdentity)
-	) {
-		return null;
-	}
-	return {
-		version: OUTBOX_RECORD_VERSION,
-		expiresAt: now + HOOK_TRANSITION_OUTBOX_TTL_MS,
-		enqueuedAt: now,
-		request: {
-			...request,
-			metadata: minimalReplayMetadata(request.metadata),
-			delivery: request.delivery,
-		},
-	};
-}
-
-export async function enqueueHookTransition(request: RuntimeHookIngestRequest): Promise<boolean> {
-	const record = createPersistedHookTransition(request);
-	if (!record) {
-		return false;
-	}
-	await lockedFileSystem.writeJsonFileAtomic(getOutboxRecordPath(record.request.delivery.id), record, {
-		mode: 0o600,
-		lock: null,
-	});
-	return true;
-}
-
-export async function acknowledgeHookTransition(deliveryId: string): Promise<void> {
-	await rm(getOutboxRecordPath(deliveryId), { force: true });
-}
-
-/**
- * Called by a writer that stops delivering without an acknowledgement, so live
- * replay may adopt the record immediately. A record already removed by replay
- * stays removed. If replay removes it between this read and the atomic rewrite,
- * the restored copy is replayed once more as a duplicate delivery, which the
- * runtime acknowledges without applying it again.
- */
-export async function abandonHookTransition(deliveryId: string, now: number = Date.now()): Promise<void> {
-	const path = getOutboxRecordPath(deliveryId);
-	let raw: string;
-	try {
-		raw = await readFile(path, "utf8");
-	} catch (error) {
-		if (isNodeError(error, "ENOENT")) {
-			return;
-		}
-		throw error;
-	}
-	const record: unknown = JSON.parse(raw);
-	if (typeof record !== "object" || record === null || !persistedHookTransitionSchema.safeParse(record).success) {
-		return;
-	}
-	await lockedFileSystem.writeJsonFileAtomic(path, { ...record, abandonedAt: now }, { mode: 0o600, lock: null });
-}
 
 function isLiveReplayCandidate(record: PersistedHookTransition, now: number, minRecordAgeMs: number): boolean {
 	if (minRecordAgeMs <= 0 || record.abandonedAt !== undefined) {
@@ -258,6 +149,7 @@ export async function loadPendingHookTransitions(now: number = Date.now()): Prom
 
 export interface HookTransitionOutboxReplayer {
 	start: () => void;
+	/** A complete pass over every pending record, regardless of age (startup replay). */
 	replayOnce: () => Promise<void>;
 	close: () => Promise<void>;
 	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => HookTransitionOutboxDiagnosticSnapshot;
@@ -395,7 +287,7 @@ export function createHookTransitionOutboxReplayer(deps: {
 				);
 				deps.onReplayPassCompleted?.({ pendingTasks });
 			} catch (error) {
-				lastScanErrorClass = error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError";
+				lastScanErrorClass = diagnosticErrorClassOf(error);
 				throw error;
 			} finally {
 				lastScanCompletedAt = Date.now();

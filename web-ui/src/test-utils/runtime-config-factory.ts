@@ -109,7 +109,6 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	showSummaryOnHover: CONFIG_DEFAULTS.showSummaryOnHover,
 	llmSummaryPolishEnabled: CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 	claudeLaunchPermissionMode: CONFIG_DEFAULTS.claudeLaunchPermissionMode,
-	statuslineEnabled: CONFIG_DEFAULTS.statuslineEnabled,
 	codexApprovalsReviewer: CONFIG_DEFAULTS.codexApprovalsReviewer,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,

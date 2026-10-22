@@ -68,6 +68,7 @@ export async function createDesktopAppFixture(
 		}),
 		"Contents/Resources/runtime/node_modules/node-pty/build/Release/pty.node": arch,
 		"Contents/Resources/runtime/dist/cli.js": `runtime-${bundle.buildId}`,
+		"Contents/Resources/runtime/dist/hooks.js": `hooks-${bundle.buildId}`,
 		"Contents/Resources/runtime/dist/web-ui/index.html": `<main>${bundle.buildId}</main>`,
 		"Contents/Resources/runtime/bundle-manifest.json": JSON.stringify(bundle),
 		"Contents/Resources/runtime/release-policy.json": JSON.stringify(policy),

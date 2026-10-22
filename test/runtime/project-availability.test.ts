@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { readProjectDirectoryIdentity } from "../../src/fs/project-directory-identity";
-import { observeProjectAvailability } from "../../src/projects/project-availability";
+import {
+	observeProjectAvailability,
+	observeProjectAvailabilityDetailed,
+} from "../../src/projects/project-availability";
 import { initGitRepository } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
@@ -143,29 +146,67 @@ describe("project availability", () => {
 		expect(pathIsDirectory).not.toHaveBeenCalled();
 	});
 
-	it("reports an indeterminate Git probe as indeterminate, never as a missing repository", async () => {
+	it.each(["EMFILE", "ENFILE", "EAGAIN", "EBUSY", "ENOMEM"])(
+		"treats %s as indeterminate rather than inaccessible",
+		async (code) => {
+			const root = createTempDir("quarterdeck-availability-pressure-");
+			const pressure = Object.assign(new Error(code), { code });
+			try {
+				await expect(
+					observeProjectAvailabilityDetailed(
+						{ repoPath: root.path },
+						{
+							pathIsDirectory: async () => {
+								throw pressure;
+							},
+						},
+					),
+				).resolves.toEqual({ availability: { status: "available" }, indeterminate: "filesystem" });
+				await expect(
+					observeProjectAvailabilityDetailed(
+						{ repoPath: root.path, projectId: "synthetic-project" },
+						{
+							hasPendingRelocation: async () => {
+								throw pressure;
+							},
+						},
+					),
+				).resolves.toEqual({
+					availability: { status: "unavailable", reason: "relocation_pending" },
+					indeterminate: "filesystem",
+				});
+			} finally {
+				root.cleanup();
+			}
+		},
+	);
+
+	it("reports an indeterminate Git probe as provisionally available, never as a missing repository", async () => {
 		const root = createTempDir("quarterdeck-availability-indeterminate-");
 		try {
 			await expect(
-				observeProjectAvailability({ repoPath: root.path }, { probeGitRepository: async () => "indeterminate" }),
-			).resolves.toEqual({ status: "indeterminate" });
+				observeProjectAvailabilityDetailed(
+					{ repoPath: root.path },
+					{ probeGitRepository: async () => "indeterminate" },
+				),
+			).resolves.toEqual({ availability: { status: "available" }, indeterminate: "git" });
 		} finally {
 			root.cleanup();
 		}
 	});
 
-	it("only reports indeterminate after directory, relocation, and identity checks pass", async () => {
+	it("only reports a Git-stage indeterminate after directory, relocation, and identity checks pass", async () => {
 		const probeGitRepository = vi.fn(async () => "indeterminate" as const);
 		await expect(
-			observeProjectAvailability(
+			observeProjectAvailabilityDetailed(
 				{ projectId: "project", repoPath: "/synthetic-missing" },
 				{ pathIsDirectory: async () => false, probeGitRepository },
 			),
-		).resolves.toEqual({ status: "unavailable", reason: "missing" });
+		).resolves.toEqual({ availability: { status: "unavailable", reason: "missing" }, indeterminate: null });
 		expect(probeGitRepository).not.toHaveBeenCalled();
 
 		await expect(
-			observeProjectAvailability(
+			observeProjectAvailabilityDetailed(
 				{ projectId: "project", repoPath: "/synthetic-pending" },
 				{
 					pathIsDirectory: async () => true,
@@ -173,14 +214,17 @@ describe("project availability", () => {
 					probeGitRepository,
 				},
 			),
-		).resolves.toEqual({ status: "unavailable", reason: "relocation_pending" });
+		).resolves.toEqual({
+			availability: { status: "unavailable", reason: "relocation_pending" },
+			indeterminate: null,
+		});
 		expect(probeGitRepository).not.toHaveBeenCalled();
 
 		const root = createTempDir("quarterdeck-availability-indeterminate-order-");
 		try {
 			await expect(
-				observeProjectAvailability({ projectId: "project", repoPath: root.path }, { probeGitRepository }),
-			).resolves.toEqual({ status: "indeterminate" });
+				observeProjectAvailabilityDetailed({ projectId: "project", repoPath: root.path }, { probeGitRepository }),
+			).resolves.toEqual({ availability: { status: "available" }, indeterminate: "git" });
 			expect(probeGitRepository).toHaveBeenCalledTimes(1);
 		} finally {
 			root.cleanup();

@@ -3,6 +3,7 @@ import type {
 	RuntimeTaskLifecycleOperationPhase,
 	RuntimeTaskLifecycleOutcomeCode,
 } from "@/runtime/types";
+import { createRandomId } from "@/utils/random-id";
 
 export type TaskLifecycleCommandDraft = RuntimeTaskLifecycleCommand extends infer Command
 	? Command extends RuntimeTaskLifecycleCommand
@@ -11,15 +12,43 @@ export type TaskLifecycleCommandDraft = RuntimeTaskLifecycleCommand extends infe
 	: never;
 
 export function createTaskLifecycleOperationId(kind: RuntimeTaskLifecycleCommand["kind"]): string {
-	const suffix =
-		typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-			? crypto.randomUUID()
-			: `${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
-	return `lifecycle:${kind}:${suffix}`;
+	return createRandomId(`lifecycle:${kind}`);
 }
 
 export function createTaskLifecycleScopeKey(projectId: string, taskId: string): string {
 	return JSON.stringify([projectId, taskId]);
+}
+
+/** Bounded wait for the project's first authoritative revision, used by
+ * lifecycle actions and Clear Trash. See docs/conventions/runtime-state.md
+ * (Authoritative browser hydration). */
+export const AUTHORITATIVE_REVISION_WAIT_TIMEOUT_MS = 15_000;
+const AUTHORITATIVE_REVISION_POLL_INTERVAL_MS = 250;
+
+/**
+ * Poll for the project's first authoritative revision instead of failing an
+ * action the instant it races project hydration (e.g. right after switching
+ * to, or reloading on, a project that has not hydrated yet). Bounded so a
+ * project genuinely stuck unavailable does not block the action forever —
+ * the caller's existing "still loading" message covers an exhausted wait.
+ */
+export async function waitForAuthoritativeRevision(
+	getAuthoritativeRevision: () => number | null,
+	timeoutMs: number = AUTHORITATIVE_REVISION_WAIT_TIMEOUT_MS,
+): Promise<number | null> {
+	const immediate = getAuthoritativeRevision();
+	if (immediate !== null) {
+		return immediate;
+	}
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		await new Promise<void>((resolve) => setTimeout(resolve, AUTHORITATIVE_REVISION_POLL_INTERVAL_MS));
+		const revision = getAuthoritativeRevision();
+		if (revision !== null) {
+			return revision;
+		}
+	}
+	return null;
 }
 
 export function getTaskLifecycleFailureMessage(

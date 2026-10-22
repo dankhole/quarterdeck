@@ -12,13 +12,8 @@ import {
 	type ClaudeHooksSettings,
 } from "../../../src/claude-hooks";
 import { buildCodexHookConfigOverrides, buildCodexHooksConfig } from "../../../src/codex-hooks";
-import { buildStatuslineCommand } from "../../../src/commands/statusline";
-import {
-	_resetLoggerForTests,
-	buildQuarterdeckCommandLine,
-	type RuntimeDiagnosticLogSink,
-	setRuntimeDiagnosticLogSink,
-} from "../../../src/core";
+import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
+import { buildQuarterdeckHookCommandLine } from "../../../src/core/quarterdeck-command";
 import { prepareAgentLaunch } from "../../../src/terminal";
 import {
 	HookHttpChannel,
@@ -64,7 +59,7 @@ function setupTempHome(): string {
 
 function claudeHookCommand(event: string, options: { reliable?: boolean } = {}): string {
 	const subcommand = options.reliable || event !== "activity" ? "ingest" : "notify";
-	return buildQuarterdeckCommandLine(["hooks", subcommand, "--event", event, "--source", "claude"]);
+	return buildQuarterdeckHookCommandLine(["hooks", subcommand, "--event", event, "--source", "claude"]);
 }
 
 function getCodexConfigOverrideValues(args: string[], key: string): string[] {
@@ -652,7 +647,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as ClaudeHooksSettings<ClaudeHookHandler>;
 			const transport = channel.prepareLaunch({ taskId: "task-http", projectId: "project-1" })?.transport;
 			if (!transport) throw new Error("Expected a published hook HTTP channel.");
-			expect(settings).toEqual(buildClaudeHttpHooksSettings({ httpNotify: transport, statusLineCommand: null }));
+			expect(settings).toEqual(buildClaudeHttpHooksSettings({ httpNotify: transport }));
 			expect(settings.hooks.SubagentStart[0]?.hooks[0]?.type).toBe("http");
 			expect(settings.hooks.SubagentStop[0]?.hooks[0]?.type).toBe("command");
 			expect(settings.hooks.PostToolUse[0]?.hooks[0]).toEqual({
@@ -712,10 +707,10 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(settings.hooks.SessionStart[0]?.hooks[0]?.command).not.toBe(claudeHookCommand("activity"));
 	});
 
-	it("leaves the Quarterdeck Claude status line disabled unless explicitly enabled", async () => {
+	it("never includes a Quarterdeck-generated status line in Claude settings", async () => {
 		setupTempHome();
 		await prepareAgentLaunch({
-			taskId: "task-claude-statusline-default",
+			taskId: "task-claude-statusline-removed",
 			agentId: "claude",
 			binary: "claude",
 			args: [],
@@ -872,27 +867,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		expect(launch.env.CLAUDE_CODE_NO_FLICKER).toBeUndefined();
 		expect(launch.env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN).toBeUndefined();
-	});
-
-	it("injects the Quarterdeck Claude status line when explicitly enabled", async () => {
-		setupTempHome();
-		await prepareAgentLaunch({
-			taskId: "task-claude-statusline-enabled",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			projectId: "project-1",
-			statuslineEnabled: true,
-		});
-
-		const settingsPath = join(homedir(), ".quarterdeck", "hooks", "claude", "settings.json");
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			statusLine?: { type?: string; command?: string };
-		};
-		expect(settings.statusLine?.type).toBe("command");
-		expect(settings.statusLine?.command).toBe(buildStatuslineCommand());
 	});
 
 	it("registers reliable Claude input-wait and resolution hooks", () => {

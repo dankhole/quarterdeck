@@ -152,6 +152,8 @@ describe("committed project state publication", { concurrent: false }, () => {
 			expect(initial.git).toMatchObject({ currentBranch: "main", defaultBranch: "main", branches: ["main"] });
 			const result = await fixture.commands.reconcileRuntimeTaskBaseRef(fixture.scope, "task", "feature");
 			expect(result.state.git.branches).toEqual([]);
+			// Publication is a scheduled wake-up, not part of the committing caller's path.
+			await vi.waitFor(() => expect(fixture.publications.at(-1)?.revision).toBe(result.state.revision));
 			const published = fixture.publications.at(-1);
 			expect(published).toMatchObject({
 				repoPath: initial.repoPath,
@@ -174,6 +176,7 @@ describe("committed project state publication", { concurrent: false }, () => {
 				drainReady.resolve();
 				return await drain;
 			});
+			await vi.waitFor(() => expect(fixture.publications.at(-1)?.revision).toBe(drained.state.revision));
 			const unavailable = fixture.publications.at(-1);
 			expect(unavailable).toMatchObject({
 				revision: drained.state.revision,
@@ -231,9 +234,9 @@ describe("committed project state publication", { concurrent: false }, () => {
 			mockIndeterminateGitCommand("for-each-ref");
 
 			const result = await fixture.commands.reconcileRuntimeTaskBaseRef(fixture.scope, "task", "feature");
+			// Publication is scheduled after the commit, not awaited by the command.
+			await vi.waitFor(() => expect(fixture.publications.at(-1)?.revision).toBe(result.state.revision));
 			const published = fixture.publications.at(-1);
-			expect(published).not.toBeNull();
-			expect(published?.revision).toBe(result.state.revision);
 			// The timed-out probe must fall back to the last-known-good branch list,
 			// not replace it with an empty one.
 			expect(published?.git.branches).toEqual(initial.git.branches);

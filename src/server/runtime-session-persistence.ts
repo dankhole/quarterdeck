@@ -1,5 +1,9 @@
 // Persists authoritative terminal-store changes independently of runtime streaming.
-// Hook ingestion uses explicit generation barriers before acknowledging durability.
+// Hook ingestion uses explicit generation barriers before acknowledging durability:
+// a caller that changed the store forces a fresh generation (it stays correct even
+// when the automatic listener is detached or follows another store), while a caller
+// that changed nothing, such as a duplicate delivery, only waits for generations
+// already marked dirty and never forces a write when nothing is pending.
 
 import { createTaggedLogger } from "../core";
 import type { ProjectBoardCommandService } from "../state";
@@ -9,6 +13,10 @@ import type { ProjectRegistry } from "./project-registry";
 const persistenceLog = createTaggedLogger("runtime-session-persistence");
 const SESSION_PERSISTENCE_RETRY_MAX_MS = 5_000;
 const SESSION_PERSISTENCE_FINAL_ATTEMPTS = 2;
+
+function sessionPersistenceRetryDelayMs(retryAttempt: number): number {
+	return Math.min(250 * 2 ** Math.max(0, retryAttempt - 1), SESSION_PERSISTENCE_RETRY_MAX_MS);
+}
 
 interface RuntimeSessionPersistenceState {
 	dirtyGeneration: number;
@@ -25,8 +33,13 @@ export interface RuntimeSessionPersistenceDependencies {
 	boardCommands: Pick<ProjectBoardCommandService, "reconcileRuntimeSessions">;
 }
 
+interface RuntimeSessionPersistenceSubscription {
+	manager: TerminalSessionManager;
+	unsubscribe: () => void;
+}
+
 export class RuntimeSessionPersistence {
-	private readonly sessionPersistenceUnsubscribes = new Map<string, () => void>();
+	private readonly sessionPersistenceSubscriptions = new Map<string, RuntimeSessionPersistenceSubscription>();
 	private readonly sessionPersistenceStates = new Map<string, RuntimeSessionPersistenceState>();
 	private readonly sessionPersistenceBarriers = new Set<Promise<void>>();
 	private sessionPersistenceClosed = false;
@@ -37,12 +50,16 @@ export class RuntimeSessionPersistence {
 		if (this.sessionPersistenceClosed) {
 			throw new Error("Runtime session persistence is closed.");
 		}
-		if (this.sessionPersistenceUnsubscribes.has(projectId)) {
+		const existing = this.sessionPersistenceSubscriptions.get(projectId);
+		if (existing?.manager === manager) {
 			return;
 		}
+		// A replacement manager owns the project's authoritative store. Follow it so
+		// automatic writes and dirty generations track that store, not a retired one.
+		if (existing) this.unsubscribeRuntimeSessionPersistence(projectId);
 		const persist = () => this.scheduleRuntimeSessionPersistence(projectId);
-		this.sessionPersistenceUnsubscribes.set(projectId, manager.store.onChange(persist));
-		if (manager.store.listSummaries().length > 0) {
+		this.sessionPersistenceSubscriptions.set(projectId, { manager, unsubscribe: manager.store.onChange(persist) });
+		if (existing || manager.store.listSummaries().length > 0) {
 			this.scheduleRuntimeSessionPersistence(projectId, 0);
 		}
 	};
@@ -96,7 +113,7 @@ export class RuntimeSessionPersistence {
 	};
 
 	close = async (options?: { skipPersistence?: boolean }): Promise<void> => {
-		const trackedProjectIds = Array.from(this.sessionPersistenceUnsubscribes.keys());
+		const trackedProjectIds = Array.from(this.sessionPersistenceSubscriptions.keys());
 		for (const projectId of trackedProjectIds) {
 			this.unsubscribeRuntimeSessionPersistence(projectId);
 		}
@@ -210,9 +227,7 @@ export class RuntimeSessionPersistence {
 		await state.inFlight;
 		if (state.disposed || this.sessionPersistenceStates.get(projectId) !== state) return;
 		if (state.persistedGeneration < state.dirtyGeneration && options.retry !== false) {
-			const retryDelay = succeeded
-				? 0
-				: Math.min(250 * 2 ** Math.max(0, state.retryAttempt - 1), SESSION_PERSISTENCE_RETRY_MAX_MS);
+			const retryDelay = succeeded ? 0 : sessionPersistenceRetryDelayMs(state.retryAttempt);
 			this.armRuntimeSessionPersistence(projectId, state, retryDelay);
 		}
 	}
@@ -236,6 +251,15 @@ export class RuntimeSessionPersistence {
 		) {
 			await this.runRuntimeSessionPersistence(projectId, state, { retry: false });
 		}
+		// Barrier-driven writes do not re-arm themselves, and arming is skipped while
+		// a write is in flight. Hand any newer or still-failed generation back to the
+		// automatic writer so it cannot sit unpersisted until the next change.
+		if (!state.disposed && this.sessionPersistenceStates.get(projectId) === state) {
+			if (state.persistedGeneration < state.dirtyGeneration) {
+				const retryDelay = state.lastError ? sessionPersistenceRetryDelayMs(state.retryAttempt) : 100;
+				this.armRuntimeSessionPersistence(projectId, state, retryDelay);
+			}
+		}
 		if (state.persistedGeneration < requiredGeneration) {
 			throw (
 				state.lastError ??
@@ -245,14 +269,14 @@ export class RuntimeSessionPersistence {
 	}
 
 	private unsubscribeRuntimeSessionPersistence(projectId: string): void {
-		const unsubscribe = this.sessionPersistenceUnsubscribes.get(projectId);
-		if (unsubscribe) {
+		const subscription = this.sessionPersistenceSubscriptions.get(projectId);
+		if (subscription) {
 			try {
-				unsubscribe();
+				subscription.unsubscribe();
 			} catch {
 				// Listener cleanup must not prevent bounded shutdown persistence.
 			}
 		}
-		this.sessionPersistenceUnsubscribes.delete(projectId);
+		this.sessionPersistenceSubscriptions.delete(projectId);
 	}
 }

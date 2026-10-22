@@ -263,10 +263,48 @@ export function runProbeCommand(
 		const command = resolveWindowsCompatibleCommand(binary, args);
 		assertRuntimeProcessLaunchAdmission();
 		// `guard` is assigned after `execFile` returns; a mocked callback that fires
-		// synchronously sees it as null (safe via optional chaining) and `settled`
-		// below prevents arming an unneeded guard for an already-finished call.
+		// synchronously sees it as null and `settled` prevents arming it at all.
 		let settled = false;
 		let guard: ChildProcessTimeoutGuard | null = null;
+		const finish = (error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer): void => {
+			if (settled) return;
+			settled = true;
+			guard?.settle();
+			const durationMs = Math.max(0, Date.now() - startedAt);
+			// A timer fire is itself the timeout, regardless of exit status: a child
+			// killed for timing out can still report a clean exit with partial or
+			// empty output (Codex's npm shim traps the signal and exits 0), which
+			// must never read as a successful probe and then `unsupported_version`.
+			if (guard?.isTimedOut()) {
+				recordAvailabilityDiagnostic({
+					name: "agent.availability_probe_completed",
+					payload: { agentId, probeKind, durationMs, outcome: "probe_timeout" },
+					level: "warn",
+				});
+				reject(new AgentProbeExecutionError("probe_timeout", durationMs));
+				return;
+			}
+			if (error) {
+				const reason = isProbeTimeout(error, durationMs, timeoutMs) ? "probe_timeout" : "probe_failed";
+				recordAvailabilityDiagnostic({
+					name: "agent.availability_probe_completed",
+					payload: { agentId, probeKind, durationMs, outcome: reason },
+					level: "warn",
+				});
+				reject(new AgentProbeExecutionError(reason, durationMs));
+				return;
+			}
+			recordAvailabilityDiagnostic({
+				name: "agent.availability_probe_completed",
+				payload: { agentId, probeKind, durationMs, outcome: "succeeded" },
+				level: "info",
+			});
+			resolve({
+				stdout: String(stdout ?? ""),
+				stderr: String(stderr ?? ""),
+				durationMs,
+			});
+		};
 		const child = execFile(
 			command.binary,
 			command.args,
@@ -274,45 +312,12 @@ export function runProbeCommand(
 				encoding: "utf8",
 				windowsHide: true,
 			},
-			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-				settled = true;
-				guard?.settle();
-				const durationMs = Math.max(0, Date.now() - startedAt);
-				// A timer fire is itself the timeout, regardless of exit status: some
-				// launchers (e.g. Codex's npm shim) trap the signal and still exit 0.
-				if (guard?.isTimedOut()) {
-					recordAvailabilityDiagnostic({
-						name: "agent.availability_probe_completed",
-						payload: { agentId, probeKind, durationMs, outcome: "probe_timeout" },
-						level: "warn",
-					});
-					reject(new AgentProbeExecutionError("probe_timeout", durationMs));
-					return;
-				}
-				if (error) {
-					const reason = isProbeTimeout(error, durationMs, timeoutMs) ? "probe_timeout" : "probe_failed";
-					recordAvailabilityDiagnostic({
-						name: "agent.availability_probe_completed",
-						payload: { agentId, probeKind, durationMs, outcome: reason },
-						level: "warn",
-					});
-					reject(new AgentProbeExecutionError(reason, durationMs));
-					return;
-				}
-				recordAvailabilityDiagnostic({
-					name: "agent.availability_probe_completed",
-					payload: { agentId, probeKind, durationMs, outcome: "succeeded" },
-					level: "info",
-				});
-				resolve({
-					stdout: String(stdout ?? ""),
-					stderr: String(stderr ?? ""),
-					durationMs,
-				});
-			},
+			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) =>
+				finish(error, stdout, stderr),
 		);
 		if (!settled) {
-			guard = armChildProcessTimeout(child, timeoutMs);
+			// Even an unreapable launcher settles, as a transient timeout.
+			guard = armChildProcessTimeout(child, timeoutMs, { onAbandoned: () => finish(null, "", "") });
 		}
 	});
 }

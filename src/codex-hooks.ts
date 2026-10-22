@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import type { RuntimeHookEvent } from "./core";
-import { buildQuarterdeckHookCommandLine } from "./core";
+import type { RuntimeHookEvent } from "./core/api/task-session.js";
+import { buildQuarterdeckHookCommandLine } from "./core/quarterdeck-command.js";
 
 export const CODEX_HOOKS_FEATURE_NAME = "hooks";
 export const CODEX_HOOK_TIMEOUT_SECONDS = 5;

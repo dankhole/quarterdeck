@@ -109,6 +109,8 @@ The app resolves its launch environment once without starting a shell by default
 
 Published installation requires verified signature/team, hardened runtime, release fuses, and npm-owned release policy. Unsigned local candidates use the explicit local import path. The update menu never changes desktop bytes independently of npm. See the release runbook for publication and replacement evidence.
 
+The packaged resource list that gets checksummed and verified — `runtime/dist/cli.js`, the lightweight `runtime/dist/hooks.js` hook entry, bundled Node, `app.asar`, and the rest — is a single shared list (`desktop/scripts/desktop-resource-paths.mjs`), consumed by packaging (`artifact-manifest.mjs`), artifact verification (`verify-artifact.mjs`), and the npm-installed CLI's own paired-install check (`src/desktop-install/metadata.ts`). Add a new packaged resource there once rather than updating each consumer's own list.
+
 ## Maintaining desktop and browser together
 
 Implement product behavior in the shared UI and runtime first. Board state, task lifecycle, provider compatibility, Git, Files, and settings keep their existing owners; fixing them there benefits both launch modes. Put native presentation and application lifetime in `desktop/`, expose only typed capabilities through the existing bridge, and keep browser defaults usable without that bridge. Avoid separate desktop copies of product views or provider adapters.

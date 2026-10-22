@@ -116,6 +116,17 @@ export class ProjectMetadataRefresher {
 		};
 	}
 
+	/**
+	 * Delivers the current cached snapshot through the metadata message path
+	 * immediately, unconditionally (no change comparison). Used when a client
+	 * resumes a project whose controller was retained idle: the browser gets
+	 * last-known data right away instead of waiting on a fresh probe.
+	 */
+	broadcastCurrentSnapshot(): void {
+		if (this.disposed) return;
+		this.deps.onMetadataUpdated(this.deps.projectId, this.snapshot);
+	}
+
 	async refreshProject(): Promise<RuntimeProjectMetadata> {
 		if (this.disposed) return this.snapshot;
 		if (this.fullRefreshState.promise) {

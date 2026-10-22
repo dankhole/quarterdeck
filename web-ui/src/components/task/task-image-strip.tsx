@@ -1,7 +1,8 @@
-import { X } from "lucide-react";
+import { ImageOff, X } from "lucide-react";
 import type { ReactElement } from "react";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
+import { useTaskImageSource } from "@/hooks/board/use-task-image-source";
 import type { TaskImage } from "@/types";
 
 interface TaskImageStripProps {
@@ -30,11 +31,7 @@ export function TaskImageStrip({
 				{images.map((image) => {
 					const preview = (
 						<>
-							<img
-								src={`data:${image.mimeType};base64,${image.data}`}
-								alt={image.name ?? "attached image"}
-								className="h-5 w-5 rounded object-cover"
-							/>
+							<TaskImagePreview image={image} />
 							<span className="min-w-0 max-w-32 truncate text-[11px] text-text-secondary">
 								{image.name ?? "Image"}
 							</span>
@@ -72,5 +69,24 @@ export function TaskImageStrip({
 				})}
 			</div>
 		</div>
+	);
+}
+
+function TaskImagePreview({ image }: { image: TaskImage }): ReactElement {
+	const source = useTaskImageSource(image);
+	if (source.src) {
+		return <img src={source.src} alt={image.name ?? "attached image"} className="h-5 w-5 rounded object-cover" />;
+	}
+	return (
+		<span
+			role="img"
+			aria-label={source.status === "loading" ? "Loading image" : "Image unavailable"}
+			className={cn(
+				"inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-surface-3",
+				source.status === "loading" && "animate-pulse",
+			)}
+		>
+			{source.status === "missing" ? <ImageOff size={12} className="text-text-tertiary" /> : null}
+		</span>
 	);
 }

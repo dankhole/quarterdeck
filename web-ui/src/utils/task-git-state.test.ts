@@ -196,4 +196,77 @@ describe("resolveTaskGitState", () => {
 		expect(state.behindBaseCount).toBe(2);
 		expect(state.behindRemoteBaseCount).toBe(3);
 	});
+
+	it("stays pending (undefined), not fabricated unavailable, for an isolated task with no worktree snapshot yet", () => {
+		const state = resolveTaskGitState({
+			projectRootPath: "/repo",
+			card: {
+				branch: "feature/x",
+				useWorktree: true,
+				workingDirectory: "/repo/.quarterdeck/worktrees/task-1",
+			},
+			repositoryInfo: null,
+			worktreeSnapshot: null,
+			homeGitSummary: null,
+		});
+
+		expect(state.behindBaseCount).toBeUndefined();
+		expect(state.behindRemoteBaseCount).toBeUndefined();
+		expect(state.hasRepositoryMetadata).toBe(false);
+	});
+
+	it("reports a genuinely unavailable comparison as null once a snapshot has actually arrived", () => {
+		const state = resolveTaskGitState({
+			projectRootPath: "/repo",
+			card: {
+				branch: "feature/x",
+				useWorktree: true,
+				workingDirectory: "/repo/.quarterdeck/worktrees/task-1",
+			},
+			repositoryInfo: {
+				taskId: "task-1",
+				path: "/repo/.quarterdeck/worktrees/task-1",
+				exists: true,
+				baseRef: "main",
+				branch: "feature/x",
+				isDetached: false,
+				headCommit: "abcdef123456",
+			},
+			worktreeSnapshot: {
+				taskId: "task-1",
+				path: "/repo/.quarterdeck/worktrees/task-1",
+				branch: "feature/x",
+				isDetached: false,
+				headCommit: "abcdef123456",
+				changedFiles: 0,
+				additions: 0,
+				deletions: 0,
+				hasUnmergedChanges: false,
+				behindBaseCount: null,
+				behindRemoteBaseCount: null,
+				conflictState: null,
+			},
+		});
+
+		expect(state.behindBaseCount).toBeNull();
+		expect(state.behindRemoteBaseCount).toBeNull();
+	});
+
+	it("stays pending for an explicitly shared task with no home or worktree metadata yet", () => {
+		const state = resolveTaskGitState({
+			projectRootPath: "/repo",
+			card: {
+				branch: null,
+				useWorktree: false,
+				workingDirectory: null,
+			},
+			repositoryInfo: null,
+			worktreeSnapshot: null,
+			homeGitSummary: null,
+		});
+
+		expect(state.identity.isAssignedShared).toBe(true);
+		expect(state.behindBaseCount).toBeUndefined();
+		expect(state.behindRemoteBaseCount).toBeUndefined();
+	});
 });

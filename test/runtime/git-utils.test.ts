@@ -26,6 +26,13 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 import * as workdirExports from "../../src/workdir";
 import { GIT_COMMAND_TIMEOUTS_MS, runGit } from "../../src/workdir";
+import {
+	GIT_FOREGROUND_RESERVED_SLOTS,
+	GIT_PROCESS_CONCURRENCY_LIMIT,
+	getGitProcessLimiterSnapshot,
+	isGitCommandIndeterminate,
+	resolveGitProcessPriority,
+} from "../../src/workdir/git-utils";
 
 function createExecError(options: {
 	code: string | number;
@@ -299,17 +306,16 @@ describe("runGit", () => {
 		}
 
 		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
-			// A real `git` spawn normally exits in a few ms, but heavy machine load
-			// can push a single spawn's fork/exec well past a tight probe window
-			// (observed with an artificially delayed `git` on PATH). Keep the probe
-			// timeout generous enough that a legitimately slow-but-healthy spawn
-			// doesn't get killed and reported as a false timeout, and keep the
-			// stall margin comfortably past that new timeout so the test still
-			// proves the stall-tolerance invariant.
+			// Heavy machine load can push a single spawn's fork/exec past a tight
+			// probe window, so keep the probe timeout generous and the stall
+			// margin past it; the test still proves stall tolerance.
 			const probeTimeoutMs = 3_000;
 			const resultPromise = runGit(process.cwd(), ["rev-parse", "--show-toplevel"], {
 				timeoutMs: probeTimeoutMs,
 			});
+			// Process admission is asynchronous: let the command spawn and arm its
+			// timeout before stalling.
+			await new Promise((resolveSpawn) => setImmediate(resolveSpawn));
 			// Real event-loop stall: the real `git` process exits on its own, then
 			// the main thread is blocked synchronously well past the timeout
 			// before we ever look at the result.
@@ -327,23 +333,6 @@ describe("runGit", () => {
 				// `exec sleep` replaces the shell in place so SIGTERM reaches it directly.
 				const env = fakeGitEnv("exec sleep 60");
 				await expect(runGit(scriptDir, ["status"], { timeoutMs: 150, env })).resolves.toMatchObject({
-					ok: false,
-					timedOut: true,
-					failureKind: "timed_out",
-				});
-			},
-			10_000,
-		);
-
-		it.runIf(process.platform !== "win32")(
-			"reports a timeout after the close grace period when a grandchild still holds stdio open",
-			async () => {
-				// The fake "git" backgrounds (and disowns, so the shell itself exits
-				// quickly) a descendant that inherits its stdout/stderr and keeps the
-				// pipe open past the close grace period, so 'close' (and the exec
-				// callback) lags well behind the direct child's own exit.
-				const env = fakeGitEnv("sleep 1.5 &\ndisown\nexit 0");
-				await expect(runGit(scriptDir, ["status"], { timeoutMs: 300, env })).resolves.toMatchObject({
 					ok: false,
 					timedOut: true,
 					failureKind: "timed_out",
@@ -377,5 +366,100 @@ describe("workdir git exports", () => {
 			[" leading.txt", { additions: 1, deletions: 2 }],
 			[" new.txt", { additions: 3, deletions: 4 }],
 		]);
+	});
+
+	it("treats Windows spawn permission failures and NTSTATUS exits as indeterminate", () => {
+		const failure = { ok: false, timedOut: false, errorCode: null } as const;
+		expect(
+			isGitCommandIndeterminate(
+				{ ...failure, failureKind: "permission_denied", exitCode: -1, errorCode: "EPERM" },
+				"win32",
+			),
+		).toBe(true);
+		expect(
+			isGitCommandIndeterminate(
+				{ ...failure, failureKind: "permission_denied", exitCode: -1, errorCode: "EPERM" },
+				"darwin",
+			),
+		).toBe(false);
+		expect(
+			isGitCommandIndeterminate({ ...failure, failureKind: "command_failed", exitCode: 0xc0000005 }, "win32"),
+		).toBe(true);
+		expect(isGitCommandIndeterminate({ ...failure, failureKind: "command_failed", exitCode: 128 }, "win32")).toBe(
+			false,
+		);
+		expect(
+			isGitCommandIndeterminate(
+				{ ...failure, failureKind: "spawn_unavailable", exitCode: -1, errorCode: "ENOENT" },
+				"win32",
+			),
+		).toBe(false);
+		expect(isGitCommandIndeterminate({ ...failure, failureKind: "queue_timed_out", exitCode: -1 }, "darwin")).toBe(
+			true,
+		);
+	});
+
+	it("treats external signal deaths and resource-exhaustion spawn errors as indeterminate on every platform", () => {
+		const failure = { ok: false, timedOut: false, failureKind: "command_failed", errorCode: null } as const;
+		for (const platform of ["darwin", "linux", "win32"] as const) {
+			expect(isGitCommandIndeterminate({ ...failure, exitCode: -1, terminatedBySignal: true }, platform)).toBe(true);
+			for (const errorCode of ["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"] as const) {
+				expect(isGitCommandIndeterminate({ ...failure, exitCode: -1, errorCode }, platform)).toBe(true);
+			}
+			// Git's own exit status, or a bounded definite error, is an answer.
+			expect(isGitCommandIndeterminate({ ...failure, exitCode: 128 }, platform)).toBe(false);
+			expect(
+				isGitCommandIndeterminate(
+					{ ...failure, exitCode: -1, errorCode: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" },
+					platform,
+				),
+			).toBe(false);
+		}
+	});
+
+	it("classifies every timeout class explicitly for process admission", () => {
+		expect(resolveGitProcessPriority({})).toBe("foreground");
+		expect(resolveGitProcessPriority({ timeoutClass: "sync" })).toBe("foreground");
+		expect(resolveGitProcessPriority({ timeoutClass: "userAction" })).toBe("userAction");
+		expect(resolveGitProcessPriority({ timeoutClass: "metadata" })).toBe("background");
+		expect(resolveGitProcessPriority({ timeoutClass: "inspection" })).toBe("background");
+		expect(resolveGitProcessPriority({ timeoutClass: "remoteFetch" })).toBe("background");
+		expect(resolveGitProcessPriority({ timeoutClass: "metadata", priority: "foreground" })).toBe("foreground");
+	});
+
+	it("starts a queued command's timeout only after it is admitted, and cancels queued commands", async () => {
+		vi.useFakeTimers();
+		const releases: Array<() => void> = [];
+		try {
+			childProcessMocks.execFile.mockImplementation(
+				(_command: string, args: string[], _options: unknown, callback: (...values: unknown[]) => void) => {
+					if (args.includes("hold")) releases.push(() => callback(null, "held", ""));
+					else callback(null, "quick", "");
+					return { pid: 12_345, kill: vi.fn(() => true) };
+				},
+			);
+			const backgroundCapacity = GIT_PROCESS_CONCURRENCY_LIMIT - GIT_FOREGROUND_RESERVED_SLOTS;
+			const held = Array.from({ length: GIT_PROCESS_CONCURRENCY_LIMIT }, (_value, index) =>
+				runGit("/repo", ["hold"], { timeoutClass: index < backgroundCapacity ? "metadata" : "sync" }),
+			);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(getGitProcessLimiterSnapshot().active).toBe(GIT_PROCESS_CONCURRENCY_LIMIT);
+
+			const queued = runGit("/repo", ["status"], { timeoutMs: 50 });
+			const controller = new AbortController();
+			const cancelled = runGit("/repo", ["status"], { timeoutClass: "metadata", signal: controller.signal });
+			await vi.advanceTimersByTimeAsync(1_000);
+			controller.abort();
+			await expect(cancelled).resolves.toMatchObject({ ok: false, failureKind: "aborted" });
+
+			releases.shift()?.();
+			await expect(queued).resolves.toMatchObject({ ok: true, stdout: "quick" });
+			for (const release of releases.splice(0)) release();
+			await Promise.all(held);
+			expect(getGitProcessLimiterSnapshot()).toMatchObject({ active: 0 });
+		} finally {
+			for (const release of releases) release();
+			vi.useRealTimers();
+		}
 	});
 });

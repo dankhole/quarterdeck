@@ -19,7 +19,6 @@ export interface SettingsFormValues {
 	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
 	claudeLaunchPermissionMode: RuntimeConfigResponse["claudeLaunchPermissionMode"];
-	statuslineEnabled: boolean;
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
@@ -61,7 +60,6 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		claudeLaunchPermissionMode: config?.claudeLaunchPermissionMode ?? CONFIG_DEFAULTS.claudeLaunchPermissionMode,
-		statuslineEnabled: config?.statuslineEnabled ?? CONFIG_DEFAULTS.statuslineEnabled,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,

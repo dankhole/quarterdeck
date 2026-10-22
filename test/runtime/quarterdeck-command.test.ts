@@ -6,15 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildClaudeHooksSettings } from "../../src/claude-hooks";
 import { buildCodexHooksConfig } from "../../src/codex-hooks";
-import { buildStatuslineCommand } from "../../src/commands/statusline";
 
+import { buildQuarterdeckCommandParts, buildShellCommandLine, resolveQuarterdeckCommandParts } from "../../src/core";
 import {
 	buildQuarterdeckCommandLine,
-	buildQuarterdeckCommandParts,
+	buildQuarterdeckHookCommandLine,
 	buildQuarterdeckHookCommandParts,
-	buildShellCommandLine,
-	resolveQuarterdeckCommandParts,
-} from "../../src/core";
+	resolveBundledHookEntryPath,
+} from "../../src/core/quarterdeck-command";
 import * as desktopAdmission from "../../src/desktop-install/admission.js";
 import { prepareAgentLaunch } from "../../src/terminal";
 import { QUARTERDECK_PI_HOOK_COMMAND_ENV } from "../../src/terminal/pi-lifecycle-extension";
@@ -129,26 +128,51 @@ describe("resolveQuarterdeckCommandParts", () => {
 		expect(parts).toEqual(["/usr/local/bin/node", "--import", "tsx", "/repo/src/cli.ts"]);
 	});
 
-	it("routes tsx-launched hook commands to the sibling hooks entrypoint", () => {
+	it("routes tsx-launched hook commands to the sibling hook-main.ts source entry", () => {
+		fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-source-entry-")));
+		const src = join(fixtureRoot, "src");
+		mkdirSync(src, { recursive: true });
+		const cli = join(src, "cli.ts");
+		const hookMain = join(src, "hook-main.ts");
+		writeFileSync(cli, "synthetic cli source");
+		writeFileSync(hookMain, "synthetic hook entry source");
+		const selfPath = join(src, "core/quarterdeck-command.ts");
+
 		expect(
-			buildQuarterdeckHookCommandParts(["hooks", "notify"], {
-				execPath: "/usr/local/bin/node",
-				argv: ["/usr/local/bin/node", "/repo/node_modules/tsx/dist/cli.mjs", "/repo/src/cli.ts", "--no-open"],
-			}),
-		).toEqual([
-			"/usr/local/bin/node",
-			"/repo/node_modules/tsx/dist/cli.mjs",
-			join("/repo/src", "hooks.ts"),
-			"hooks",
-			"notify",
-		]);
+			buildQuarterdeckHookCommandParts(
+				["hooks", "notify"],
+				{
+					execPath: "/usr/local/bin/node",
+					argv: ["/usr/local/bin/node", "/repo/node_modules/tsx/dist/cli.mjs", cli, "--no-open"],
+				},
+				selfPath,
+			),
+		).toEqual(["/usr/local/bin/node", "/repo/node_modules/tsx/dist/cli.mjs", hookMain, "hooks", "notify"]);
 		expect(
-			buildQuarterdeckHookCommandParts(["hooks", "notify"], {
-				execPath: "/usr/local/bin/node",
-				execArgv: ["--import", "tsx"],
-				argv: ["/usr/local/bin/node", "/repo/src/cli.ts", "--no-open"],
-			}),
-		).toEqual(["/usr/local/bin/node", "--import", "tsx", join("/repo/src", "hooks.ts"), "hooks", "notify"]);
+			buildQuarterdeckHookCommandParts(
+				["hooks", "notify"],
+				{
+					execPath: "/usr/local/bin/node",
+					execArgv: ["--import", "tsx"],
+					argv: ["/usr/local/bin/node", cli, "--no-open"],
+				},
+				selfPath,
+			),
+		).toEqual(["/usr/local/bin/node", "--import", "tsx", hookMain, "hooks", "notify"]);
+	});
+
+	it("keeps the tsx-launched cli.ts when no sibling hook-main.ts exists", () => {
+		expect(
+			buildQuarterdeckHookCommandParts(
+				["hooks", "notify"],
+				{
+					execPath: "/usr/local/bin/node",
+					execArgv: ["--import", "tsx"],
+					argv: ["/usr/local/bin/node", "/nonexistent/src/cli.ts"],
+				},
+				"/nonexistent/src/core/quarterdeck-command.ts",
+			),
+		).toEqual(["/usr/local/bin/node", "--import", "tsx", "/nonexistent/src/cli.ts", "hooks", "notify"]);
 	});
 
 	it("falls back to execPath when no entrypoint path is available", () => {
@@ -275,7 +299,7 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		}
 	});
 
-	it("routes Claude, Codex, Pi, and statusline through the lean hooks entrypoint without rewriting the provider", async () => {
+	it("routes Claude, Codex, and Pi commands through admission without rewriting the provider", async () => {
 		const context = createBundledInvocation();
 		Object.defineProperty(process, "execPath", { configurable: true, value: context.execPath });
 		process.argv = context.argv;
@@ -284,17 +308,29 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		vi.stubEnv("USERPROFILE", fixtureRoot);
 		vi.stubEnv("QUARTERDECK_STATE_HOME", undefined);
 
-		// Hook/statusline commands are rewritten to the small hooks.js entrypoint
-		// (not cli.js) so provider hooks avoid starting the full server bundle.
-		const hooksPrefix = buildShellCommandLine(context.wrapper, [context.hooksEntry], process.platform);
+		// Inside the bundled dist/cli.js, hook commands are rewritten to the sibling
+		// dist/hooks.js so provider hooks avoid starting the full server bundle, and
+		// they still acquire admission through the wrapper.
+		mkdirSync(dirname(context.cli), { recursive: true });
+		writeFileSync(context.cli, "synthetic cli");
+		writeFileSync(context.hooksEntry, "synthetic hooks entry");
+		expect(buildQuarterdeckHookCommandParts(["hooks", "notify"], context, context.cli)).toEqual([
+			context.wrapper,
+			context.hooksEntry,
+			"hooks",
+			"notify",
+		]);
+
+		// This test runs from source, which has no sibling bundle, so generated
+		// commands keep the exact admitted command serving the runtime.
+		const prefix = buildShellCommandLine(context.wrapper, [context.cli], process.platform);
 		for (const groups of [buildClaudeHooksSettings().hooks, buildCodexHooksConfig()]) {
 			for (const matchers of Object.values(groups)) {
 				for (const matcher of matchers) {
-					for (const hook of matcher.hooks) expect(hook.command.startsWith(`${hooksPrefix} `)).toBe(true);
+					for (const hook of matcher.hooks) expect(hook.command.startsWith(`${prefix} `)).toBe(true);
 				}
 			}
 		}
-		expect(buildStatuslineCommand()).toBe(`${hooksPrefix} 'statusline'`);
 
 		const launch = await prepareAgentLaunch({
 			taskId: "synthetic-pi-task",
@@ -307,10 +343,156 @@ describe.skipIf(process.platform === "win32")("bundled desktop hook commands", (
 		});
 		expect(JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "null")).toEqual([
 			context.wrapper,
-			context.hooksEntry,
+			context.cli,
 			"hooks",
 			"notify",
 		]);
 		expect(launch.binary).toBe("/external/provider/pi");
+	});
+});
+
+describe("resolveBundledHookEntryPath", () => {
+	let hookFixtureRoot: string | undefined;
+
+	afterEach(() => {
+		if (hookFixtureRoot) rmSync(hookFixtureRoot, { recursive: true, force: true });
+		hookFixtureRoot = undefined;
+	});
+
+	it("resolves the sibling dist/hooks.js next to a real dist/cli.js", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const distDir = join(hookFixtureRoot, "dist");
+		mkdirSync(distDir, { recursive: true });
+		const cli = join(distDir, "cli.js");
+		const hooks = join(distDir, "hooks.js");
+		writeFileSync(cli, "synthetic cli");
+		writeFileSync(hooks, "synthetic hooks entry");
+
+		expect(resolveBundledHookEntryPath(cli)).toBe(hooks);
+	});
+
+	it("returns null when no sibling dist/hooks.js exists", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const distDir = join(hookFixtureRoot, "dist");
+		mkdirSync(distDir, { recursive: true });
+		const cli = join(distDir, "cli.js");
+		writeFileSync(cli, "synthetic cli");
+
+		expect(resolveBundledHookEntryPath(cli)).toBeNull();
+	});
+
+	it("returns null for a tsx/dev entrypoint that is not the bundled cli.js", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const srcEntry = join(hookFixtureRoot, "cli.ts");
+		writeFileSync(srcEntry, "synthetic source entrypoint");
+
+		expect(resolveBundledHookEntryPath(srcEntry)).toBeNull();
+	});
+
+	it("returns null when the self path cannot be resolved at all", () => {
+		expect(resolveBundledHookEntryPath("/nonexistent/dist/cli.js")).toBeNull();
+	});
+
+	it("resolves through an npm-global bin symlink layout to the real cli.js's sibling", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const packageDist = join(hookFixtureRoot, "lib/node_modules/quarterdeck/dist");
+		mkdirSync(packageDist, { recursive: true });
+		const realCli = join(packageDist, "cli.js");
+		const realHooks = join(packageDist, "hooks.js");
+		writeFileSync(realCli, "synthetic cli");
+		writeFileSync(realHooks, "synthetic hooks entry");
+		const globalBin = join(hookFixtureRoot, "bin");
+		mkdirSync(globalBin, { recursive: true });
+		const symlinkedCli = join(globalBin, "cli.js");
+		symlinkSync(realCli, symlinkedCli);
+
+		expect(resolveBundledHookEntryPath(symlinkedCli)).toBe(realHooks);
+	});
+
+	it("rejects a symlinked hooks.js candidate the same way resolveNodeExecutable rejects tampered Node binaries", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const distDir = join(hookFixtureRoot, "dist");
+		mkdirSync(distDir, { recursive: true });
+		const cli = join(distDir, "cli.js");
+		writeFileSync(cli, "synthetic cli");
+		const elsewhere = join(hookFixtureRoot, "attacker-controlled.js");
+		writeFileSync(elsewhere, "not the real hooks entry");
+		symlinkSync(elsewhere, join(distDir, "hooks.js"));
+
+		expect(resolveBundledHookEntryPath(cli)).toBeNull();
+	});
+
+	it("recognizes a Windows-style path separator independently of the host platform", () => {
+		// POSIX filenames may literally contain a backslash character, so a real file
+		// can end in "\\cli.js" without the directory actually being Windows-shaped.
+		// This exercises the suffix check with an injected Windows separator exactly
+		// as it would run on win32, where realpathSync already returns "\\"-joined paths.
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const cli = join(hookFixtureRoot, "dist\\cli.js");
+		const hooks = join(hookFixtureRoot, "hooks.js");
+		writeFileSync(cli, "synthetic cli");
+		writeFileSync(hooks, "synthetic hooks entry");
+
+		expect(resolveBundledHookEntryPath(cli, "\\")).toBe(hooks);
+		// The default (host-native) separator must not match this backslash-suffixed name.
+		expect(resolveBundledHookEntryPath(cli)).toBeNull();
+	});
+});
+
+describe("buildQuarterdeckHookCommandParts / buildQuarterdeckHookCommandLine", () => {
+	let hookFixtureRoot: string | undefined;
+
+	afterEach(() => {
+		if (hookFixtureRoot) rmSync(hookFixtureRoot, { recursive: true, force: true });
+		hookFixtureRoot = undefined;
+	});
+
+	it("targets the bundled lightweight hook entry when dist/hooks.js exists", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const distDir = join(hookFixtureRoot, "dist");
+		mkdirSync(distDir, { recursive: true });
+		writeFileSync(join(distDir, "cli.js"), "synthetic cli");
+		writeFileSync(join(distDir, "hooks.js"), "synthetic hooks entry");
+		const context = { execPath: "/usr/local/bin/node", argv: ["/usr/local/bin/node", join(distDir, "cli.js")] };
+
+		expect(buildQuarterdeckHookCommandParts(["hooks", "notify"], context, join(distDir, "cli.js"))).toEqual([
+			"/usr/local/bin/node",
+			join(distDir, "hooks.js"),
+			"hooks",
+			"notify",
+		]);
+	});
+
+	it("falls back to the current command when the bundled hook entry is missing", () => {
+		hookFixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-hook-entry-")));
+		const distDir = join(hookFixtureRoot, "dist");
+		mkdirSync(distDir, { recursive: true });
+		writeFileSync(join(distDir, "cli.js"), "synthetic cli");
+		const context = { execPath: "/usr/local/bin/node", argv: ["/usr/local/bin/node", join(distDir, "cli.js")] };
+
+		expect(buildQuarterdeckHookCommandParts(["hooks", "notify"], context, join(distDir, "cli.js"))).toEqual([
+			"/usr/local/bin/node",
+			join(distDir, "cli.js"),
+			"hooks",
+			"notify",
+		]);
+	});
+
+	it("serializes through buildShellCommandLine exactly like buildQuarterdeckCommandLine's fallback", () => {
+		const context = {
+			execPath: "C:\\Quarterdeck %NAME% ! ^ & (runtime)\\node.exe",
+			argv: ["C:\\Quarterdeck %NAME% ! ^ & (runtime)\\node.exe", "C:\\Quarterdeck source\\cli.js"],
+		};
+		const env = { SystemRoot: "C:\\Windows" };
+
+		expect(
+			buildQuarterdeckHookCommandLine(
+				["hooks", "ingest", "--event", "activity"],
+				context,
+				"win32",
+				env,
+				"/nonexistent/self/path.ts",
+			),
+		).toBe(buildQuarterdeckCommandLine(["hooks", "ingest", "--event", "activity"], context, "win32", env));
 	});
 });

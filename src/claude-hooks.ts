@@ -1,13 +1,14 @@
-import type { RuntimeHookEvent } from "./core";
-import { buildQuarterdeckHookCommandLine } from "./core";
-import type { HookHttpTransport } from "./terminal/hook-http-channel";
+import type { RuntimeHookEvent } from "./core/api/task-session.js";
+import { buildQuarterdeckHookCommandLine } from "./core/quarterdeck-command.js";
+import type { HookHttpTransport } from "./terminal/hook-http-channel.js";
 
 // Claude hook timeouts are in seconds. Best-effort `hooks notify` delivery is
 // capped at 250ms, so its process gets a short bound; the HTTP transport has no
 // process startup and the runtime answers before ingesting, so it gets 1s.
 // Reliable `hooks ingest` enqueues to the hook outbox before posting (a 2.25s
 // first attempt within a 3.25s total budget that includes one retry); periodic
-// runtime replay only takes records at least 5s old, so it does not race a live
+// runtime replay only adopts an unabandoned record once it is older than
+// HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS (6s), so it does not race a live
 // attempt. A process killed before it enqueues loses the transition, so the
 // bound leaves headroom for slow process startup under load while still
 // replacing Claude's 600s default.
@@ -96,19 +97,11 @@ export type ClaudeHooksSettings<THook extends ClaudeHookHandler = ClaudeCommandH
 		Stop: ClaudeHookMatcherGroup<THook>[];
 		StopFailure: ClaudeHookMatcherGroup<THook>[];
 	};
-	statusLine?: {
-		type: "command";
-		command: string;
-	};
 };
 
-interface ClaudeHooksSettingsOptions {
-	statusLineCommand?: string | null;
-}
-
 /** Launch settings that deliver every hook through the Quarterdeck hook CLI. */
-export function buildClaudeHooksSettings(options: ClaudeHooksSettingsOptions = {}): ClaudeHooksSettings {
-	return buildSettings((event, hookOptions) => buildClaudeHookCommand(event, hookOptions), options);
+export function buildClaudeHooksSettings(): ClaudeHooksSettings {
+	return buildSettings((event, hookOptions) => buildClaudeHookCommand(event, hookOptions));
 }
 
 /**
@@ -116,18 +109,16 @@ export function buildClaudeHooksSettings(options: ClaudeHooksSettingsOptions = {
  * endpoint. Reliable hooks, including SessionStart (which Claude only runs as a
  * command), keep the CLI and its durable outbox.
  */
-export function buildClaudeHttpHooksSettings(
-	options: ClaudeHooksSettingsOptions & { httpNotify: HookHttpTransport },
-): ClaudeHooksSettings<ClaudeHookHandler> {
-	return buildSettings(
-		(event, hookOptions) => buildClaudeHookHandler(event, { ...hookOptions, httpNotify: options.httpNotify }),
-		options,
+export function buildClaudeHttpHooksSettings(options: {
+	httpNotify: HookHttpTransport;
+}): ClaudeHooksSettings<ClaudeHookHandler> {
+	return buildSettings((event, hookOptions) =>
+		buildClaudeHookHandler(event, { ...hookOptions, httpNotify: options.httpNotify }),
 	);
 }
 
 function buildSettings<THook extends ClaudeHookHandler>(
 	hook: (event: RuntimeHookEvent, options?: { reliable?: boolean }) => THook,
-	options: ClaudeHooksSettingsOptions,
 ): ClaudeHooksSettings<THook> {
 	return {
 		hooks: {
@@ -228,13 +219,5 @@ function buildSettings<THook extends ClaudeHookHandler>(
 				},
 			],
 		},
-		...(options.statusLineCommand
-			? {
-					statusLine: {
-						type: "command" as const,
-						command: options.statusLineCommand,
-					},
-				}
-			: undefined),
 	};
 }

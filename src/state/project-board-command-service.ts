@@ -65,6 +65,7 @@ export interface ProjectBoardCommandServiceDependencies {
 	getAuthoritativeSessions: (
 		scope: ProjectBoardCommandScope,
 	) => Promise<Record<string, RuntimeTaskSessionSummary>> | Record<string, RuntimeTaskSessionSummary>;
+	/** Requests client publication after a commit. Invoked synchronously but never awaited. */
 	publishAuthoritativeState?: (
 		scope: ProjectBoardCommandScope,
 		result: ApplyProjectBoardMutationResult,
@@ -145,17 +146,7 @@ export class ProjectBoardCommandService {
 					await assertTaskPinsAllowedUnderLock(scope, newlyPinned);
 				},
 			});
-			try {
-				await this.dependencies.publishAuthoritativeState?.(scope, result);
-			} catch (error) {
-				// Persistence already committed. Publication is a wake-up hint and a
-				// later replay/reconnect can publish the same authoritative snapshot.
-				log.warn("authoritative board state publication failed", {
-					projectId: scope.projectId,
-					commandId: envelope.commandId,
-					error: toErrorMessage(error),
-				});
-			}
+			this.requestPublication(scope, result, "authoritative board state publication failed", envelope.commandId);
 			this.publishPostCommitEffects(scope, envelope.commandId, envelope.commands, result);
 			return result;
 		});
@@ -398,15 +389,36 @@ export class ProjectBoardCommandService {
 			mutate,
 		});
 		if (result.changed) {
-			try {
-				await this.dependencies.publishAuthoritativeState?.(scope, result);
-			} catch (error) {
-				log.warn("authoritative runtime projection publication failed", {
-					projectId: scope.projectId,
-					error: toErrorMessage(error),
-				});
-			}
+			this.requestPublication(scope, result, "authoritative runtime projection publication failed");
 		}
 		return result;
+	}
+
+	/**
+	 * Persistence has already committed. Publication is a wake-up hint for
+	 * connected clients, so its Git/availability work never extends the
+	 * command, hook-durability, or projection caller's path; a later
+	 * publication, replay, or reconnect delivers the same authoritative state.
+	 */
+	private requestPublication(
+		scope: ProjectBoardCommandScope,
+		result: ApplyProjectBoardMutationResult,
+		failureMessage: string,
+		commandId?: string,
+	): void {
+		const publish = this.dependencies.publishAuthoritativeState;
+		if (!publish) return;
+		const logFailure = (error: unknown): void => {
+			log.warn(failureMessage, {
+				projectId: scope.projectId,
+				...(commandId ? { commandId } : {}),
+				error: toErrorMessage(error),
+			});
+		};
+		try {
+			void Promise.resolve(publish(scope, result)).catch(logFailure);
+		} catch (error) {
+			logFailure(error);
+		}
 	}
 }

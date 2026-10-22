@@ -358,7 +358,6 @@ export async function prepareTaskSessionStart(
 		projectId: projectScope.projectId,
 		projectPath: projectScope.projectPath,
 		claudeLaunchPermissionMode: scopedRuntimeConfig.claudeLaunchPermissionMode,
-		statuslineEnabled: scopedRuntimeConfig.statuslineEnabled,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		codexOptions: resolved.agentId === "codex" ? existingCard?.codexOptions : undefined,
 		claudeOptions: resolved.agentId === "claude" ? existingCard?.claudeOptions : undefined,

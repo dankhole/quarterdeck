@@ -7,6 +7,9 @@ import { createHooksApi } from "../../../../src/trpc";
 import { createBoard } from "../../../utilities/board-factory";
 import { createTestTaskSessionSummary } from "../../../utilities/task-session-factory";
 
+const TASK_ID = "task-1";
+const SESSION_INSTANCE_ID = "codex-process-1";
+
 type BoardCommandResult = {
 	state: RuntimeProjectStateResponse;
 	changed: boolean;
@@ -149,6 +152,190 @@ describe("createHooksApi — acknowledgement durability", () => {
 
 			await expect(api.ingest(stopHook)).resolves.toEqual({ ok: true });
 			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+		} finally {
+			await persistence.close();
+		}
+	});
+});
+
+/** Many-delivery harness with gated and failing writes, matching the registry's tracking on acquisition. */
+function createGatedHarness() {
+	const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+	manager.hydrateFromRecord({
+		[TASK_ID]: createTestTaskSessionSummary({
+			taskId: TASK_ID,
+			agentId: "codex",
+			sessionInstanceId: SESSION_INSTANCE_ID,
+			state: "running",
+			reviewReason: null,
+			pid: 4321,
+			lastProviderHookOccurredAt: 100,
+		}),
+	});
+	const writeGates: Array<ReturnType<typeof createDeferred<void>>> = [];
+	const writeFailures = { remaining: 0 };
+	const reconcileRuntimeSessions = vi.fn(async () => {
+		const gate = writeGates.shift();
+		if (gate) await gate.promise;
+		if (writeFailures.remaining > 0) {
+			writeFailures.remaining -= 1;
+			throw new Error("synthetic session write failure");
+		}
+		return createBoardCommandResult();
+	});
+	const persistence = new RuntimeSessionPersistence({
+		projectRegistry: { getProjectPathById: () => "/tmp/repo" },
+		boardCommands: { reconcileRuntimeSessions },
+	});
+	const api = createHooksApi({
+		runProjectOperation: async (_scope, operation) => await operation(),
+		projects: { getProjectPathById: () => "/tmp/repo" },
+		terminals: {
+			getTerminalManagerForProject: () => manager,
+			ensureTerminalManagerForProject: async () => {
+				// Mirrors the registry's ready notification on every acquisition.
+				persistence.trackTerminalManager("project-1", manager);
+				return manager;
+			},
+		},
+		persistSessionState: persistence.persistRuntimeSessions,
+		awaitSessionStateDurable: persistence.awaitRuntimeSessionsDurable,
+	});
+	const request = (index: number, hookEventName = "PreToolUse"): RuntimeHookIngestRequest => ({
+		taskId: TASK_ID,
+		projectId: "project-1",
+		event: "activity",
+		metadata: {
+			source: "codex",
+			hookEventName,
+			sessionInstanceId: SESSION_INSTANCE_ID,
+			turnId: "turn-1",
+			toolUseId: `tool-${index}`,
+			toolName: "Bash",
+		},
+		delivery: {
+			id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+			occurredAt: 200 + index,
+		},
+	});
+	const holdNextWrite = () => {
+		const gate = createDeferred<void>();
+		writeGates.push(gate);
+		return gate;
+	};
+	return { manager, persistence, api, request, reconcileRuntimeSessions, holdNextWrite, writeFailures };
+}
+
+describe("createHooksApi — durability barrier under load", () => {
+	it("acknowledges a duplicate delivery without another session write", async () => {
+		const { persistence, api, request, reconcileRuntimeSessions } = createGatedHarness();
+		try {
+			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			const writesAfterOriginal = reconcileRuntimeSessions.mock.calls.length;
+			expect(writesAfterOriginal).toBeGreaterThan(0);
+
+			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesAfterOriginal);
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("holds a duplicate acknowledgement until the original delivery is durable", async () => {
+		const { persistence, api, request, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
+		try {
+			// Let the tracking write triggered by hydration settle first.
+			await persistence.persistRuntimeSessions("project-1");
+			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
+			const gate = holdNextWrite();
+			const original = api.ingest(request(1));
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
+
+			let duplicateSettled = false;
+			const duplicate = api.ingest(request(1)).then((response) => {
+				duplicateSettled = true;
+				return response;
+			});
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			expect(duplicateSettled).toBe(false);
+
+			gate.resolve();
+			await expect(original).resolves.toEqual({ ok: true });
+			await expect(duplicate).resolves.toEqual({ ok: true });
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1);
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("does not acknowledge a duplicate while the original delivery's write has failed", async () => {
+		const { persistence, api, request, reconcileRuntimeSessions, writeFailures } = createGatedHarness();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
+			// The original is processed in memory (its delivery ID is now known) but
+			// neither the barrier write nor its bounded retry becomes durable.
+			writeFailures.remaining = 4;
+			const original = await api.ingest(request(1));
+			expect(original).toMatchObject({ ok: false });
+
+			const failedDuplicate = await api.ingest(request(1));
+			expect(failedDuplicate).toMatchObject({ ok: false });
+			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBe(4);
+
+			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBe(5);
+			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBe(5);
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("waits for its own write when an ordering-rejected delivery still records a receipt", async () => {
+		const { manager, persistence, api, request, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
+			vi.spyOn(manager, "evaluateHookEventOrder").mockReturnValueOnce({
+				accepted: false,
+				reason: "unrelated_tool_completion",
+			});
+			const gate = holdNextWrite();
+			let settled = false;
+			const response = api.ingest(request(1, "PostToolUse")).then((result) => {
+				settled = true;
+				return result;
+			});
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
+			expect(manager.store.getSummary(TASK_ID)?.recentProviderHookDeliveryIds).toHaveLength(1);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			expect(settled).toBe(false);
+
+			gate.resolve();
+			await expect(response).resolves.toEqual({ ok: true });
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("coalesces a concurrent burst of distinct hooks into at most two writes", async () => {
+		const { manager, persistence, api, request, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
+			const gate = holdNextWrite();
+			const first = api.ingest(request(1));
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
+			const burst = Array.from({ length: 12 }, (_, index) => api.ingest(request(index + 2)));
+			gate.resolve();
+
+			await expect(Promise.all([first, ...burst])).resolves.toEqual(
+				Array.from({ length: 13 }, () => ({ ok: true })),
+			);
+			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBeLessThanOrEqual(2);
+			expect(manager.store.getSummary(TASK_ID)?.recentProviderHookDeliveryIds).toHaveLength(13);
 		} finally {
 			await persistence.close();
 		}

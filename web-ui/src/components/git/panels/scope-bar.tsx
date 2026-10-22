@@ -19,8 +19,13 @@ interface ScopeBarProps {
 	taskTitle: string | null;
 	taskBranch: string | null;
 	taskBaseRef: string | null;
-	behindBaseCount: number | null;
-	behindRemoteBaseCount: number | null;
+	/**
+	 * `undefined` means no metadata has arrived for this task yet (pending);
+	 * `null` means it arrived and the comparison is genuinely unavailable.
+	 * See `formatBehindCount` in `task-base-ref-display.ts`.
+	 */
+	behindBaseCount: number | null | undefined;
+	behindRemoteBaseCount: number | null | undefined;
 	isDetachedHead: boolean;
 	/** Whether the task worktree is on a detached HEAD (headless). */
 	taskIsDetached?: boolean;
@@ -109,8 +114,8 @@ function TaskContent({
 	taskTitle: string | null;
 	taskBranch: string | null;
 	taskBaseRef: string | null;
-	behindBaseCount: number | null;
-	behindRemoteBaseCount: number | null;
+	behindBaseCount: number | null | undefined;
+	behindRemoteBaseCount: number | null | undefined;
 	taskIsDetached?: boolean;
 	branchPillSlot?: ReactNode;
 }): React.ReactElement {

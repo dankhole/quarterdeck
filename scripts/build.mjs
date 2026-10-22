@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 
 import * as esbuild from "esbuild";
 
+import { createQuarterdeckEsbuildOptions, QUARTERDECK_CJS_SHIM_BANNER } from "./esbuild-shared-options.mjs";
+
 const buildId = process.env.QUARTERDECK_BUILD_ID?.trim();
 if (!buildId) {
 	throw new Error(
@@ -10,35 +12,8 @@ if (!buildId) {
 	);
 }
 
-/** Modules that must stay external (native addons, large runtime deps). */
-const external = ["node-pty", "proper-lockfile", "ws", "open", "@trpc/client", "@trpc/server", "commander", "zod"];
-
-const define = {
-	"process.env.NODE_ENV": '"production"',
-	"process.env.QUARTERDECK_BUILD_ID": JSON.stringify(buildId),
-};
-
-/**
- * Bundled CJS dependencies call require() on Node built-ins (process, fs, etc.).
- * ESM output needs a real require() function for those calls to work.
- */
-const cjsShimBanner = [
-	'import { createRequire as __quarterdeck_createRequire } from "node:module";',
-	"const require = __quarterdeck_createRequire(import.meta.url);",
-].join("\n");
-
-/** Shared esbuild options for both entry points. */
-const shared = {
-	bundle: true,
-	format: "esm",
-	platform: "node",
-	target: "node20",
-	external,
-	define,
-	sourcemap: true,
-	packages: "bundle",
-	banner: { js: cjsShimBanner },
-};
+/** Shared esbuild options for all three entry points. */
+const shared = createQuarterdeckEsbuildOptions(buildId);
 
 const runtimeAssets = [
 	{
@@ -68,13 +43,18 @@ await Promise.all([
 		...shared,
 		entryPoints: ["src/cli.ts"],
 		outfile: "dist/cli.js",
-		banner: { js: `#!/usr/bin/env node\n${cjsShimBanner}` },
+		banner: { js: `#!/usr/bin/env node\n${QUARTERDECK_CJS_SHIM_BANNER}` },
 	}),
 	esbuild.build({ ...shared, entryPoints: ["src/npm-install.ts"], outfile: "dist/npm-install.js" }),
-	// Dedicated small entrypoint for hook/statusline commands (Workstream F1):
-	// avoids reinvoking the full cli.js bundle (server/router graph) on every
-	// provider hook call. See src/hooks.ts and buildQuarterdeckHookCommandLine.
-	esbuild.build({ ...shared, entryPoints: ["src/hooks.ts"], outfile: "dist/hooks.js" }),
+	// Lightweight hook-ingest/notify entry point (src/hook-main.ts calling into
+	// src/hook-entry.ts). Every Claude/Codex/Pi hook spawns a full process, so this
+	// bundle must stay narrow — see docs/conventions/session-lifecycle.md
+	// (Claude/Codex hooks) and the dist/hooks.js bundle-hygiene test.
+	esbuild.build({
+		...shared,
+		entryPoints: ["src/hook-main.ts"],
+		outfile: "dist/hooks.js",
+	}),
 ]);
 
 for (const asset of runtimeAssets) {
@@ -86,4 +66,4 @@ await rm(webUiDistOutput, { recursive: true, force: true, maxRetries: 10, retryD
 await copyDirectoryContents(webUiDistSource, webUiDistOutput);
 if (process.platform !== "win32") await chmod("dist/cli.js", 0o755);
 
-console.log("esbuild: bundled CLI and npm installation entry points and copied runtime assets");
+console.log("esbuild: bundled CLI, npm installation, and lightweight hook entry points and copied runtime assets");

@@ -320,4 +320,14 @@ describe("board-state parser helpers", () => {
 		]);
 		expect(parsePersistedTaskImages([{ id: 1 }])).toBeUndefined();
 	});
+
+	it("keeps stored image references from authoritative state", () => {
+		const ref = { id: "img-1", name: "a.png", mimeType: "image/png", sha256: "a".repeat(64), byteLength: 4 };
+		expect(parsePersistedTaskImages([ref, { ...ref, sha256: "not-a-hash" }])).toEqual([ref]);
+		const card = parsePersistedBoardCard(
+			{ id: "task-a", prompt: "Task A", baseRef: "main", images: [ref] },
+			{ createTaskId: () => "task-1", now: 42 },
+		);
+		expect(card?.images).toEqual([ref]);
+	});
 });

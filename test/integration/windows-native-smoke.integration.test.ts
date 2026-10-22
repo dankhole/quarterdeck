@@ -37,12 +37,12 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../../src/core";
 import {
-	buildQuarterdeckCommandLine,
 	mergeProcessEnvironment,
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	resolveWindowsPowerShellPath,
 } from "../../src/core";
+import { buildQuarterdeckHookCommandLine } from "../../src/core/quarterdeck-command";
 import {
 	discoverAbandonedManagedProcesses,
 	readManagedProcessOwnershipEvidence,
@@ -240,7 +240,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 		"(round trip)",
 		"combined %NAME% !ROUND_TRIP! ^ & | (value)",
 	];
-	const expectedInput = "status-line stdin %NAME% !ROUND_TRIP! ^ & | (value)";
+	const expectedInput = "hook command stdin round-trip %NAME% !ROUND_TRIP! ^ & | (value)";
 
 	mkdirSync(fixtureRoot, { recursive: true });
 	mkdirSync(shimDirectory, { recursive: true });
@@ -279,7 +279,7 @@ async function assertWindowsShellCommandRoundTrip(tempHome: string): Promise<voi
 	poisonedComSpecEnv.ComSpec = "cmd.exe";
 	const systemRoot = process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows";
 	expect(resolveWindowsComSpec(poisonedComSpecEnv)).toBe(join(systemRoot, "System32", "cmd.exe"));
-	const command = buildQuarterdeckCommandLine(
+	const command = buildQuarterdeckHookCommandLine(
 		[capturePath, ...expectedArguments],
 		{ execPath: copiedNodePath, argv: [copiedNodePath, captureScriptPath] },
 		"win32",

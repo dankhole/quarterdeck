@@ -7,6 +7,7 @@ import { readBuildManifest } from "../../scripts/build-manifest.mjs";
 import { verifyAppSignature } from "./app-signature.mjs";
 import { readPairedBuildIdentity } from "./build-identity.mjs";
 import { sha256File } from "./checksums.mjs";
+import { DESKTOP_RESOURCE_PATHS } from "./desktop-resource-paths.mjs";
 import { requireNativeMacTarget } from "./paths.mjs";
 import { run } from "./process.mjs";
 import { validateReleasePolicy } from "./release-policy.mjs";
@@ -153,18 +154,7 @@ export async function verifyArtifactManifest(manifestPath) {
 		}
 	}
 	const resources = join(appPath, "Contents", "Resources");
-	for (const required of [
-		"app.asar",
-		"runtime/bin/node",
-		"runtime/bin/nodeHost",
-		"runtime/dist/cli.js",
-		"runtime/dist/hooks.js",
-		"runtime/dist/build-manifest.json",
-		"runtime/installation-admission",
-		"runtime/dist/web-ui/index.html",
-		"runtime/bundle-manifest.json",
-		"runtime/release-policy.json",
-	]) {
+	for (const required of DESKTOP_RESOURCE_PATHS) {
 		if (!artifactManifest.checksums?.[required]) throw new Error(`Artifact manifest lacks checksum: ${required}.`);
 	}
 	for (const [file, expected] of Object.entries(artifactManifest.checksums)) {

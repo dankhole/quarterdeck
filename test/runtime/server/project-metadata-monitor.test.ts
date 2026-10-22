@@ -8,7 +8,10 @@ import type {
 	ResolvedTaskWorktreeMetadataInput,
 	TrackedTaskWorktree,
 } from "../../../src/server/project-metadata-loaders";
-import { createProjectMetadataMonitor } from "../../../src/server/project-metadata-monitor";
+import {
+	createProjectMetadataMonitor,
+	PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS,
+} from "../../../src/server/project-metadata-monitor";
 
 const loaderMocks = vi.hoisted(() => ({
 	loadHomeGitMetadata: vi.fn(),
@@ -296,7 +299,9 @@ describe("ProjectMetadataMonitor", () => {
 			monitor.disconnectProject(project.projectId, "second");
 			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(1);
 			monitor.disconnectProject(project.projectId, "first");
-			expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+			// The controller is retained idle for the grace window instead of
+			// vanishing immediately, so a quick reconnect can reuse its cache.
+			expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(0);
 		} finally {
 			monitor.close();
 		}
@@ -375,12 +380,24 @@ describe("ProjectMetadataMonitor", () => {
 				}
 				deferred.resolve(createHomeMetadata("/folder", "home"));
 				await enabling;
-				expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+				if (action === "disconnect") {
+					// Disconnecting doesn't revive active polling, but (unlike
+					// disabling folder-only mode) it also doesn't retire the
+					// controller immediately: it's kept idle for the grace window
+					// so a quick reconnect could reuse its cache.
+					expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(0);
+				} else {
+					expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+				}
 				loaderMocks.loadHomeGitMetadata.mockClear();
 				workdirMocks.runGit.mockClear();
 				await vi.advanceTimersByTimeAsync(120_000);
 				expect(loaderMocks.loadHomeGitMetadata).not.toHaveBeenCalled();
 				expect(workdirMocks.runGit).not.toHaveBeenCalled();
+				if (action === "disconnect") {
+					await vi.advanceTimersByTimeAsync(PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS);
+					expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+				}
 			} finally {
 				monitor.close();
 			}
@@ -1254,5 +1271,185 @@ describe("ProjectMetadataMonitor", () => {
 		});
 
 		monitor.close();
+	});
+
+	describe("idle grace retention", () => {
+		it("serves the retained cache immediately on reconnect, then refreshes in the background", async () => {
+			const onMetadataUpdated = vi.fn();
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated });
+			let branch = "initial";
+			loaderMocks.loadHomeGitMetadata.mockImplementation(
+				async (projectPath: string, currentHomeGit: CachedHomeGitMetadata) => {
+					return createHomeMetadata(projectPath, branch, currentHomeGit);
+				},
+			);
+			const project = { projectId: "grace", projectPath: "/repo-grace", board: createBoard([]) };
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				expect(onMetadataUpdated).toHaveBeenCalledWith(
+					"grace",
+					expect.objectContaining({ homeGitSummary: expect.objectContaining({ currentBranch: "initial" }) }),
+				);
+
+				monitor.disconnectProject("grace", "first");
+				// Still inside the grace window: the controller is retained idle
+				// (polling stopped) instead of being torn down immediately.
+				expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(0);
+
+				branch = "updated";
+				onMetadataUpdated.mockClear();
+
+				const reconnectSnapshot = await monitor.connectProject({ ...project, clientId: "second" });
+				// Delivered immediately from the retained cache — still
+				// "initial", not blocked on a fresh probe reflecting "updated".
+				expect(reconnectSnapshot.homeGitSummary?.currentBranch).toBe("initial");
+				expect(onMetadataUpdated).toHaveBeenCalledWith(
+					"grace",
+					expect.objectContaining({ homeGitSummary: expect.objectContaining({ currentBranch: "initial" }) }),
+				);
+
+				await vi.waitFor(() => {
+					expect(onMetadataUpdated).toHaveBeenCalledWith(
+						"grace",
+						expect.objectContaining({ homeGitSummary: expect.objectContaining({ currentBranch: "updated" }) }),
+					);
+				});
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("skips a redundant remote fetch on reconnect within the fetch cadence", async () => {
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			const project = { projectId: "cadence", projectPath: "/repo-cadence", board: createBoard([]) };
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				expect(workdirMocks.runGit).toHaveBeenCalledTimes(1);
+
+				monitor.disconnectProject("cadence", "first");
+				workdirMocks.runGit.mockClear();
+
+				await monitor.connectProject({ ...project, clientId: "second" });
+				// Reconnecting immediately after is still well inside the
+				// remote-fetch cadence window: no redundant `git fetch`, and the
+				// last-fetch time survived the disconnect/reconnect.
+				expect(workdirMocks.runGit).not.toHaveBeenCalled();
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("fully retires an idle controller once the grace window elapses without a reconnect", async () => {
+			vi.useFakeTimers();
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			const project = { projectId: "expires", projectPath: "/repo-expires", board: createBoard([]) };
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				monitor.disconnectProject("expires", "first");
+				expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(0);
+
+				await vi.advanceTimersByTimeAsync(PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS - 1);
+				expect(monitor.getDiagnosticSnapshot().projects).not.toEqual([]);
+
+				await vi.advanceTimersByTimeAsync(1);
+				expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("purgeProject drops the retained idle cache so a later reconnect probes fresh", async () => {
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			const project = { projectId: "purge", projectPath: "/repo-purge", board: createBoard([]) };
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				monitor.disconnectProject("purge", "first");
+				expect(monitor.getDiagnosticSnapshot().projects[0]?.connectedClientCount).toBe(0);
+
+				monitor.purgeProject("purge");
+				expect(monitor.getDiagnosticSnapshot().projects).toEqual([]);
+
+				loaderMocks.loadHomeGitMetadata.mockClear();
+				await monitor.connectProject({ ...project, clientId: "second" });
+				// A fresh probe ran because the retained cache (and controller)
+				// was purged outright, not merely hidden behind the grace window.
+				expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled();
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("delivers the cached snapshot once on resume when nothing changed", async () => {
+			const onMetadataUpdated = vi.fn();
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated });
+			const project = { projectId: "once", projectPath: "/repo-once", board: createBoard([]) };
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				monitor.disconnectProject("once", "first");
+				onMetadataUpdated.mockClear();
+				// Unchanged repository: the loader returns the cached home metadata.
+				loaderMocks.loadHomeGitMetadata.mockReset();
+				loaderMocks.loadHomeGitMetadata.mockImplementation(
+					async (_projectPath: string, currentHomeGit: CachedHomeGitMetadata) => currentHomeGit,
+				);
+				await monitor.connectProject({ ...project, clientId: "second" });
+				await vi.waitFor(() => expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled());
+				await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+				expect(onMetadataUpdated).toHaveBeenCalledTimes(1);
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("records refresh requests while idle without running Git, then honors them on resume", async () => {
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			const board = createBoard([
+				{ taskId: "task-1", columnId: "in_progress", workingDirectory: "/worktrees/task-1" },
+			]);
+			const project = { projectId: "idle", projectPath: "/repo-idle", board };
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				monitor.disconnectProject("idle", "first");
+				loaderMocks.loadHomeGitMetadata.mockClear();
+				loaderMocks.loadTaskWorktreeMetadata.mockClear();
+
+				monitor.requestHomeRefresh("idle");
+				monitor.requestTaskRefresh("idle", "task-1");
+				monitor.setFocusedTask("idle", "task-1");
+				await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+				expect(loaderMocks.loadHomeGitMetadata).not.toHaveBeenCalled();
+				expect(loaderMocks.loadTaskWorktreeMetadata).not.toHaveBeenCalled();
+
+				await monitor.connectProject({ ...project, clientId: "second" });
+				await vi.waitFor(() => {
+					expect(loaderMocks.loadTaskWorktreeMetadata).toHaveBeenCalled();
+					expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalled();
+				});
+				expect(monitor.getDiagnosticSnapshot().projects[0]?.focusedTaskId).toBe("task-1");
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("retries a failed remote fetch on reconnect instead of treating it as the cadence", async () => {
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			const project = { projectId: "failed-fetch", projectPath: "/repo-failed-fetch", board: createBoard([]) };
+			workdirMocks.runGit.mockResolvedValueOnce({ ok: false, stdout: "", stderr: "synthetic", exitCode: 1 });
+			try {
+				await monitor.connectProject({ ...project, clientId: "first" });
+				await vi.waitFor(() => expect(workdirMocks.runGit).toHaveBeenCalledTimes(1));
+				monitor.disconnectProject("failed-fetch", "first");
+				await monitor.connectProject({ ...project, clientId: "second" });
+				await vi.waitFor(() => expect(workdirMocks.runGit).toHaveBeenCalledTimes(2));
+			} finally {
+				monitor.close();
+			}
+		});
+
+		it("purgeProject is a safe no-op for a project with no retained controller", () => {
+			const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+			expect(() => monitor.purgeProject("never-connected")).not.toThrow();
+			monitor.close();
+		});
 	});
 });

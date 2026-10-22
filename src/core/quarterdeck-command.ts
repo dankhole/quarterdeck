@@ -1,5 +1,6 @@
-import { lstatSync, realpathSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { lstatSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { desktopStableAppPath, getDesktopAdmissionDescriptor } from "../desktop-install/admission.js";
 import { readLabLaunchConfig } from "../shared/desktop-lab-launch-config.js";
@@ -137,39 +138,85 @@ export function buildQuarterdeckCommandLine(
 	return buildShellCommandLine(binary, commandArgs, platform, env);
 }
 
-/** `cli.js`'s sibling entrypoint bundle that only wires the hook/statusline commands. */
-const CLI_TO_HOOK_ENTRYPOINT: Readonly<Record<string, string>> = {
-	"cli.js": "hooks.js",
-	"cli.ts": "hooks.ts",
-};
-
 /**
- * `hooks ingest|notify` and `statusline` only need the small `hooks.js`
- * bundle, not the full server/router graph `cli.js` pulls in to start the
- * runtime. Swap the resolved entrypoint for its `hooks.js`/`hooks.ts` sibling
- * when `resolveQuarterdeckCommandParts` resolved to a recognized `cli.js` or
- * `cli.ts` file; every other shape (a bare `quarterdeck` binary, a
- * tsx-launched source file that is not `cli.ts`, or no entrypoint at all)
- * keeps the unmodified result so already-generated settings that still
- * reference `cli.js`, and invocation shapes this module does not recognize,
- * keep working exactly as before.
+ * Locates the lightweight `dist/hooks.js` entry (built by `scripts/build.mjs` from
+ * `src/hook-main.ts`) next to the bundled `dist/cli.js` that defines this very module
+ * at runtime. `selfPath` defaults to this module's own `import.meta.url`, which esbuild
+ * resolves to the single-file `dist/cli.js` bundle in production; a tsx/dev run leaves
+ * it pointing at this source file instead, which never has a sibling bundle. Returns
+ * `null` whenever the bundled sibling cannot be confirmed, so callers can fall back to
+ * re-invoking the exact command that is already serving the current process.
  */
-function deriveHookEntrypoint(entrypoint: string): string | null {
-	const hookBasename = CLI_TO_HOOK_ENTRYPOINT[basename(entrypoint)];
-	return hookBasename ? join(dirname(entrypoint), hookBasename) : null;
+export function resolveBundledHookEntryPath(selfPath: string, platformSep: string = sep): string | null {
+	let real: string;
+	try {
+		// realpathSync also resolves an npm-global bin symlink (e.g. a global
+		// install's `quarterdeck` -> .../lib/node_modules/quarterdeck/dist/cli.js)
+		// down to the real bundle path before the suffix/sibling checks below.
+		real = realpathSync(selfPath);
+	} catch {
+		return null;
+	}
+	if (!real.endsWith(`${platformSep}cli.js`)) {
+		return null;
+	}
+	const candidate = join(dirname(real), "hooks.js");
+	try {
+		// Mirrors resolveNodeExecutable's tamper check (regular file, not a
+		// symlink to an attacker-controlled target) minus the executable-bit
+		// requirement: hooks.js is passed as a plain argument to node, never exec'd.
+		const info = lstatSync(candidate);
+		if (!info.isFile() || info.isSymbolicLink() || realpathSync(candidate) !== candidate) {
+			return null;
+		}
+	} catch {
+		return null;
+	}
+	return candidate;
 }
 
+/**
+ * Source entry of the lightweight hook bundle for an unbundled (tsx/dev)
+ * runtime launched from `src/cli.ts`, so dev hooks exercise the same narrow
+ * entry as production instead of loading the full CLI graph per hook. Returns
+ * null for every other entrypoint shape.
+ */
+function resolveSourceHookEntrypoint(entrypoint: string): string | null {
+	if (basename(entrypoint) !== "cli.ts") {
+		return null;
+	}
+	const candidate = join(dirname(entrypoint), "hook-main.ts");
+	try {
+		return statSync(candidate).isFile() ? candidate : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * `hooks ingest|notify` only need the small hook entry, not the full
+ * server/router graph `cli.js` pulls in to start the runtime. Prefer the bundled
+ * `dist/hooks.js` beside this module's `dist/cli.js`; for a tsx-launched
+ * `src/cli.ts`, swap in its `hook-main.ts` sibling. Every other shape (no sibling
+ * bundle, a bare `quarterdeck` binary, no entrypoint) keeps the exact command
+ * already serving this process, so it keeps working as before.
+ */
 export function resolveQuarterdeckHookCommandParts(
 	context: RuntimeInvocationContext = {
 		execPath: process.execPath,
 		argv: process.argv,
 		execArgv: process.execArgv,
 	},
+	selfPath: string = fileURLToPath(import.meta.url),
 ): string[] {
+	const bundledEntry = resolveBundledHookEntryPath(selfPath);
+	if (bundledEntry) {
+		return [...resolveNodeCommandPrefix(context), bundledEntry];
+	}
 	const parts = resolveQuarterdeckCommandParts(context);
 	const entrypoint = parts.at(-1);
-	const hookEntrypoint = entrypoint ? deriveHookEntrypoint(entrypoint) : null;
-	return hookEntrypoint ? [...parts.slice(0, -1), hookEntrypoint] : parts;
+	const sourceEntry = entrypoint ? resolveSourceHookEntrypoint(entrypoint) : null;
+	return sourceEntry ? [...parts.slice(0, -1), sourceEntry] : parts;
 }
 
 export function buildQuarterdeckHookCommandParts(
@@ -179,8 +226,9 @@ export function buildQuarterdeckHookCommandParts(
 		argv: process.argv,
 		execArgv: process.execArgv,
 	},
+	selfPath: string = fileURLToPath(import.meta.url),
 ): string[] {
-	return [...resolveQuarterdeckHookCommandParts(context), ...args];
+	return [...resolveQuarterdeckHookCommandParts(context, selfPath), ...args];
 }
 
 export function buildQuarterdeckHookCommandLine(
@@ -192,8 +240,9 @@ export function buildQuarterdeckHookCommandLine(
 	},
 	platform: NodeJS.Platform = process.platform,
 	env: NodeJS.ProcessEnv = process.env,
+	selfPath: string = fileURLToPath(import.meta.url),
 ): string {
-	const [binary, ...commandArgs] = buildQuarterdeckHookCommandParts(args, context);
+	const [binary, ...commandArgs] = buildQuarterdeckHookCommandParts(args, context, selfPath);
 	if (!binary) {
 		throw new Error("Quarterdeck hook command resolution produced no executable.");
 	}

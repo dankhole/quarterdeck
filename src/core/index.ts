@@ -55,6 +55,7 @@ export {
 	type ArmChildProcessTimeoutOptions,
 	armChildProcessTimeout,
 	CHILD_PROCESS_CLOSE_GRACE_MS,
+	CHILD_PROCESS_KILL_GRACE_MS,
 	type ChildProcessTimeoutGuard,
 	type KillProcessTree,
 	terminateProcessForTimeout,
@@ -68,7 +69,6 @@ export {
 } from "./project-board-command";
 export { countProjectTasksByColumn, deriveProjectSummary } from "./project-summary";
 export {
-	buildQuarterdeckCommandLine,
 	buildQuarterdeckCommandParts,
 	buildQuarterdeckHookCommandLine,
 	buildQuarterdeckHookCommandParts,

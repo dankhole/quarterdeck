@@ -58,6 +58,17 @@ export class ProjectMetadataController {
 	private readonly refresher: ProjectMetadataRefresher;
 	private readonly poller: ProjectMetadataPoller;
 	private readonly remoteFetchPolicy: ProjectMetadataRemoteFetchPolicy;
+	/**
+	 * True once a full refresh has completed at least once, so the retained
+	 * entry (home git + task worktree metadata) holds real data rather than
+	 * the empty defaults a freshly constructed controller starts with.
+	 */
+	private hasCompletedInitialRefresh = false;
+	/**
+	 * Refresh requests that arrived while no client was connected (idle grace).
+	 * They run no Git; the resume after reconnect honors them.
+	 */
+	private readonly idleRefreshRequests = { home: false, taskIds: new Set<string>() };
 
 	constructor(deps: CreateProjectMetadataControllerDependencies) {
 		this.projectId = deps.projectId;
@@ -123,6 +134,12 @@ export class ProjectMetadataController {
 		clientId?: string | null;
 		isDocumentVisible?: boolean;
 	}): Promise<RuntimeProjectMetadata> {
+		const wasIdle = !this.hasConnectedClients();
+		// Defense in depth: the monitor only reuses this controller instance
+		// when its tracked path/revision scope still matches the caller's, but
+		// verify the retained entry still describes this exact path before
+		// trusting it as a cache — a mismatch falls through to a full refresh.
+		const resumesMatchingPath = areFileSystemPathsEqual(this.entry.projectPath, input.projectPath);
 		this.updateTrackedState(input.projectPath, input.board);
 		const visibilityChange = connectProjectMetadataClient(
 			this.entry.documentVisibilityByClientId,
@@ -131,7 +148,22 @@ export class ProjectMetadataController {
 		);
 		this.poller.start();
 		this.syncVisibilityPolicies(visibilityChange, { requestVisibleFetch: true });
-		return await this.refresher.refreshProject();
+
+		if (wasIdle && this.hasCompletedInitialRefresh && resumesMatchingPath) {
+			// Resuming from the idle grace period: serve the retained cache
+			// immediately through the existing metadata message path instead of
+			// blocking this reconnect on fresh git probes, then refresh in the
+			// background.
+			this.refresher.broadcastCurrentSnapshot();
+			void this.refreshAfterIdleResume();
+			return this.refresher.snapshot;
+		}
+
+		this.idleRefreshRequests.home = false;
+		this.idleRefreshRequests.taskIds.clear();
+		const result = await this.refresher.refreshProject();
+		this.hasCompletedInitialRefresh = true;
+		return result;
 	}
 
 	async updateProjectState(input: { projectPath: string; board: RuntimeBoardData }): Promise<RuntimeProjectMetadata> {
@@ -149,9 +181,9 @@ export class ProjectMetadataController {
 			return;
 		}
 		this.entry.focusedTaskId = nextFocusedTaskId;
-		if (this.hasConnectedClients()) {
-			this.poller.start();
-		}
+		// While idle, record focus only; the resume refresh covers it.
+		if (!this.hasConnectedClients()) return;
+		this.poller.start();
 		if (nextFocusedTaskId) {
 			void this.refresher.refreshFocusedTask();
 		}
@@ -171,10 +203,18 @@ export class ProjectMetadataController {
 	}
 
 	requestTaskRefresh(taskId: string): void {
+		if (!this.hasConnectedClients()) {
+			this.idleRefreshRequests.taskIds.add(taskId);
+			return;
+		}
 		void this.refresher.refreshTask(taskId, { invalidate: true });
 	}
 
 	requestHomeRefresh(): void {
+		if (!this.hasConnectedClients()) {
+			this.idleRefreshRequests.home = true;
+			return;
+		}
 		void this.refresher.refreshHome();
 	}
 
@@ -198,6 +238,16 @@ export class ProjectMetadataController {
 
 	async waitForIdle(): Promise<void> {
 		await Promise.all([this.remoteFetchPolicy.waitForIdle(), this.refresher.waitForIdle()]);
+	}
+
+	/** Background refresh after an idle resume; the cached snapshot was already delivered once. */
+	private async refreshAfterIdleResume(): Promise<void> {
+		const taskIds = Array.from(this.idleRefreshRequests.taskIds);
+		this.idleRefreshRequests.taskIds.clear();
+		this.idleRefreshRequests.home = false;
+		// Invalidated task refreshes first, then one full refresh that also covers home.
+		await Promise.all(taskIds.map((taskId) => this.refresher.refreshTask(taskId, { invalidate: true })));
+		await this.refresher.refreshProject();
 	}
 
 	private stopPolicies(): void {

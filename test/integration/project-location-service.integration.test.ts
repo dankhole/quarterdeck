@@ -8,7 +8,10 @@ import {
 	type RuntimeProjectAvailability,
 	TaskResourceOperationCoordinator,
 } from "../../src/core";
-import { observeProjectAvailability } from "../../src/projects/project-availability";
+import {
+	observeProjectAvailability,
+	observeProjectAvailabilityDetailed,
+} from "../../src/projects/project-availability";
 import { ProjectLocationService } from "../../src/server/project-location-service";
 import {
 	listProjectIndexEntries,
@@ -26,16 +29,14 @@ import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 /**
  * This fixture's projects are folderOnly, so the Git probe path is never
- * exercised here; narrowing indeterminate to the conservative fallback keeps
- * the fixture's registry shape aligned with the real tri-state contract.
+ * exercised here; the detailed observation keeps the fixture's registry shape
+ * aligned with the real tri-state contract.
  */
 async function resolveAvailability(
 	scope: RuntimeProjectScopeContext,
 ): Promise<{ availability: RuntimeProjectAvailability; indeterminate: boolean }> {
-	const observation = await observeProjectAvailability(scope);
-	return observation.status === "indeterminate"
-		? { availability: { status: "unavailable", reason: "not_git_repository" }, indeterminate: true }
-		: { availability: observation, indeterminate: false };
+	const observation = await observeProjectAvailabilityDetailed(scope);
+	return { availability: observation.availability, indeterminate: observation.indeterminate !== null };
 }
 
 async function fixture(root: string) {

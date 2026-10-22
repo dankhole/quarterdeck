@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CODEX_SESSION_START_SOURCES } from "../codex-session-start-sources.js";
 import { runtimeAgentIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
 export const RUNTIME_DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
@@ -108,7 +109,7 @@ export const runtimeTaskSubagentInteractionSchema = runtimeTaskOutstandingIntera
 });
 export type RuntimeTaskSubagentInteraction = z.infer<typeof runtimeTaskSubagentInteractionSchema>;
 
-export const runtimeCodexSessionStartSourceSchema = z.enum(["startup", "resume", "clear", "compact", "fork"]);
+export const runtimeCodexSessionStartSourceSchema = z.enum(CODEX_SESSION_START_SOURCES);
 
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 	.extend({

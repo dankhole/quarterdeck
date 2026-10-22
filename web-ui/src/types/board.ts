@@ -4,12 +4,13 @@ import type {
 	RuntimeCodexOptions,
 	RuntimeConflictState,
 	RuntimePersistedClaudeOptions,
-	RuntimeTaskImage,
+	RuntimeTaskImageInput,
 } from "@/runtime/types";
 
 export type BoardColumnId = RuntimeBoardColumnId;
 
-export type TaskImage = RuntimeTaskImage;
+/** A stored reference from the runtime, or an inline upload not yet committed. */
+export type TaskImage = RuntimeTaskImageInput;
 
 export interface BoardCard {
 	id: string;

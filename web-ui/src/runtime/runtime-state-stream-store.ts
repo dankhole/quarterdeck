@@ -42,6 +42,12 @@ export interface RuntimeStateStreamStore {
 	exactBoardRevisionsByProject: Record<string, number>;
 	projectState: RuntimeProjectStateResponse | null;
 	projectMetadata: RuntimeProjectMetadata | null;
+	/**
+	 * Last-known current Git/worktree metadata per project, so switching back
+	 * to a project doesn't null out counts the server is about to resend —
+	 * see `getCachedProjectMetadata`. Pruned to the known project set.
+	 */
+	projectMetadataByProjectId: Record<string, RuntimeProjectMetadata>;
 	notificationMemory: RuntimeNotificationMemory;
 	latestTaskReadyForReview: RuntimeStateStreamTaskReadyForReviewMessage | null;
 	latestTaskTitleUpdate: TaskTitleUpdate | null;
@@ -168,6 +174,44 @@ function pruneExactBoardRevisions(
 	return Object.fromEntries(Object.entries(current).filter(([projectId]) => projectIds.has(projectId)));
 }
 
+function recordProjectMetadataCache(
+	current: Readonly<Record<string, RuntimeProjectMetadata>>,
+	projectId: string | null,
+	metadata: RuntimeProjectMetadata | null,
+): Record<string, RuntimeProjectMetadata> {
+	if (!projectId || !metadata) {
+		return { ...current };
+	}
+	return { ...current, [projectId]: metadata };
+}
+
+function pruneProjectMetadataCache(
+	current: Readonly<Record<string, RuntimeProjectMetadata>>,
+	projects: readonly RuntimeProjectSummary[],
+): Record<string, RuntimeProjectMetadata> {
+	const projectIds = new Set(projects.map((project) => project.id));
+	return Object.fromEntries(Object.entries(current).filter(([projectId]) => projectIds.has(projectId)));
+}
+
+/**
+ * Returns the last-known metadata cached for `projectId` if it's still
+ * current for the known project summary/project-state revisions, or `null`
+ * otherwise (e.g. the project relocated while away). Used so switching back
+ * to a project shows its previous counts instead of nulling them out while
+ * the server resends current metadata over the stream.
+ */
+function getCachedProjectMetadata(
+	cache: Readonly<Record<string, RuntimeProjectMetadata>>,
+	projects: readonly RuntimeProjectSummary[],
+	projectId: string | null,
+	projectState: RuntimeProjectStateResponse | null,
+): RuntimeProjectMetadata | null {
+	if (!projectId) return null;
+	const cached = cache[projectId];
+	if (!cached) return null;
+	return isProjectMetadataCurrent(projects, projectId, projectState, cached) ? cached : null;
+}
+
 function mergeProjectStateSummary(
 	projects: readonly RuntimeProjectSummary[],
 	projectId: string | null,
@@ -233,12 +277,21 @@ function applyRequestedProjectChange(
 ): RuntimeStateStreamStore {
 	preloadedProjectState = applyKnownProjectLocation(state.projects, requestedProjectId, preloadedProjectState);
 	const didProjectChange = requestedProjectId !== state.currentProjectId;
+	// Serve the last-known metadata for the target project immediately instead
+	// of nulling it: the server resends current metadata for a reconnecting
+	// project through the normal stream, but showing nothing (or an
+	// "unavailable" gap) in the meantime is worse than the previous counts.
 	if (!preloadedProjectState) {
 		return {
 			...state,
 			currentProjectId: requestedProjectId,
 			projectState: null,
-			projectMetadata: null,
+			projectMetadata: getCachedProjectMetadata(
+				state.projectMetadataByProjectId,
+				state.projects,
+				requestedProjectId,
+				null,
+			),
 			latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 			latestTaskTitleUpdate: didProjectChange ? null : state.latestTaskTitleUpdate,
 			latestTaskBaseRefUpdate: didProjectChange ? null : state.latestTaskBaseRefUpdate,
@@ -258,7 +311,12 @@ function applyRequestedProjectChange(
 			preloadedProjectState,
 		),
 		projectState: preloadedProjectState,
-		projectMetadata: null,
+		projectMetadata: getCachedProjectMetadata(
+			state.projectMetadataByProjectId,
+			state.projects,
+			requestedProjectId,
+			preloadedProjectState,
+		),
 		latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: didProjectChange ? null : state.latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate: didProjectChange ? null : state.latestTaskBaseRefUpdate,
@@ -309,6 +367,14 @@ function applySnapshot(
 		payload.notificationRevisionsByProject,
 	);
 
+	const projectMetadataByProjectId = pruneProjectMetadataCache(state.projectMetadataByProjectId, payload.projects);
+	const incomingMetadataIsCurrent =
+		payload.projectMetadata &&
+		isProjectMetadataCurrent(projects, payload.currentProjectId, nextProjectState, payload.projectMetadata);
+	const nextProjectMetadata = incomingMetadataIsCurrent
+		? (payload.projectMetadata as RuntimeProjectMetadata)
+		: getCachedProjectMetadata(projectMetadataByProjectId, projects, payload.currentProjectId, nextProjectState);
+
 	return {
 		...state,
 		currentProjectId: payload.currentProjectId,
@@ -316,11 +382,12 @@ function applySnapshot(
 		organization: payload.organization ?? state.organization,
 		exactBoardRevisionsByProject,
 		projectState: nextProjectState,
-		projectMetadata:
-			payload.projectMetadata &&
-			isProjectMetadataCurrent(projects, payload.currentProjectId, nextProjectState, payload.projectMetadata)
-				? payload.projectMetadata
-				: null,
+		projectMetadata: nextProjectMetadata,
+		projectMetadataByProjectId: recordProjectMetadataCache(
+			projectMetadataByProjectId,
+			payload.currentProjectId,
+			incomingMetadataIsCurrent ? nextProjectMetadata : null,
+		),
 		latestTaskReadyForReview: didProjectChange ? null : state.latestTaskReadyForReview,
 		latestTaskTitleUpdate: didProjectChange ? null : state.latestTaskTitleUpdate,
 		latestTaskBaseRefUpdate: didProjectChange ? null : state.latestTaskBaseRefUpdate,
@@ -344,6 +411,7 @@ export function createInitialRuntimeStateStreamStore(requestedProjectId: string 
 		exactBoardRevisionsByProject: {},
 		projectState: null,
 		projectMetadata: null,
+		projectMetadataByProjectId: {},
 		notificationMemory: createRuntimeNotificationMemory(),
 		latestTaskReadyForReview: null,
 		latestTaskTitleUpdate: null,
@@ -428,6 +496,10 @@ function reduceRuntimeStateStreamDomainAction(
 					state.exactBoardRevisionsByProject,
 					action.payload.projects,
 				),
+				projectMetadataByProjectId: pruneProjectMetadataCache(
+					state.projectMetadataByProjectId,
+					action.payload.projects,
+				),
 				notificationMemory: pruneRuntimeNotificationMemory(state.notificationMemory, action.payload.projects),
 				projectState,
 				projectMetadata:
@@ -453,6 +525,11 @@ function reduceRuntimeStateStreamDomainAction(
 			return {
 				...state,
 				projectMetadata: action.projectMetadata,
+				projectMetadataByProjectId: recordProjectMetadataCache(
+					state.projectMetadataByProjectId,
+					action.projectId,
+					action.projectMetadata,
+				),
 			};
 		case "task_ready_for_review":
 			return {

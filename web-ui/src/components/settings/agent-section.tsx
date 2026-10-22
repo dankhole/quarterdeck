@@ -2,7 +2,6 @@
 import * as RadixCollapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
-import { SettingsSwitch } from "@/components/ui/settings-controls";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -71,7 +70,7 @@ export function HarnessSection({
 	const CodexChevron = codexSettingsExpanded ? ChevronDown : ChevronRight;
 	const PiChevron = piSettingsExpanded ? ChevronDown : ChevronRight;
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
-	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]} · ${fields.statuslineEnabled ? "Status line on" : "Status line off"}`;
+	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
 	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "1.4.0";
 	const piSettingsSummary = `Exactly ${piSupportedVersion} · Native Pi execution`;
@@ -99,60 +98,46 @@ export function HarnessSection({
 					</button>
 				</RadixCollapsible.Trigger>
 				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
-					<div className="divide-y divide-border">
-						<div className="px-3 py-3">
-							<div className="flex items-center justify-between gap-3">
-								<label
-									htmlFor="runtime-settings-claude-permission-mode"
-									className="text-text-primary text-[13px]"
-								>
-									Launch permissions
-								</label>
-								<select
-									id="runtime-settings-claude-permission-mode"
-									name="claudeLaunchPermissionMode"
-									value={fields.claudeLaunchPermissionMode}
-									onChange={(event) =>
-										setField(
-											"claudeLaunchPermissionMode",
-											normalizeClaudeLaunchPermissionMode(event.currentTarget.value),
-										)
-									}
-									disabled={disabled}
-									className="h-7 min-w-40 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
-								>
-									{Object.entries(CLAUDE_PERMISSION_MODE_LABELS).map(([value, label]) => (
-										<option key={value} value={value}>
-											{label}
-										</option>
-									))}
-								</select>
-							</div>
-							<p className="text-text-secondary text-[13px] mt-1 mb-0">
-								{fields.claudeLaunchPermissionMode === "inherit"
-									? "Uses Claude's configured default mode without a Quarterdeck override."
-									: fields.claudeLaunchPermissionMode === "default"
-										? "Starts Claude in its standard mode: reads run automatically while edits and shell commands can prompt."
-										: fields.claudeLaunchPermissionMode === "acceptEdits"
-											? "Automatically accepts edits and common working-directory file operations, while other commands can still prompt."
-											: fields.claudeLaunchPermissionMode === "plan"
-												? "Starts read-only Plan Mode so Claude explores and proposes changes before editing."
-												: fields.claudeLaunchPermissionMode === "auto"
-													? "Uses Claude's research-preview safety checks to review actions automatically. Account eligibility and managed policy still apply."
-													: fields.claudeLaunchPermissionMode === "dontAsk"
-														? "Automatically denies tools that are not already allowed instead of asking interactively."
-														: "Skips Claude permission prompts and most safety checks. Use only in an externally isolated environment; managed policy can disable this mode."}
-							</p>
-						</div>
-						<div className="px-3 py-3">
-							<SettingsSwitch
-								checked={fields.statuslineEnabled}
-								onCheckedChange={(value) => setField("statuslineEnabled", value)}
+					<div className="px-3 py-3">
+						<div className="flex items-center justify-between gap-3">
+							<label htmlFor="runtime-settings-claude-permission-mode" className="text-text-primary text-[13px]">
+								Launch permissions
+							</label>
+							<select
+								id="runtime-settings-claude-permission-mode"
+								name="claudeLaunchPermissionMode"
+								value={fields.claudeLaunchPermissionMode}
+								onChange={(event) =>
+									setField(
+										"claudeLaunchPermissionMode",
+										normalizeClaudeLaunchPermissionMode(event.currentTarget.value),
+									)
+								}
 								disabled={disabled}
-								label="Show Quarterdeck status line"
-								description="Adds repository, model, context, cost, token, and change metrics to new or restarted Claude sessions."
-							/>
+								className="h-7 min-w-40 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+							>
+								{Object.entries(CLAUDE_PERMISSION_MODE_LABELS).map(([value, label]) => (
+									<option key={value} value={value}>
+										{label}
+									</option>
+								))}
+							</select>
 						</div>
+						<p className="text-text-secondary text-[13px] mt-1 mb-0">
+							{fields.claudeLaunchPermissionMode === "inherit"
+								? "Uses Claude's configured default mode without a Quarterdeck override."
+								: fields.claudeLaunchPermissionMode === "default"
+									? "Starts Claude in its standard mode: reads run automatically while edits and shell commands can prompt."
+									: fields.claudeLaunchPermissionMode === "acceptEdits"
+										? "Automatically accepts edits and common working-directory file operations, while other commands can still prompt."
+										: fields.claudeLaunchPermissionMode === "plan"
+											? "Starts read-only Plan Mode so Claude explores and proposes changes before editing."
+											: fields.claudeLaunchPermissionMode === "auto"
+												? "Uses Claude's research-preview safety checks to review actions automatically. Account eligibility and managed policy still apply."
+												: fields.claudeLaunchPermissionMode === "dontAsk"
+													? "Automatically denies tools that are not already allowed instead of asking interactively."
+													: "Skips Claude permission prompts and most safety checks. Use only in an externally isolated environment; managed policy can disable this mode."}
+						</p>
 					</div>
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>

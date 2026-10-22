@@ -75,6 +75,7 @@ import {
 	runtimeWorktreeEnsureRequestSchema,
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core";
+import { toBrowserProjectStateResponse } from "../server/runtime-state-messages";
 import {
 	buildTaskGenerationContext,
 	generateBranchName,
@@ -290,13 +291,14 @@ export const projectRouter = t.router({
 			return await ctx.projectApi.deleteWorkdirEntry(ctx.projectScope, input);
 		}),
 	getState: savedProjectProcedure.output(runtimeProjectStateResponseSchema).query(async ({ ctx }) => {
-		return await ctx.projectApi.loadState(ctx.projectScope);
+		return toBrowserProjectStateResponse(await ctx.projectApi.loadState(ctx.projectScope));
 	}),
 	applyBoardCommands: projectProcedure
 		.input(runtimeProjectBoardCommandBatchEnvelopeSchema)
 		.output(runtimeProjectBoardCommandExecutionResultSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.projectApi.applyBoardCommands(ctx.projectScope, input);
+			const result = await ctx.projectApi.applyBoardCommands(ctx.projectScope, input);
+			return { ...result, state: toBrowserProjectStateResponse(result.state) };
 		}),
 	setFocusedTask: projectProcedure.input(z.object({ taskId: z.string().nullable() })).mutation(({ ctx, input }) => {
 		ctx.projectApi.setFocusedTask(ctx.projectScope, input.taskId);

@@ -30,6 +30,7 @@ import { type DiagnosticAdmissionProfile, DiagnosticRecordingPolicy } from "./re
 const DEFAULT_MEMORY_RECORDS = 2_000;
 const DEFAULT_MAX_RECORD_BYTES = 8 * 1_024;
 const RAW_WARNING_INTERVAL_MS = 60_000;
+const DROP_NOTICE_COALESCE_INTERVAL_MS = 1_000;
 
 export interface DiagnosticRecorderOptions {
 	runtimeInstanceId: string;
@@ -134,6 +135,8 @@ export class DiagnosticRecorder {
 	private rejectedBrowserRecords = 0;
 	private isReportingDrops = false;
 	private lastRawWarningAt = 0;
+	private dropNoticeEmittedAt = 0;
+	private dropNoticeFlushTimer: NodeJS.Timeout | null = null;
 	private previousRecordingState: DiagnosticRecordingState;
 
 	constructor(options: DiagnosticRecorderOptions) {
@@ -338,6 +341,10 @@ export class DiagnosticRecorder {
 	}
 
 	async close(): Promise<void> {
+		if (this.dropNoticeFlushTimer) {
+			clearTimeout(this.dropNoticeFlushTimer);
+			this.dropNoticeFlushTimer = null;
+		}
 		this.policy.dispose();
 		this.listeners.clear();
 		this.recordingListeners.clear();
@@ -406,19 +413,74 @@ export class DiagnosticRecorder {
 			return;
 		}
 		const lowPriorityIndex = this.records.findIndex((candidate) => !isHighPriority(candidate));
-		if (!isHighPriority(record) && lowPriorityIndex < 0) {
+		if (lowPriorityIndex >= 0) {
+			this.records.splice(lowPriorityIndex, 1);
+			this.records.push(record);
+			return;
+		}
+		if (!isHighPriority(record)) {
 			this.droppedRecords += 1;
 			this.droppedSinceReport += 1;
 			return;
 		}
-		this.records.splice(lowPriorityIndex >= 0 ? lowPriorityIndex : 0, 1);
+		// The ring holds only high-priority evidence now. A recorder's own health
+		// notice (e.g. a coalesced `records_dropped` count) is synthetic
+		// bookkeeping, not investigation evidence: it may replace an older
+		// recorder_health notice, but it must never evict a genuine warn/error
+		// record. If no recorder_health victim exists either, drop the new notice
+		// rather than destroy real evidence; `droppedRecords` still counts it.
+		if (record.kind === "recorder_health") {
+			const staleNoticeIndex = this.records.findIndex((candidate) => candidate.kind === "recorder_health");
+			if (staleNoticeIndex >= 0) {
+				this.records.splice(staleNoticeIndex, 1);
+				this.records.push(record);
+				return;
+			}
+			this.droppedRecords += 1;
+			this.droppedSinceReport += 1;
+			return;
+		}
+		this.records.splice(0, 1);
 		this.records.push(record);
 	}
 
 	private maybeReportDrops(): void {
 		if (this.droppedSinceReport === 0 || this.isReportingDrops) return;
+		const now = Date.now();
+		// Rate-limit emission rather than mutating a previously emitted notice:
+		// that notice may already be on disk (journal flush) or already
+		// delivered to a live panel subscriber, and neither consumer will see an
+		// in-place edit. Instead, keep accumulating `droppedSinceReport` while
+		// within the coalescing window and emit at most one fresh notice per
+		// window, carrying the delta since the last notice plus the exact
+		// running total.
+		if (this.dropNoticeEmittedAt !== 0 && now - this.dropNoticeEmittedAt < DROP_NOTICE_COALESCE_INTERVAL_MS) {
+			// Nothing else may ever call back in to flush this: schedule a
+			// trailing, unref'd flush so a burst's final tail is still reported
+			// once the window elapses, instead of sitting unreported in the
+			// timeline until some unrelated later record happens to piggyback it.
+			this.scheduleDropNoticeFlush();
+			return;
+		}
+		this.emitDropNotice(now);
+	}
+
+	private scheduleDropNoticeFlush(): void {
+		if (this.dropNoticeFlushTimer) return;
+		const remainingMs = Math.max(0, DROP_NOTICE_COALESCE_INTERVAL_MS - (Date.now() - this.dropNoticeEmittedAt));
+		this.dropNoticeFlushTimer = setTimeout(() => {
+			this.dropNoticeFlushTimer = null;
+			if (this.droppedSinceReport > 0 && !this.isReportingDrops) {
+				this.emitDropNotice(Date.now());
+			}
+		}, remainingMs);
+		this.dropNoticeFlushTimer.unref();
+	}
+
+	private emitDropNotice(now: number): void {
 		const dropped = this.droppedSinceReport;
 		this.droppedSinceReport = 0;
+		this.dropNoticeEmittedAt = now;
 		this.isReportingDrops = true;
 		try {
 			this.record({
@@ -426,12 +488,17 @@ export class DiagnosticRecorder {
 				kind: "recorder_health",
 				level: "warn",
 				name: "diagnostics.records_dropped",
-				payload: { dropped },
+				payload: { dropped, totalDropped: this.droppedRecords },
 				essential: true,
 			});
 		} finally {
 			this.isReportingDrops = false;
 		}
+		// The notice's own persistence/ring-retain attempt can itself add to
+		// `droppedSinceReport` (e.g. it loses the ring-retain race). Make sure
+		// that leftover still gets a trailing flush rather than waiting
+		// indefinitely for an unrelated later record.
+		if (this.droppedSinceReport > 0) this.scheduleDropNoticeFlush();
 	}
 
 	private handleRecordingStateChange(state: DiagnosticRecordingState): void {

@@ -118,7 +118,6 @@ export interface StartTaskSessionRequest {
 	projectId?: string;
 	projectPath?: string;
 	claudeLaunchPermissionMode?: AgentAdapterLaunchInput["claudeLaunchPermissionMode"];
-	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
 	claudeOptions?: AgentAdapterLaunchInput["claudeOptions"];

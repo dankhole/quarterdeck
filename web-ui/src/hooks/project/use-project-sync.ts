@@ -11,7 +11,7 @@ import {
 	stashProjectBoard,
 	updateProjectBoardCache,
 } from "@/runtime/project-board-cache";
-import { invalidateProjectPreload } from "@/runtime/project-preload-cache";
+import { invalidateProjectPreload, setSelectedProjectHydrating } from "@/runtime/project-preload-cache";
 import { mergeProjectStateByRevision } from "@/runtime/project-state-ordering";
 import { applyProjectBoardCommands, fetchProjectState, ProjectStateConflictError } from "@/runtime/project-state-query";
 import type {
@@ -21,6 +21,7 @@ import type {
 } from "@/runtime/types";
 import { resetProjectMetadataStore, setProjectPath as setStoreProjectPath } from "@/stores/project-metadata-store";
 import type { BoardData } from "@/types";
+import { createRandomId } from "@/utils/random-id";
 import { toErrorMessage } from "@/utils/to-error-message";
 import { applyPendingProjectBoardCommands, deriveProjectBoardCommands } from "./project-board-command-sync";
 import {
@@ -34,6 +35,25 @@ export interface FlushProjectBoardCommandsResult {
 	ok: boolean;
 	message?: string;
 }
+
+/**
+ * Bounded backoff for retrying a project snapshot that failed to hydrate
+ * (the runtime published `projectState: null`, or a `getState` refetch
+ * failed). Keep retrying — capped at this delay — until the project
+ * hydrates or the user navigates away; a transient upstream git/availability
+ * failure (see docs/conventions/runtime-state.md) must not strand the
+ * browser in a permanent loading state.
+ */
+const PROJECT_HYDRATION_RETRY_INITIAL_DELAY_MS = 1_000;
+const PROJECT_HYDRATION_RETRY_MAX_DELAY_MS = 10_000;
+/**
+ * After this many retry attempts (delays 1s, 2s, 4s, 8s — ~15s elapsed), stop
+ * reporting this project as "hydrating" for hover-preload gating purposes.
+ * Retries keep running at the capped interval in the background regardless;
+ * this only bounds how long a stuck project can suppress its own hover
+ * preload (other projects' hover preload is never gated by this at all).
+ */
+const PROJECT_HYDRATION_PRELOAD_GATE_MAX_ATTEMPTS = 4;
 
 interface PendingProjectBoardCommandBatch {
 	commandId: string;
@@ -74,13 +94,6 @@ async function sendProjectBoardCommandBatch(
 	}
 }
 
-function createBrowserCommandId(): string {
-	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-		return `browser:${crypto.randomUUID()}`;
-	}
-	return `browser:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
-}
-
 function cacheAuthoritativeProjectState(projectId: string, state: RuntimeProjectStateResponse): void {
 	updateProjectBoardCache(projectId, {
 		board: state.board,
@@ -109,7 +122,10 @@ interface UseProjectSyncResult {
 	projectGit: RuntimeGitRepositoryInfo | null;
 	isProjectMetadataPending: boolean;
 	isServedFromBoardCache: boolean;
-	refreshProjectState: (options?: { restoreLifecyclePresentation?: boolean }) => Promise<void>;
+	refreshProjectState: (options?: {
+		restoreLifecyclePresentation?: boolean;
+		suppressErrorToast?: boolean;
+	}) => Promise<void>;
 	resetProjectSyncState: (targetProjectId?: string | null) => void;
 	setBoard: Dispatch<SetStateAction<BoardData>>;
 	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
@@ -151,6 +167,17 @@ export function useProjectSync({
 	const previousLocationRef = useRef<{ projectId: string; path: string; unavailable: boolean } | null>(null);
 	const applyProjectStateRef = useRef<(state: RuntimeProjectStateResponse) => void>(() => {});
 	const refreshProjectStateRef = useRef<() => Promise<void>>(async () => {});
+	// Snapshot-generation / visibility / project-switch transition tracking for
+	// the refetch-trigger effect below (never retrigger on a plain streamed delta).
+	const refreshTriggerSignalRef = useRef<{
+		hasReceivedSnapshot: boolean;
+		isDocumentVisible: boolean;
+		currentProjectId: string | null;
+	}>({ hasReceivedSnapshot: false, isDocumentVisible: false, currentProjectId: null });
+	// Bounded-backoff hydration-retry bookkeeping, fenced by project identity.
+	const hydrationRetryAttemptRef = useRef(0);
+	const hydrationRetrySeriesProjectIdRef = useRef<string | null>(null);
+	const hydrationRetryErrorNotifiedRef = useRef(false);
 
 	const isProjectMetadataPending = currentProjectId !== null && appliedProjectId !== currentProjectId;
 
@@ -397,7 +424,7 @@ export function useProjectSync({
 	);
 
 	const refreshProjectState = useCallback(
-		async (options?: { restoreLifecyclePresentation?: boolean }) => {
+		async (options?: { restoreLifecyclePresentation?: boolean; suppressErrorToast?: boolean }) => {
 			if (!currentProjectId) {
 				return;
 			}
@@ -433,7 +460,9 @@ export function useProjectSync({
 					{ projectId: requestedProjectId },
 					{ level: "warn", essential: true },
 				);
-				notifyError(message);
+				if (!options?.suppressErrorToast) {
+					notifyError(message);
+				}
 			} finally {
 				if (projectRefreshRequestIdRef.current === requestId) {
 					setIsProjectStateRefreshing(false);
@@ -449,7 +478,17 @@ export function useProjectSync({
 			const projectId = currentProjectId;
 			const version = authoritativeProjectVersionRef.current;
 			if (lastAuthoritativeProjectStateRef.current?.state.availability?.status === "unavailable") return;
-			if (!projectId || version.projectId !== projectId || version.revision === null) {
+			if (!projectId || version.projectId !== projectId) {
+				return;
+			}
+			if (version.revision === null) {
+				// The board shown right now is a read-only cached/preloaded view while
+				// this project (re)hydrates. Tell the user instead of silently
+				// discarding their edit (e.g. a drag-and-drop move).
+				showAppToast(
+					{ message: "Still syncing with the project. Try that again in a moment.", timeout: 3000 },
+					"project-board-not-ready",
+				);
 				return;
 			}
 			const currentState = projectBoardSessionsRef.current;
@@ -494,7 +533,7 @@ export function useProjectSync({
 				};
 				commandQueuesRef.current.set(projectId, queue);
 			}
-			queue.pending.push({ commandId: createBrowserCommandId(), commands: ordinaryCommands });
+			queue.pending.push({ commandId: createRandomId("browser"), commands: ordinaryCommands });
 			pumpProjectBoardCommandQueue(projectId);
 		},
 		[currentProjectId, projectBoardSessionsRef, pumpProjectBoardCommandQueue, setProjectBoardSessions],
@@ -505,7 +544,16 @@ export function useProjectSync({
 			const projectId = currentProjectId;
 			const version = authoritativeProjectVersionRef.current;
 			if (lastAuthoritativeProjectStateRef.current?.state.availability?.status === "unavailable") return;
-			if (!projectId || version.projectId !== projectId || version.revision === null) {
+			if (!projectId || version.projectId !== projectId) {
+				return;
+			}
+			if (version.revision === null) {
+				// Same read-only-while-hydrating rule as setBoard: tell the user
+				// rather than silently discarding the optimistic lifecycle move.
+				showAppToast(
+					{ message: "Still syncing with the project. Try that again in a moment.", timeout: 3000 },
+					"project-board-not-ready",
+				);
 				return;
 			}
 			const currentState = projectBoardSessionsRef.current;
@@ -640,12 +688,103 @@ export function useProjectSync({
 		applyProjectState(streamedProjectState);
 	}, [applyProjectState, currentProjectId, hasNoProjects, hasReceivedSnapshot, streamedProjectState]);
 
+	// Refetch getState only on a real trigger — a new stream snapshot
+	// generation, visibility regain, or an explicit project switch — never on
+	// every streamed project-state object change. The apply effect above
+	// already consumes those deltas directly; re-fetching on each one doubled
+	// the browser's board/session traffic for no benefit.
 	useEffect(() => {
+		const previous = refreshTriggerSignalRef.current;
+		const snapshotGenerationChanged = hasReceivedSnapshot && !previous.hasReceivedSnapshot;
+		const visibilityRegained = isDocumentVisible && !previous.isDocumentVisible;
+		const projectSwitched = currentProjectId !== previous.currentProjectId;
+		refreshTriggerSignalRef.current = { hasReceivedSnapshot, isDocumentVisible, currentProjectId };
+		if (snapshotGenerationChanged) {
+			// A fresh connection/generation starts its own one-shot retry-failure notice.
+			hydrationRetryErrorNotifiedRef.current = false;
+		}
 		if (!hasReceivedSnapshot || !isDocumentVisible || !streamedProjectState) {
 			return;
 		}
+		if (!snapshotGenerationChanged && !visibilityRegained && !projectSwitched) {
+			return;
+		}
 		void refreshProjectState();
-	}, [hasReceivedSnapshot, isDocumentVisible, refreshProjectState, streamedProjectState]);
+	}, [currentProjectId, hasReceivedSnapshot, isDocumentVisible, refreshProjectState, streamedProjectState]);
+
+	// Snapshot failure recovery: the runtime can publish `projectState: null`
+	// (or keep the browser waiting) after a transient upstream failure. Retry
+	// `getState` with bounded backoff until this exact project hydrates,
+	// instead of leaving the browser stuck on its cached/preloaded board (or
+	// no board at all) forever. Fenced by project identity; refreshProjectState's
+	// own request-id fencing discards a response that arrives after a switch.
+	// Failures are retried silently except for a single one-shot notice per
+	// fenced retry series (cleared on success or on a project/generation switch)
+	// so a flaky connection does not spam repeated error toasts.
+	useEffect(() => {
+		const needsHydration =
+			hasReceivedSnapshot && isDocumentVisible && currentProjectId !== null && isProjectMetadataPending;
+		if (!needsHydration) {
+			hydrationRetryAttemptRef.current = 0;
+			hydrationRetrySeriesProjectIdRef.current = null;
+			// Hydrated (or no longer applicable) — this exact project no longer
+			// gates its own hover preload. Other projects were never gated by it.
+			setSelectedProjectHydrating(null);
+			return;
+		}
+		if (hydrationRetrySeriesProjectIdRef.current !== currentProjectId) {
+			hydrationRetrySeriesProjectIdRef.current = currentProjectId;
+			hydrationRetryAttemptRef.current = 0;
+			hydrationRetryErrorNotifiedRef.current = false;
+		}
+		// Self-contained recursive scheduler: a retry effect that only fires once
+		// per dependency change would never reschedule after a *failed* attempt,
+		// since a failure changes none of this effect's inputs. The loop here
+		// reschedules itself on every failure and stops only once the effect is
+		// torn down (hydrated, project switched, or unmounted).
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const scheduleNext = () => {
+			const attempt = hydrationRetryAttemptRef.current;
+			// Only gate this exact project's own hover preload for a bounded
+			// number of attempts; keep retrying past that at the capped interval,
+			// but stop treating it as "this project's own fetch" for preload.
+			setSelectedProjectHydrating(attempt < PROJECT_HYDRATION_PRELOAD_GATE_MAX_ATTEMPTS ? currentProjectId : null);
+			const delay = Math.min(
+				PROJECT_HYDRATION_RETRY_MAX_DELAY_MS,
+				PROJECT_HYDRATION_RETRY_INITIAL_DELAY_MS * 2 ** attempt,
+			);
+			timer = setTimeout(async () => {
+				if (cancelled) return;
+				hydrationRetryAttemptRef.current = attempt + 1;
+				const successCountBeforeRetry = projectRefreshSuccessCountRef.current;
+				await refreshProjectState({ suppressErrorToast: true });
+				if (cancelled) return;
+				if (projectRefreshSuccessCountRef.current > successCountBeforeRetry) {
+					// Hydrated — the dependency change this triggers will tear this
+					// effect down; nothing left to reschedule.
+					hydrationRetryErrorNotifiedRef.current = false;
+					setSelectedProjectHydrating(null);
+					return;
+				}
+				if (!hydrationRetryErrorNotifiedRef.current && syncTargetProjectIdRef.current === currentProjectId) {
+					hydrationRetryErrorNotifiedRef.current = true;
+					notifyError("Still trying to load this project. Quarterdeck will keep retrying.", {
+						key: "project-hydration-retry",
+					});
+				}
+				scheduleNext();
+			}, delay);
+		};
+		scheduleNext();
+		return () => {
+			cancelled = true;
+			if (timer !== null) clearTimeout(timer);
+			// Unmounting mid-gate must not leave the module-level gate stuck
+			// pointing at a project nothing will ever clear it for again.
+			setSelectedProjectHydrating(null);
+		};
+	}, [currentProjectId, hasReceivedSnapshot, isDocumentVisible, isProjectMetadataPending, refreshProjectState]);
 
 	return {
 		boardProjectId,

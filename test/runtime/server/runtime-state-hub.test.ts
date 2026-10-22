@@ -377,6 +377,59 @@ describe("RuntimeStateHub", () => {
 		}
 	});
 
+	it("skips durable connection catch-up when nothing was published while the snapshot loaded", async () => {
+		const buildProjectsPayload = vi.fn(async () => createProjectsResponse());
+		const snapshotGate = createDeferred<RuntimeProjectStateResponse>();
+		const buildProjectStateSnapshot = vi.fn(() => snapshotGate.promise);
+		const dependencies = createDependencies({
+			buildProjectsPayload,
+			buildProjectStateSnapshot,
+			listManagedProjects: vi.fn(() => []),
+		});
+		dependencies.projectRegistry.resolveProjectForStream = async () => ({
+			projectId: "project-1",
+			projectPath: "/repo",
+		});
+		const hub = new RuntimeStateHubImpl(dependencies);
+		const internals = hub as unknown as RuntimeStateHubInternals;
+		const connect = () => {
+			const runtimeClient = createRuntimeClient();
+			return {
+				...runtimeClient,
+				connection: internals.handleConnection(
+					{ ...runtimeClient.client, on: vi.fn(), close: vi.fn() },
+					{ requestedProjectId: "project-1", clientId: "client-1", isDocumentVisible: true },
+				),
+			};
+		};
+		try {
+			const quiet = connect();
+			await vi.waitFor(() => expect(buildProjectStateSnapshot).toHaveBeenCalledOnce());
+			snapshotGate.resolve(createProjectStateResponse());
+			await quiet.connection;
+			await new Promise((resolveWait) => setTimeout(resolveWait, 0));
+			expect(buildProjectsPayload).toHaveBeenCalledOnce();
+			expect(buildProjectStateSnapshot).toHaveBeenCalledOnce();
+
+			// A publication between snapshot load and registration is caught up.
+			const nextSnapshot = createDeferred<RuntimeProjectStateResponse>();
+			buildProjectStateSnapshot.mockImplementationOnce(() => nextSnapshot.promise);
+			const raced = connect();
+			await vi.waitFor(() => expect(buildProjectStateSnapshot).toHaveBeenCalledTimes(2));
+			hub.broadcastRuntimeProjectStateSnapshot("project-1", { ...createProjectStateResponse(), revision: 9 });
+			nextSnapshot.resolve(createProjectStateResponse());
+			await raced.connection;
+			await vi.waitFor(() =>
+				expect(raced.messages).toContainEqual(
+					expect.objectContaining({ type: "project_state_updated", projectId: "project-1" }),
+				),
+			);
+			expect(buildProjectStateSnapshot).toHaveBeenCalledTimes(3);
+		} finally {
+			await hub.close();
+		}
+	});
+
 	it("broadcasts an already-committed authoritative snapshot without rebuilding it", async () => {
 		const buildProjectStateSnapshot = vi.fn(async () => createProjectStateResponse());
 		const hub = new RuntimeStateHubImpl(

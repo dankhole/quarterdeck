@@ -107,7 +107,7 @@ function assertCliArtifact(packRecord, manifest) {
 	if (!Array.isArray(packRecord?.files) || packRecord.files.length === 0) {
 		throw new Error("npm pack did not report the artifact file inventory.");
 	}
-	for (const required of ["npm-postinstall.cjs", "dist/npm-install.js", "dist/build-manifest.json"]) {
+	for (const required of ["npm-postinstall.cjs", "dist/npm-install.js", "dist/hooks.js", "dist/build-manifest.json"]) {
 		if (!packRecord.files.some((file) => file.path === required)) throw new Error(`The CLI tarball is missing ${required}.`);
 	}
 	for (const file of packRecord.files) {
@@ -190,6 +190,8 @@ try {
 		throw new Error("The packed npm manifest and CLI do not match the exact paired source build.");
 	}
 	if (!existsSync(installedCli)) throw new Error("The installed package did not contain dist/cli.js.");
+	if (!existsSync(join(resolve(installedCli, "..", ".."), "dist", "hooks.js")))
+		throw new Error("The installed package did not contain dist/hooks.js.");
 	if (!existsSync(installedBin)) throw new Error("The installed package did not create the quarterdeck command.");
 	retainSmokeRoot = true;
 	const ptyResult = spawnSync(

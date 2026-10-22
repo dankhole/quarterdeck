@@ -119,7 +119,6 @@ export interface StartStructuredOwnerInput {
 		| "dontAsk"
 		| "bypassPermissions";
 	codexApprovalsReviewer?: "inherit" | "user" | "auto_review" | "dangerously_bypass";
-	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	onProcessStarted?: (identity: { pid: number; ownerSessionInstanceId: string }) => Promise<void>;
 }

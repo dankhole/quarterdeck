@@ -3,7 +3,7 @@ import type {
 	RuntimeBoardCard,
 	RuntimeBoardColumnId,
 	RuntimeBoardData,
-	RuntimeTaskImage,
+	RuntimeTaskImageInput,
 	RuntimeTaskSessionSummary,
 } from "./api-contract";
 import { allocateTaskColor } from "./task-card-colors";
@@ -13,7 +13,7 @@ export interface RuntimeCreateTaskInput {
 	taskId?: string;
 	title?: string | null;
 	prompt: string;
-	images?: RuntimeTaskImage[];
+	images?: RuntimeTaskImageInput[];
 	baseRef: string;
 	agentId?: RuntimeAgentId;
 	codexOptions?: RuntimeBoardCard["codexOptions"];
@@ -26,7 +26,7 @@ export interface RuntimeCreateTaskInput {
 export interface RuntimeUpdateTaskInput {
 	title?: string | null;
 	prompt: string;
-	images?: RuntimeTaskImage[];
+	images?: RuntimeTaskImageInput[];
 	baseRef: string;
 	useWorktree?: boolean;
 	pinned?: boolean;
@@ -44,7 +44,7 @@ export interface RuntimePatchTaskInput {
 }
 
 // Copy image metadata so board tasks do not retain caller-owned array or object references.
-function cloneTaskImages(images?: RuntimeTaskImage[]): RuntimeTaskImage[] | undefined {
+function cloneTaskImages(images?: RuntimeTaskImageInput[]): RuntimeTaskImageInput[] | undefined {
 	return images && images.length > 0 ? images.map((image) => ({ ...image })) : undefined;
 }
 

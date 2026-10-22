@@ -12,6 +12,7 @@ For commands and operator workflow, see [Unified diagnostics](../DEVELOPMENT.md#
 - Subsystems expose bounded, metadata-only snapshot providers beside their existing state owner. Diagnostics observes those owners; it does not become a second state store or repair path.
 - Explicit capture is the durable evidence boundary. A bundle flushes and merges the rotating journal with the memory tail, adds read-only doctor findings and provider snapshots, and records hashes in its manifest.
 - Journal write failure retains a bounded pending queue and schedules capped retry without waiting for another event. The smaller memory ring and record-only filtering are not substitutes for the scoped durable bundle.
+- Memory-ring and journal-pending overflow always increments an exact `droppedRecords` total, but the resulting `diagnostics.records_dropped` notice is coalesced to at most one per second, carrying `dropped` (the count since the last notice) and `totalDropped` (the exact running total); a trailing timer still reports a burst's final tail even when no later record would otherwise trigger it. That notice can never evict a retained warn/error record from the ring or the journal pending queue to make room for itself.
 - Diagnostic reads must not connect as a board client, write project state, attach or resize a PTY, refresh Git, or repair runtime state.
 - Live browser delivery is a replaceable projection for the open Diagnostics panel, not the recorder. Only the exact connection capability with the panel open subscribes; closing or revoking it unsubscribes, and browser refresh hydrates a bounded canonical tail explicitly rather than seeding every board WebSocket. Backpressure drops diagnostic traffic before primary runtime-state traffic.
 - Production compatibility logs remain content-free even at warning and error levels. Prefer structured, bounded metadata and validated error classes over arbitrary logger payloads or thrown messages.
@@ -36,7 +37,7 @@ Start bundle analysis at `manifest.json`, then correlate:
 
 - `records.jsonl` for ordered runtime, browser, and lab events;
 - `doctor.json` for scoped findings;
-- provider snapshots for bounded current state; and
+- provider snapshots for bounded current state (for example, `git_processes` reports the Git process limiter's limit, reserved foreground slots, active count, and queued counts per class, which shows whether slow Git work is queueing behind saturation); and
 - indexed evidence for synthetic lab screenshots, traces, Git state, and terminal viewport text.
 
 Diagnostics can report layout bounds and terminal metrics, but it cannot reconstruct historical pixels. Use Agent Lab screenshots or Playwright traces when visual truth matters.

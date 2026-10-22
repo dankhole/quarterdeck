@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { test } from "node:test";
+import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { readBuildManifest, readSourceIdentity, validateBuildManifest } from "../../scripts/build-manifest.mjs";
 import { artifactNames, checksum, validateRelease } from "./desktop-release-artifacts.mjs";
 import {
@@ -52,20 +53,7 @@ async function fixture(run, productVersion = version) {
 					runtimeLockSha256: "b".repeat(64),
 					nativeAdmission: { schemaVersion: 1, bootstrapSha256: "a".repeat(64), hostSha256: "b".repeat(64) },
 					nodeArchive: { sha256: "c".repeat(64) },
-					checksums: Object.fromEntries(
-						[
-							"app.asar",
-							"runtime/bin/node",
-							"runtime/bin/nodeHost",
-							"runtime/dist/cli.js",
-							"runtime/dist/hooks.js",
-							"runtime/dist/build-manifest.json",
-							"runtime/installation-admission",
-							"runtime/dist/web-ui/index.html",
-							"runtime/bundle-manifest.json",
-							"runtime/release-policy.json",
-						].map((resource) => [resource, "e".repeat(64)]),
-					),
+					checksums: Object.fromEntries(DESKTOP_RESOURCE_PATHS.map((resource) => [resource, "e".repeat(64)])),
 					fuses: {
 						RunAsNode: false,
 						EnableNodeOptionsEnvironmentVariable: false,

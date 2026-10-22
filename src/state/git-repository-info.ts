@@ -1,5 +1,5 @@
 import { normalizeFileSystemPathForComparison, type RuntimeGitRepositoryInfo } from "../core/index.js";
-import { isIndeterminateGitCommandFailure, runGit } from "../workdir/git-utils.js";
+import { isGitCommandIndeterminate, runGit } from "../workdir/git-utils.js";
 
 // --- Mechanism: load current git repository info for a path ---
 
@@ -44,7 +44,8 @@ function resolveGitDefaultBranch(remoteHead: string | null, branches: string[]):
 
 /**
  * Run the four inspection commands via `runGit` directly so a command that never
- * produced Git's own answer (timeout, blocked launch, signal death, resource
+ * produced Git's own answer (see `isGitCommandIndeterminate`: a timeout, an
+ * overlong process-queue wait, a blocked launch, a signal death, or resource
  * exhaustion) can be told apart from one that definitively answered "no"
  * (detached HEAD, no origin/HEAD, an empty repository). Only a genuine
  * "not a git repository" root failure throws; everything else is returned as a
@@ -55,7 +56,7 @@ async function loadGitRepositoryInfo(repoPath: string): Promise<GitRepositoryInf
 		timeoutClass: "metadata",
 	});
 	if (!rootResult.ok) {
-		if (isIndeterminateGitCommandFailure(rootResult)) {
+		if (isGitCommandIndeterminate(rootResult)) {
 			return { kind: "indeterminate" };
 		}
 		throw new Error(`No git repository detected at ${repoPath}`);
@@ -79,7 +80,7 @@ async function loadGitRepositoryInfo(repoPath: string): Promise<GitRepositoryInf
 		}),
 	]);
 	for (const result of [branchResult, branchesResult, remoteHeadResult]) {
-		if (!result.ok && isIndeterminateGitCommandFailure(result)) {
+		if (isGitCommandIndeterminate(result)) {
 			return { kind: "indeterminate" };
 		}
 	}
@@ -113,7 +114,7 @@ interface GitRepositoryInfoKeyState {
 	generation: number;
 	/** Next sequence number to assign to a load starting now. */
 	nextSequence: number;
-	/** Sequence of the load that most recently wrote the last-known-good entry. */
+	/** Sequence of the load that most recently wrote (or retired) the last-known-good entry. */
 	lastWrittenLkgSequence: number;
 }
 
@@ -123,9 +124,10 @@ const keyState = new Map<string, GitRepositoryInfoKeyState>();
 
 // Last-known-good git info per path, kept separate from the TTL cache: an
 // indeterminate probe falls back to this so it never replaces a known-good
-// branch list with an empty one. A per-path invalidate does NOT clear this
-// (the browser already holds it and the next successful load corrects it);
-// only the no-argument (global) invalidate does.
+// branch list with an empty one. A per-path invalidate does NOT clear this:
+// metadata polling invalidates on every poll, the browser already holds it,
+// and the next successful load corrects it. Only the no-argument (global)
+// invalidate, or a definite "not a repository" answer, clears it.
 const lastKnownGoodGitRepositoryInfo = new Map<string, RuntimeGitRepositoryInfo>();
 
 // Per-path deadline until which an indeterminate result is served from the
@@ -181,7 +183,19 @@ async function runLoadAndApplyPolicy(
 	generationAtStart: number,
 	sequence: number,
 ): Promise<RuntimeGitRepositoryInfo> {
-	const outcome = await loadGitRepositoryInfo(repoPath);
+	let outcome: GitRepositoryInfoLoadOutcome;
+	try {
+		outcome = await loadGitRepositoryInfo(repoPath);
+	} catch (error) {
+		// A definite "not a repository" answer retires the fallback: the old branch
+		// list no longer describes this path, so a later timeout must not revive it.
+		const state = stateFor(cacheKey);
+		if (state.generation === generationAtStart && sequence > state.lastWrittenLkgSequence) {
+			lastKnownGoodGitRepositoryInfo.delete(cacheKey);
+			state.lastWrittenLkgSequence = sequence;
+		}
+		throw error;
+	}
 	const state = stateFor(cacheKey);
 	const generationStillCurrent = state.generation === generationAtStart;
 

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInitialBoardData } from "@/data/board-data";
 import * as boardCache from "@/runtime/project-board-cache";
 import * as preloadCache from "@/runtime/project-preload-cache";
+import * as runtimeConfigInvalidation from "@/runtime/runtime-config-invalidation";
 import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
 import type { RuntimeStateStreamTransportCallbacks } from "@/runtime/runtime-state-stream-transport";
 import type { RuntimeStateStreamSnapshotMessage } from "@/runtime/types";
@@ -100,6 +101,24 @@ describe("runtime state stream", () => {
 		expect(state.projects[0]?.path).toBe("/new/folder");
 		expect(invalidateBoard).not.toHaveBeenCalled();
 		expect(invalidatePreload).not.toHaveBeenCalled();
+	});
+
+	it("invalidates runtime config on the first snapshot and after a genuine reconnect, but not on an in-between snapshot", async () => {
+		const invalidateConfig = vi.spyOn(runtimeConfigInvalidation, "invalidateRuntimeConfig");
+
+		await act(async () => callbacks.onMessage(snapshot()));
+		expect(invalidateConfig).toHaveBeenCalledTimes(1);
+
+		// A second snapshot on the same connection (e.g. a deliberate project
+		// switch reconnect) must not re-invalidate — nothing proves global
+		// config changed just because the project did.
+		await act(async () => callbacks.onMessage(snapshot()));
+		expect(invalidateConfig).toHaveBeenCalledTimes(1);
+
+		// A genuine disconnect/reconnect may have missed a config change while offline.
+		await act(async () => callbacks.onDisconnected("Runtime stream disconnected."));
+		await act(async () => callbacks.onMessage(snapshot()));
+		expect(invalidateConfig).toHaveBeenCalledTimes(2);
 	});
 
 	it("retains the board cache across an availability flip in either direction but refreshes preload", async () => {

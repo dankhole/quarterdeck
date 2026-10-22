@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { DesktopInstallationError } from "./errors.js";
 import {
 	desktopArchitectureSchema,
@@ -10,17 +11,9 @@ import type { DesktopInstallationArchitecture } from "./types.js";
 
 export const maximumDesktopManifestBytes = 128 * 1024;
 export const maximumDesktopContainerBytes = 1024 * 1024 * 1024;
-export const desktopResourcePaths = [
-	"app.asar",
-	"runtime/bin/node",
-	"runtime/bin/nodeHost",
-	"runtime/installation-admission",
-	"runtime/dist/build-manifest.json",
-	"runtime/dist/cli.js",
-	"runtime/dist/web-ui/index.html",
-	"runtime/bundle-manifest.json",
-	"runtime/release-policy.json",
-] as const;
+// Single source of truth shared with the desktop packaging scripts; see
+// desktop/scripts/desktop-resource-paths.mjs.
+export const desktopResourcePaths = DESKTOP_RESOURCE_PATHS;
 
 const bundleSchema = z.strictObject({
 	schemaVersion: z.literal(1),

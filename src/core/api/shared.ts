@@ -22,6 +22,7 @@ export type RuntimeMaintainedAgentId = z.infer<typeof runtimeMaintainedAgentIdSc
 export const runtimeBoardColumnIdSchema = z.enum(["in_progress", "review", "trash"]);
 export type RuntimeBoardColumnId = z.infer<typeof runtimeBoardColumnIdSchema>;
 
+/** Inline upload: base64 bytes travel with new attachments, launch input, and terminal paste. */
 export const runtimeTaskImageSchema = z.object({
 	id: z.string(),
 	data: z.string(),
@@ -29,6 +30,95 @@ export const runtimeTaskImageSchema = z.object({
 	name: z.string().optional(),
 });
 export type RuntimeTaskImage = z.infer<typeof runtimeTaskImageSchema>;
+
+export const runtimeTaskImageSha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+
+const runtimeTaskImageRefShape = {
+	id: z.string(),
+	name: z.string().optional(),
+	mimeType: z.string(),
+	sha256: runtimeTaskImageSha256Schema,
+	byteLength: z.number().int().nonnegative(),
+};
+
+/**
+ * Durable attachment: bytes live in the owning project's content-addressed
+ * image store. Strict for writes, so an object that also carries bytes is
+ * treated as an upload rather than silently losing them.
+ */
+export const runtimeTaskImageRefSchema = z.object(runtimeTaskImageRefShape).strict();
+export type RuntimeTaskImageRef = z.infer<typeof runtimeTaskImageRefSchema>;
+
+/**
+ * Command attachment: a stored reference, or an inline upload the runtime
+ * externalizes under the project lock before the board commits.
+ */
+export const runtimeTaskImageInputSchema = z.union([runtimeTaskImageRefSchema, runtimeTaskImageSchema]);
+export type RuntimeTaskImageInput = z.infer<typeof runtimeTaskImageInputSchema>;
+
+/**
+ * Card attachment as read from boards and published state. Inline bytes win;
+ * references tolerate (and drop) fields added by a newer runtime.
+ */
+export const runtimeTaskImageReadSchema = z.union([runtimeTaskImageSchema, z.object(runtimeTaskImageRefShape)]);
+
+export const runtimeTaskImageReadRequestSchema = z.object({ sha256: runtimeTaskImageSha256Schema }).strict();
+export type RuntimeTaskImageReadRequest = z.infer<typeof runtimeTaskImageReadRequestSchema>;
+
+/** Base64 bytes for one stored attachment in the requesting project, or null when absent. */
+export const runtimeTaskImageReadResponseSchema = z
+	.object({
+		sha256: runtimeTaskImageSha256Schema,
+		data: z.string(),
+	})
+	.nullable();
+export type RuntimeTaskImageReadResponse = z.infer<typeof runtimeTaskImageReadResponseSchema>;
+
+export function isRuntimeTaskImageRef(image: RuntimeTaskImageInput): image is RuntimeTaskImageRef {
+	return "sha256" in image;
+}
+
+/** Decoded byte length of inline base64 data without decoding it. */
+export function getRuntimeTaskImageByteLength(image: RuntimeTaskImageInput): number {
+	if (isRuntimeTaskImageRef(image)) return image.byteLength;
+	const data = image.data.replace(/\s/g, "");
+	const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+	return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
+}
+
+/**
+ * Attachment identity for idempotency checks. An inline upload and a stored
+ * reference to the same attachment compare equal by identity and byte length:
+ * hashing is unavailable to the synchronous browser overlay, and attachment IDs
+ * are generated per upload.
+ */
+export function areRuntimeTaskImagesEqual(
+	first: readonly RuntimeTaskImageInput[] | undefined,
+	second: readonly RuntimeTaskImageInput[] | undefined,
+): boolean {
+	const left = first?.length ? first : undefined;
+	const right = second?.length ? second : undefined;
+	if (left === right) return true;
+	if (!left || !right || left.length !== right.length) return false;
+	return left.every((image, index) => {
+		const candidate = right[index];
+		if (
+			candidate === undefined ||
+			image.id !== candidate.id ||
+			image.mimeType !== candidate.mimeType ||
+			image.name !== candidate.name
+		) {
+			return false;
+		}
+		if (isRuntimeTaskImageRef(image) && isRuntimeTaskImageRef(candidate)) {
+			return image.sha256 === candidate.sha256 && image.byteLength === candidate.byteLength;
+		}
+		if (!isRuntimeTaskImageRef(image) && !isRuntimeTaskImageRef(candidate)) {
+			return image.data === candidate.data;
+		}
+		return getRuntimeTaskImageByteLength(image) === getRuntimeTaskImageByteLength(candidate);
+	});
+}
 
 export const runtimeSlashCommandSchema = z.object({
 	name: z.string(),

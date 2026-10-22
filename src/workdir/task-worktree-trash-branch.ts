@@ -228,7 +228,10 @@ export async function restoreTaskWorktreeBranchFromTrash(identity: WorkspaceIden
 				throw new Error("the task checkout changed during restore");
 			// A single Git transaction guards both tips. Older Git versions without
 			// symref-update fail safely; never fall back to an unguarded symbolic-ref.
+			// Explicit Restore is user work: admit it ahead of background Git without
+			// occupying the slots reserved for foreground availability checks.
 			const attached = await runGit(path, ["-c", `core.hooksPath=${devNull}`, "update-ref", "--stdin"], {
+				priority: "userAction",
 				stdin: `start\nverify ${marker.branchRef} ${marker.commit}\nsymref-update HEAD ${marker.branchRef} oid ${marker.commit}\nprepare\ncommit\n`,
 			});
 			if (!attached.ok)

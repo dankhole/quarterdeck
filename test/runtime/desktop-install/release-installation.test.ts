@@ -163,4 +163,14 @@ describe.skipIf(process.platform === "win32")("mounted desktop release integrity
 		).rejects.toThrow("resource checksums");
 		expect(commands.some((call) => call.command === "/usr/bin/ditto")).toBe(false);
 	});
+
+	it("checks the lightweight hook entry's hash too, not just cli.js", async () => {
+		const fixture = await createDesktopAppFixture(root, { signed: true });
+		await writeFile(join(fixture.appPath, "Contents/Resources/runtime/dist/hooks.js"), "tampered hooks entry");
+		const { dependencies, commands } = await createInstallerDependencies(root, fixture);
+		await expect(
+			createDesktopInstallationService(dependencies).ensureDesktopInstallation({ version: "0.12.8" }),
+		).rejects.toThrow("resource checksums");
+		expect(commands.some((call) => call.command === "/usr/bin/ditto")).toBe(false);
+	});
 });

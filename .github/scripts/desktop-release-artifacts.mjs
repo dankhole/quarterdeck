@@ -5,6 +5,8 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
+
 const sha256Pattern = /^[a-f0-9]{64}$/u;
 const sourcePattern = /^[a-f0-9]{40}$/u;
 
@@ -69,18 +71,7 @@ export async function validateRelease(directory, version, sourceSha) {
 		}
 		if (!sha256Pattern.test(manifest.runtimeLockSha256) || !sha256Pattern.test(manifest.nodeArchive?.sha256))
 			throw new Error(`Missing dependency provenance: ${arch}.`);
-		for (const resource of [
-			"app.asar",
-			"runtime/bin/node",
-		"runtime/bin/nodeHost",
-			"runtime/dist/cli.js",
-			"runtime/dist/hooks.js",
-			"runtime/dist/build-manifest.json",
-			"runtime/installation-admission",
-			"runtime/dist/web-ui/index.html",
-			"runtime/bundle-manifest.json",
-			"runtime/release-policy.json",
-		]) {
+		for (const resource of DESKTOP_RESOURCE_PATHS) {
 			if (!sha256Pattern.test(manifest.checksums?.[resource]))
 				throw new Error(`Missing resource checksum: ${arch}.`);
 		}

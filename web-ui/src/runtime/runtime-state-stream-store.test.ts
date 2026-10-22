@@ -834,6 +834,131 @@ describe("project location ordering", () => {
 	});
 });
 
+describe("cached project metadata across switches", () => {
+	const projectA: RuntimeProjectSummary = {
+		id: "project-a",
+		name: "Project A",
+		path: "/project-a",
+		boardRevision: 3,
+		metadataRevision: 1,
+		taskCounts: { in_progress: 0, review: 0, trash: 0 },
+	};
+	const projectB: RuntimeProjectSummary = {
+		id: "project-b",
+		name: "Project B",
+		path: "/project-b",
+		boardRevision: 1,
+		metadataRevision: 1,
+		taskCounts: { in_progress: 0, review: 0, trash: 0 },
+	};
+
+	function createGitSummary(changedFiles: number) {
+		return {
+			currentBranch: "main",
+			upstreamBranch: "origin/main",
+			changedFiles,
+			additions: changedFiles,
+			deletions: 0,
+			aheadCount: 0,
+			behindCount: 0,
+		};
+	}
+
+	it("serves last-known metadata when switching back to a project whose state hasn't changed", () => {
+		const projectAState = createTestProjectStateResponse({
+			revision: 3,
+			metadataRevision: 1,
+			repoPath: "/project-a",
+		});
+		const initial = {
+			...createInitialRuntimeStateStreamStore("project-a"),
+			projects: [projectA, projectB],
+			projectState: projectAState,
+		};
+
+		const withMetadata = runtimeStateStreamReducer(initial, {
+			type: "project_metadata_updated",
+			projectId: "project-a",
+			projectMetadata: {
+				metadataRevision: 1,
+				homeGitSummary: createGitSummary(2),
+				homeGitStateVersion: 5,
+				homeStashCount: 0,
+				taskWorktrees: [],
+			},
+		});
+		expect(withMetadata.projectMetadata?.homeGitSummary?.changedFiles).toBe(2);
+
+		const switchedAway = runtimeStateStreamReducer(withMetadata, {
+			type: "requested_project_changed",
+			requestedProjectId: "project-b",
+			preloadedProjectState: null,
+		});
+		// The target project's own metadata isn't known yet (never cached for
+		// project-b), so it correctly shows nothing rather than project-a's data.
+		expect(switchedAway.projectMetadata).toBeNull();
+
+		const switchedBack = runtimeStateStreamReducer(switchedAway, {
+			type: "requested_project_changed",
+			requestedProjectId: "project-a",
+			preloadedProjectState: null,
+		});
+		// Switching back to project-a immediately shows its last-known metadata
+		// instead of nulling it out while the server resends the real value.
+		expect(switchedBack.projectMetadata?.homeGitSummary?.changedFiles).toBe(2);
+	});
+
+	it("does not serve stale cached metadata once the project's revision has advanced", () => {
+		const projectAState = createTestProjectStateResponse({
+			revision: 3,
+			metadataRevision: 1,
+			repoPath: "/project-a",
+		});
+		const initial = {
+			...createInitialRuntimeStateStreamStore("project-a"),
+			projects: [projectA, projectB],
+			projectState: projectAState,
+		};
+
+		const withMetadata = runtimeStateStreamReducer(initial, {
+			type: "project_metadata_updated",
+			projectId: "project-a",
+			projectMetadata: {
+				metadataRevision: 1,
+				homeGitSummary: createGitSummary(2),
+				homeGitStateVersion: 5,
+				homeStashCount: 0,
+				taskWorktrees: [],
+			},
+		});
+
+		const switchedAway = runtimeStateStreamReducer(withMetadata, {
+			type: "requested_project_changed",
+			requestedProjectId: "project-b",
+			preloadedProjectState: null,
+		});
+
+		// project-a relocated/changed while away: its summary now carries a
+		// newer metadataRevision than the cached entry describes.
+		const relocated = runtimeStateStreamReducer(switchedAway, {
+			type: "projects_updated",
+			nextProjectId: "project-b",
+			payload: {
+				type: "projects_updated",
+				currentProjectId: "project-b",
+				projects: [{ ...projectA, metadataRevision: 2, path: "/project-a-new" }, projectB],
+			},
+		});
+
+		const switchedBack = runtimeStateStreamReducer(relocated, {
+			type: "requested_project_changed",
+			requestedProjectId: "project-a",
+			preloadedProjectState: null,
+		});
+		expect(switchedBack.projectMetadata).toBeNull();
+	});
+});
+
 describe("organization ordering", () => {
 	it("does not let stale project lists resurrect removed entries or roll back groups", () => {
 		const project = {

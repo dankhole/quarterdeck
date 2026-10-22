@@ -5,6 +5,7 @@ import { createInitialBoardData } from "@/data/board-data";
 import type { ProjectBoardSessionsState } from "@/hooks/project/project-sync";
 import { useProjectSync } from "@/hooks/project/use-project-sync";
 import { clearProjectBoardCache, restoreProjectBoard, stashProjectBoard } from "@/runtime/project-board-cache";
+import * as preloadCacheModule from "@/runtime/project-preload-cache";
 import { ProjectStateConflictError } from "@/runtime/project-state-query";
 import type { RuntimeProjectStateResponse, RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
@@ -16,6 +17,8 @@ import type { BoardData } from "@/types";
 
 const fetchProjectStateMock = vi.hoisted(() => vi.fn());
 const applyProjectBoardCommandsMock = vi.hoisted(() => vi.fn());
+const notifyErrorMock = vi.hoisted(() => vi.fn());
+const showAppToastMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/project-state-query", () => ({
 	fetchProjectState: fetchProjectStateMock,
@@ -29,6 +32,16 @@ vi.mock("@/runtime/project-state-query", () => ({
 		}
 	},
 }));
+
+vi.mock("@/components/app-toaster", () => ({
+	notifyError: notifyErrorMock,
+	showAppToast: showAppToastMock,
+}));
+
+// Spy on the real module (not mocked) so the hover-preload hydration gate can
+// be asserted without re-wrapping it on every test (vi.spyOn on an
+// already-spied export would nest wrappers across tests).
+const setSelectedProjectHydratingSpy = vi.spyOn(preloadCacheModule, "setSelectedProjectHydrating");
 
 function createBoard(taskId: string): BoardData {
 	return createBoardInColumn("review", taskId);
@@ -283,6 +296,9 @@ describe("useProjectSync", () => {
 	beforeEach(() => {
 		fetchProjectStateMock.mockReset();
 		applyProjectBoardCommandsMock.mockReset();
+		notifyErrorMock.mockReset();
+		showAppToastMock.mockReset();
+		setSelectedProjectHydratingSpy.mockClear();
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -1029,24 +1045,230 @@ describe("useProjectSync", () => {
 		expect(latestSnapshot).not.toBeNull();
 	});
 
-	it("does not retry project state refresh when the runtime snapshot has no project state", async () => {
+	it("retries project state refresh with bounded backoff until the project hydrates, notifying only once per retry series", async () => {
+		vi.useFakeTimers();
+		try {
+			const hydrated = createProjectState("recovered-task", 5);
+			fetchProjectStateMock
+				.mockRejectedValueOnce(new Error("boom"))
+				.mockRejectedValueOnce(new Error("boom again"))
+				.mockResolvedValueOnce(hydrated);
+			let latestSnapshot: HookSnapshot | null = null;
+
+			await act(async () => {
+				root.render(
+					<HookHarness
+						streamedProjectState={null}
+						hasReceivedSnapshot={true}
+						isDocumentVisible={true}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+			expect(fetchProjectStateMock).not.toHaveBeenCalled();
+
+			// First attempt at the 1s initial backoff delay.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1_000);
+			});
+			expect(fetchProjectStateMock).toHaveBeenCalledTimes(1);
+			expect(notifyErrorMock).toHaveBeenCalledTimes(1);
+
+			// Second attempt at the doubled 2s delay; the one-shot failure notice
+			// must not repeat for a second failure in the same retry series.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(2_000);
+			});
+			expect(fetchProjectStateMock).toHaveBeenCalledTimes(2);
+			expect(notifyErrorMock).toHaveBeenCalledTimes(1);
+
+			// Third attempt at the next doubled delay (4s) succeeds and hydrates.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(4_000);
+			});
+			expect(fetchProjectStateMock).toHaveBeenCalledTimes(3);
+			assertSnapshot(latestSnapshot, "Expected a hydrated snapshot.");
+			const hydratedSnapshot: HookSnapshot = latestSnapshot;
+			expect(hydratedSnapshot.boardProjectId).toBe("project-a");
+			expect(hydratedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe(
+				"recovered-task",
+			);
+			expect(notifyErrorMock).toHaveBeenCalledTimes(1);
+			// Hydrating clears the hover-preload gate for this project.
+			expect(setSelectedProjectHydratingSpy).toHaveBeenLastCalledWith(null);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("stops gating this project's hover preload after a bounded number of retry attempts, while retries keep running", async () => {
+		vi.useFakeTimers();
+		try {
+			fetchProjectStateMock.mockRejectedValue(new Error("still broken"));
+
+			await act(async () => {
+				root.render(
+					<HookHarness
+						streamedProjectState={null}
+						hasReceivedSnapshot={true}
+						isDocumentVisible={true}
+						onSnapshot={() => {}}
+					/>,
+				);
+			});
+			// Attempt 0 (the initial 1s scheduling) gates this exact project.
+			expect(setSelectedProjectHydratingSpy).toHaveBeenLastCalledWith("project-a");
+
+			// Attempts 1, 2, 3 (delays 2s, 4s, 8s) stay gated to this project.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1_000);
+			});
+			expect(setSelectedProjectHydratingSpy).toHaveBeenLastCalledWith("project-a");
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(2_000);
+			});
+			expect(setSelectedProjectHydratingSpy).toHaveBeenLastCalledWith("project-a");
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(4_000);
+			});
+			expect(setSelectedProjectHydratingSpy).toHaveBeenLastCalledWith("project-a");
+			expect(fetchProjectStateMock).toHaveBeenCalledTimes(3);
+
+			// The 5th scheduling pass (attempt === 4) stops gating this project's
+			// own hover preload, even though hydration still has not succeeded.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(8_000);
+			});
+			expect(setSelectedProjectHydratingSpy).toHaveBeenLastCalledWith(null);
+
+			// Retries continue in the background at the capped interval.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(10_000);
+			});
+			expect(fetchProjectStateMock).toHaveBeenCalledTimes(5);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("refetches project state once on an explicit project switch but not on every streamed delta", async () => {
+		fetchProjectStateMock.mockResolvedValue(createProjectState("refetched-task", 99));
+		let latestSnapshot: HookSnapshot | null = null;
+		const onSnapshot = (snapshot: HookSnapshot) => {
+			latestSnapshot = snapshot;
+		};
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("task-1", 1)}
+					hasReceivedSnapshot={true}
+					isDocumentVisible={true}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+		expect(fetchProjectStateMock).toHaveBeenCalledTimes(1);
+
+		// A plain streamed delta for the same project must not trigger another refetch.
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("task-1", 2)}
+					hasReceivedSnapshot={true}
+					isDocumentVisible={true}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+		expect(fetchProjectStateMock).toHaveBeenCalledTimes(1);
+
+		// An explicit project switch (resetProjectSyncState, as real navigation does) still gets its own refetch.
+		assertSnapshot(latestSnapshot, "Expected a hook snapshot before the switch.");
+		const beforeSwitchSnapshot: HookSnapshot = latestSnapshot;
+		await act(async () => {
+			beforeSwitchSnapshot.resetProjectSyncState("project-b");
+		});
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={createProjectState("task-b", 1)}
+					hasReceivedSnapshot={true}
+					isDocumentVisible={true}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+		expect(fetchProjectStateMock).toHaveBeenCalledTimes(2);
+		assertSnapshot(latestSnapshot, "Expected a hook snapshot after the switch.");
+		const afterSwitchSnapshot: HookSnapshot = latestSnapshot;
+		expect(afterSwitchSnapshot.boardProjectId).toBe("project-b");
+	});
+
+	it("shows a non-error notice instead of silently discarding a board edit while hydration is pending", async () => {
+		stashProjectBoard("project-b", {
+			board: createBoard("cached-task"),
+			sessions: {},
+			authoritativeRevision: 3,
+			projectPath: "/tmp/project-b",
+			projectGit: null,
+		});
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					streamedProjectState={null}
-					hasReceivedSnapshot={true}
-					isDocumentVisible={true}
+					currentProjectId="project-a"
+					streamedProjectState={createProjectState("persisted-task", 1)}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
 				/>,
 			);
 		});
+		assertSnapshot(latestSnapshot, "Expected an initial hook snapshot.");
+		const initialSnapshot: HookSnapshot = latestSnapshot;
 
-		expect(fetchProjectStateMock).not.toHaveBeenCalled();
-		expect(latestSnapshot).not.toBeNull();
+		await act(async () => {
+			initialSnapshot.resetProjectSyncState("project-b");
+		});
+		// Real navigation re-renders with the switched-to project id once the
+		// cached board is showing; without it, setBoard's project-identity fence
+		// (still "project-a" here) would reject the edit before ever reaching
+		// the hydration check this test is exercising.
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId="project-b"
+					streamedProjectState={null}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+		});
+		assertSnapshot(latestSnapshot, "Expected a cached hook snapshot.");
+		const cachedSnapshot: HookSnapshot = latestSnapshot;
+		expect(cachedSnapshot.isServedFromBoardCache).toBe(true);
+		expect(cachedSnapshot.getAuthoritativeRevision()).toBeNull();
+
+		await act(async () => {
+			cachedSnapshot.setBoard(createBoard("attempted-edit"));
+		});
+
+		expect(showAppToastMock).toHaveBeenCalledTimes(1);
+		expect(showAppToastMock).toHaveBeenCalledWith(
+			expect.objectContaining({ message: expect.stringContaining("Still syncing") }),
+			"project-board-not-ready",
+		);
+		expect(applyProjectBoardCommandsMock).not.toHaveBeenCalled();
+		// The cached board stays exactly as it was — the edit was not silently applied.
+		expect(cachedSnapshot.board.columns.find((column) => column.id === "review")?.cards[0]?.id).toBe("cached-task");
 	});
 
 	it("accepts runtime-owned work-column placement during authoritative hydrate", async () => {

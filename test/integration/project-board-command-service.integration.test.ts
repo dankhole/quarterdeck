@@ -365,6 +365,66 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 		});
 	});
 
+	it("requests publication without awaiting it on command and runtime projection paths", async () => {
+		await withTemporaryHome(async () => {
+			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-board-command-publish-async-");
+			try {
+				const projectPath = join(sandboxRoot, "project-a");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const scope = { projectId: context.projectId, projectPath };
+				const order: string[] = [];
+				// Publication that never settles would hang every caller if it were awaited.
+				const publishAuthoritativeState = vi.fn((_scope: unknown, result: { state: { revision: number } }) => {
+					order.push(`publish:${result.state.revision}`);
+					return new Promise<void>(() => {});
+				});
+				const service = new ProjectBoardCommandService({
+					getAuthoritativeSessions: () => ({}),
+					publishAuthoritativeState,
+				});
+				service.subscribeToPostCommitEffects((event) => {
+					order.push(`post-commit:${event.revision}`);
+				});
+
+				const created = await service.execute(scope, {
+					commandId: "create-without-awaiting-publication",
+					expectedRevision: initial.revision,
+					command: {
+						kind: "create_task",
+						columnId: "review",
+						taskId: "task-a",
+						prompt: "Publish asynchronously",
+						baseRef: "main",
+						createdAt: 100,
+					},
+				});
+				expect(created.acceptedChange).toBe(true);
+				expect(order).toEqual([`publish:${created.state.revision}`, `post-commit:${created.state.revision}`]);
+
+				const projected = await service.reconcileRuntimeTaskBaseRef(scope, "task-a", "feature");
+				expect(projected.changed).toBe(true);
+				expect(publishAuthoritativeState).toHaveBeenCalledTimes(2);
+				expect(publishAuthoritativeState).toHaveBeenLastCalledWith(scope, projected);
+
+				const throwingService = new ProjectBoardCommandService({
+					getAuthoritativeSessions: () => ({}),
+					publishAuthoritativeState: () => {
+						throw new Error("synchronous publisher failure");
+					},
+				});
+				await expect(throwingService.reconcileRuntimeTaskBaseRef(scope, "task-a", "main")).resolves.toMatchObject({
+					changed: true,
+				});
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("rejects reusing a command ID with different content", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-board-command-identity-");

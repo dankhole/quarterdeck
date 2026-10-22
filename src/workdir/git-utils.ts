@@ -12,8 +12,30 @@ import {
 	resolveWindowsCompatibleCommand,
 } from "../core";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
+import {
+	GitProcessAdmissionAbortedError,
+	GitProcessLimiter,
+	type GitProcessLimiterSnapshot,
+	type GitProcessPriority,
+	GitProcessQueueTimeoutError,
+} from "./git-process-limiter";
 
 const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+/**
+ * Global cap on concurrently running Git processes started through `runGit`.
+ * Foreground work (availability, sync, and default-class request commands) is
+ * admitted before explicit user actions and background metadata, inspection,
+ * and remote fetches. Set to `Infinity` to disable the limiter.
+ */
+export const GIT_PROCESS_CONCURRENCY_LIMIT = 8;
+/** Slots that `userAction` and background commands may never occupy. */
+export const GIT_FOREGROUND_RESERVED_SLOTS = 2;
+const gitProcessLimiter = new GitProcessLimiter(GIT_PROCESS_CONCURRENCY_LIMIT, GIT_FOREGROUND_RESERVED_SLOTS);
+/**
+ * Longest a foreground command waits for a process slot. Exceeding it yields an
+ * indeterminate `queue_timed_out` failure instead of an unbounded admission wait.
+ */
+export const GIT_FOREGROUND_QUEUE_MAX_WAIT_MS = 15_000;
 const remoteGitCommands = new KeyedOperationCoordinator();
 export const GIT_COMMAND_TIMEOUTS_MS = {
 	default: 5_000,
@@ -26,11 +48,34 @@ export const GIT_COMMAND_TIMEOUTS_MS = {
 
 export type GitCommandTimeoutClass = keyof typeof GIT_COMMAND_TIMEOUTS_MS;
 
+/** Every timeout class maps to an explicit admission class; `default` is request-path work. */
+const GIT_PROCESS_PRIORITY_BY_TIMEOUT_CLASS: Record<GitCommandTimeoutClass, GitProcessPriority> = {
+	default: "foreground",
+	sync: "foreground",
+	userAction: "userAction",
+	inspection: "background",
+	metadata: "background",
+	remoteFetch: "background",
+};
+
+export function resolveGitProcessPriority(options: {
+	priority?: GitProcessPriority;
+	timeoutClass?: GitCommandTimeoutClass;
+}): GitProcessPriority {
+	return options.priority ?? GIT_PROCESS_PRIORITY_BY_TIMEOUT_CLASS[options.timeoutClass ?? "default"];
+}
+
+export function getGitProcessLimiterSnapshot(): GitProcessLimiterSnapshot {
+	return gitProcessLimiter.getSnapshot();
+}
+
 export type GitCommandFailureKind =
 	| "launch_blocked"
 	| "spawn_unavailable"
 	| "permission_denied"
 	| "timed_out"
+	| "queue_timed_out"
+	| "aborted"
 	| "command_failed";
 export type GitCommandErrorCode =
 	| "ENOENT"
@@ -82,11 +127,15 @@ function boundedGitErrorCode(code: unknown): GitCommandErrorCode | null {
 
 export interface RunGitOptions {
 	trimStdout?: boolean;
-	/** Input for Git's transactional plumbing; never interpreted by a shell. */
+	/** Written to the process's stdin, which is then closed; for Git's transactional plumbing, never a shell. */
 	stdin?: string;
 	env?: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 	timeoutClass?: GitCommandTimeoutClass;
+	/** Overrides the admission priority derived from `timeoutClass`. */
+	priority?: GitProcessPriority;
+	/** Cancels the command while it is still waiting for a process slot. */
+	signal?: AbortSignal;
 }
 
 export const GIT_INSPECTION_OPTIONS = { timeoutClass: "inspection" } as const satisfies RunGitOptions;
@@ -137,7 +186,22 @@ interface GitCommandOutput {
 	stderr: string;
 }
 
+/** Waits for a process slot first; the command timeout starts only once the process is spawned. */
 function executeGitCommand(
+	cwd: string,
+	args: string[],
+	env: NodeJS.ProcessEnv,
+	timeoutMs: number,
+	priority: GitProcessPriority,
+	options: { signal?: AbortSignal; stdin?: string } = {},
+): Promise<GitCommandOutput> {
+	return gitProcessLimiter.run(priority, () => spawnGitCommand(cwd, args, env, timeoutMs, options.stdin), {
+		signal: options.signal,
+		maxWaitMs: priority === "foreground" ? GIT_FOREGROUND_QUEUE_MAX_WAIT_MS : undefined,
+	});
+}
+
+function spawnGitCommand(
 	cwd: string,
 	args: string[],
 	env: NodeJS.ProcessEnv,
@@ -152,10 +216,36 @@ function executeGitCommand(
 			throw new GitLaunchAdmissionError(error);
 		}
 		// `guard` is assigned after `execFile` returns; a mocked callback that fires
-		// synchronously sees it as null (safe via optional chaining) and `settled`
-		// below prevents arming an unneeded guard for an already-finished call.
+		// synchronously sees it as null and `settled` prevents arming it at all.
 		let settled = false;
 		let guard: ChildProcessTimeoutGuard | null = null;
+		const finish = (error: ExecFileException | null, stdout: unknown, stderr: unknown): void => {
+			if (settled) return;
+			settled = true;
+			guard?.settle();
+			const normalizedStdout = String(stdout ?? "");
+			const normalizedStderr = String(stderr ?? "");
+			if (guard?.isTimedOut()) {
+				const timeoutError = Object.assign(new Error(`Git command timed out after ${timeoutMs}ms`), {
+					code: "ETIMEDOUT",
+					killed: true,
+					signal: "SIGTERM",
+					stdout: normalizedStdout,
+					stderr: normalizedStderr,
+				});
+				rejectCommand(timeoutError);
+				return;
+			}
+			if (error) {
+				Object.assign(error, {
+					stdout: "stdout" in error ? error.stdout : normalizedStdout,
+					stderr: "stderr" in error ? error.stderr : normalizedStderr,
+				});
+				rejectCommand(error);
+				return;
+			}
+			resolveCommand({ stdout: normalizedStdout, stderr: normalizedStderr });
+		};
 		const child = execFile(
 			command.binary,
 			command.args,
@@ -166,39 +256,16 @@ function executeGitCommand(
 				env,
 				windowsHide: true,
 			},
-			(error: ExecFileException | null, stdout, stderr) => {
-				settled = true;
-				guard?.settle();
-				const normalizedStdout = String(stdout ?? "");
-				const normalizedStderr = String(stderr ?? "");
-				if (guard?.isTimedOut()) {
-					const timeoutError = Object.assign(new Error(`Git command timed out after ${timeoutMs}ms`), {
-						code: "ETIMEDOUT",
-						killed: true,
-						signal: "SIGTERM",
-						stdout: normalizedStdout,
-						stderr: normalizedStderr,
-					});
-					rejectCommand(timeoutError);
-					return;
-				}
-				if (error) {
-					Object.assign(error, {
-						stdout: "stdout" in error ? error.stdout : normalizedStdout,
-						stderr: "stderr" in error ? error.stderr : normalizedStderr,
-					});
-					rejectCommand(error);
-					return;
-				}
-				resolveCommand({ stdout: normalizedStdout, stderr: normalizedStderr });
-			},
+			(error: ExecFileException | null, stdout, stderr) => finish(error, stdout, stderr),
 		);
 		// A failed/unsupported command can close its pipe before consuming input.
 		child.stdin?.on("error", () => {});
 		child.stdin?.end(stdin);
 
 		if (!settled) {
-			guard = armChildProcessTimeout(child, timeoutMs);
+			// The guard terminates, force-kills, and finally abandons a hung child, and
+			// releases pipes a descendant keeps open, so no command holds its slot forever.
+			guard = armChildProcessTimeout(child, timeoutMs, { onAbandoned: () => finish(null, "", "") });
 		}
 	});
 }
@@ -216,7 +283,13 @@ function remoteGitCommandPrefix(args: string[]): string[] | null {
 	return null;
 }
 
-async function remoteGitRepositoryKey(cwd: string, prefix: string[], env: NodeJS.ProcessEnv): Promise<string> {
+async function remoteGitRepositoryKey(
+	cwd: string,
+	prefix: string[],
+	env: NodeJS.ProcessEnv,
+	priority: GitProcessPriority,
+	signal?: AbortSignal,
+): Promise<string> {
 	// Use the process primitive directly: repository discovery must never enter
 	// the remote queue, and must observe the same options and environment.
 	const { stdout } = await executeGitCommand(
@@ -230,6 +303,8 @@ async function remoteGitRepositoryKey(cwd: string, prefix: string[], env: NodeJS
 		]),
 		env,
 		GIT_COMMAND_TIMEOUTS_MS.metadata,
+		priority,
+		{ signal },
 	);
 	const commonDirectory = stdout.replace(/\r?\n$/u, "");
 	if (!commonDirectory) throw new Error("Git remote command not started: shared Git directory is unavailable.");
@@ -244,7 +319,12 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 	try {
 		const fullArgs = buildGitCommandArgs(args);
 		const env = options.env || createGitProcessEnv();
-		const execute = () => executeGitCommand(cwd, fullArgs, env, resolveGitTimeoutMs(options), options.stdin);
+		const priority = resolveGitProcessPriority(options);
+		const execute = () =>
+			executeGitCommand(cwd, fullArgs, env, resolveGitTimeoutMs(options), priority, {
+				signal: options.signal,
+				stdin: options.stdin,
+			});
 		const remotePrefix = remoteGitCommandPrefix(args);
 		// Fetch, pull and push update remote refs shared across linked worktrees.
 		// Admit one remote process per canonical common directory; inspections
@@ -252,7 +332,10 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 		const { stdout, stderr } =
 			remotePrefix === null
 				? await execute()
-				: await remoteGitCommands.run(await remoteGitRepositoryKey(cwd, remotePrefix, env), execute);
+				: await remoteGitCommands.run(
+						await remoteGitRepositoryKey(cwd, remotePrefix, env, priority, options.signal),
+						execute,
+					);
 		const normalizedStdout = String(stdout ?? "").trim();
 		const normalizedStderr = String(stderr ?? "").trim();
 		return {
@@ -292,15 +375,19 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 		const failureKind: GitCommandFailureKind =
 			error instanceof GitLaunchAdmissionError
 				? "launch_blocked"
-				: timedOut
-					? "timed_out"
-					: errorCode === "ENOENT"
-						? "spawn_unavailable"
-						: errorCode === "EACCES" || errorCode === "EPERM"
-							? "permission_denied"
-							: "command_failed";
-		// Our own timeout termination also reports a signal (SIGTERM); only an
-		// external signal (e.g. an OOM killer's SIGKILL) outside that path counts.
+				: error instanceof GitProcessAdmissionAbortedError
+					? "aborted"
+					: error instanceof GitProcessQueueTimeoutError
+						? "queue_timed_out"
+						: timedOut
+							? "timed_out"
+							: errorCode === "ENOENT"
+								? "spawn_unavailable"
+								: errorCode === "EACCES" || errorCode === "EPERM"
+									? "permission_denied"
+									: "command_failed";
+		// Our own timeout termination also reports a signal (SIGTERM or SIGKILL);
+		// only an external signal (e.g. an OOM killer's SIGKILL) outside that path counts.
 		const terminatedBySignal = Boolean(candidate.signal) && !timedOut;
 
 		return {
@@ -318,7 +405,10 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 	}
 }
 
-const INDETERMINATE_RESOURCE_EXHAUSTION_ERROR_CODES: ReadonlySet<GitCommandErrorCode> = new Set([
+/** Windows NTSTATUS failure codes (0xC0000000 and above) report a crashed or killed process, not Git's answer. */
+const WINDOWS_NTSTATUS_ERROR_BASE = 0xc000_0000;
+/** Spawn errors that report runtime resource exhaustion, not anything about the command or repository. */
+const RESOURCE_EXHAUSTION_ERROR_CODES: ReadonlySet<GitCommandErrorCode> = new Set([
 	"EAGAIN",
 	"EMFILE",
 	"ENFILE",
@@ -326,24 +416,38 @@ const INDETERMINATE_RESOURCE_EXHAUSTION_ERROR_CODES: ReadonlySet<GitCommandError
 ]);
 
 /**
- * Shared classifier for whether a failed git command result is indeterminate: the
- * command never produced Git's own exit status, so it proves nothing about the
- * repository or ref being inspected. Timeouts, blocked launches, external signal
- * deaths (not our own timeout termination), and resource-exhaustion spawn errors
- * are indeterminate; every other failure (including a real non-zero Git exit code)
- * is definitive. Only applies to an actual failed git command; a caller with
- * additional non-command failure kinds of its own (e.g. a probe's root-mismatch
- * check) must resolve those first and not pass them here.
+ * True when Git produced no answer: the command timed out or waited too long for
+ * a process slot, was fenced or cancelled before launch, was killed by a signal
+ * it did not get from us (for example an OOM kill), failed to spawn for resource
+ * reasons (EAGAIN/EMFILE/ENFILE/ENOMEM), or otherwise ended without an exit
+ * status. On Windows, spawn EPERM/EACCES (transient antivirus or handle
+ * contention) and NTSTATUS exit codes are also indeterminate. Callers must not
+ * read such a failure as a definite negative such as "not a repository".
  */
-export function isIndeterminateGitCommandFailure(failure: {
-	failureKind?: GitCommandFailureKind;
-	errorCode?: GitCommandErrorCode | null;
-	terminatedBySignal?: boolean;
-}): boolean {
-	if (failure.failureKind === "timed_out" || failure.failureKind === "launch_blocked") return true;
-	if (failure.failureKind !== "command_failed") return false;
-	if (failure.terminatedBySignal) return true;
-	return failure.errorCode != null && INDETERMINATE_RESOURCE_EXHAUSTION_ERROR_CODES.has(failure.errorCode);
+export function isGitCommandIndeterminate(
+	result: Pick<GitCommandResult, "ok" | "timedOut" | "failureKind" | "exitCode" | "errorCode" | "terminatedBySignal">,
+	platform: NodeJS.Platform = process.platform,
+): boolean {
+	if (result.ok) return false;
+	if (
+		result.timedOut ||
+		result.failureKind === "timed_out" ||
+		result.failureKind === "queue_timed_out" ||
+		result.failureKind === "launch_blocked" ||
+		result.failureKind === "aborted"
+	) {
+		return true;
+	}
+	if (platform === "win32") {
+		if (result.failureKind === "permission_denied") return true;
+		// -1 is this module's "no exit status" sentinel, never an NTSTATUS value.
+		const exitStatus = result.exitCode === -1 ? 0 : result.exitCode >>> 0;
+		if (result.failureKind === "command_failed" && exitStatus >= WINDOWS_NTSTATUS_ERROR_BASE) return true;
+	}
+	if (result.failureKind !== "command_failed") return false;
+	if (result.terminatedBySignal) return true;
+	if (result.errorCode && RESOURCE_EXHAUSTION_ERROR_CODES.has(result.errorCode)) return true;
+	return result.exitCode < 0 && !result.errorCode;
 }
 
 export async function getGitStdout(args: string[], cwd: string, options: RunGitOptions = {}): Promise<string> {
@@ -525,13 +629,7 @@ export async function getGitDir(cwd: string): Promise<string> {
 export async function resolveRepoRoot(cwd: string, options: RunGitOptions = {}): Promise<string> {
 	const result = await runGit(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"], options);
 	if (!result.ok) {
-		if (
-			isIndeterminateGitCommandFailure({
-				failureKind: result.failureKind,
-				errorCode: result.errorCode,
-				terminatedBySignal: result.terminatedBySignal,
-			})
-		) {
+		if (isGitCommandIndeterminate(result)) {
 			throw new Error("Git did not respond in time; retry.");
 		}
 		throw new Error("No git repository detected for this project.");

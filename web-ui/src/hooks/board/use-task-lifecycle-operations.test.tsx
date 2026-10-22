@@ -16,6 +16,7 @@ import {
 import { createFileEditorTab } from "@/hooks/git/file-editor-workspace";
 import type { RuntimeTaskLifecycleResult } from "@/runtime/types";
 import { createTestProjectStateResponse } from "@/test-utils/task-session-factory";
+import { AUTHORITATIVE_REVISION_WAIT_TIMEOUT_MS } from "./task-lifecycle-operations";
 
 const executeTaskLifecycleMutateMock = vi.hoisted(() => vi.fn());
 const getTaskLifecycleOperationQueryMock = vi.hoisted(() => vi.fn());
@@ -462,18 +463,44 @@ describe("useTaskLifecycleOperations", () => {
 		"replaces delete progress with an error on %s failure",
 		async (failure) => {
 			if (failure === "flush") flushBoardCommands.mockResolvedValue({ ok: false, message: "revision conflict" });
-			if (failure === "loading") getAuthoritativeRevision.mockReturnValue(null);
 			if (failure === "connection") {
 				executeTaskLifecycleMutateMock.mockRejectedValue(new Error("connection closed"));
 				getTaskLifecycleOperationQueryMock.mockResolvedValue(null);
 			}
-			await act(async () => {
-				await requireSnapshot(latestSnapshot).executeTaskLifecycle({
-					kind: "delete",
-					taskId: "task-1",
-					taskCreatedAt: 1,
+			if (failure !== "loading") {
+				await act(async () => {
+					await requireSnapshot(latestSnapshot).executeTaskLifecycle({
+						kind: "delete",
+						taskId: "task-1",
+						taskCreatedAt: 1,
+					});
 				});
-			});
+			} else {
+				// "The project is still loading" now waits (bounded) for the first
+				// authoritative revision instead of failing instantly; advance past
+				// that bounded wait with fake timers rather than a real 15s delay.
+				getAuthoritativeRevision.mockReturnValue(null);
+				// The bounded wait keeps the operation "pending" for its duration, long
+				// enough for the progress-poll interval to tick; give it a harmless response.
+				getTaskLifecycleOperationQueryMock.mockResolvedValue(null);
+				vi.useFakeTimers();
+				try {
+					let resultPromise: Promise<RuntimeTaskLifecycleResult | null> | undefined;
+					await act(async () => {
+						resultPromise = requireSnapshot(latestSnapshot).executeTaskLifecycle({
+							kind: "delete",
+							taskId: "task-1",
+							taskCreatedAt: 1,
+						});
+					});
+					await act(async () => {
+						await vi.advanceTimersByTimeAsync(AUTHORITATIVE_REVISION_WAIT_TIMEOUT_MS);
+						await resultPromise;
+					});
+				} finally {
+					vi.useRealTimers();
+				}
+			}
 			expect(showAppToastMock).toHaveBeenCalledOnce();
 			expect(notifyErrorMock).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
 				key: showAppToastMock.mock.calls[0]?.[1],

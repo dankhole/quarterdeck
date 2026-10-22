@@ -5,7 +5,7 @@ import {
 	runtimeAgentIdSchema,
 	runtimeBoardColumnIdSchema,
 	runtimeMaintainedAgentIdSchema,
-	runtimeTaskImageSchema,
+	runtimeTaskImageInputSchema,
 } from "./shared.js";
 
 const commandTaskIdSchema = z.string().trim().min(1);
@@ -18,7 +18,7 @@ export const runtimeProjectBoardCommandSchema = z.discriminatedUnion("kind", [
 		taskId: commandTaskIdSchema,
 		title: z.string().nullable().optional(),
 		prompt: z.string(),
-		images: z.array(runtimeTaskImageSchema).optional(),
+		images: z.array(runtimeTaskImageInputSchema).optional(),
 		baseRef: z.string(),
 		agentId: runtimeMaintainedAgentIdSchema.optional(),
 		codexOptions: runtimeCodexOptionsSchema.optional(),
@@ -33,7 +33,7 @@ export const runtimeProjectBoardCommandSchema = z.discriminatedUnion("kind", [
 		taskId: commandTaskIdSchema,
 		title: z.string().nullable().optional(),
 		prompt: z.string(),
-		images: z.array(runtimeTaskImageSchema).optional(),
+		images: z.array(runtimeTaskImageInputSchema).optional(),
 		baseRef: z.string(),
 		useWorktree: z.boolean().optional(),
 		pinned: z.boolean().optional(),

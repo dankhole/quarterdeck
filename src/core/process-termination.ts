@@ -93,77 +93,127 @@ export function terminateProcessForTimeout(
 	child.kill("SIGTERM");
 }
 
+interface ReleasableStdio {
+	destroy(): void;
+}
+
 interface ObservableChildProcess extends TimeoutTerminatedChildProcess {
 	readonly exitCode: number | null;
 	readonly signalCode: NodeJS.Signals | null;
+	readonly stdout?: ReleasableStdio | null;
+	readonly stderr?: ReleasableStdio | null;
+	once?(event: "exit", listener: () => void): unknown;
 }
 
 export interface ChildProcessTimeoutGuard {
-	/** True once a real timeout has been confirmed (see `armChildProcessTimeout`). */
+	/** True once the timeout fired while the child was still running (see `armChildProcessTimeout`). */
 	isTimedOut(): boolean;
 	/** Call as soon as the owning exec callback fires, before reading `isTimedOut()`. */
 	settle(): void;
 }
 
 export interface ArmChildProcessTimeoutOptions extends TerminateProcessForTimeoutOptions {
-	/** Bounded wait for a lagging 'close' once the child has already exited. */
+	/** How long the child's pipes may stay open after it exits before they are released. */
 	closeGraceMs?: number;
+	/** After timeout termination, how long before a still-running child is force-killed. */
+	killGraceMs?: number;
+	/**
+	 * Called at most once when a timed-out child still has not let its owner
+	 * settle after termination, force-kill, and pipe release (for example, an
+	 * unreapable process). The owner must then settle as timed out.
+	 */
+	onAbandoned?: () => void;
 }
 
-/** Default bounded wait for 'close' to arrive after a child has already exited. */
+/** Default wait for a child's pipes to close after it exits, before they are released. */
 export const CHILD_PROCESS_CLOSE_GRACE_MS = 1_000;
+/** Default wait between timeout termination and a force-kill. */
+export const CHILD_PROCESS_KILL_GRACE_MS = 2_000;
 
 /**
  * Arms a bounded timeout for a spawned child process and returns a guard the
- * owning exec callback consults. `execFile`'s callback fires on 'close', which
- * waits for stdio to drain after 'exit' — under an event-loop stall that drain
- * can lag a stalled timer by multiple loop turns, so a timer firing is not itself
- * proof of a hang. When the timer fires: a child still running is terminated and
- * reported as timed out immediately (a hung process, or one that traps the
- * signal and exits late). A child that already exited gets a short grace period
- * for 'close' to arrive before it is treated as timed out and terminated too
- * (covers a descendant still holding stdio open). Call `settle()` from the exec
- * callback as soon as it fires; `isTimedOut()` is then authoritative.
+ * owning exec callback consults. Every step is deferred past the poll phase, so
+ * after an event-loop stall the child's pending exit, output, and 'close' are
+ * observed before a stalled timer can misreport a finished command.
+ *
+ * - The timer fires while the child is still running: it is terminated (a tree
+ *   on Windows) and reported as timed out, force-killed after `killGraceMs`, and
+ *   abandoned through `onAbandoned` if it still cannot settle after the close
+ *   grace that follows.
+ * - The child exited in time: its own exit status stands, even if the timer
+ *   fires before 'close'.
+ * - After any exit, pipes still held open past `closeGraceMs` (a descendant
+ *   inherited them) are released, so the owner settles with the child's result
+ *   instead of waiting for the descendant.
+ *
+ * Call `settle()` from the exec callback as soon as it fires; `isTimedOut()` is
+ * then authoritative.
  */
 export function armChildProcessTimeout(
 	child: ObservableChildProcess,
 	timeoutMs: number,
 	options: ArmChildProcessTimeoutOptions = {},
 ): ChildProcessTimeoutGuard {
+	const closeGraceMs = options.closeGraceMs ?? CHILD_PROCESS_CLOSE_GRACE_MS;
+	const killGraceMs = options.killGraceMs ?? CHILD_PROCESS_KILL_GRACE_MS;
+	const timers = new Set<NodeJS.Timeout>();
 	let settled = false;
 	let timedOut = false;
-	let graceTimer: NodeJS.Timeout | null = null;
+	let pipeReleaseScheduled = false;
 
-	function markTimedOutAndTerminate(): void {
+	const after = (delayMs: number, callback: () => void): void => {
 		if (settled) return;
+		const timer = setTimeout(() => {
+			timers.delete(timer);
+			// Deliberately not unref'd: an unref'd immediate has no scheduling
+			// guarantee and can be starved while the loop blocks in poll on the
+			// child's handles.
+			setImmediate(() => {
+				if (!settled) callback();
+			});
+		}, delayMs);
+		timer.unref();
+		timers.add(timer);
+	};
+	// Mocks may omit these fields; only a recorded status proves the child exited.
+	const hasExited = (): boolean => typeof child.exitCode === "number" || typeof child.signalCode === "string";
+	const releasePipes = (): void => {
+		child.stdout?.destroy();
+		child.stderr?.destroy();
+	};
+	const releasePipesAfterExit = (): void => {
+		if (pipeReleaseScheduled) return;
+		pipeReleaseScheduled = true;
+		after(closeGraceMs, releasePipes);
+	};
+
+	child.once?.("exit", releasePipesAfterExit);
+	if (hasExited()) releasePipesAfterExit();
+
+	after(timeoutMs, () => {
+		if (hasExited()) {
+			// Finished in time; a stall only delayed observing it.
+			releasePipesAfterExit();
+			return;
+		}
 		timedOut = true;
 		terminateProcessForTimeout(child, options);
-	}
-
-	const timeout = setTimeout(() => {
-		// Defer past the poll phase: 'exit' can be observed before the stdio drain
-		// that 'close' (and so the exec callback) waits for. Deliberately not
-		// unref'd: an unref'd immediate has no scheduling guarantee and can be
-		// starved for seconds while the loop blocks in poll on the child's handles.
-		setImmediate(() => {
-			if (settled) return;
-			if (child.exitCode !== null || child.signalCode !== null) {
-				graceTimer = setTimeout(markTimedOutAndTerminate, options.closeGraceMs ?? CHILD_PROCESS_CLOSE_GRACE_MS);
-				graceTimer.unref();
-				return;
-			}
-			markTimedOutAndTerminate();
+		after(killGraceMs, () => {
+			if (!hasExited()) child.kill("SIGKILL");
 		});
-	}, timeoutMs);
-	timeout.unref();
+		after(killGraceMs + closeGraceMs, () => {
+			releasePipes();
+			after(0, () => options.onAbandoned?.());
+		});
+	});
 
 	return {
 		isTimedOut: () => timedOut,
 		settle: () => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(timeout);
-			if (graceTimer) clearTimeout(graceTimer);
+			for (const timer of timers) clearTimeout(timer);
+			timers.clear();
 		},
 	};
 }

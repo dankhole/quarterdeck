@@ -305,7 +305,7 @@ See [`test/README.md`](./test/README.md) for root-test placement and naming. Web
 ## CI/CD
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
-- `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook/status-line transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
+- `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
 - `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes npm via OIDC, optionally publishing and anonymously verifying matching signed desktop assets first when `QUARTERDECK_DESKTOP_RELEASES=1`; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
 
 ## Agent tracking and runtime hooks
@@ -323,8 +323,8 @@ Internal runtime session states are named `running` and `awaiting_review`, and h
 How it works end to end:
 
 1. `prepareAgentLaunch` installs a launch-scoped hook configuration for the selected agent. Claude receives a Quarterdeck-owned settings file; Codex receives inline `-c hooks...` configuration, the native `hooks` feature flag, and matching launch-scoped trust entries. Quarterdeck does not modify repository or user-global Codex hook files.
-2. Hook handlers call `quarterdeck hooks ...` subcommands.
-3. `quarterdeck hooks ingest --event <to_review|to_in_progress|activity>` reads process identity from env:
+2. Hook handlers invoke `hooks ingest|notify`. A bundled install resolves and runs the lightweight `dist/hooks.js` entry (built from `src/hook-main.ts`/`src/hook-entry.ts`) directly with the bundled Node, since every hook fires a full process and that bundle avoids the full CLI's startup cost; a tsx dev run from `src/cli.ts` runs the same entry from source (`src/hook-main.ts`), and any other unbundled install or one missing a sibling `dist/hooks.js` falls back to `quarterdeck hooks ...` through the full CLI. All paths share one implementation (`src/hooks-runtime-client.ts`).
+3. `hooks ingest --event <to_review|to_in_progress|activity>` reads process identity from env:
    - `QUARTERDECK_HOOK_TASK_ID`
    - `QUARTERDECK_HOOK_PROJECT_ID`
    - `QUARTERDECK_HOOK_SESSION_INSTANCE_ID`
@@ -352,6 +352,6 @@ Important behavior details:
 - Session-start hooks capture resumable provider identity without changing task state.
 - Runtime transition guards remain authoritative and prevent stale hooks or redraws from flapping state.
 - Terminal output is not work-state truth. Fix missed state at the hook, identity, or ordering layer rather than adding output-volume or timestamp heuristics.
-- Hook transport is implemented in Node and invoked through `quarterdeck hooks ...`. Windows hook and status-line strings invoke the absolute PowerShell executable beneath the system root and use an encoded launcher that starts the resolved Quarterdeck executable through a direct argv contract, preventing working-directory/`PATH` interception, `cmd.exe` variable expansion, or metacharacter splitting while preserving stdin/stdout.
+- Hook transport is implemented in Node. A bundled install's hook command lines run the bundled Node directly against the lightweight `dist/hooks.js` entry next to `dist/cli.js`; a tsx dev run uses `src/hook-main.ts`, and any other unbundled run (or install without that sibling bundle) falls back to invoking the full CLI through `quarterdeck hooks ...`. Windows hook strings invoke the absolute PowerShell executable beneath the system root and use an encoded launcher that starts the resolved executable (`dist/hooks.js` or the full CLI) through a direct argv contract, preventing working-directory/`PATH` interception, `cmd.exe` variable expansion, or metacharacter splitting while preserving stdin/stdout.
 
 See [`docs/conventions/session-lifecycle.md`](./docs/conventions/session-lifecycle.md) before changing hook mappings, transition ownership, resume identity, or approval fallbacks.

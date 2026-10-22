@@ -18,6 +18,7 @@ import {
 	getTaskLifecycleFailureMessage,
 	getTaskLifecyclePendingLabel,
 	type TaskLifecycleCommandDraft,
+	waitForAuthoritativeRevision,
 } from "./task-lifecycle-operations";
 import { type ClearTrash, useClearTrashOperation } from "./use-clear-trash-operation";
 
@@ -36,6 +37,8 @@ interface ScopedPendingTaskLifecycleOperation extends PendingTaskLifecycleOperat
 
 interface UseTaskLifecycleOperationsInput {
 	currentProjectId: string | null;
+	/** Display name of the current project, for the Clear Trash aggregate toast. */
+	projectName?: string | null;
 	flushBoardCommands: () => Promise<FlushProjectBoardCommandsResult>;
 	getAuthoritativeRevision: () => number | null;
 	applyLifecycleProjectState: (state: RuntimeProjectStateResponse) => void;
@@ -79,6 +82,7 @@ async function sendLifecycleCommand(
 
 export function useTaskLifecycleOperations({
 	currentProjectId,
+	projectName,
 	flushBoardCommands,
 	getAuthoritativeRevision,
 	applyLifecycleProjectState,
@@ -86,6 +90,7 @@ export function useTaskLifecycleOperations({
 }: UseTaskLifecycleOperationsInput): UseTaskLifecycleOperationsResult {
 	const clearTrash = useClearTrashOperation({
 		currentProjectId,
+		projectName,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,
@@ -202,7 +207,9 @@ export function useTaskLifecycleOperations({
 						notifyError(flushed.message ?? "Could not save pending board changes.", errorToastOptions());
 						return null;
 					}
-					const expectedRevision = getAuthoritativeRevision();
+					// Wait (bounded) for the project's first authoritative revision instead
+					// of failing instantly if this action races hydration.
+					const expectedRevision = await waitForAuthoritativeRevision(getAuthoritativeRevision);
 					if (expectedRevision === null) {
 						notifyError("The project is still loading. Try the action again.", errorToastOptions());
 						return null;

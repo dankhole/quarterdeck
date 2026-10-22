@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -86,6 +86,7 @@ describe("hook transition outbox", () => {
 
 		expect(record).not.toBeNull();
 		expect(record?.expiresAt).toBe(1_000 + HOOK_TRANSITION_OUTBOX_TTL_MS);
+		expect(record?.enqueuedAt).toBe(1_000);
 		expect(record?.request.metadata).toEqual({
 			source: "codex",
 			sessionId: "resume-session",
@@ -406,5 +407,53 @@ describe("hook transition outbox", () => {
 		await loadPendingHookTransitions(HOOK_TRANSITION_OUTBOX_TTL_MS + 1);
 
 		expect(await readdir(outboxDirectory)).not.toContain("orphan.json.tmp.123");
+	});
+
+	it("reports a held record as pending without attempting it", async () => {
+		await enqueueHookTransition(request(1));
+		const ingest = vi.fn(async () => ({ ok: true as const }));
+		const onReplayPassCompleted = vi.fn();
+		const replayer = createHookTransitionOutboxReplayer({ ingest, intervalMs: 60_000, onReplayPassCompleted });
+
+		replayer.start();
+		await vi.waitFor(() => expect(onReplayPassCompleted).toHaveBeenCalledOnce());
+
+		expect(ingest).not.toHaveBeenCalled();
+		expect(onReplayPassCompleted).toHaveBeenLastCalledWith({
+			pendingTasks: [{ projectId: "project-1", taskId: "task-1" }],
+		});
+		expect(replayer.getDiagnosticSnapshot()).toMatchObject({ pendingRecords: 1, lastAttempted: 0 });
+		await replayer.close();
+	});
+
+	it("does not mark a file that is not the writer's own outbox record", async () => {
+		const outboxDirectory = join(stateHome, "hook-transition-outbox");
+		await mkdir(outboxDirectory, { recursive: true });
+		const path = join(outboxDirectory, `${deliveryId(1)}.json`);
+		const foreign = JSON.stringify({
+			version: 1,
+			expiresAt: Date.now() + 1_000,
+			request: { delivery: { id: deliveryId(2) } },
+		});
+		await writeFile(path, foreign, "utf8");
+
+		await abandonHookTransition(deliveryId(1));
+
+		expect(await readFile(path, "utf8")).toBe(foreign);
+	});
+
+	it("tolerates an unrecognized extra field on a record (forward compatibility)", async () => {
+		await enqueueHookTransition(request(1));
+		const [record] = await loadPendingHookTransitions();
+		if (!record) throw new Error("Missing persisted hook transition");
+		const outboxDirectory = join(stateHome, "hook-transition-outbox");
+		const [entry] = await readdir(outboxDirectory);
+		if (!entry) throw new Error("Missing outbox record file");
+		const path = join(outboxDirectory, entry);
+		const raw = JSON.parse(await readFile(path, "utf8"));
+		await writeFile(path, JSON.stringify({ ...raw, someFutureField: "ignored" }), "utf8");
+
+		const [reloaded] = await loadPendingHookTransitions();
+		expect(reloaded?.request.delivery.id).toBe(record.request.delivery.id);
 	});
 });

@@ -2,7 +2,6 @@ import { join } from "node:path";
 
 import { buildClaudeHooksSettings, buildClaudeHttpHooksSettings } from "../claude-hooks";
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
-import { buildStatuslineCommand } from "../commands/statusline";
 import type {
 	ClaudeLaunchPermissionMode,
 	CodexApprovalsReviewer,
@@ -48,7 +47,6 @@ export interface AgentAdapterLaunchInput {
 	projectPath?: string;
 	hookSessionInstanceId?: string;
 	claudeLaunchPermissionMode?: ClaudeLaunchPermissionMode;
-	statuslineEnabled?: boolean;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	codexOptions?: RuntimeCodexOptions;
 	claudeOptions?: RuntimePersistedClaudeOptions;
@@ -324,10 +322,9 @@ const claudeAdapter: AgentSessionAdapter = {
 				getHookAgentDirectory("claude"),
 				httpNotify ? CLAUDE_HTTP_HOOK_SETTINGS_FILE : CLAUDE_COMMAND_HOOK_SETTINGS_FILE,
 			);
-			const statusLineCommand = input.statuslineEnabled === true ? buildStatuslineCommand() : null;
 			const hooksSettings = httpNotify
-				? buildClaudeHttpHooksSettings({ statusLineCommand, httpNotify: httpNotify.transport })
-				: buildClaudeHooksSettings({ statusLineCommand });
+				? buildClaudeHttpHooksSettings({ httpNotify: httpNotify.transport })
+				: buildClaudeHooksSettings();
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
 			args.push("--settings", settingsPath);
 			Object.assign(env, createHookRuntimeEnv(hooks), httpNotify?.env);

@@ -4,7 +4,7 @@ import { areFileSystemPathsEqual } from "../core/path-comparison";
 import {
 	type GitCommandErrorCode,
 	type GitCommandFailureKind,
-	isIndeterminateGitCommandFailure,
+	isGitCommandIndeterminate,
 	runGit,
 } from "../workdir/git-utils";
 
@@ -22,7 +22,11 @@ export interface GitRepositoryProbeOptions {
 	onFailure?: (failure: GitRepositoryProbeFailure) => void;
 }
 
-/** `indeterminate` means the probe never produced Git's own answer and proves nothing about the repository. */
+/**
+ * `repository` and `not_repository` are Git's own answers. `indeterminate` means
+ * the probe never produced one (see `isGitCommandIndeterminate`) and proves
+ * nothing about the repository.
+ */
 export type GitRepositoryProbeResult = "repository" | "not_repository" | "indeterminate";
 
 /** Probe details stay with the runtime observer; command output and paths never enter diagnostics. */
@@ -30,38 +34,32 @@ export async function probeGitRepository(
 	path: string,
 	options: GitRepositoryProbeOptions = {},
 ): Promise<GitRepositoryProbeResult> {
-	const fail = (failure: GitRepositoryProbeFailure): GitRepositoryProbeResult => {
+	const fail = (
+		failure: GitRepositoryProbeFailure,
+		result: Exclude<GitRepositoryProbeResult, "repository"> = "not_repository",
+	): GitRepositoryProbeResult => {
 		try {
 			options.onFailure?.(failure);
 		} catch {
 			// Diagnostics must not change filesystem admission.
 		}
-		// The probe's own root-check outcomes never ran a git command and are always
-		// a definitive "no"; only a failure shaped like a `runGit` failure goes to
-		// the shared command classifier.
-		if (
-			failure.failureKind === "empty_root" ||
-			failure.failureKind === "root_mismatch" ||
-			failure.failureKind === "root_unreadable"
-		) {
-			return "not_repository";
-		}
-		return isIndeterminateGitCommandFailure({
-			failureKind: failure.failureKind,
-			errorCode: failure.errorCode,
-			terminatedBySignal: failure.terminatedBySignal,
-		})
-			? "indeterminate"
-			: "not_repository";
+		return result;
 	};
-	const result = await runGit(path, ["rev-parse", "--show-toplevel"], { timeoutClass: "sync" });
+	// Availability gates admission, so it is explicitly foreground Git work.
+	const result = await runGit(path, ["rev-parse", "--show-toplevel"], {
+		timeoutClass: "sync",
+		priority: "foreground",
+	});
 	if (!result.ok) {
-		return fail({
-			failureKind: result.failureKind ?? "command_failed",
-			errorCode: result.errorCode ?? null,
-			exitCode: result.exitCode,
-			terminatedBySignal: result.terminatedBySignal === true,
-		});
+		return fail(
+			{
+				failureKind: result.failureKind ?? "command_failed",
+				errorCode: result.errorCode ?? null,
+				exitCode: result.exitCode,
+				terminatedBySignal: result.terminatedBySignal === true,
+			},
+			isGitCommandIndeterminate(result) ? "indeterminate" : "not_repository",
+		);
 	}
 	if (!result.stdout.trim())
 		return fail({ failureKind: "empty_root", errorCode: null, exitCode: 0, terminatedBySignal: false });

@@ -250,7 +250,7 @@ describe("RuntimeSettingsDialog", () => {
 		expect(bodyText).not.toContain("These settings let agents escape their worktree sandbox");
 	});
 
-	it("groups Claude launch permissions and the Quarterdeck status line in a collapsible subsection", async () => {
+	it("groups Claude, Codex, and Pi launch permissions in collapsible subsections and drops legacy toggles on save", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);
 
@@ -270,26 +270,20 @@ describe("RuntimeSettingsDialog", () => {
 		);
 		expect(claudeSectionButton).toBeInstanceOf(HTMLButtonElement);
 		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("false");
-		expect(document.body.textContent).toContain(
-			"New/restarted sessions only · Inherit Claude config · Status line off",
-		);
+		expect(document.body.textContent).toContain("New/restarted sessions only · Inherit Claude config");
 		expect(findSwitchByLabel(document.body, "Fullscreen rendering")).toBeNull();
 
 		await act(async () => {
 			claudeSectionButton?.click();
 		});
 
-		const statuslineSwitch = findSwitchByLabel(document.body, "Show Quarterdeck status line");
 		const claudePermissionModeSelect = document.body.querySelector<HTMLSelectElement>(
 			"#runtime-settings-claude-permission-mode",
 		);
 		expect(findSwitchByLabel(document.body, "Fullscreen rendering")).toBeNull();
-		expect(statuslineSwitch).toBeInstanceOf(HTMLButtonElement);
 		expect(claudePermissionModeSelect).toBeInstanceOf(HTMLSelectElement);
 		expect(claudePermissionModeSelect?.value).toBe("inherit");
 		expect(claudeSectionButton?.getAttribute("aria-expanded")).toBe("true");
-		expect(statuslineSwitch?.getAttribute("data-state")).toBe("unchecked");
-		expect(document.body.textContent).toContain("new or restarted Claude sessions");
 		expect(document.body.textContent).toContain("without a Quarterdeck override");
 
 		await act(async () => {
@@ -300,11 +294,6 @@ describe("RuntimeSettingsDialog", () => {
 		});
 		expect(claudePermissionModeSelect?.value).toBe("bypassPermissions");
 		expect(document.body.textContent).toContain("externally isolated environment");
-
-		await act(async () => {
-			statuslineSwitch?.click();
-		});
-		expect(statuslineSwitch?.getAttribute("data-state")).toBe("checked");
 
 		const codexSectionButton = Array.from(document.body.querySelectorAll("button")).find((button) =>
 			button.textContent?.includes("Codex"),
@@ -356,11 +345,11 @@ describe("RuntimeSettingsDialog", () => {
 		expect(saveMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				claudeLaunchPermissionMode: "bypassPermissions",
-				statuslineEnabled: true,
 				codexApprovalsReviewer: "dangerously_bypass",
 			}),
 		);
 		expect(saveMock.mock.calls[0]?.[0]).not.toHaveProperty("piToolApprovalsEnabled");
+		expect(saveMock.mock.calls[0]?.[0]).not.toHaveProperty("statuslineEnabled");
 	});
 
 	it("shows optional helper setup guidance when LLM is not configured", async () => {

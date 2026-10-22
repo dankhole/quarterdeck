@@ -1,11 +1,8 @@
 import { z } from "zod";
 
-const DIAGNOSTIC_ERROR_CLASS_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/u;
-
-export function normalizeDiagnosticErrorClass(value: string): string {
-	const normalized = value.trim();
-	return DIAGNOSTIC_ERROR_CLASS_PATTERN.test(normalized) ? normalized : "UnknownError";
-}
+// Canonical definition lives in the zod-free leaf so the lightweight hook entry
+// (dist/hooks.js) can use it without bundling this file's ~10KB of diagnostics schemas.
+export { normalizeDiagnosticErrorClass } from "../diagnostic-error-class.js";
 
 export const DIAGNOSTIC_SCHEMA_VERSION = 1 as const;
 

@@ -31,7 +31,7 @@ describe("runtime prompt templates", { concurrent: false }, () => {
 				const updated = await updateRuntimeConfig(null, updatedTemplates);
 				expect(updated).toMatchObject(updatedTemplates);
 				const unrelated = await updateGlobalRuntimeConfig(updated, {
-					statuslineEnabled: !updated.statuslineEnabled,
+					codeNavigationEnabled: !updated.codeNavigationEnabled,
 				});
 				expect(unrelated).toMatchObject(updatedTemplates);
 				expect(JSON.parse(readFileSync(unrelated.globalConfigPath, "utf8"))).toMatchObject(updatedTemplates);

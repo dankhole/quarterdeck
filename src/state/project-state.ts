@@ -5,6 +5,7 @@ import { z } from "zod";
 import type {
 	RuntimeBoardData,
 	RuntimeGitRepositoryInfo,
+	RuntimePersistedBoardData,
 	RuntimeProjectStateResponse,
 	RuntimeProjectStateWarning,
 	RuntimeTaskSessionSummary,
@@ -27,6 +28,7 @@ import {
 	type ProjectDirectoryIdentity,
 	type ProjectIndexEntry,
 	parseProjectStateSavePayload,
+	type ReadProjectSessionsResult,
 	readProjectBoardUnderLock,
 	readProjectIndex,
 	readProjectMetaUnderLock,
@@ -45,6 +47,12 @@ import {
 	SESSIONS_FILENAME,
 } from "./project-state-utils";
 import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
+import {
+	collectDroppedTaskImagesUnderLock,
+	externalizeBoardForCommitUnderLock,
+	readProjectBoardForWriteUnderLock,
+} from "./task-image-maintenance";
+import { projectTaskImageRefs } from "./task-image-store";
 
 export type { RuntimeProjectIndexEntry } from "./project-state-index";
 export {
@@ -140,7 +148,8 @@ function toProjectStateResponse(
 		repoPath: context.repoPath,
 		statePath: context.statePath,
 		git: context.git,
-		board,
+		// Published state never carries image bytes, even before a legacy board migrates.
+		board: projectTaskImageRefs(board),
 		sessions,
 		revision,
 		metadataRevision: context.metadataRevision ?? 0,
@@ -184,7 +193,7 @@ function assertExpectedRevision(expectedRevision: number | undefined, currentRev
 
 async function writeProjectStateFiles(
 	projectId: string,
-	board: RuntimeBoardData,
+	board: RuntimePersistedBoardData,
 	sessions: Record<string, RuntimeTaskSessionSummary>,
 	currentRevision: number,
 	recentBoardCommands: ProjectBoardCommandReceipt[],
@@ -213,6 +222,15 @@ function appendBoardCommandReceipt(
 // a browser client asks for the initial snapshot. Keep that warning alive until
 // the next authoritative save so the UI still sees what was repaired.
 const pendingSessionsWarningByProjectId = new Map<string, RuntimeProjectStateWarning>();
+
+function recordSessionsRepairWarning(projectId: string, result: ReadProjectSessionsResult): void {
+	if (result.droppedCount === 0) return;
+	pendingSessionsWarningByProjectId.set(projectId, {
+		kind: "sessions_corruption",
+		droppedCount: result.droppedCount,
+		backupPath: result.backupPath,
+	});
+}
 
 async function canonicalizeProjectInputPath(cwd: string): Promise<string> {
 	const resolvedCwd = resolve(cwd);
@@ -357,13 +375,7 @@ async function readProjectStateFromContextUnderLock(
 	// Session reads may repair legacy/corrupt entries. Complete that work before
 	// releasing the lock, including when another state file is unreadable.
 	const sessionsResult = await readProjectSessionsUnderLock(context.projectId);
-	if (sessionsResult.droppedCount > 0) {
-		pendingSessionsWarningByProjectId.set(context.projectId, {
-			kind: "sessions_corruption",
-			droppedCount: sessionsResult.droppedCount,
-			backupPath: sessionsResult.backupPath,
-		});
-	}
+	recordSessionsRepairWarning(context.projectId, sessionsResult);
 	const pendingWarning = pendingSessionsWarningByProjectId.get(context.projectId);
 	const warnings = pendingWarning ? [pendingWarning] : [];
 	return toProjectStateResponse(context, board, sessionsResult.sessions, meta.revision, warnings);
@@ -409,7 +421,8 @@ export async function saveProjectState(
 	return await withProjectStateLock(context.projectId, async () => {
 		const currentMeta = await readProjectMetaUnderLock(context.projectId);
 		assertExpectedRevision(parsedPayload.expectedRevision, currentMeta.revision);
-		const board = parsedPayload.board;
+		const previousBoard = await readProjectBoardUnderLock(context.projectId);
+		const board = await externalizeBoardForCommitUnderLock(context.projectId, previousBoard, parsedPayload.board);
 		const sessions = parsedPayload.sessions;
 		const nextRevision = await writeProjectStateFiles(
 			context.projectId,
@@ -418,6 +431,7 @@ export async function saveProjectState(
 			currentMeta.revision,
 			currentMeta.recentBoardCommands,
 		);
+		await collectDroppedTaskImagesUnderLock(context.projectId, previousBoard, board);
 
 		return toProjectStateResponse(context, board, sessions, nextRevision);
 	});
@@ -469,7 +483,9 @@ async function applyProjectBoardMutationFromContext(
 				) {
 					throw new ProjectBoardCommandIdentityConflictError(commandIdentity.commandId);
 				}
-				const currentBoard = await readProjectBoardUnderLock(context.projectId);
+				const currentBoard = await readProjectBoardForWriteUnderLock(context.projectId, (result) =>
+					recordSessionsRepairWarning(context.projectId, result),
+				);
 				const pendingWarning = pendingSessionsWarningByProjectId.get(context.projectId);
 				return {
 					state: toProjectStateResponse(
@@ -487,7 +503,9 @@ async function applyProjectBoardMutationFromContext(
 		}
 		assertExpectedRevision(input.expectedRevision, currentMeta.revision);
 
-		const currentBoard = await readProjectBoardUnderLock(context.projectId);
+		const currentBoard = await readProjectBoardForWriteUnderLock(context.projectId, (result) =>
+			recordSessionsRepairWarning(context.projectId, result),
+		);
 		const mutation = input.mutate(currentBoard);
 		await input.validateMutationUnderLock?.(currentBoard, mutation.board);
 		if (!mutation.changed) {
@@ -500,6 +518,11 @@ async function applyProjectBoardMutationFromContext(
 					},
 					persistedProjectStateSaveRequestSchema,
 				);
+				const persistedBoard = await externalizeBoardForCommitUnderLock(
+					context.projectId,
+					currentBoard,
+					parsedMutation.board,
+				);
 				const recentBoardCommands = appendBoardCommandReceipt(currentMeta.recentBoardCommands, {
 					commandId: commandIdentity.commandId,
 					fingerprint: commandIdentity.fingerprint,
@@ -509,13 +532,13 @@ async function applyProjectBoardMutationFromContext(
 				});
 				const persistedRevision = await writeProjectStateFiles(
 					context.projectId,
-					parsedMutation.board,
+					persistedBoard,
 					parsedMutation.sessions,
 					currentMeta.revision,
 					recentBoardCommands,
 				);
 				return {
-					state: toProjectStateResponse(context, parsedMutation.board, parsedMutation.sessions, persistedRevision),
+					state: toProjectStateResponse(context, persistedBoard, parsedMutation.sessions, persistedRevision),
 					changed: false,
 					acceptedChange: false,
 					replayed: false,
@@ -553,6 +576,11 @@ async function applyProjectBoardMutationFromContext(
 			},
 			persistedProjectStateSaveRequestSchema,
 		);
+		const persistedBoard = await externalizeBoardForCommitUnderLock(
+			context.projectId,
+			currentBoard,
+			parsedMutation.board,
+		);
 		const anticipatedRevision = currentMeta.revision + 1;
 		const recentBoardCommands = commandIdentity
 			? appendBoardCommandReceipt(currentMeta.recentBoardCommands, {
@@ -565,13 +593,14 @@ async function applyProjectBoardMutationFromContext(
 			: currentMeta.recentBoardCommands;
 		const nextRevision = await writeProjectStateFiles(
 			context.projectId,
-			parsedMutation.board,
+			persistedBoard,
 			parsedMutation.sessions,
 			currentMeta.revision,
 			recentBoardCommands,
 		);
+		await collectDroppedTaskImagesUnderLock(context.projectId, currentBoard, persistedBoard);
 		return {
-			state: toProjectStateResponse(context, parsedMutation.board, parsedMutation.sessions, nextRevision),
+			state: toProjectStateResponse(context, persistedBoard, parsedMutation.sessions, nextRevision),
 			changed: true,
 			acceptedChange: true,
 			replayed: false,
