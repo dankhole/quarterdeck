@@ -1,16 +1,20 @@
 #!/bin/sh
 
 echo "Running biome check on staged files..."
-npx biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true
+if [ ! -f node_modules/@biomejs/biome/bin/biome ]; then
+	echo "Biome is not installed. Run npm ci in the repository root before committing."
+	exit 1
+fi
+node node_modules/@biomejs/biome/bin/biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true
 if [ $? -ne 0 ]; then
 	echo "Biome check failed."
 	exit 1
 fi
 
-echo "Running checks for staged ownership boundaries..."
+echo "Running lightweight staged checks..."
 npm run test:precommit
 if [ $? -ne 0 ]; then
-	echo "Checks failed."
+	echo "Lightweight checks failed."
 	exit 1
 fi
 

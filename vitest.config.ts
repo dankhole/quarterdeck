@@ -16,6 +16,9 @@ process.env.QUARTERDECK_TITLE_PROVIDER = "local";
 export default defineConfig(({ mode }) => ({
 	test: {
 		provide: { compileIntegrationCli: mode === "integration" },
+		// Real Git/process fixtures need headroom alongside local development.
+		// Keep CI's default concurrency; --maxWorkers overrides this local cap.
+		maxWorkers: process.env.CI && !["0", "false"].includes(process.env.CI.toLowerCase()) ? undefined : 2,
 		globals: true,
 		environment: "node",
 		globalSetup: "./test/global-setup.ts",

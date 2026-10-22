@@ -296,7 +296,7 @@ Important command boundaries:
 
 - `npm run check` covers the instruction bridge, repository Biome check, runtime typecheck, release-policy tests, and all root Vitest tests. It does not cover web typechecking/tests, Playwright, or Agent Lab.
 - `npm run build` already performs the web typecheck as part of the production web build before packaging the runtime.
-- The pre-commit hook runs staged Biome and ownership-based checks: documentation skips code tests, package-specific edits check that package, and shared inputs take the conservative cross-package gate. See [test selection](docs/testing.md#command-scopes) before repeating validation manually.
+- The pre-commit hook runs local Biome on staged paths and checks the instruction bridge when its inputs change. It does not run typechecks or tests; complete the appropriate checks before review using the [test selection guide](docs/testing.md#command-scopes). Checks read working-tree contents and never restage files. Local root tests default to two workers, with a standard `--maxWorkers` override; CI retains its existing parallelism.
 - `npm run web:e2e` is the automated disposable-browser smoke suite.
 - `npm run agent:lab` plus `npm run agent:browser` is the interactive isolated functional lane.
 

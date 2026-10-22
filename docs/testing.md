@@ -37,6 +37,7 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | Command | Actual scope | Not included |
 | --- | --- | --- |
 | `npm run check:agent-instructions` | `AGENTS.md`/`CLAUDE.md` bridge shape and routing checks | Formatting, types, or product tests |
+| `npm run test:precommit` | Lightweight instruction-bridge check when its inputs are staged; retained command name for hook compatibility | Biome (run by the hook), typechecks, or test suites |
 | `npm run test -- <paths...>` | Root Vitest tests, optionally focused by path | Web UI tests |
 | `npm run test:fast` | `test/runtime` and `test/utilities` | `test/integration`, web UI tests |
 | `npm run test:integration` | `test/integration` | Runtime unit tests, web UI tests |
@@ -54,14 +55,15 @@ This document owns test selection. [`DEVELOPMENT.md`](../DEVELOPMENT.md) lists d
 | `npm run agent:desktop -- smoke --app <path>` | Isolated packaged macOS app, hidden by default, with synthetic data and fake provider | Signed-install/update acceptance, another architecture/OS version, or authorization for real providers |
 | `npm --prefix desktop run check` | Desktop Biome, TypeScript, and Vitest checks | Root/web checks, actual packaged execution, signing, or Gatekeeper |
 
-The pre-commit hook runs staged Biome followed by `npm run test:precommit`, which selects checks from NUL-delimited staged paths (including both sides of renames):
+The pre-commit hook is an inexpensive commit-time gate: it runs the locally installed Biome on staged paths, followed by `npm run test:precommit`. Despite its retained name, that command does not run tests. It selects only `check:agent-instructions` when `AGENTS.md`, `CLAUDE.md`, `scripts/check-agent-instructions.mjs`, `docs/testing.md`, or `docs/conventions/structured-execution.md` changes. The last two paths are required by the bridge checker. NUL-delimited staged paths include both sides of renames, so removing a required input still selects the check.
 
-- Documentation-only edits skip code checks; changes to the canonical instruction bridge still run `check:agent-instructions`.
-- Web-only and desktop-only edits run their own typecheck and unit suite. Runtime implementation edits run the runtime typecheck and `test:fast`.
-- Test-only edits run the affected existing test files and their lane's typecheck. Deleted tests and changed test helpers fall back to the full web/desktop suite or the root fast suite; the root integration suite remains a separate selected check.
-- Shared runtime contracts/configuration/diagnostics, browser-imported runtime helpers, shared tooling, dependency manifests, and unknown inputs take the conservative root, web, and desktop gates. These require independent dependencies in all three package directories.
+Code, shared contracts, tooling, dependencies, and test changes never trigger typechecks or test suites automatically during a commit. Install root dependencies before using the hook; missing local Biome fails with setup guidance instead of fetching a tool during the commit. Web and desktop dependencies are needed only for their explicit validation commands.
 
-The hook does not restage working-tree files. Account for its selected checks when choosing manual validation instead of repeating them on an unchanged tree. The selector in `scripts/precommit.mjs` is deliberately conservative; keep its ownership mapping current when adding cross-package imports. CI retains the complete platform matrix.
+Staged paths select checks against working-tree contents, not an isolated snapshot of the index. The hook never restages files. With partially staged edits, account for the difference between working-tree and index contents when reviewing and validating the intended commit. A passing hook is not evidence that types or behavior have been validated.
+
+Run focused tests while implementing, then complete the typechecks and additional validation required by the changed boundary before handing the change off for review. Use the change-to-validation guide above; existing root, web, and desktop commands remain available. Shared changes require checking affected consumers. Reuse successful checks that still apply to the final tree rather than repeating them on every commit. Full root/web coverage remains in the Test CI workflow, and desktop typechecks/tests remain in the separate Desktop CI workflow.
+
+Local root Vitest runs default to at most two workers to reduce contention from real filesystem and Git tests. CI retains Vitest's default parallelism (`CI=0` and `CI=false` count as local runs). Override deliberately with the standard CLI option, for example `npm run test -- test/runtime/git-history.test.ts --maxWorkers=1`. This limits workers in one root test invocation; it does not cap child processes, simultaneous runs in other worktrees, or web/desktop suites. Production Git timeouts are unchanged.
 
 Pure web domain tests explicitly select the Node environment. Tests that require DOM rendering, browser event behavior, selection, or real React mounting retain jsdom. Do not infer environment from the `.ts` extension alone or disable module isolation globally. Focused web filters fail when they match no tests.
 
