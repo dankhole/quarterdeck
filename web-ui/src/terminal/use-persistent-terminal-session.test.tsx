@@ -62,7 +62,7 @@ function HookHarness({
 	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
 }) {
-	const { containerRef, requestRestore } = usePersistentTerminalSession({
+	const { containerRef, requestRestore, isLoading, isContentPending } = usePersistentTerminalSession({
 		taskId,
 		projectId,
 		enabled,
@@ -75,6 +75,7 @@ function HookHarness({
 
 	return (
 		<>
+			<output>{isLoading ? "connecting" : isContentPending ? "starting" : "ready"}</output>
 			<div ref={containerRef} />
 			<button type="button" onClick={requestRestore}>
 				Request restore
@@ -161,6 +162,22 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(acquireTaskTerminalMock).toHaveBeenCalledTimes(1);
 		expect(acquireTaskTerminalMock).toHaveBeenCalledWith("task-a", "project-1");
+	});
+
+	it("keeps agent startup presentation separate from input connection readiness", async () => {
+		const terminal = createTerminalSlotMock();
+		acquireTaskTerminalMock.mockReturnValue(terminal);
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+		const subscriber = terminal.subscribe.mock.calls[0]![0];
+		await act(async () => {
+			subscriber.onContentPending?.(true);
+			subscriber.onConnectionReady?.("task-a");
+		});
+		expect(container.querySelector("output")?.textContent).toBe("starting");
+		await act(async () => subscriber.onContentPending?.(false));
+		expect(container.querySelector("output")?.textContent).toBe("ready");
 	});
 
 	it("shows slot into container", async () => {

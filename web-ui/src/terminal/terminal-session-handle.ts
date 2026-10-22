@@ -15,6 +15,7 @@ const CONNECTION_READY_FALLBACK_MS = 1500;
 
 export interface PersistentTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
+	onContentPending?: (pending: boolean) => void;
 	onLastError?: (message: string | null) => void;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onOutputText?: (text: string) => void;
@@ -35,6 +36,7 @@ interface TerminalSessionHandleCallbacks {
 	requestResize: () => void;
 	getVisibleContainer: () => HTMLDivElement | null;
 	getStageContainer: () => HTMLDivElement | null;
+	hasRenderedContent: () => boolean;
 	isDisposed: () => boolean;
 }
 
@@ -46,6 +48,7 @@ export class TerminalSessionHandle {
 	private projectId: string | null = null;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
 	private lastError: string | null = null;
+	private contentPending = false;
 	private onceConnectionReadyCallback: (() => void) | null = null;
 	private connectTimestamp: number | null = null;
 	private restoreRequestTimestamp: number | null = null;
@@ -81,6 +84,7 @@ export class TerminalSessionHandle {
 			},
 			onLastError: (message) => {
 				this.lastError = message;
+				if (message) this.setContentPending(false);
 				this.notifyLastError();
 			},
 			ensureVisible: () => {
@@ -230,6 +234,7 @@ export class TerminalSessionHandle {
 		this.sockets.closeAll();
 		this.sockets.resetConnectionState();
 		this.latestSummary = null;
+		this.setContentPending(false);
 		this.lastError = null;
 		this.restoreRequestTimestamp = null;
 		this.clearConnectionReadyFallback();
@@ -246,6 +251,7 @@ export class TerminalSessionHandle {
 
 	subscribe(subscriber: PersistentTerminalSubscriber): () => void {
 		this.subscribers.add(subscriber);
+		subscriber.onContentPending?.(this.contentPending);
 		subscriber.onLastError?.(this.lastError);
 		if (this.latestSummary) {
 			subscriber.onSummary?.(this.latestSummary);
@@ -363,6 +369,7 @@ export class TerminalSessionHandle {
 	): Promise<void> {
 		const startTime = performance.now();
 		await this.callbacks.applyRestore(snapshot, cols, rows);
+		this.resolveContentPending();
 		log.debug(`[perf] slot ${this.slotId} restore applied`, {
 			elapsedMs: (performance.now() - startTime).toFixed(1),
 			snapshotLength: snapshot.length,
@@ -378,6 +385,15 @@ export class TerminalSessionHandle {
 	private handleState(payload: RuntimeTerminalWsServerMessage & { type: "state" }): void {
 		const previousSummary = this.latestSummary;
 		this.latestSummary = payload.summary;
+		if (!payload.summary.agentId || payload.summary.pid === null) {
+			this.setContentPending(false);
+		} else if (
+			!previousSummary ||
+			previousSummary.startedAt !== payload.summary.startedAt ||
+			previousSummary.pid !== payload.summary.pid
+		) {
+			this.setContentPending(!this.callbacks.hasRenderedContent());
+		}
 		this.callbacks.onSummaryStateChange(payload.summary, previousSummary);
 		for (const subscriber of this.subscribers) {
 			subscriber.onSummary?.(payload.summary);
@@ -385,6 +401,7 @@ export class TerminalSessionHandle {
 	}
 
 	private handleExit(code: number | null): void {
+		this.setContentPending(false);
 		this.callbacks.onExit(code);
 		if (!this.taskId) {
 			return;
@@ -405,9 +422,27 @@ export class TerminalSessionHandle {
 	}
 
 	publishOutputText(text: string): void {
+		this.resolveContentPending();
 		for (const subscriber of this.subscribers) {
 			subscriber.onOutputText?.(text);
 		}
+	}
+
+	/** A local reset needs replacement content, independently of input readiness. */
+	notifyContentReset(): void {
+		this.setContentPending(Boolean(this.latestSummary?.agentId && this.latestSummary.pid !== null));
+	}
+
+	private resolveContentPending(): void {
+		if (this.contentPending && this.callbacks.hasRenderedContent()) {
+			this.setContentPending(false);
+		}
+	}
+
+	private setContentPending(pending: boolean): void {
+		if (this.contentPending === pending) return;
+		this.contentPending = pending;
+		for (const subscriber of this.subscribers) subscriber.onContentPending?.(pending);
 	}
 
 	private notifyConnectionReady(): void {

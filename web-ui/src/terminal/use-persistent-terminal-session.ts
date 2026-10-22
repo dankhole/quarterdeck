@@ -32,6 +32,7 @@ export interface UsePersistentTerminalSessionResult {
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	lastError: string | null;
 	isLoading: boolean;
+	isContentPending: boolean;
 	isStopping: boolean;
 	clearTerminal: () => void;
 	requestRestore: () => boolean;
@@ -97,6 +98,7 @@ export function usePersistentTerminalSession({
 	} | null>(null);
 	const [lastError, setLastError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
+	const [isContentPending, setIsContentPending] = useState(false);
 	const [isStopping, setIsStopping] = useState(false);
 	callbackRef.current = {
 		onSummary,
@@ -106,6 +108,7 @@ export function usePersistentTerminalSession({
 
 	useEffect(() => {
 		const isDedicatedShellTerminal = isDedicatedTerminalTaskId(taskId);
+		setIsContentPending(false);
 
 		// Dedicated shell terminals own their session lifecycle directly.
 		// These are workspace-scoped manual shells, not pooled task agent viewers.
@@ -251,6 +254,7 @@ export function usePersistentTerminalSession({
 		setIsLoading(true);
 		setIsStopping(false);
 		const unsubscribe = terminal.subscribe({
+			onContentPending: setIsContentPending,
 			onConnectionReady: (connectedTaskId: string) => {
 				setIsLoading(false);
 				callbackRef.current.onConnectionReady?.(connectedTaskId);
@@ -322,6 +326,7 @@ export function usePersistentTerminalSession({
 		containerRef,
 		lastError,
 		isLoading,
+		isContentPending,
 		isStopping,
 		clearTerminal,
 		requestRestore,

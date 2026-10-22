@@ -134,6 +134,7 @@ export class TerminalAttachmentController {
 			requestResize: () => this.viewport.requestResize(),
 			getVisibleContainer: () => this.visibleContainer,
 			getStageContainer: () => this.stageContainer,
+			hasRenderedContent: () => this.viewport.readBufferLines().some((line) => line.trim().length > 0),
 			isDisposed: () => this.options.isDisposed(),
 		});
 	}
@@ -275,6 +276,7 @@ export class TerminalAttachmentController {
 	}
 
 	reset(): void {
+		this.session.notifyContentReset();
 		this.viewport.reset();
 	}
 

@@ -29,7 +29,7 @@ export function TaskDetailTerminalSurface({
 		<>
 			<div ref={layoutState.mainRowRef} style={{ display: "flex", flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
 				<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-					{terminalState.isSessionProcessless ? (
+					{terminalState.pendingSessionLabel || terminalState.isSessionProcessless ? (
 						<div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-4 py-3">
 							{terminalState.pendingSessionLabel ? (
 								<div role="status" className="flex items-center gap-2 text-sm text-text-secondary">

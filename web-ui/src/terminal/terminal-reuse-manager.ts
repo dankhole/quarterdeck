@@ -3,6 +3,7 @@ import { acquireForTask, attachPoolContainer, cancelWarmup, releaseTask, warmup 
 
 export interface TaskTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
+	onContentPending?: (pending: boolean) => void;
 	onLastError?: (message: string | null) => void;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
 	onOutputText?: (text: string) => void;

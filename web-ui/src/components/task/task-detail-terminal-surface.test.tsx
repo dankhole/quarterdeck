@@ -181,27 +181,30 @@ describe("TaskDetailTerminalSurface", () => {
 		expect(terminalState.onResumeSession).toHaveBeenCalledTimes(1);
 	});
 
-	it("shows pending launch progress without a second resume action", async () => {
-		await act(async () =>
-			root.render(
-				<TaskDetailTerminalSurface
-					selection={createSelection()}
-					currentProjectId="project-1"
-					layoutState={createLayoutState()}
-					terminalState={{
-						...createTerminalState(),
-						isSessionProcessless: true,
-						pendingSessionLabel: "Preparing worktree",
-					}}
-					sessionSummary={null}
-					terminalProps={createTerminalProps()}
-				/>,
-			),
-		);
-		expect(container.querySelector('[role="status"]')?.textContent).toContain("Preparing worktree");
-		expect(container.querySelector("button")).toBeNull();
-		expect(mockAgentTerminalPanel).toHaveBeenCalled();
-	});
+	it.each([false, true])(
+		"shows pending launch progress without a second resume action (processless: %s)",
+		async (isSessionProcessless) => {
+			await act(async () =>
+				root.render(
+					<TaskDetailTerminalSurface
+						selection={createSelection()}
+						currentProjectId="project-1"
+						layoutState={createLayoutState()}
+						terminalState={{
+							...createTerminalState(),
+							isSessionProcessless,
+							pendingSessionLabel: "Preparing worktree",
+						}}
+						sessionSummary={null}
+						terminalProps={createTerminalProps()}
+					/>,
+				),
+			);
+			expect(container.querySelector('[role="status"]')?.textContent).toContain("Preparing worktree");
+			expect(container.querySelector("button")).toBeNull();
+			expect(mockAgentTerminalPanel).toHaveBeenCalled();
+		},
+	);
 
 	it("keeps live agent terminals and the optional shell available", async () => {
 		const summary = createTestTaskSessionSummary({ pid: 1234, state: "awaiting_review", reviewReason: "hook" });

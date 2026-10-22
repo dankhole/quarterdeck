@@ -94,6 +94,7 @@ function createSessionHandle() {
 		requestResize: vi.fn(),
 		getVisibleContainer: () => null,
 		getStageContainer: () => null,
+		hasRenderedContent: () => false,
 		isDisposed: () => false,
 	});
 	return { handle, applyRestore };

@@ -5,6 +5,8 @@ const viewportInstances: Array<{
 	applyRestoreSnapshot: ReturnType<typeof vi.fn>;
 	finalizeRestorePresentation: ReturnType<typeof vi.fn>;
 	forceResize: ReturnType<typeof vi.fn>;
+	reset: ReturnType<typeof vi.fn>;
+	readBufferLines: ReturnType<typeof vi.fn>;
 	stageContainer: HTMLDivElement | null;
 }> = [];
 const sessionInstances: Array<{
@@ -12,6 +14,8 @@ const sessionInstances: Array<{
 	notifyConnectionReadyAfterRestore: ReturnType<typeof vi.fn>;
 	requestRestore: ReturnType<typeof vi.fn>;
 	reconnect: ReturnType<typeof vi.fn>;
+	notifyContentReset: ReturnType<typeof vi.fn>;
+	hasRenderedContent: () => boolean;
 	sessionAgentId: RuntimeAgentId | null;
 	isIoOpen: boolean;
 	emitRestore: (snapshot: string) => Promise<void>;
@@ -69,6 +73,7 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 		callbacks: {
 			applyRestore: (snapshot: string, cols: number | null, rows: number | null) => Promise<void>;
 			onSummaryStateChange: (summary: unknown, previousSummary: unknown) => void;
+			hasRenderedContent: () => boolean;
 		},
 	) {
 		let latestSummary: {
@@ -78,6 +83,8 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 		} | null = null;
 		const instance = {
 			requestRestore: vi.fn(),
+			notifyContentReset: vi.fn(),
+			hasRenderedContent: callbacks.hasRenderedContent,
 			sessionAgentId: nextSessionAgentId,
 			sessionState: null,
 			connectedTaskId: null,
@@ -149,6 +156,25 @@ describe("TerminalAttachmentController", () => {
 		viewportInstances.length = 0;
 		sessionInstances.length = 0;
 		nextSessionAgentId = null;
+	});
+
+	it("checks rendered viewport content and marks a reset before clearing xterm", () => {
+		const controller = new TerminalAttachmentController(
+			1,
+			{ cursorColor: "cursor", terminalBackgroundColor: "background" },
+			{ isDisposed: () => false },
+		);
+		const viewport = getLatestViewport();
+		const session = getLatestSession();
+		viewport.readBufferLines.mockReturnValue([" ", ""]);
+		expect(session.hasRenderedContent()).toBe(false);
+		viewport.readBufferLines.mockReturnValue(["Agent prompt"]);
+		expect(session.hasRenderedContent()).toBe(true);
+		controller.reset();
+		expect(session.notifyContentReset).toHaveBeenCalledOnce();
+		expect(session.notifyContentReset.mock.invocationCallOrder[0]).toBeLessThan(
+			viewport.reset.mock.invocationCallOrder[0]!,
+		);
 	});
 
 	it.each(["claude", "codex", "pi"] as const)(

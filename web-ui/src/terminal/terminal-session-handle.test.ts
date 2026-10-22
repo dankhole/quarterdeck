@@ -5,6 +5,9 @@ const { socketInstances, SlotSocketManagerMock } = vi.hoisted(() => {
 	interface MockSlotSocketCallbacks {
 		onIoOpen: () => void;
 		onState: (payload: { type: "state"; summary: RuntimeTaskSessionSummary }) => void;
+		onRestore: (snapshot: string, cols: number, rows: number) => Promise<void>;
+		onExit: (code: number | null) => void;
+		onLastError: (message: string | null) => void;
 	}
 
 	class MockSlotSocketManager {
@@ -28,6 +31,9 @@ const { socketInstances, SlotSocketManagerMock } = vi.hoisted(() => {
 		sendIo = vi.fn(() => true);
 		sendControl = vi.fn(() => true);
 		emitState = (summary: RuntimeTaskSessionSummary) => this.callbacks.onState({ type: "state", summary });
+		emitRestore = (snapshot: string) => this.callbacks.onRestore(snapshot, 80, 24);
+		emitExit = () => this.callbacks.onExit(0);
+		emitError = () => this.callbacks.onLastError("Terminal stream failed.");
 		openIo = vi.fn(() => {
 			this.isIoOpen = true;
 			this.callbacks.onIoOpen();
@@ -85,6 +91,7 @@ function createHandle(callbacks?: {
 	ensureVisible?: () => void;
 	revealTerminal?: () => Promise<boolean>;
 	onConnectionReady?: (taskId: string) => void;
+	hasRenderedContent?: () => boolean;
 }) {
 	const ensureVisible: () => void = callbacks?.ensureVisible ?? vi.fn();
 	const revealTerminal: () => Promise<boolean> = callbacks?.revealTerminal ?? vi.fn(async () => true);
@@ -99,6 +106,7 @@ function createHandle(callbacks?: {
 		requestResize: vi.fn(),
 		getVisibleContainer: vi.fn(() => document.createElement("div")),
 		getStageContainer: vi.fn(() => document.createElement("div")),
+		hasRenderedContent: callbacks?.hasRenderedContent ?? (() => false),
 		isDisposed: vi.fn(() => false),
 	});
 	if (callbacks?.onConnectionReady) {
@@ -115,6 +123,77 @@ describe("TerminalSessionHandle", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it("keeps an empty agent restore pending while input is ready, then clears after rendered content", async () => {
+		let hasContent = false;
+		const { handle } = createHandle({ hasRenderedContent: () => hasContent });
+		const onContentPending = vi.fn();
+		handle.connectToTask("task-1", "project-1");
+		handle.subscribe({ onContentPending });
+		const sockets = socketInstances[0]!;
+		sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: 111, startedAt: 100 }));
+		await sockets.emitRestore("");
+		sockets.openIo();
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(sockets.connectionReady).toBe(true);
+		expect(onContentPending.mock.calls.map(([pending]) => pending)).toEqual([false, true]);
+		const replay = vi.fn();
+		handle.subscribe({ onContentPending: replay });
+		expect(replay).toHaveBeenLastCalledWith(true);
+		handle.publishOutputText("\x1b[2J");
+		expect(onContentPending).toHaveBeenLastCalledWith(true);
+		hasContent = true;
+		handle.publishOutputText("Agent prompt");
+		expect(onContentPending).toHaveBeenLastCalledWith(false);
+	});
+
+	it("resolves content pending after a rendered restore and resets for a blank replacement", async () => {
+		let hasContent = false;
+		const { handle } = createHandle({ hasRenderedContent: () => hasContent });
+		handle.connectToTask("task-1", "project-1");
+		const pending = vi.fn();
+		handle.subscribe({ onContentPending: pending });
+		const sockets = socketInstances[0]!;
+		sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: 111, startedAt: 100 }));
+		hasContent = true;
+		await sockets.emitRestore("Restored prompt");
+		expect(pending).toHaveBeenLastCalledWith(false);
+		hasContent = false;
+		sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: 222, startedAt: 200 }));
+		expect(pending).toHaveBeenLastCalledWith(true);
+	});
+
+	it.each(["processless", "exit", "error"] as const)("ends the startup presentation wait on %s", (ending) => {
+		const { handle } = createHandle();
+		handle.connectToTask("task-1", "project-1");
+		const pending = vi.fn();
+		handle.subscribe({ onContentPending: pending });
+		const sockets = socketInstances[0]!;
+		sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: 111, startedAt: 100 }));
+		expect(pending).toHaveBeenLastCalledWith(true);
+		if (ending === "processless") {
+			sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: null, startedAt: 100 }));
+		} else if (ending === "exit") sockets.emitExit();
+		else sockets.emitError();
+		expect(pending).toHaveBeenLastCalledWith(false);
+	});
+
+	it("does not wait for shell or processless retained content and waits again after an agent reset", () => {
+		const { handle } = createHandle({ hasRenderedContent: () => true });
+		handle.connectToTask("task-1", "project-1");
+		const pending = vi.fn();
+		handle.subscribe({ onContentPending: pending });
+		const sockets = socketInstances[0]!;
+		sockets.emitState(createTestTaskSessionSummary({ agentId: null, pid: 111 }));
+		handle.notifyContentReset();
+		expect(pending.mock.calls).toEqual([[false]]);
+		sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: null }));
+		handle.notifyContentReset();
+		expect(pending.mock.calls).toEqual([[false]]);
+		sockets.emitState(createTestTaskSessionSummary({ agentId: "claude", pid: 222 }));
+		handle.notifyContentReset();
+		expect(pending).toHaveBeenLastCalledWith(true);
 	});
 
 	it("captures image paste ownership before asynchronous file reads and rejects retargeting", async () => {

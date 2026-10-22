@@ -16,6 +16,7 @@ export interface PersistentTerminalSessionControls {
 	clearTerminal: () => void;
 	containerRef: MutableRefObject<HTMLDivElement | null>;
 	isLoading: boolean;
+	isContentPending?: boolean;
 	isStopping: boolean;
 	lastError: string | null;
 	requestRestore: () => boolean;
@@ -56,8 +57,16 @@ export function PersistentTerminalPanelLayout({
 	onToggleExpand,
 	onRestart,
 }: PersistentTerminalPanelLayoutProps): ReactElement {
-	const { containerRef, isLoading, lastError, isStopping, clearTerminal, requestRestore, stopTerminal } =
-		sessionControls;
+	const {
+		containerRef,
+		isLoading,
+		isContentPending,
+		lastError,
+		isStopping,
+		clearTerminal,
+		requestRestore,
+		stopTerminal,
+	} = sessionControls;
 	const canStop = summary?.state === "running" || summary?.state === "awaiting_review";
 	const statusLabel = useMemo(() => describeSessionState(summary), [summary]);
 	const statusTagStyle = useMemo(() => getSessionStatusBadgeStyle(summary), [summary]);
@@ -247,9 +256,13 @@ export function PersistentTerminalPanelLayout({
 						overflow: "hidden",
 					}}
 				>
-					{isLoading ? (
-						<div className="absolute inset-0 z-10 flex items-center justify-center">
+					{isLoading || isContentPending ? (
+						<div
+							role="status"
+							className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 bg-surface-1 text-sm text-text-secondary"
+						>
 							<Spinner size={24} />
+							<span>{isContentPending ? "Starting agent…" : "Connecting terminal…"}</span>
 						</div>
 					) : null}
 				</div>
