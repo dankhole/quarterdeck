@@ -48,7 +48,9 @@ function QuickReply({
 					variant="ghost"
 					size="sm"
 					icon={<MessageSquare size={14} />}
-					onClick={() => {
+					onDoubleClick={(event) => event.stopPropagation()}
+					onClick={(event) => {
+						event.stopPropagation();
 						focusReply.current = true;
 						setSent(false);
 						setOpen(true);
@@ -66,6 +68,8 @@ function QuickReply({
 	return (
 		<form
 			className="w-full"
+			onClick={(event) => event.stopPropagation()}
+			onDoubleClick={(event) => event.stopPropagation()}
 			onSubmit={(event) => {
 				event.preventDefault();
 				void submit();
@@ -177,10 +181,7 @@ export function BoardCardConversation({
 					</Collapsible.Root>
 				) : null}
 			</div>
-			<div
-				className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-1.5"
-				onClick={(event) => event.stopPropagation()}
-			>
+			<div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-1.5">
 				{!readOnly && replyScope && !card.unstarted && columnId !== "trash" ? (
 					<div className="min-w-0 flex-1 has-[form]:basis-full has-[form]:order-last">
 						<QuickReply card={card} summary={summary} scope={replyScope} />

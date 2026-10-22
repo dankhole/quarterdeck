@@ -4,8 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard, getCardHoverTooltip } from "@/components/board/board-card";
+import { BoardCardConversation } from "@/components/board/board-card-conversation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import { BoardReplyDrafts } from "@/state/board-reply-drafts";
 import {
 	createTestTaskHookActivity,
 	createTestTaskOutstandingInteraction,
@@ -117,6 +119,63 @@ describe("BoardCard", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	it("opens a rich card from footer space and badges while keeping reply interactions inside the card", async () => {
+		const card = createCard();
+		const summary = createSummary("awaiting_review");
+		const onClick = vi.fn();
+		const onDoubleClick = vi.fn();
+		const drafts = new BoardReplyDrafts();
+		await act(async () => {
+			root.render(
+				<Providers>
+					<BoardCard
+						card={card}
+						columnId="review"
+						index={0}
+						rich
+						onClick={onClick}
+						onDoubleClick={onDoubleClick}
+						sessionSummary={summary}
+						conversation={(statusBadges) => (
+							<BoardCardConversation
+								card={card}
+								columnId="review"
+								summary={summary}
+								statusBadges={statusBadges}
+								replyScope={{ projectId: "project", drafts, sendInput: vi.fn() }}
+							/>
+						)}
+					/>
+				</Providers>,
+			);
+		});
+		const status = container.querySelector<HTMLElement>("[data-board-card-status-badge]")!;
+		const footer = status.closest("[data-board-card-status-row]")!.parentElement!;
+		const replyArea = footer.firstElementChild as HTMLElement;
+		await act(async () => {
+			footer.click();
+			replyArea.click();
+			status.click();
+		});
+		expect(onClick).toHaveBeenCalledTimes(3);
+		onClick.mockClear();
+		const reply = replyArea.querySelector("button")!;
+		await act(async () => reply.click());
+		expect(container.querySelector("textarea")).not.toBeNull();
+		await act(async () => {
+			container.querySelector("textarea")!.click();
+			container.querySelector("form")!.click();
+			container.querySelector("textarea")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+			container.querySelector<HTMLButtonElement>('button[aria-label="Close reply, keep draft"]')!.click();
+		});
+		expect(container.querySelector("textarea")).toBeNull();
+		await act(async () => {
+			replyArea.querySelector("button")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+		});
+		expect(onClick).not.toHaveBeenCalled();
+		expect(onDoubleClick).not.toHaveBeenCalled();
 	});
 
 	it("lets trash tasks be pinned and hides permanent delete until unpinned", async () => {
