@@ -61,7 +61,7 @@ function createDependencies() {
 		hostIntegrations: {} as CreateRuntimeServerDependencies["hostIntegrations"],
 		resolveProjectInputPath: (input) => input,
 		assertPathIsDirectory: async () => {},
-		hasGitRepository: async () => true,
+		probeGitRepository: async () => "repository",
 		disposeProject: async () => ({ terminalManager: null, projectPath: null }),
 		collectProjectWorktreeTaskIdsForRemoval: () => new Set(),
 	};

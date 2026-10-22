@@ -1,18 +1,28 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildGitCommandArgs } from "../../src/core";
 
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
 	execFilePromise: vi.fn(),
+	// Populated with the real `execFile` below so specific tests can prove real
+	// child-process timing behavior without disabling this file's module mock.
+	realExecFile: null as unknown as typeof import("node:child_process").execFile,
 }));
 
-vi.mock("node:child_process", () => ({
-	execFile: Object.assign(childProcessMocks.execFile, {
-		[promisify.custom]: childProcessMocks.execFilePromise,
-	}),
-}));
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	childProcessMocks.realExecFile = actual.execFile;
+	return {
+		execFile: Object.assign(childProcessMocks.execFile, {
+			[promisify.custom]: childProcessMocks.execFilePromise,
+		}),
+	};
+});
 
 import * as workdirExports from "../../src/workdir";
 import { GIT_COMMAND_TIMEOUTS_MS, runGit } from "../../src/workdir";
@@ -129,6 +139,32 @@ describe("runGit", () => {
 		expect(result.timedOut).toBe(false);
 	});
 
+	it("flags termination by an external signal (e.g. an OOM kill) separately from our own timeout", async () => {
+		// An external SIGKILL (not our own timeout path, which reports killed:true
+		// with SIGTERM) leaves `code` null and `killed` unset.
+		childProcessMocks.execFilePromise.mockRejectedValueOnce(
+			Object.assign(createExecError({ code: 137, message: "Killed" }), { code: null, signal: "SIGKILL" }),
+		);
+
+		const result = await runGit("/repo", ["status"]);
+
+		expect(result).toMatchObject({ ok: false, timedOut: false, terminatedBySignal: true });
+	});
+
+	it("does not flag our own timeout termination as an external signal kill", async () => {
+		childProcessMocks.execFilePromise.mockRejectedValueOnce(
+			Object.assign(new Error("Git command timed out after 5000ms"), {
+				code: "ETIMEDOUT",
+				killed: true,
+				signal: "SIGTERM",
+			}),
+		);
+
+		const result = await runGit("/repo", ["status"]);
+
+		expect(result).toMatchObject({ ok: false, timedOut: true, terminatedBySignal: false });
+	});
+
 	it("keeps normal Git stderr as the error while retaining all command output", async () => {
 		const stderr = "remote: Counting objects: 100%\r\nfatal: could not read from remote repository.\n";
 		childProcessMocks.execFilePromise.mockRejectedValueOnce(
@@ -182,15 +218,15 @@ describe("runGit", () => {
 					if (args.includes("/pid")) {
 						execCallback?.(null, "", "");
 						gitCallback?.(new Error("terminated"), "partial", "remote: Receiving objects: 12%\r");
-						return { pid: 54_321, kill: vi.fn(() => true) };
+						return { pid: 54_321, kill: vi.fn(() => true), exitCode: null, signalCode: null };
 					}
 					gitCallback = execCallback;
-					return { pid: 12_345, kill };
+					return { pid: 12_345, kill, exitCode: null, signalCode: null };
 				},
 			);
 
 			const resultPromise = runGit("/repo", ["status"], { timeoutClass: "metadata" });
-			await vi.advanceTimersByTimeAsync(GIT_COMMAND_TIMEOUTS_MS.metadata);
+			await vi.runAllTimersAsync();
 			const result = await resultPromise;
 
 			if (process.platform === "win32") {
@@ -210,6 +246,73 @@ describe("runGit", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	// Real-process tests below delegate the module-mocked `execFile` to the real
+	// implementation and route a fake "git" binary through PATH, proving `runGit`'s
+	// actual timing behavior end to end (no execFile mock deciding the outcome).
+	describe("runGit against real child processes", () => {
+		let scriptDir: string;
+
+		beforeEach(() => {
+			childProcessMocks.execFile.mockImplementation(childProcessMocks.realExecFile);
+			scriptDir = mkdtempSync(join(tmpdir(), "qd-git-utils-real-"));
+		});
+
+		afterEach(() => {
+			rmSync(scriptDir, { recursive: true, force: true });
+		});
+
+		/** Writes an executable shell script named "git" and returns an env whose PATH finds it first. */
+		function fakeGitEnv(script: string): NodeJS.ProcessEnv {
+			const scriptPath = join(scriptDir, "git");
+			writeFileSync(scriptPath, `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+			return { ...process.env, PATH: `${scriptDir}:${process.env.PATH ?? ""}` };
+		}
+
+		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
+			const resultPromise = runGit(process.cwd(), ["rev-parse", "--show-toplevel"], { timeoutMs: 150 });
+			// Real event-loop stall: the real `git` process exits almost immediately,
+			// then the main thread is blocked synchronously well past the timeout
+			// before we ever look at the result.
+			const blockUntil = Date.now() + 400;
+			while (Date.now() < blockUntil) {
+				// busy-wait
+			}
+			await expect(resultPromise).resolves.toMatchObject({ ok: true, timedOut: false });
+		}, 10_000);
+
+		it.runIf(process.platform !== "win32")(
+			"still terminates a real hung child and reports a timeout",
+			async () => {
+				// A plain hang (no git subcommand reliably blocks without flakiness);
+				// `exec sleep` replaces the shell in place so SIGTERM reaches it directly.
+				const env = fakeGitEnv("exec sleep 60");
+				await expect(runGit(scriptDir, ["status"], { timeoutMs: 150, env })).resolves.toMatchObject({
+					ok: false,
+					timedOut: true,
+					failureKind: "timed_out",
+				});
+			},
+			10_000,
+		);
+
+		it.runIf(process.platform !== "win32")(
+			"reports a timeout after the close grace period when a grandchild still holds stdio open",
+			async () => {
+				// The fake "git" backgrounds (and disowns, so the shell itself exits
+				// quickly) a descendant that inherits its stdout/stderr and keeps the
+				// pipe open past the close grace period, so 'close' (and the exec
+				// callback) lags well behind the direct child's own exit.
+				const env = fakeGitEnv("sleep 1.5 &\ndisown\nexit 0");
+				await expect(runGit(scriptDir, ["status"], { timeoutMs: 300, env })).resolves.toMatchObject({
+					ok: false,
+					timedOut: true,
+					failureKind: "timed_out",
+				});
+			},
+			10_000,
+		);
 	});
 });
 

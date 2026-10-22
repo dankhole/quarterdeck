@@ -464,6 +464,49 @@ describe("useProjectSync", () => {
 		expect(snapshots.at(-1)?.getAuthoritativeRevision()).toBe(9);
 	});
 
+	it("retains the current project's board cache across an availability flip at the same path", async () => {
+		// Seed the cache as if the user viewed this project earlier in the session.
+		stashProjectBoard("project-a", {
+			board: createBoard("cached-task"),
+			sessions: {},
+			authoritativeRevision: 1,
+			projectPath: "/tmp/project-a",
+			projectGit: null,
+			metadataRevision: 1,
+			availability: { status: "available" },
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		const onSnapshot = (snapshot: HookSnapshot) => {
+			latestSnapshot = snapshot;
+		};
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={{
+						...createProjectState("saved-task", 1),
+						metadataRevision: 1,
+						availability: { status: "available" },
+					}}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+		await act(async () => {
+			root.render(
+				<HookHarness
+					streamedProjectState={{
+						...createProjectState("saved-task", 2),
+						metadataRevision: 2,
+						availability: { status: "unavailable", reason: "not_git_repository" },
+					}}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+		});
+		assertSnapshot(latestSnapshot, "Expected a hook snapshot after the availability flip.");
+		expect(restoreProjectBoard("project-a")).not.toBeNull();
+	});
+
 	it("ignores a stale refresh response after the sync state is reset during a project transition", async () => {
 		const deferred = createDeferred<RuntimeProjectStateResponse>();
 		fetchProjectStateMock.mockReturnValue(deferred.promise);

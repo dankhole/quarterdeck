@@ -266,14 +266,18 @@ export function useProjectSync({
 			const previousLocation = previousLocationRef.current;
 			const unavailable = nextProjectState.availability?.status === "unavailable";
 			if (currentProjectId) {
-				if (
-					previousLocation?.projectId === currentProjectId &&
-					(previousLocation.path !== nextProjectState.repoPath || previousLocation.unavailable !== unavailable)
-				) {
-					retireFileEditorScopes({ projectId: currentProjectId });
-					invalidateProjectBoardCache(currentProjectId);
-					invalidateProjectPreload(currentProjectId);
-					resetProjectMetadataStore(currentProjectId);
+				if (previousLocation?.projectId === currentProjectId) {
+					const pathChanged = previousLocation.path !== nextProjectState.repoPath;
+					const availabilityChanged = previousLocation.unavailable !== unavailable;
+					if (pathChanged || availabilityChanged) {
+						retireFileEditorScopes({ projectId: currentProjectId });
+						invalidateProjectPreload(currentProjectId);
+						resetProjectMetadataStore(currentProjectId);
+					}
+					// The board cache is project-owned presentation reused for unavailable projects; only a path change stales its path/git fields.
+					if (pathChanged) {
+						invalidateProjectBoardCache(currentProjectId);
+					}
 				}
 				previousLocationRef.current = { projectId: currentProjectId, path: nextProjectState.repoPath, unavailable };
 			}

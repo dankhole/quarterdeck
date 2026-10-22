@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 
-export { hasGitRepository } from "../projects/git-repository-probe";
+export { hasGitRepository, probeGitRepository } from "../projects/git-repository-probe";
 
 export async function assertPathIsDirectory(path: string): Promise<void> {
 	const info = await stat(path);

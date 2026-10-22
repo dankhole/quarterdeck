@@ -35,7 +35,10 @@ interface ProjectLocationServiceDependencies {
 	operations: Pick<TaskResourceOperationCoordinator, "runProjectExclusive">;
 	registry: Pick<
 		ProjectRegistry,
-		"checkProjectAvailability" | "buildProjectSummary" | "buildProjectStateSnapshot" | "rebindProjectLocation"
+		| "checkProjectAvailabilityFreshness"
+		| "buildProjectSummary"
+		| "buildProjectStateSnapshot"
+		| "rebindProjectLocation"
 	>;
 	boardCommands: Pick<ProjectBoardCommandService, "relocateProjectPaths">;
 	assertRuntimeExclusive: () => Promise<void>;
@@ -59,7 +62,15 @@ export class ProjectLocationService {
 		input: RuntimeProjectCheckAvailabilityRequest,
 	): Promise<RuntimeProjectManagementResponse> =>
 		await this.result(input.projectId, async () => {
-			await this.deps.registry.checkProjectAvailability(input.projectId);
+			const { indeterminate } = await this.deps.registry.checkProjectAvailabilityFreshness(input.projectId);
+			if (indeterminate) {
+				// The probe itself could not complete just now (a timeout, a blocked
+				// launch, or a resource-exhaustion error) — never claim "timed out"
+				// specifically, since not every indeterminate cause is a timeout. Say
+				// so rather than silently reporting carried-forward evidence as a
+				// fresh confirmation.
+				throw new Error("Folder check could not complete; the system may be busy. Try again.");
+			}
 		});
 
 	locate = async (input: RuntimeProjectLocateRequest): Promise<RuntimeProjectManagementResponse> =>

@@ -22,6 +22,7 @@ import {
 	pruneOrphanSessionsForBroadcast,
 } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
+import type { GitRepositoryProbeResult } from "../projects/git-repository-probe";
 import { observeProjectAvailability } from "../projects/project-availability";
 import {
 	isUnderWorktreesHome,
@@ -45,6 +46,13 @@ import {
 	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
 	TerminalSessionManager,
 } from "../terminal";
+import {
+	CONSERVATIVE_INDETERMINATE_AVAILABILITY,
+	previousAvailabilityForScope,
+	projectAvailabilityScopeFingerprint,
+	resolveIndeterminateAvailability,
+	type StoredProjectAvailability,
+} from "./project-availability-carry-forward";
 import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
 import { ProjectStateDiagnosticTracker } from "./project-state-diagnostics";
 import { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
@@ -127,7 +135,7 @@ export interface CreateProjectRegistryDependencies {
 	registerCwdProject?: boolean;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
 	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
-	hasGitRepository: (path: string, projectId?: string) => Promise<boolean>;
+	probeGitRepository: (path: string, projectId?: string) => Promise<GitRepositoryProbeResult>;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
@@ -188,6 +196,10 @@ export interface ProjectRegistry
 	resolveTaskSessionSummary: (projectId: string, taskId: string) => Promise<RuntimeTaskSessionSummary | null>;
 	setProjectRemovalPreparationHandler: (handler: ProjectRemovalPreparationHandler | null) => void;
 	checkProjectAvailability: (projectId: string) => Promise<RuntimeProjectAvailability>;
+	/** For explicit "Check again" UX only: exposes whether this specific fresh probe was indeterminate. */
+	checkProjectAvailabilityFreshness: (
+		projectId: string,
+	) => Promise<{ availability: RuntimeProjectAvailability; indeterminate: boolean }>;
 	/** Enrichs a committed projection without acquiring admission or hydrating a session manager. */
 	buildProjectStatePublication: (
 		projectId: string,
@@ -210,19 +222,34 @@ export type ProjectOperationRunner = <T>(projectId: string, operation: () => Pro
 export interface ProjectStreamValidationResult {
 	project: RuntimeProjectIndexEntry;
 	availability: RuntimeProjectAvailability;
+	/** True when the probe itself was indeterminate; `availability` is the conservative fallback (not carry-forward — startup has no prior evidence). */
+	indeterminate?: boolean;
 }
 
+/**
+ * Startup runs before the server listens, so an indeterminate probe here gets
+ * no retry: retrying with a longer budget would multiply pre-listen latency
+ * by the number of indeterminate projects and can blow past the desktop
+ * supervisor's startup window under exactly the load this fixes. Startup also
+ * has no prior evidence to fall back on, so indeterminate conservatively
+ * reports unavailable; a later, normal `checkProjectAvailability` call (the
+ * next broadcast, selection, or explicit Check again) still probes fresh and
+ * self-corrects once the runtime is no longer under load.
+ */
 export async function validateIndexedProjectsForStream(
 	projects: RuntimeProjectIndexEntry[],
-	deps: Pick<CreateProjectRegistryDependencies, "hasGitRepository" | "pathIsDirectory">,
+	deps: Pick<CreateProjectRegistryDependencies, "probeGitRepository" | "pathIsDirectory">,
 ): Promise<ProjectStreamValidationResult[]> {
 	const limit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
 	return await Promise.all(
 		projects.map((project) =>
-			limit(async () => ({
-				project,
-				availability: await observeProjectAvailability(project, deps),
-			})),
+			limit(async () => {
+				const observation = await observeProjectAvailability(project, deps);
+				if (observation.status === "indeterminate") {
+					return { project, availability: CONSERVATIVE_INDETERMINATE_AVAILABILITY, indeterminate: true };
+				}
+				return { project, availability: observation, indeterminate: false };
+			}),
 		),
 	);
 }
@@ -244,7 +271,10 @@ export function collectProjectWorktreeTaskIdsForRemoval(board: RuntimeBoardData)
 
 export async function createProjectRegistry(deps: CreateProjectRegistryDependencies): Promise<ProjectRegistry> {
 	await upgradeProjectDirectoryIdentities();
-	const launchedFromGitRepo = await deps.hasGitRepository(deps.cwd);
+	// The registry's own startup check keeps boolean semantics: an indeterminate
+	// probe here is conservatively "not launched from a Git repo," matching
+	// `hasGitRepository`'s existing wrapper behavior for this kind of caller.
+	const launchedFromGitRepo = (await deps.probeGitRepository(deps.cwd)) === "repository";
 	const launchedFromWorktree = isUnderWorktreesHome(deps.cwd);
 	const initialIndexedProjects = await listProjectIndexEntries();
 	const indexedFolder = initialIndexedProjects.find(
@@ -271,7 +301,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
 	const availabilityOperations = new KeyedOperationCoordinator();
-	const observedAvailability = new Map<string, RuntimeProjectAvailability>();
+	const observedAvailability = new Map<string, StoredProjectAvailability>();
 	let runProjectOperation: ProjectOperationRunner = async (_projectId, operation) => await operation();
 	const deferredStartupRecoveries = new Map<string, { projectId: string; projectPath: string; taskId: string }>();
 	const deferredStartupRecoveryProjects = new Map<string, string>();
@@ -290,16 +320,45 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		if (!wasKnown) deps.diagnostics?.recordEvent("project.registered", {}, { projectId }, { essential: true });
 	};
 
+	/**
+	 * Every caller — launch admission, selection, relocation, startup, explicit
+	 * "Check again", and projection reads alike — always runs a fresh Git probe
+	 * here. The only optimization is evidence reuse on an indeterminate result,
+	 * delegated to `project-availability-carry-forward.ts`'s scope-gated policy,
+	 * which never skips the probe.
+	 */
 	const observeProjectLocation = async (
 		projectId: string,
-	): Promise<{ scope: RuntimeProjectScopeContext | null; availability: RuntimeProjectAvailability }> => {
+	): Promise<{
+		scope: RuntimeProjectScopeContext | null;
+		availability: RuntimeProjectAvailability;
+		/** The raw fresh probe outcome, before any carry-forward substitution. */
+		indeterminate: boolean;
+	}> => {
 		return await availabilityOperations.run(projectId, async () => {
 			let scope = await loadProjectScopeById(projectId);
-			if (!scope) return { scope: null, availability: { status: "unavailable", reason: "invalid_location" } };
+			if (!scope) {
+				return {
+					scope: null,
+					availability: { status: "unavailable", reason: "invalid_location" },
+					indeterminate: false,
+				};
+			}
 			rememberProject(projectId, scope.repoPath);
 			if (activeProjectId === projectId) activeProjectPath = scope.repoPath;
-			const availability = await observeProjectAvailability(scope, deps);
-			const previous = observedAvailability.get(projectId);
+			const observation = await observeProjectAvailability(scope, deps);
+			const previous = previousAvailabilityForScope(observedAvailability.get(projectId), scope);
+			if (observation.status === "indeterminate") {
+				// A timed-out, blocked, or resource-exhausted probe proves nothing: the
+				// carry-forward policy decides whether a prior Git-level verdict for
+				// this exact scope is still safe to report. Either way, nothing is
+				// stored and no index touch happens here — a reused verdict is already
+				// recorded, and the conservative fallback must let the next definitive
+				// observation be treated as first evidence, not a "change".
+				const { availability } = resolveIndeterminateAvailability(previous);
+				return { scope, availability, indeterminate: true };
+			}
+			const availability = observation;
 			if (
 				(previous && JSON.stringify(previous) !== JSON.stringify(availability)) ||
 				(!previous && availability.status === "unavailable")
@@ -309,13 +368,26 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 					...(await updateProjectIndexMetadata({ projectId, expectedPath: scope.repoPath, touch: true })),
 				};
 			}
-			observedAvailability.set(projectId, availability);
-			return { scope, availability };
+			observedAvailability.set(projectId, { ...projectAvailabilityScopeFingerprint(scope), availability });
+			return { scope, availability, indeterminate: false };
 		});
 	};
 
 	const checkProjectAvailability = async (projectId: string): Promise<RuntimeProjectAvailability> =>
 		(await observeProjectLocation(projectId)).availability;
+
+	/**
+	 * Surfaces whether *this* fresh probe was indeterminate, distinct from
+	 * `checkProjectAvailability`'s carried-forward result. Explicit "Check again"
+	 * uses this to tell the user the check itself timed out, instead of silently
+	 * reporting stale evidence as a confirmed answer.
+	 */
+	const checkProjectAvailabilityFreshness = async (
+		projectId: string,
+	): Promise<{ availability: RuntimeProjectAvailability; indeterminate: boolean }> => {
+		const { availability, indeterminate } = await observeProjectLocation(projectId);
+		return { availability, indeterminate };
+	};
 
 	const assertProjectLaunchAvailable = async (
 		projectId: string,
@@ -672,7 +744,25 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		const existingProjects: RuntimeProjectIndexEntry[] = [];
 		const unavailableProjects: RuntimeProjectIndexEntry[] = [];
 
-		for (const { project, availability } of validationResults) {
+		for (const { project, availability, indeterminate } of validationResults) {
+			// Seed carry-forward evidence from every definitive startup verdict, so a
+			// later load-induced timeout during runtime has real evidence to carry
+			// forward instead of treating it as "no previous". Written inside the
+			// same per-project queue `observeProjectLocation` uses, and only when
+			// nothing has already observed this project (e.g. a concurrent explicit
+			// check that reached the queue first) — startup must never clobber
+			// fresher evidence.
+			if (!indeterminate) {
+				await availabilityOperations.run(project.projectId, async () => {
+					if (!observedAvailability.has(project.projectId)) {
+						observedAvailability.set(project.projectId, {
+							...projectAvailabilityScopeFingerprint(project),
+							availability,
+						});
+					}
+				});
+			}
+
 			if (availability.status === "available") {
 				existingProjects.push(project);
 				continue;
@@ -681,7 +771,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			unavailableProjects.push(project);
 			deps.diagnostics?.recordEvent(
 				"project.startup_availability_failed",
-				{ reason: availability.reason, folderOnly: project.folderOnly === true },
+				indeterminate
+					? { indeterminate: true, folderOnly: project.folderOnly === true }
+					: { reason: availability.reason, folderOnly: project.folderOnly === true, indeterminate: false },
 				{ projectId: project.projectId },
 				{ level: "warn", essential: true },
 			);
@@ -1131,6 +1223,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			releaseDeferredStartupRecoveries,
 			resolveTaskSessionSummary,
 			checkProjectAvailability,
+			checkProjectAvailabilityFreshness,
 			rebindProjectLocation,
 			setProjectOperationRunner: (runner) => {
 				runProjectOperation = runner;

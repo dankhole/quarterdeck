@@ -5,6 +5,7 @@ import {
 	deriveProjectSummary,
 	findCardInBoard,
 	KeyedOperationCoordinator,
+	type RuntimeProjectAvailability,
 	TaskResourceOperationCoordinator,
 } from "../../src/core";
 import { observeProjectAvailability } from "../../src/projects/project-availability";
@@ -15,12 +16,27 @@ import {
 	loadProjectScopeById,
 	loadSavedProjectStateById,
 	ProjectBoardCommandService,
+	type RuntimeProjectScopeContext,
 	saveProjectState,
 } from "../../src/state";
 import { type CreateProjectsApiDependencies, createProjectsApi } from "../../src/trpc/projects-api";
 import { readProjectRelocationJournal } from "../../src/workdir/project-relocation";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
+
+/**
+ * This fixture's projects are folderOnly, so the Git probe path is never
+ * exercised here; narrowing indeterminate to the conservative fallback keeps
+ * the fixture's registry shape aligned with the real tri-state contract.
+ */
+async function resolveAvailability(
+	scope: RuntimeProjectScopeContext,
+): Promise<{ availability: RuntimeProjectAvailability; indeterminate: boolean }> {
+	const observation = await observeProjectAvailability(scope);
+	return observation.status === "indeterminate"
+		? { availability: { status: "unavailable", reason: "not_git_repository" }, indeterminate: true }
+		: { availability: observation, indeterminate: false };
+}
 
 async function fixture(root: string) {
 	const oldPath = join(root, "project");
@@ -79,20 +95,21 @@ async function fixture(root: string) {
 		warn: () => {},
 		registry: {
 			rebindProjectLocation: rebind,
-			checkProjectAvailability: async (projectId) => {
+			checkProjectAvailabilityFreshness: async (projectId) => {
 				const scope = await loadProjectScopeById(projectId);
 				if (!scope) throw new Error("Missing fixture");
-				return await observeProjectAvailability(scope);
+				return await resolveAvailability(scope);
 			},
 			buildProjectSummary: async (projectId) => {
 				const scope = await loadProjectScopeById(projectId);
 				const state = await loadSavedProjectStateById(projectId);
 				if (!scope || !state) throw new Error("Missing fixture");
+				const { availability } = await resolveAvailability(scope);
 				return deriveProjectSummary({
 					...scope,
 					board: state.board,
 					boardRevision: state.revision,
-					availability: await observeProjectAvailability(scope),
+					availability,
 				});
 			},
 			buildProjectStateSnapshot: async (projectId) => {

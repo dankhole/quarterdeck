@@ -37,7 +37,7 @@ describe("runtime conversation session resolver integration", { concurrent: fals
 					cwd: activeProjectPath,
 					loadGlobalRuntimeConfig: async () => config,
 					loadRuntimeConfig: async () => config,
-					hasGitRepository: async () => true,
+					probeGitRepository: async () => "repository",
 					pathIsDirectory: async () => true,
 				});
 				try {

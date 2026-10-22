@@ -47,7 +47,7 @@ import { loadRuntimeHostSimulation } from "./runtime-host-simulation";
 import { createRuntimeServer } from "./runtime-server";
 import { RuntimeSessionPersistence } from "./runtime-session-persistence";
 import { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
-import { assertPathIsDirectory, hasGitRepository, pathIsDirectory } from "./runtime-startup-paths";
+import { assertPathIsDirectory, pathIsDirectory, probeGitRepository } from "./runtime-startup-paths";
 import { createRuntimeStateHub, type RuntimeStateHub } from "./runtime-state-hub";
 import { resolveInteractiveShellCommand } from "./shell";
 import { type RuntimeShutdownCoordinatorDependencies, shutdownRuntimeServer } from "./shutdown-coordinator";
@@ -153,8 +153,8 @@ async function createRuntimeBootstrapState(
 		registerCwdProject,
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
-		hasGitRepository: (path, projectId) =>
-			hasGitRepository(path, {
+		probeGitRepository: (path, projectId) =>
+			probeGitRepository(path, {
 				onFailure: (failure) =>
 					diagnostics.recordEvent(
 						"project.git_validation_failed",
@@ -365,7 +365,7 @@ async function createRuntimeServerHandle(
 		hostEventLedger: simulation?.ledger,
 		resolveProjectInputPath,
 		assertPathIsDirectory,
-		hasGitRepository,
+		probeGitRepository,
 		disposeProject: bootstrap.disposeTrackedProject,
 		collectProjectWorktreeTaskIdsForRemoval,
 	});

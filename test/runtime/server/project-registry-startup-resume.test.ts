@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
 	PROJECT_STREAM_VALIDATION_CONCURRENCY,
@@ -148,7 +148,7 @@ describe("validateIndexedProjectsForStream", () => {
 		let maxActiveDirectoryChecks = 0;
 
 		const results = await validateIndexedProjectsForStream(projects, {
-			hasGitRepository: async () => true,
+			probeGitRepository: async () => "repository",
 			pathIsDirectory: async () => {
 				activeDirectoryChecks += 1;
 				maxActiveDirectoryChecks = Math.max(maxActiveDirectoryChecks, activeDirectoryChecks);
@@ -173,14 +173,47 @@ describe("validateIndexedProjectsForStream", () => {
 		let gitProbeCount = 0;
 
 		const [result] = await validateIndexedProjectsForStream(projects, {
-			hasGitRepository: async () => {
+			probeGitRepository: async () => {
 				gitProbeCount += 1;
-				return true;
+				return "repository";
 			},
 			pathIsDirectory: async () => false,
 		});
 
 		expect(gitProbeCount).toBe(0);
 		expect(result?.availability).toEqual({ status: "unavailable", reason: "missing" });
+	});
+
+	it("reports an indeterminate probe conservatively with exactly one probe call (no pre-listen retry)", async () => {
+		// Startup runs before the server listens: retrying an indeterminate probe
+		// here would multiply pre-listen latency per indeterminate project and can
+		// blow past the desktop supervisor's startup window under the very load
+		// this is meant to tolerate. Startup also has no prior evidence to carry
+		// forward, so indeterminate conservatively reports unavailable.
+		const projects: RuntimeProjectIndexEntry[] = [{ projectId: "p1", repoPath: "/tmp/p1" }];
+		const probeGitRepository = vi.fn(async () => "indeterminate" as const);
+
+		const [result] = await validateIndexedProjectsForStream(projects, {
+			probeGitRepository,
+			pathIsDirectory: async () => true,
+		});
+
+		expect(probeGitRepository).toHaveBeenCalledTimes(1);
+		expect(result?.availability).toEqual({ status: "unavailable", reason: "not_git_repository" });
+		expect(result?.indeterminate).toBe(true);
+	});
+
+	it("reports a definitive result with exactly one probe call", async () => {
+		const projects: RuntimeProjectIndexEntry[] = [{ projectId: "p1", repoPath: "/tmp/p1" }];
+		const probeGitRepository = vi.fn(async () => "repository" as const);
+
+		const [result] = await validateIndexedProjectsForStream(projects, {
+			probeGitRepository,
+			pathIsDirectory: async () => true,
+		});
+
+		expect(probeGitRepository).toHaveBeenCalledTimes(1);
+		expect(result?.availability).toEqual({ status: "available" });
+		expect(result?.indeterminate).toBe(false);
 	});
 });

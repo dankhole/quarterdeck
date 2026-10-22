@@ -74,7 +74,7 @@ export function HomeView({
 				<ConflictBanner taskId={selectedTaskId} onNavigateToResolver={navigation.navigateToGitView} />
 			)}
 			<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-				{shouldShowProjectLoadingState && !(isProjectUnavailable && hasRetainedBoard) ? (
+				{shouldShowProjectLoadingState && !isProjectUnavailable ? (
 					<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
 						<Spinner size={30} />
 					</div>
@@ -282,6 +282,11 @@ export function HomeView({
 									onFileNavigationConsumed={navigation.clearPendingFileNavigation}
 									scopeKey={`home-${projectNavigation.currentProjectId ?? "no-project"}`}
 								/>
+							) : isProjectUnavailable && !hasRetainedBoard ? (
+								// Never render another project's board while this unavailable project's saved board loads.
+								<div className="flex flex-1 min-h-0 items-center justify-center bg-surface-0">
+									<Spinner size={30} />
+								</div>
 							) : (
 								<QuarterdeckBoard
 									key={projectNavigation.currentProjectId}

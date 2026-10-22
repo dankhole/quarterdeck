@@ -2,6 +2,7 @@ import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "@runtime-contract";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createInitialBoardData } from "@/data/board-data";
 import * as boardCache from "@/runtime/project-board-cache";
 import * as preloadCache from "@/runtime/project-preload-cache";
 import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
@@ -44,6 +45,7 @@ describe("runtime state stream", () => {
 	afterEach(async () => {
 		await act(async () => root.unmount());
 		vi.restoreAllMocks();
+		boardCache.clearProjectBoardCache();
 	});
 
 	function snapshot(overrides: Partial<RuntimeStateStreamSnapshotMessage> = {}): RuntimeStateStreamSnapshotMessage {
@@ -98,6 +100,53 @@ describe("runtime state stream", () => {
 		expect(state.projects[0]?.path).toBe("/new/folder");
 		expect(invalidateBoard).not.toHaveBeenCalled();
 		expect(invalidatePreload).not.toHaveBeenCalled();
+	});
+
+	it("retains the board cache across an availability flip in either direction but refreshes preload", async () => {
+		const invalidatePreload = vi.spyOn(preloadCache, "invalidateProjectPreload");
+		boardCache.stashProjectBoard("p3", {
+			board: createInitialBoardData(),
+			sessions: {},
+			authoritativeRevision: 1,
+			projectPath: "/same/folder",
+			projectGit: null,
+			metadataRevision: 1,
+			availability: { status: "available" },
+		});
+		const project = {
+			id: "p3",
+			name: "AirLockAndroid",
+			path: "/same/folder",
+			metadataRevision: 1,
+			boardRevision: 1,
+			taskCounts: { in_progress: 0, review: 0, trash: 0 },
+			availability: { status: "available" as const },
+		};
+		await act(async () => callbacks.onMessage(snapshot({ projects: [project] })));
+
+		// A flap to unavailable at the same path must not evict the retained board.
+		await act(async () =>
+			state.applyProjectManagementResult({
+				...project,
+				metadataRevision: 2,
+				availability: { status: "unavailable", reason: "not_git_repository" },
+			}),
+		);
+		expect(invalidatePreload).toHaveBeenCalledWith("p3");
+		expect(boardCache.restoreProjectBoard("p3")).not.toBeNull();
+
+		invalidatePreload.mockClear();
+
+		// Recovering back to available must also keep the cache, not just the initial flip.
+		await act(async () =>
+			state.applyProjectManagementResult({
+				...project,
+				metadataRevision: 3,
+				availability: { status: "available" },
+			}),
+		);
+		expect(invalidatePreload).toHaveBeenCalledWith("p3");
+		expect(boardCache.restoreProjectBoard("p3")).not.toBeNull();
 	});
 
 	it.each([undefined, QUARTERDECK_RUNTIME_PROTOCOL_VERSION - 1, QUARTERDECK_RUNTIME_PROTOCOL_VERSION + 1])(

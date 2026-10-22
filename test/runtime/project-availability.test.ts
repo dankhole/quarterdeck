@@ -55,12 +55,12 @@ describe("project availability", () => {
 			const identity = await stat(oldPath, { bigint: true });
 			const directoryIdentity = { device: identity.dev.toString(), inode: identity.ino.toString() };
 			await rename(oldPath, newPath);
-			const hasGitRepository = vi.fn(async () => true);
-			await expect(observeProjectAvailability({ repoPath: oldPath }, { hasGitRepository })).resolves.toEqual({
+			const probeGitRepository = vi.fn(async () => "repository" as const);
+			await expect(observeProjectAvailability({ repoPath: oldPath }, { probeGitRepository })).resolves.toEqual({
 				status: "unavailable",
 				reason: "missing",
 			});
-			expect(hasGitRepository).not.toHaveBeenCalled();
+			expect(probeGitRepository).not.toHaveBeenCalled();
 			await expect(
 				observeProjectAvailability({ repoPath: newPath, directoryIdentity, folderOnly: true }),
 			).resolves.toEqual({
@@ -133,5 +133,49 @@ describe("project availability", () => {
 			),
 		).resolves.toEqual({ status: "unavailable", reason: "relocation_pending" });
 		expect(pathIsDirectory).not.toHaveBeenCalled();
+	});
+
+	it("reports an indeterminate Git probe as indeterminate, never as a missing repository", async () => {
+		const root = createTempDir("quarterdeck-availability-indeterminate-");
+		try {
+			await expect(
+				observeProjectAvailability({ repoPath: root.path }, { probeGitRepository: async () => "indeterminate" }),
+			).resolves.toEqual({ status: "indeterminate" });
+		} finally {
+			root.cleanup();
+		}
+	});
+
+	it("only reports indeterminate after directory, relocation, and identity checks pass", async () => {
+		const probeGitRepository = vi.fn(async () => "indeterminate" as const);
+		await expect(
+			observeProjectAvailability(
+				{ projectId: "project", repoPath: "/synthetic-missing" },
+				{ pathIsDirectory: async () => false, probeGitRepository },
+			),
+		).resolves.toEqual({ status: "unavailable", reason: "missing" });
+		expect(probeGitRepository).not.toHaveBeenCalled();
+
+		await expect(
+			observeProjectAvailability(
+				{ projectId: "project", repoPath: "/synthetic-pending" },
+				{
+					pathIsDirectory: async () => true,
+					hasPendingRelocation: async () => true,
+					probeGitRepository,
+				},
+			),
+		).resolves.toEqual({ status: "unavailable", reason: "relocation_pending" });
+		expect(probeGitRepository).not.toHaveBeenCalled();
+
+		const root = createTempDir("quarterdeck-availability-indeterminate-order-");
+		try {
+			await expect(
+				observeProjectAvailability({ projectId: "project", repoPath: root.path }, { probeGitRepository }),
+			).resolves.toEqual({ status: "indeterminate" });
+			expect(probeGitRepository).toHaveBeenCalledTimes(1);
+		} finally {
+			root.cleanup();
+		}
 	});
 });

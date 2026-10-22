@@ -1,14 +1,15 @@
-import type { ChildProcess, ExecFileException } from "node:child_process";
+import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeCapabilities, RuntimeConfigResponse } from "../core";
 import {
+	armChildProcessTimeout,
+	type ChildProcessTimeoutGuard,
 	createTaggedLogger,
 	getRuntimeLaunchSupportedAgentCatalog,
 	isBinaryAvailableOnPath,
 	RUNTIME_AGENT_CATALOG,
 	resolveWindowsCompatibleCommand,
-	terminateProcessForTimeout,
 } from "../core";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { isGenerationHelperAvailable, isLlmConfigured } from "../title";
@@ -217,7 +218,8 @@ function isProbeTimeout(error: ExecFileException): boolean {
 	return error.killed === true || error.code === "ETIMEDOUT";
 }
 
-function runProbeCommand(
+/** Exported for direct real-process timeout tests; otherwise only called internally. */
+export function runProbeCommand(
 	agentId: RuntimeAgentId,
 	probeKind: AgentAvailabilityProbeKind,
 	binary: string,
@@ -226,12 +228,13 @@ function runProbeCommand(
 	return new Promise((resolve, reject) => {
 		const startedAt = Date.now();
 		const command = resolveWindowsCompatibleCommand(binary, args);
-		let child: ChildProcess | null = null;
-		let timeout: NodeJS.Timeout | null = null;
-		let settled = false;
-		let timedOut = false;
 		assertRuntimeProcessLaunchAdmission();
-		child = execFile(
+		// `guard` is assigned after `execFile` returns; a mocked callback that fires
+		// synchronously sees it as null (safe via optional chaining) and `settled`
+		// below prevents arming an unneeded guard for an already-finished call.
+		let settled = false;
+		let guard: ChildProcessTimeoutGuard | null = null;
+		const child = execFile(
 			command.binary,
 			command.args,
 			{
@@ -239,12 +242,22 @@ function runProbeCommand(
 				windowsHide: true,
 			},
 			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-				if (settled) return;
 				settled = true;
-				if (timeout) clearTimeout(timeout);
+				guard?.settle();
 				const durationMs = Math.max(0, Date.now() - startedAt);
+				// A timer fire is itself the timeout, regardless of exit status: some
+				// launchers (e.g. Codex's npm shim) trap the signal and still exit 0.
+				if (guard?.isTimedOut()) {
+					recordAvailabilityDiagnostic({
+						name: "agent.availability_probe_completed",
+						payload: { agentId, probeKind, durationMs, outcome: "probe_timeout" },
+						level: "warn",
+					});
+					reject(new AgentProbeExecutionError("probe_timeout", durationMs));
+					return;
+				}
 				if (error) {
-					const reason = timedOut || isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
+					const reason = isProbeTimeout(error) ? "probe_timeout" : "probe_failed";
 					recordAvailabilityDiagnostic({
 						name: "agent.availability_probe_completed",
 						payload: { agentId, probeKind, durationMs, outcome: reason },
@@ -266,11 +279,7 @@ function runProbeCommand(
 			},
 		);
 		if (!settled) {
-			timeout = setTimeout(() => {
-				timedOut = true;
-				if (child) terminateProcessForTimeout(child);
-			}, CODEX_PROBE_TIMEOUT_MS);
-			timeout.unref();
+			guard = armChildProcessTimeout(child, CODEX_PROBE_TIMEOUT_MS);
 		}
 	});
 }

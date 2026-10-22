@@ -228,7 +228,7 @@ describe("project registry startup recovery integration", () => {
 			registerCwdProject: false,
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => true,
+			probeGitRepository: async () => "repository",
 			pathIsDirectory: async () => true,
 		});
 		expect(stateMocks.loadProjectContext).not.toHaveBeenCalled();
@@ -260,7 +260,7 @@ describe("project registry startup recovery integration", () => {
 				cwd: "/synthetic/home",
 				loadGlobalRuntimeConfig: async () => config,
 				loadRuntimeConfig: async () => config,
-				hasGitRepository: async () => false,
+				probeGitRepository: async () => "not_repository",
 				pathIsDirectory: async () => true,
 				diagnostics: { registerSnapshotProvider } as unknown as RuntimeDiagnostics,
 			}),
@@ -277,7 +277,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -298,7 +298,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 		});
 		stateMocks.loadProjectBoardSnapshotById.mockRejectedValueOnce(new Error("board.json is unreadable"));
@@ -316,7 +316,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -340,7 +340,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			waitForStartupAgentCleanup: async () => await startupCleanup.promise,
 			onTerminalManagerReady: (_projectId, readyManager) => {
@@ -405,7 +405,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -434,7 +434,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -507,7 +507,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -531,7 +531,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -586,7 +586,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async () => true,
+			probeGitRepository: async () => "repository",
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;
@@ -633,7 +633,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			waitForStartupAgentCleanup: async () => await startupCleanup.promise,
 			onTerminalManagerReady: (projectId, readyManager) => {
@@ -687,7 +687,8 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath === "/tmp/available-project",
+			probeGitRepository: async (projectPath) =>
+				projectPath === "/tmp/available-project" ? "repository" : "not_repository",
 			pathIsDirectory: async (projectPath) => projectPath !== "/tmp/offline-project",
 			diagnostics,
 		});
@@ -695,7 +696,7 @@ describe("project registry startup recovery integration", () => {
 		await expect(registry.initializeIndexedProjectsForStartup()).resolves.toBe(1);
 		expect(recordEvent).toHaveBeenCalledWith(
 			"project.startup_availability_failed",
-			{ reason: "missing", folderOnly: false },
+			{ reason: "missing", folderOnly: false, indeterminate: false },
 			{ projectId: "offline-project" },
 			{ level: "warn", essential: true },
 		);
@@ -716,6 +717,64 @@ describe("project registry startup recovery integration", () => {
 		expect(ptySessionSpawnMock).not.toHaveBeenCalled();
 	});
 
+	it("seeds carry-forward evidence from a definitive startup verdict so a later indeterminate probe reuses it", async () => {
+		const projectEntries = [{ projectId: "available-project", repoPath: "/tmp/available-project" }];
+		stateMocks.listProjectIndexEntries.mockResolvedValue(projectEntries);
+		stateMocks.loadProjectState.mockResolvedValue(createProjectState());
+		const config = createRuntimeConfig();
+		let probeResult: "repository" | "indeterminate" = "repository";
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			probeGitRepository: async () => probeResult,
+			pathIsDirectory: async () => true,
+		});
+
+		await expect(registry.initializeIndexedProjectsForStartup()).resolves.toBe(1);
+		stateMocks.updateProjectIndexMetadata.mockClear();
+
+		// The startup verdict was seeded as carry-forward evidence. A later probe
+		// that only manages to be indeterminate (e.g. runtime load) must reuse it
+		// rather than conservatively reporting unavailable, and must not touch
+		// index metadata to do so.
+		probeResult = "indeterminate";
+		await expect(registry.checkProjectAvailability("available-project")).resolves.toEqual({ status: "available" });
+		expect(stateMocks.updateProjectIndexMetadata).not.toHaveBeenCalled();
+	});
+
+	it("does not let startup seeding overwrite evidence already observed before it ran", async () => {
+		const projectEntries = [{ projectId: "available-project", repoPath: "/tmp/available-project" }];
+		stateMocks.listProjectIndexEntries.mockResolvedValue(projectEntries);
+		stateMocks.loadProjectState.mockResolvedValue(createProjectState());
+		const config = createRuntimeConfig();
+		let probeResult: "repository" | "not_repository" | "indeterminate" = "repository";
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			probeGitRepository: async () => probeResult,
+			pathIsDirectory: async () => true,
+		});
+
+		// A concurrent caller (e.g. a client request racing startup) already
+		// recorded fresh evidence for this project before startup's own seeding
+		// write reaches the front of this project's serialized queue.
+		await expect(registry.checkProjectAvailability("available-project")).resolves.toEqual({ status: "available" });
+
+		// Startup's own probe disagrees, but seeding must only ever write when no
+		// entry exists yet — it must not clobber evidence another caller already
+		// recorded inside the same per-project queue.
+		probeResult = "not_repository";
+		await registry.initializeIndexedProjectsForStartup();
+
+		// If seeding had overwritten the stored entry with startup's "not a
+		// repository" verdict, this indeterminate probe would carry forward
+		// `unavailable` instead of the evidence recorded above.
+		probeResult = "indeterminate";
+		await expect(registry.checkProjectAvailability("available-project")).resolves.toEqual({ status: "available" });
+	});
+
 	it("orders availability changes independently of board revisions and keeps the display name", async () => {
 		const scope = {
 			projectId: "project-1",
@@ -734,7 +793,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (path) => path !== "/tmp/runtime",
+			probeGitRepository: async (path) => (path !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => available,
 		});
 		const missing = await registry.buildProjectSummary(scope.projectId, scope.repoPath);
@@ -767,7 +826,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (path) => path !== "/tmp/runtime",
+			probeGitRepository: async (path) => (path !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 		});
 		await registry.setActiveProject(scope.projectId);
@@ -833,7 +892,8 @@ describe("project registry startup recovery integration", () => {
 				cwd: "/tmp/runtime",
 				loadGlobalRuntimeConfig: async () => config,
 				loadRuntimeConfig: async () => config,
-				hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+				probeGitRepository: async (projectPath) =>
+					projectPath !== "/tmp/runtime" ? "repository" : "not_repository",
 				pathIsDirectory: async () => true,
 				onTerminalManagerReady: (_projectId, readyManager) => {
 					manager = readyManager;
@@ -901,7 +961,7 @@ describe("project registry startup recovery integration", () => {
 			cwd: "/tmp/runtime",
 			loadGlobalRuntimeConfig: async () => config,
 			loadRuntimeConfig: async () => config,
-			hasGitRepository: async (projectPath) => projectPath !== "/tmp/runtime",
+			probeGitRepository: async (projectPath) => (projectPath !== "/tmp/runtime" ? "repository" : "not_repository"),
 			pathIsDirectory: async () => true,
 			onTerminalManagerReady: (_projectId, readyManager) => {
 				manager = readyManager;

@@ -8,7 +8,7 @@ import {
 } from "../fs/project-directory-identity";
 import { readProjectRelocationJournal } from "../state/project-relocation-journal";
 import { isUnderWorktreesHome } from "../state/project-state-utils";
-import { hasGitRepository } from "./git-repository-probe";
+import { type GitRepositoryProbeResult, probeGitRepository } from "./git-repository-probe";
 
 export interface ProjectAvailabilityScope {
 	projectId?: string;
@@ -19,9 +19,16 @@ export interface ProjectAvailabilityScope {
 
 export interface ProjectAvailabilityDependencies {
 	pathIsDirectory?: (path: string) => Promise<boolean>;
-	hasGitRepository?: (path: string, projectId?: string) => Promise<boolean>;
+	probeGitRepository?: (path: string, projectId?: string) => Promise<GitRepositoryProbeResult>;
 	hasPendingRelocation?: (projectId: string) => Promise<boolean>;
 }
+
+/**
+ * Internal observation type. `indeterminate` is never part of the browser/runtime
+ * wire contract (`RuntimeProjectAvailability`): callers that publish availability
+ * must resolve it to a definitive status before it leaves this layer.
+ */
+export type ProjectAvailabilityObservation = RuntimeProjectAvailability | { status: "indeterminate" };
 
 async function inspectDirectory(path: string): Promise<RuntimeProjectAvailability> {
 	try {
@@ -37,11 +44,18 @@ async function inspectDirectory(path: string): Promise<RuntimeProjectAvailabilit
 	}
 }
 
-/** Observes admission to filesystem work; absence never authorizes deleting saved project state. */
+/**
+ * Observes admission to filesystem work; absence never authorizes deleting saved project state.
+ *
+ * `indeterminate` is only possible after the directory, relocation-journal, and
+ * directory-identity checks above have already passed for this same observation:
+ * it means the Git root probe itself could not run to completion (for example,
+ * load-induced timeout), not that the repository is missing.
+ */
 export async function observeProjectAvailability(
 	scope: ProjectAvailabilityScope,
 	deps: ProjectAvailabilityDependencies = {},
-): Promise<RuntimeProjectAvailability> {
+): Promise<ProjectAvailabilityObservation> {
 	if (isUnderWorktreesHome(scope.repoPath)) return { status: "unavailable", reason: "invalid_location" };
 	if (scope.projectId) {
 		try {
@@ -68,10 +82,12 @@ export async function observeProjectAvailability(
 			}
 		}
 		if (scope.folderOnly) return { status: "available" };
-		const gitRepositoryAvailable = deps.hasGitRepository
-			? await deps.hasGitRepository(scope.repoPath, scope.projectId)
-			: await hasGitRepository(scope.repoPath);
-		return gitRepositoryAvailable ? { status: "available" } : { status: "unavailable", reason: "not_git_repository" };
+		const gitProbe = deps.probeGitRepository
+			? await deps.probeGitRepository(scope.repoPath, scope.projectId)
+			: await probeGitRepository(scope.repoPath);
+		if (gitProbe === "repository") return { status: "available" };
+		if (gitProbe === "indeterminate") return { status: "indeterminate" };
+		return { status: "unavailable", reason: "not_git_repository" };
 	} catch {
 		return { status: "unavailable", reason: "inaccessible" };
 	}

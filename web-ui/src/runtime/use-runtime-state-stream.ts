@@ -59,12 +59,18 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		const previousById = new Map(previousProjects.current.map((project) => [project.id, project]));
 		for (const project of state.projects) {
 			const previous = previousById.get(project.id);
-			if (
-				previous &&
-				(previous.path !== project.path ||
-					(previous.availability?.status ?? "available") !== (project.availability?.status ?? "available"))
-			) {
+			if (!previous) {
+				continue;
+			}
+			const pathChanged = previous.path !== project.path;
+			const availabilityChanged =
+				(previous.availability?.status ?? "available") !== (project.availability?.status ?? "available");
+			if (pathChanged || availabilityChanged) {
+				// Preload snapshots are consumed as authoritative state, so refresh them on path or availability changes.
 				invalidateProjectPreload(project.id);
+			}
+			// The board cache is project-owned presentation reused for unavailable projects; only a path change stales its path/git fields.
+			if (pathChanged) {
 				invalidateProjectBoardCache(project.id);
 			}
 		}

@@ -31,7 +31,7 @@ function createApi(pickDirectory: () => Promise<RuntimeProjectDirectoryPickerRes
 		data: { buildProjectStateSnapshot: unused, buildProjectsPayload: unused, buildProjectSummary: unused },
 		resolveProjectInputPath: unused,
 		assertPathIsDirectory: unused,
-		hasGitRepository: unused,
+		probeGitRepository: unused,
 		disposeProject: unused,
 		prepareProjectRemoval: unused,
 		collectProjectWorktreeTaskIdsForRemoval: unused,

@@ -14,6 +14,7 @@ import {
 	parseProjectRemoveRequest,
 	parseProjectReorderRequest,
 } from "../core";
+import type { GitRepositoryProbeResult } from "../projects/git-repository-probe";
 import type { ProjectLocationService } from "../server/project-location-service";
 import {
 	isUnderWorktreesHome,
@@ -50,7 +51,7 @@ export interface CreateProjectsApiDependencies {
 	data: IProjectDataProvider;
 	resolveProjectInputPath: (inputPath: string, cwd: string) => string;
 	assertPathIsDirectory: (path: string) => Promise<void>;
-	hasGitRepository: (path: string) => Promise<boolean>;
+	probeGitRepository: (path: string) => Promise<GitRepositoryProbeResult>;
 	disposeProject: (
 		projectId: string,
 		options?: DisposeProjectOptions,
@@ -103,10 +104,23 @@ export function createProjectsApi(deps: CreateProjectsApiDependencies): RuntimeT
 					areFileSystemPathsEqual(entry.repoPath, projectPath),
 				);
 				const folderOnly = body.folderOnly ?? existing?.folderOnly ?? false;
-				const hasOwnRepository =
-					!folderOnly &&
-					(await deps.hasGitRepository(projectPath)) &&
-					areFileSystemPathsEqual(await resolveProjectPath(projectPath), projectPath);
+				let hasOwnRepository = false;
+				if (!folderOnly) {
+					const gitProbe = await deps.probeGitRepository(projectPath);
+					if (gitProbe === "indeterminate") {
+						// The probe proved nothing: offering "Initialize Git" here could
+						// create a second, unwanted repository over an existing one that
+						// just couldn't be confirmed right now (e.g. the runtime was busy).
+						return {
+							ok: false,
+							project: null,
+							error: "Could not check this folder's Git repository right now; the system may be busy. Try again.",
+						} satisfies RuntimeProjectAddResponse;
+					}
+					hasOwnRepository =
+						gitProbe === "repository" &&
+						areFileSystemPathsEqual(await resolveProjectPath(projectPath), projectPath);
+				}
 				if (!folderOnly && !hasOwnRepository) {
 					if (!body.initializeGit) {
 						return {

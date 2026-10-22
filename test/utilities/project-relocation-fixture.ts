@@ -84,7 +84,7 @@ export async function createProjectRelocationFixture(
 		cwd: oldPath,
 		loadGlobalRuntimeConfig: async () => config,
 		loadRuntimeConfig: async () => config,
-		hasGitRepository: async () => false,
+		probeGitRepository: async () => "not_repository",
 		pathIsDirectory,
 		onTerminalManagerReady: (projectId, manager) => {
 			if (suspension.entered) readyAfterSuspend.push(manager);

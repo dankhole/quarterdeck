@@ -7,6 +7,9 @@ const commandDiscoveryMocks = vi.hoisted(() => ({
 }));
 const childProcessMocks = vi.hoisted(() => ({
 	execFile: vi.fn(),
+	// Populated with the real `execFile` below so specific tests can prove real
+	// child-process timing behavior without disabling this file's module mock.
+	realExecFile: null as unknown as typeof import("node:child_process").execFile,
 }));
 
 vi.mock("../../../src/core/command-discovery.js", () => ({
@@ -15,6 +18,7 @@ vi.mock("../../../src/core/command-discovery.js", () => ({
 }));
 vi.mock("node:child_process", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:child_process")>();
+	childProcessMocks.realExecFile = actual.execFile;
 	return {
 		...actual,
 		execFile: childProcessMocks.execFile,
@@ -28,6 +32,7 @@ import {
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
 	resolveAgentCommandForLaunch,
+	runProbeCommand,
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 	waitForPendingAgentAvailabilityProbes,
@@ -294,7 +299,10 @@ describe("agent-registry", () => {
 		expect(initial.agents.find((agent) => agent.id === "codex")?.installed).toBe(true);
 
 		vi.setSystemTime(Date.now() + 31_000);
-		childProcessMocks.execFile.mockImplementation(() => ({}) as ChildProcess);
+		// The background refresh's probe is intentionally left in flight (callback
+		// never invoked); give it a real `kill` so the real, unref'd probe timeout
+		// armed for it can safely no-op later instead of touching a bare `{}`.
+		childProcessMocks.execFile.mockImplementation(() => ({ pid: 1, kill: () => true }) as unknown as ChildProcess);
 
 		const stale = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
 		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
@@ -462,11 +470,11 @@ describe("agent-registry", () => {
 			expect(options).not.toHaveProperty("timeout");
 			probeCallback = readExecFileCallback(rest);
 			capturedProbeCallback = true;
-			return { pid: 4321, kill } as unknown as ChildProcess;
+			return { pid: 4321, kill, exitCode: null, signalCode: null } as unknown as ChildProcess;
 		});
 
 		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		await vi.advanceTimersByTimeAsync(3_000);
+		await vi.runAllTimersAsync();
 		if (process.platform === "win32") {
 			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
 		} else {
@@ -481,6 +489,97 @@ describe("agent-registry", () => {
 			"",
 			"",
 		);
+
+		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
+	});
+
+	it("treats a timer-fired probe as a timeout even if the launcher still exits 0 with empty output", async () => {
+		// Codex's npm launcher traps SIGTERM, forwards it to the real binary, and then
+		// exits 0 with empty stdout/stderr instead of surfacing an execFile error. The
+		// timeout timer firing is itself the evidence of a timeout; a clean-looking exit
+		// afterward must not be read as "Codex ran but reported no version" (unsupported_version).
+		vi.useFakeTimers();
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const kill = vi.fn(() => true);
+		let probeCallback: ExecFileCallback = () => {
+			throw new Error("Expected the version probe callback.");
+		};
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			if (args.includes("/pid")) return {} as ChildProcess;
+			probeCallback = readExecFileCallback(rest);
+			return { pid: 4321, kill, exitCode: null, signalCode: null } as unknown as ChildProcess;
+		});
+
+		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await vi.runAllTimersAsync();
+		if (process.platform === "win32") {
+			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
+		} else {
+			expect(kill).toHaveBeenCalledWith("SIGTERM");
+		}
+		probeCallback(null, "", "");
+
+		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
+	});
+
+	// Real-process tests below delegate the module-mocked `execFile` to the real
+	// implementation, proving `runProbeCommand`'s actual timing behavior end to end
+	// (no execFile mock deciding the outcome).
+	describe("runProbeCommand against real child processes", () => {
+		beforeEach(() => {
+			childProcessMocks.execFile.mockImplementation(childProcessMocks.realExecFile);
+		});
+
+		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
+			const resultPromise = runProbeCommand("claude", "version", process.execPath, [
+				"-e",
+				"process.stdout.write('2.1.198'); process.exit(0);",
+			]);
+			// Real event-loop stall: the child exits almost immediately, then the main
+			// thread is blocked synchronously well past the probe timeout before we
+			// ever look at the result.
+			const blockUntil = Date.now() + 3_200;
+			while (Date.now() < blockUntil) {
+				// busy-wait
+			}
+			await expect(resultPromise).resolves.toMatchObject({ stdout: "2.1.198" });
+		}, 10_000);
+
+		it("still terminates a real hung child and reports a timeout", async () => {
+			await expect(
+				runProbeCommand("claude", "version", process.execPath, ["-e", "setInterval(() => {}, 1_000);"]),
+			).rejects.toMatchObject({ reason: "probe_timeout" });
+		}, 10_000);
+	});
+
+	it("treats a timer-fired Codex feature probe that exits 0 with empty output as a timeout, not feature_missing", async () => {
+		vi.useFakeTimers();
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const kill = vi.fn(() => true);
+		let featuresCallback: ExecFileCallback = () => {
+			throw new Error("Expected the features probe callback.");
+		};
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
+			if (args.includes("/pid")) return {} as ChildProcess;
+			const callback = readExecFileCallback(rest);
+			if (args[0] === "--version") {
+				callback(null, "0.157.0\n", "");
+				return {} as ChildProcess;
+			}
+			featuresCallback = callback;
+			return { pid: 4321, kill, exitCode: null, signalCode: null } as unknown as ChildProcess;
+		});
+
+		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		await vi.runAllTimersAsync();
+		if (process.platform === "win32") {
+			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
+		} else {
+			expect(kill).toHaveBeenCalledWith("SIGTERM");
+		}
+		// Codex's npm launcher traps SIGTERM, forwards it, and exits 0 with empty
+		// output even though the timer already fired.
+		featuresCallback(null, "", "");
 
 		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
 	});

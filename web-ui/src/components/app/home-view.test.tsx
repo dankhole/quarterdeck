@@ -141,7 +141,7 @@ describe("HomeView unavailable project", () => {
 		expect(mocks.checkAvailability).not.toHaveBeenCalled();
 	});
 
-	it("waits for the correct saved board during a switch to an unavailable project", async () => {
+	it("waits for the correct saved board during a switch to an unavailable project, but shows recovery actions immediately", async () => {
 		mocks.boardProjectId = "previous-project";
 		await act(async () =>
 			root.render(
@@ -156,5 +156,10 @@ describe("HomeView unavailable project", () => {
 			),
 		);
 		expect(container.textContent).not.toContain("Saved task board");
+		// The header and its recovery actions do not wait on a board for a project never cached this session.
+		expect(container.textContent).toContain("Folder unavailable");
+		const buttons = [...container.querySelectorAll("button")];
+		expect(buttons.find((button) => button.textContent === "Locate folder…")).toBeDefined();
+		expect(buttons.find((button) => button.textContent === "Check again")).toBeDefined();
 	});
 });

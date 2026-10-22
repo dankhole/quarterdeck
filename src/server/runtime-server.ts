@@ -38,6 +38,7 @@ import {
 import { createNativeTerminalInputWriter } from "../execution/native-terminal-input";
 import { createHookTransitionOutboxReplayer } from "../hook-transition-outbox";
 import { LanguageNavigationManager } from "../language-navigation/manager";
+import type { GitRepositoryProbeResult } from "../projects/git-repository-probe";
 import type { ProjectBoardCommandService } from "../state";
 import {
 	listProjectIndexEntries,
@@ -109,7 +110,7 @@ export interface CreateRuntimeServerDependencies {
 	hostEventLedger?: RuntimeHostEventLedger;
 	resolveProjectInputPath: (inputPath: string, basePath: string) => string;
 	assertPathIsDirectory: (targetPath: string) => Promise<void>;
-	hasGitRepository: (path: string) => Promise<boolean>;
+	probeGitRepository: (path: string) => Promise<GitRepositoryProbeResult>;
 	disposeProject: (
 		projectId: string,
 		options?: {
@@ -717,7 +718,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 					data: deps.projectRegistry,
 					resolveProjectInputPath: deps.resolveProjectInputPath,
 					assertPathIsDirectory: deps.assertPathIsDirectory,
-					hasGitRepository: deps.hasGitRepository,
+					probeGitRepository: deps.probeGitRepository,
 					disposeProject: deps.disposeProject,
 					prepareProjectRemoval: deps.projectRegistry.prepareProjectRemoval,
 					collectProjectWorktreeTaskIdsForRemoval: deps.collectProjectWorktreeTaskIdsForRemoval,

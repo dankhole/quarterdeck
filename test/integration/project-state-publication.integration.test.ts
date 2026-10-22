@@ -73,7 +73,7 @@ async function createFixture() {
 		cwd: temp.path,
 		loadGlobalRuntimeConfig: async () => config,
 		loadRuntimeConfig: async () => config,
-		hasGitRepository: async (path) => path === project.repoPath,
+		probeGitRepository: async (path) => (path === project.repoPath ? "repository" : "not_repository"),
 		pathIsDirectory,
 		onTerminalManagerReady,
 	});

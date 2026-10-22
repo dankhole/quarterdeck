@@ -209,6 +209,8 @@ The macOS app resolves the Finder/Dock environment without a shell by default, a
 
 Startup recovery's task-start preparation may retry one transient availability probe. Missing executables, unsupported versions, and missing required features are deterministic preparation failures and remain non-retryable; this probe retry is separate from the recovery coordinator's bounded process-launch retry. `src/server/task-session-start-service.ts` owns selecting that recovery option.
 
+A probe whose timeout timer fired is a timeout regardless of the child's later exit status, because some launchers (e.g. Codex's npm shim) trap the terminating signal and still exit 0.
+
 Keep availability probe diagnostics metadata-only: `agentId`, probe kind, duration, and typed outcome. Do not include command output, thrown messages, or inherited environment values.
 
 ### Host effects

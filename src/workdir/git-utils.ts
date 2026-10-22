@@ -2,13 +2,14 @@ import { type ExecFileException, execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
+	armChildProcessTimeout,
 	buildGitCommandArgs,
+	type ChildProcessTimeoutGuard,
 	createGitProcessEnv,
 	INTEGRATION_BASE_REF_CANDIDATES,
 	KeyedOperationCoordinator,
 	normalizeFileSystemPathForComparison,
 	resolveWindowsCompatibleCommand,
-	terminateProcessForTimeout,
 } from "../core";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 
@@ -31,7 +32,16 @@ export type GitCommandFailureKind =
 	| "permission_denied"
 	| "timed_out"
 	| "command_failed";
-export type GitCommandErrorCode = "ENOENT" | "EACCES" | "EPERM" | "ETIMEDOUT" | "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+export type GitCommandErrorCode =
+	| "ENOENT"
+	| "EACCES"
+	| "EPERM"
+	| "ETIMEDOUT"
+	| "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+	| "EAGAIN"
+	| "EMFILE"
+	| "ENFILE"
+	| "ENOMEM";
 
 interface GitCommandResult {
 	ok: boolean;
@@ -41,6 +51,8 @@ interface GitCommandResult {
 	error: string | null;
 	exitCode: number;
 	timedOut: boolean;
+	/** True when the process ended by a signal that was not our own timeout termination (e.g. an external OOM kill). */
+	terminatedBySignal?: boolean;
 	failureKind?: GitCommandFailureKind;
 	errorCode?: GitCommandErrorCode | null;
 }
@@ -58,6 +70,10 @@ function boundedGitErrorCode(code: unknown): GitCommandErrorCode | null {
 		case "EPERM":
 		case "ETIMEDOUT":
 		case "ERR_CHILD_PROCESS_STDIO_MAXBUFFER":
+		case "EAGAIN":
+		case "EMFILE":
+		case "ENFILE":
+		case "ENOMEM":
 			return code;
 		default:
 			return null;
@@ -129,14 +145,17 @@ function executeGitCommand(
 	stdin?: string,
 ): Promise<GitCommandOutput> {
 	return new Promise((resolveCommand, rejectCommand) => {
-		let timedOut = false;
-		let timeout: NodeJS.Timeout | null = null;
 		const command = resolveWindowsCompatibleCommand("git", args, process.platform, env);
 		try {
 			assertRuntimeProcessLaunchAdmission();
 		} catch (error) {
 			throw new GitLaunchAdmissionError(error);
 		}
+		// `guard` is assigned after `execFile` returns; a mocked callback that fires
+		// synchronously sees it as null (safe via optional chaining) and `settled`
+		// below prevents arming an unneeded guard for an already-finished call.
+		let settled = false;
+		let guard: ChildProcessTimeoutGuard | null = null;
 		const child = execFile(
 			command.binary,
 			command.args,
@@ -148,10 +167,11 @@ function executeGitCommand(
 				windowsHide: true,
 			},
 			(error: ExecFileException | null, stdout, stderr) => {
-				if (timeout) clearTimeout(timeout);
+				settled = true;
+				guard?.settle();
 				const normalizedStdout = String(stdout ?? "");
 				const normalizedStderr = String(stderr ?? "");
-				if (timedOut) {
+				if (guard?.isTimedOut()) {
 					const timeoutError = Object.assign(new Error(`Git command timed out after ${timeoutMs}ms`), {
 						code: "ETIMEDOUT",
 						killed: true,
@@ -177,11 +197,9 @@ function executeGitCommand(
 		child.stdin?.on("error", () => {});
 		child.stdin?.end(stdin);
 
-		timeout = setTimeout(() => {
-			timedOut = true;
-			terminateProcessForTimeout(child);
-		}, timeoutMs);
-		timeout.unref();
+		if (!settled) {
+			guard = armChildProcessTimeout(child, timeoutMs);
+		}
 	});
 }
 
@@ -245,6 +263,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			error: null,
 			exitCode: 0,
 			timedOut: false,
+			terminatedBySignal: false,
 		};
 	} catch (error) {
 		const candidate = error as {
@@ -280,6 +299,9 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 						: errorCode === "EACCES" || errorCode === "EPERM"
 							? "permission_denied"
 							: "command_failed";
+		// Our own timeout termination also reports a signal (SIGTERM); only an
+		// external signal (e.g. an OOM killer's SIGKILL) outside that path counts.
+		const terminatedBySignal = Boolean(candidate.signal) && !timedOut;
 
 		return {
 			ok: false,
@@ -289,6 +311,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 			error: errorMessage,
 			exitCode,
 			timedOut,
+			terminatedBySignal,
 			failureKind,
 			errorCode,
 		};

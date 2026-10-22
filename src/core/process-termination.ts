@@ -92,3 +92,78 @@ export function terminateProcessForTimeout(
 
 	child.kill("SIGTERM");
 }
+
+interface ObservableChildProcess extends TimeoutTerminatedChildProcess {
+	readonly exitCode: number | null;
+	readonly signalCode: NodeJS.Signals | null;
+}
+
+export interface ChildProcessTimeoutGuard {
+	/** True once a real timeout has been confirmed (see `armChildProcessTimeout`). */
+	isTimedOut(): boolean;
+	/** Call as soon as the owning exec callback fires, before reading `isTimedOut()`. */
+	settle(): void;
+}
+
+export interface ArmChildProcessTimeoutOptions extends TerminateProcessForTimeoutOptions {
+	/** Bounded wait for a lagging 'close' once the child has already exited. */
+	closeGraceMs?: number;
+}
+
+/** Default bounded wait for 'close' to arrive after a child has already exited. */
+export const CHILD_PROCESS_CLOSE_GRACE_MS = 1_000;
+
+/**
+ * Arms a bounded timeout for a spawned child process and returns a guard the
+ * owning exec callback consults. `execFile`'s callback fires on 'close', which
+ * waits for stdio to drain after 'exit' — under an event-loop stall that drain
+ * can lag a stalled timer by multiple loop turns, so a timer firing is not itself
+ * proof of a hang. When the timer fires: a child still running is terminated and
+ * reported as timed out immediately (a hung process, or one that traps the
+ * signal and exits late). A child that already exited gets a short grace period
+ * for 'close' to arrive before it is treated as timed out and terminated too
+ * (covers a descendant still holding stdio open). Call `settle()` from the exec
+ * callback as soon as it fires; `isTimedOut()` is then authoritative.
+ */
+export function armChildProcessTimeout(
+	child: ObservableChildProcess,
+	timeoutMs: number,
+	options: ArmChildProcessTimeoutOptions = {},
+): ChildProcessTimeoutGuard {
+	let settled = false;
+	let timedOut = false;
+	let graceTimer: NodeJS.Timeout | null = null;
+
+	function markTimedOutAndTerminate(): void {
+		if (settled) return;
+		timedOut = true;
+		terminateProcessForTimeout(child, options);
+	}
+
+	const timeout = setTimeout(() => {
+		// Defer past the poll phase: 'exit' can be observed before the stdio drain
+		// that 'close' (and so the exec callback) waits for. Deliberately not
+		// unref'd: an unref'd immediate has no scheduling guarantee and can be
+		// starved for seconds while the loop blocks in poll on the child's handles.
+		setImmediate(() => {
+			if (settled) return;
+			if (child.exitCode !== null || child.signalCode !== null) {
+				graceTimer = setTimeout(markTimedOutAndTerminate, options.closeGraceMs ?? CHILD_PROCESS_CLOSE_GRACE_MS);
+				graceTimer.unref();
+				return;
+			}
+			markTimedOutAndTerminate();
+		});
+	}, timeoutMs);
+	timeout.unref();
+
+	return {
+		isTimedOut: () => timedOut,
+		settle: () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeout);
+			if (graceTimer) clearTimeout(graceTimer);
+		},
+	};
+}
