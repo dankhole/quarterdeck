@@ -35,6 +35,8 @@ const projectMetadataState: ProjectMetadataState = {
 	taskWorktreeStateVersionByTaskId: {},
 };
 
+const EMPTY_TASK_REPOSITORY_INFOS: Readonly<Record<string, RuntimeTaskRepositoryInfoResponse | null>> = {};
+
 let homeConflictState: RuntimeConflictState | null = null;
 const homeGitSummaryListeners = new Set<StoreListener>();
 const homeConflictStateListeners = new Set<StoreListener>();
@@ -537,6 +539,26 @@ export function subscribeToAnyTaskMetadata(listener: TaskMetadataListener): () =
 	return () => {
 		anyTaskMetadataListeners.delete(listener);
 	};
+}
+
+export function useTaskRepositoryInfosValue(
+	projectId: string | null,
+): Readonly<Record<string, RuntimeTaskRepositoryInfoResponse | null>> {
+	return useSyncExternalStore(
+		(listener) => {
+			const unsubscribe = subscribeToAnyTaskMetadata(listener);
+			scopeListeners.add(listener);
+			return () => {
+				unsubscribe();
+				scopeListeners.delete(listener);
+			};
+		},
+		() =>
+			projectId && projectMetadataState.projectId === projectId
+				? projectMetadataState.taskWorktreeInfoByTaskId
+				: EMPTY_TASK_REPOSITORY_INFOS,
+		() => EMPTY_TASK_REPOSITORY_INFOS,
+	);
 }
 
 export function useHomeGitSummaryValue(): RuntimeGitSyncSummary | null {

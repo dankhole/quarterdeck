@@ -1,10 +1,21 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { updateRuntimeConfig } from "../../src/config/runtime-config";
 import { lockedFileSystem } from "../../src/fs/locked-file-system";
+import { ProjectTaskLifecycleService } from "../../src/server/project-task-lifecycle-service";
+import { ProjectBoardCommandService } from "../../src/state/project-board-command-service";
 import { getRuntimeHomePath, loadProjectContext } from "../../src/state/project-state";
 import {
 	archiveTaskWorktreeForTrash,
@@ -13,8 +24,13 @@ import {
 } from "../../src/workdir";
 import * as gitUtils from "../../src/workdir/git-utils";
 import { finishTaskWorktreeSetup } from "../../src/workdir/task-worktree-setup";
+import {
+	completeTaskWorktreeTrashRestore,
+	restoreTaskWorktreeBranchFromTrash,
+} from "../../src/workdir/task-worktree-trash-branch";
 import { commitAll, initGitRepository, runGit } from "../utilities/git-env";
 import { captureTaskPatch } from "../utilities/legacy-task-worktree-patch";
+import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 async function withFixture(run: (repoPath: string) => Promise<void>): Promise<void> {
@@ -46,7 +62,41 @@ function recoveredFiles(): string[] {
 		.map((entry) => join(entry.parentPath, entry.name));
 }
 
+function branchMarkerPath(path: string): string {
+	return join(runGit(path, ["rev-parse", "--absolute-git-dir"]), "quarterdeck-trash-branch.json");
+}
+
+async function restoreRetained(repoPath: string, path: string, branch = "stale-card-branch") {
+	return await ensureTaskWorktreeIfDoesntExist({
+		cwd: repoPath,
+		taskId: "task",
+		baseRef: "main",
+		existingPath: path,
+		branch,
+		reattachFromTrash: true,
+	});
+}
+
 describe("Trash workspace recovery", { concurrent: false }, () => {
+	it("distinguishes an uncreated workspace from a missing registered workspace", async () => {
+		await withFixture(async (repoPath) => {
+			const uncreated = { repoPath, taskId: "uncreated" };
+			expect(await archiveTaskWorktreeForTrash(uncreated)).toMatchObject({ ok: true });
+			expect(await restoreTaskWorktreeBranchFromTrash(uncreated)).toBeUndefined();
+			await expect(completeTaskWorktreeTrashRestore(uncreated)).resolves.toBeUndefined();
+			const path = await createTask(repoPath, "retained-branch");
+			rmSync(path, { recursive: true });
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("registered task worktree is unavailable"),
+			});
+			expect(await restoreTaskWorktreeBranchFromTrash({ repoPath, taskId: "task" })).toContain("registration");
+			expect(runGit(repoPath, ["worktree", "list", "--porcelain", "-z"])).toContain(
+				"branch refs/heads/retained-branch\0",
+			);
+		});
+	});
+
 	it("retains detached commits, the index, untracked and ignored work until permanent deletion", async () => {
 		await withFixture(async (repoPath) => {
 			const path = await createTask(repoPath);
@@ -74,8 +124,11 @@ describe("Trash workspace recovery", { concurrent: false }, () => {
 				taskId: "task",
 				baseRef: "main",
 				existingPath: path,
+				branch: "main",
+				reattachFromTrash: true,
 			});
-			expect(restored).toMatchObject({ ok: true, path, baseCommit: commit });
+			expect(restored).toMatchObject({ ok: true, path, baseCommit: commit, branch: null });
+			expect(existsSync(branchMarkerPath(path))).toBe(false);
 			expect(runGit(path, ["show", ":tracked.txt"])).toBe("staged version");
 			expect(runGit(path, ["status", "--porcelain"])).toBe(status);
 			expect(readFileSync(join(path, "tracked.txt"), "utf8")).toBe("unstaged version\n");
@@ -86,6 +139,311 @@ describe("Trash workspace recovery", { concurrent: false }, () => {
 				removed: true,
 			});
 			expect(existsSync(path)).toBe(false);
+		});
+	});
+
+	it("releases the actual branch and restores its attachment without changing index bytes, files, or running hooks", async () => {
+		await withFixture(async (repoPath) => {
+			const branch = "actual-task-branch";
+			const path = await createTask(repoPath, branch);
+			writeFileSync(join(path, "committed.txt"), "task commit\n");
+			const commit = commitAll(path, "task work");
+			writeFileSync(join(path, "tracked.txt"), "staged work\n");
+			runGit(path, ["add", "tracked.txt"]);
+			writeFileSync(join(path, "tracked.txt"), "unstaged work\n");
+			writeFileSync(join(path, "untracked.txt"), "untracked work\n");
+			mkdirSync(join(path, ".gradle"));
+			writeFileSync(join(path, ".gradle", "ignored"), "ignored work\n");
+			const gitDir = runGit(path, ["rev-parse", "--absolute-git-dir"]);
+			const index = readFileSync(join(gitDir, "index"));
+			const status = runGit(path, ["--no-optional-locks", "status", "--porcelain"]);
+			const hooks = join(repoPath, ".git", "hooks");
+			for (const hook of ["post-checkout", "reference-transaction"]) {
+				writeFileSync(join(hooks, hook), "#!/bin/sh\necho hook > tracked.txt\ngit add tracked.txt\nexit 1\n", {
+					mode: 0o755,
+				});
+			}
+			const input = { repoPath, taskId: "task", existingPath: path };
+			expect(await archiveTaskWorktreeForTrash(input)).toEqual({ ok: true, removed: false });
+			const marker = readFileSync(branchMarkerPath(path), "utf8");
+			expect(JSON.parse(marker)).toMatchObject({ branchRef: `refs/heads/${branch}`, commit });
+			expect(runGit(path, ["branch", "--show-current"])).toBe("");
+			expect(runGit(repoPath, ["rev-parse", branch])).toBe(commit);
+			expect(await archiveTaskWorktreeForTrash(input)).toEqual({ ok: true, removed: false });
+			expect(readFileSync(branchMarkerPath(path), "utf8")).toBe(marker);
+			for (const hook of ["post-checkout", "reference-transaction"]) unlinkSync(join(hooks, hook));
+			// Git itself now admits the formerly reserved branch in another checkout.
+			runGit(repoPath, ["checkout", branch]);
+			runGit(repoPath, ["checkout", "main"]);
+			for (const hook of ["post-checkout", "reference-transaction"]) {
+				writeFileSync(join(hooks, hook), "#!/bin/sh\necho hook > tracked.txt\ngit add tracked.txt\nexit 1\n", {
+					mode: 0o755,
+				});
+			}
+			// Ordinary Start cannot consume the origin or attach HEAD.
+			expect(
+				await ensureTaskWorktreeIfDoesntExist({
+					cwd: repoPath,
+					taskId: "task",
+					baseRef: "main",
+					branch,
+					existingPath: path,
+				}),
+			).toMatchObject({ branch: null });
+			expect(await restoreRetained(repoPath, path)).toMatchObject({
+				ok: true,
+				path,
+				branch,
+				baseCommit: commit,
+				warning: undefined,
+			});
+			expect(readFileSync(join(gitDir, "index"))).toEqual(index);
+			expect(runGit(path, ["--no-optional-locks", "status", "--porcelain"])).toBe(status);
+			expect(readFileSync(join(path, "tracked.txt"), "utf8")).toBe("unstaged work\n");
+			expect(readFileSync(join(path, "untracked.txt"), "utf8")).toBe("untracked work\n");
+			expect(readFileSync(join(path, ".gradle", "ignored"), "utf8")).toBe("ignored work\n");
+			// Lost restore response reuses an attachment, then completion consumes origin.
+			expect(await restoreRetained(repoPath, path)).toMatchObject({ ok: true, branch, warning: undefined });
+			await completeTaskWorktreeTrashRestore({ repoPath, taskId: "task", existingPath: path });
+			expect(existsSync(branchMarkerPath(path))).toBe(false);
+		});
+	});
+
+	it.each(["occupied", "moved", "deleted", "checkout changed"] as const)(
+		"keeps the checkout detached when its original branch cannot be restored: %s",
+		async (reason) => {
+			await withFixture(async (repoPath) => {
+				const branch = "task-branch";
+				const path = await createTask(repoPath, branch);
+				const saved = runGit(path, ["rev-parse", "HEAD"]);
+				expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({ ok: true });
+				if (reason === "occupied") runGit(repoPath, ["checkout", branch]);
+				if (reason === "deleted") runGit(repoPath, ["branch", "-D", branch]);
+				if (reason === "moved" || reason === "checkout changed") {
+					writeFileSync(join(repoPath, "advance.txt"), "advanced\n");
+					const advanced = commitAll(repoPath, "advance main");
+					runGit(reason === "moved" ? repoPath : path, [
+						"update-ref",
+						"--no-deref",
+						reason === "moved" ? `refs/heads/${branch}` : "HEAD",
+						advanced,
+					]);
+				}
+				const head = runGit(path, ["rev-parse", "HEAD"]);
+				const restored = await restoreRetained(repoPath, path, branch);
+				expect(restored).toMatchObject({
+					ok: true,
+					branch: null,
+					baseCommit: head,
+					warning: expect.stringContaining("could not be reattached"),
+				});
+				expect(runGit(path, ["rev-parse", "HEAD"])).toBe(head);
+				if (reason !== "moved" && reason !== "deleted") expect(runGit(repoPath, ["rev-parse", branch])).toBe(saved);
+				await completeTaskWorktreeTrashRestore({ repoPath, taskId: "task", existingPath: path });
+				expect(existsSync(branchMarkerPath(path))).toBe(false);
+			});
+		},
+	);
+
+	it.each([
+		"rebase-merge",
+		"rebase-apply",
+		"MERGE_HEAD",
+		"sequencer",
+		"CHERRY_PICK_HEAD",
+		"REVERT_HEAD",
+		"BISECT_START",
+		"index.lock",
+	])("preserves Git operation state during Trash and Restore: %s", async (operation) => {
+		await withFixture(async (repoPath) => {
+			const branch = "task-branch";
+			const path = await createTask(repoPath, branch);
+			const operationPath = join(runGit(path, ["rev-parse", "--absolute-git-dir"]), operation);
+			writeFileSync(operationPath, "operation state\n");
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("Git operation is in progress"),
+			});
+			expect(runGit(path, ["symbolic-ref", "HEAD"])).toBe(`refs/heads/${branch}`);
+			expect(existsSync(branchMarkerPath(path))).toBe(false);
+			expect(readFileSync(operationPath, "utf8")).toBe("operation state\n");
+			unlinkSync(operationPath);
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({ ok: true });
+			writeFileSync(operationPath, "operation state\n");
+			expect(await restoreRetained(repoPath, path)).toMatchObject({
+				ok: true,
+				branch: null,
+				warning: expect.stringContaining("Git operation is in progress"),
+			});
+			expect(readFileSync(operationPath, "utf8")).toBe("operation state\n");
+		});
+	});
+
+	it("replays detach intent after interruption and rejects missing or mismatched workspace ownership", async () => {
+		await withFixture(async (repoPath) => {
+			const branch = "task-branch";
+			const path = await createTask(repoPath, branch);
+			const original = gitUtils.runGit;
+			const spy = vi.spyOn(gitUtils, "runGit").mockImplementation(async (cwd, args, options) => {
+				if (args.includes("update-ref")) throw new Error("interrupted before detach");
+				return original(cwd, args, options);
+			});
+			try {
+				expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({ ok: false });
+			} finally {
+				spy.mockRestore();
+			}
+			const marker = readFileSync(branchMarkerPath(path), "utf8");
+			expect(runGit(path, ["branch", "--show-current"])).toBe(branch);
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({ ok: true });
+			expect(readFileSync(branchMarkerPath(path), "utf8")).toBe(marker);
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task", existingPath: repoPath })).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("outside its managed folder"),
+			});
+			const other = await ensureTaskWorktreeIfDoesntExist({
+				cwd: repoPath,
+				taskId: "other",
+				branch: "other-branch",
+				baseRef: "main",
+			});
+			if (!other.ok) throw new Error(other.error);
+			writeFileSync(join(path, ".git"), readFileSync(join(other.path, ".git")));
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("registration"),
+			});
+			expect(runGit(other.path, ["branch", "--show-current"])).toBe("other-branch");
+		});
+	});
+
+	it.each(["rebase", "bisect"] as const)(
+		"honors another detached worktree's native %s branch reservation",
+		async (operation) => {
+			await withFixture(async (repoPath) => {
+				const branch = "task-branch";
+				const path = await createTask(repoPath, branch);
+				const initial = runGit(path, ["rev-parse", "HEAD"]);
+				writeFileSync(join(path, "tracked.txt"), "task change\n");
+				commitAll(path, "task change");
+				writeFileSync(join(path, "task.txt"), "another commit\n");
+				const saved = commitAll(path, "second task change");
+				expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({ ok: true });
+				writeFileSync(join(repoPath, "tracked.txt"), "conflicting main change\n");
+				commitAll(repoPath, "main change");
+				const other = join(repoPath, "other-checkout");
+				runGit(repoPath, ["worktree", "add", other, branch]);
+				if (operation === "rebase") {
+					expect((await gitUtils.runGit(other, ["rebase", "main"])).ok).toBe(false);
+				} else runGit(other, ["bisect", "start", saved, initial]);
+				expect(runGit(other, ["branch", "--show-current"])).toBe("");
+				// Native display alone misses this branch reservation on Git 2.52.
+				expect(runGit(repoPath, ["for-each-ref", "--format=%(worktreepath)", `refs/heads/${branch}`])).toBe("");
+				expect(await restoreRetained(repoPath, path)).toMatchObject({
+					ok: true,
+					branch: null,
+					warning: expect.stringContaining("reserved by another worktree"),
+				});
+				expect(runGit(path, ["rev-parse", "HEAD"])).toBe(saved);
+			});
+		},
+	);
+
+	it("keeps the checkout detached if Git does not support safe symbolic-ref transactions", async () => {
+		await withFixture(async (repoPath) => {
+			const path = await createTask(repoPath, "task-branch");
+			expect(await archiveTaskWorktreeForTrash({ repoPath, taskId: "task" })).toMatchObject({ ok: true });
+			const original = gitUtils.runGit;
+			const spy = vi.spyOn(gitUtils, "runGit").mockImplementation(async (cwd, args, options) => {
+				if (options?.stdin?.includes("symref-update"))
+					return original(cwd, args, { ...options, stdin: "unsupported-symref-update\n" });
+				return original(cwd, args, options);
+			});
+			try {
+				expect(await restoreRetained(repoPath, path)).toMatchObject({
+					ok: true,
+					branch: null,
+					warning: expect.stringContaining("Git could not safely reattach"),
+				});
+			} finally {
+				spy.mockRestore();
+			}
+		});
+	});
+
+	it("consumes branch origin after lifecycle Restore when the card has no persisted workspace path", async () => {
+		await withFixture(async (repoPath) => {
+			const branch = "actual-branch";
+			const path = await createTask(repoPath, branch);
+			const { projectId } = await loadProjectContext(repoPath);
+			const scope = { projectId, projectPath: repoPath };
+			const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+			const seeded = await boardCommands.execute(scope, {
+				commandId: "seed-pathless-card",
+				expectedRevision: 0,
+				command: {
+					kind: "create_task",
+					taskId: "task",
+					createdAt: 100,
+					title: null,
+					prompt: "Retained workspace",
+					agentId: "codex",
+					baseRef: "main",
+					useWorktree: true,
+					branch: "stale-card-branch",
+					columnId: "in_progress",
+				},
+			});
+			const lifecycle = new ProjectTaskLifecycleService({
+				boardCommands,
+				startTaskSession: async (_scope, request) => ({
+					ok: true,
+					summary: createTestTaskSessionSummary({
+						taskId: "task",
+						state: "awaiting_review",
+						startedAt: 300,
+						launchOperationId: request.launchOperationId,
+					}),
+				}),
+			});
+			const trashed = await lifecycle.execute(scope, {
+				kind: "trash",
+				operationId: "trash-pathless",
+				taskId: "task",
+				taskCreatedAt: 100,
+				sourceColumnId: "in_progress",
+				expectedRevision: seeded.state.revision,
+			});
+			expect(trashed.ok).toBe(true);
+			expect(existsSync(branchMarkerPath(path))).toBe(true);
+			const restored = await lifecycle.execute(scope, {
+				kind: "restore",
+				operationId: "restore-pathless",
+				taskId: "task",
+				taskCreatedAt: 100,
+				expectedRevision: trashed.state.revision,
+			});
+			expect(restored.ok).toBe(true);
+			expect(restored.warning).toBeUndefined();
+			expect(runGit(path, ["branch", "--show-current"])).toBe(branch);
+			expect(existsSync(branchMarkerPath(path))).toBe(false);
+			writeFileSync(join(path, "new-work.txt"), "new work after restore\n");
+			const commit = commitAll(path, "new work");
+			const trashedAgain = await lifecycle.execute(scope, {
+				kind: "trash",
+				operationId: "trash-again-pathless",
+				taskId: "task",
+				taskCreatedAt: 100,
+				sourceColumnId: "review",
+				expectedRevision: restored.state.revision,
+			});
+			expect(trashedAgain.ok).toBe(true);
+			expect(trashedAgain.warning).toBeUndefined();
+			expect(runGit(path, ["branch", "--show-current"])).toBe("");
+			expect(JSON.parse(readFileSync(branchMarkerPath(path), "utf8"))).toMatchObject({
+				branchRef: `refs/heads/${branch}`,
+				commit,
+			});
 		});
 	});
 

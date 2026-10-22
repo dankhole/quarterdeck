@@ -1,4 +1,4 @@
-import { parseShellSessionStartRequest } from "../../core";
+import { parseShellSessionStartRequest, type TaskResourceOperationRunner } from "../../core";
 import type { TerminalSessionManager } from "../../terminal";
 import { resolveTaskWorkingDirectory } from "../../workdir";
 import type { RuntimeTrpcProjectScope } from "../app-router-context";
@@ -6,6 +6,7 @@ import type { RuntimeTrpcProjectScope } from "../app-router-context";
 export interface StartShellSessionDeps {
 	getScopedTerminalManager: (scope: RuntimeTrpcProjectScope) => Promise<TerminalSessionManager>;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
+	taskResourceOperations: TaskResourceOperationRunner;
 }
 
 export async function handleStartShellSession(
@@ -15,30 +16,31 @@ export async function handleStartShellSession(
 ) {
 	try {
 		const body = parseShellSessionStartRequest(input);
-		const terminalManager = await deps.getScopedTerminalManager(projectScope);
-		const shell = deps.resolveInteractiveShellCommand();
-		let shellCwd = projectScope.projectPath;
-		if (body.projectTaskId) {
-			shellCwd = await resolveTaskWorkingDirectory({
-				projectPath: projectScope.projectPath,
-				taskId: body.projectTaskId,
-				baseRef: body.baseRef,
-				ensure: true,
+		const startShell = async () => {
+			const terminalManager = await deps.getScopedTerminalManager(projectScope);
+			const shell = deps.resolveInteractiveShellCommand();
+			let shellCwd = projectScope.projectPath;
+			if (body.projectTaskId) {
+				shellCwd = await resolveTaskWorkingDirectory({
+					projectPath: projectScope.projectPath,
+					taskId: body.projectTaskId,
+					baseRef: body.baseRef,
+					ensure: true,
+				});
+			}
+			const summary = await terminalManager.startShellSession({
+				taskId: body.taskId,
+				cwd: shellCwd,
+				cols: body.cols,
+				rows: body.rows,
+				binary: shell.binary,
+				args: shell.args,
 			});
-		}
-		const summary = await terminalManager.startShellSession({
-			taskId: body.taskId,
-			cwd: shellCwd,
-			cols: body.cols,
-			rows: body.rows,
-			binary: shell.binary,
-			args: shell.args,
-		});
-		return {
-			ok: true,
-			summary,
-			shellBinary: shell.binary,
+			return { ok: true, summary, shellBinary: shell.binary };
 		};
+		return body.projectTaskId
+			? await deps.taskResourceOperations.run(projectScope.projectId, body.projectTaskId, startShell)
+			: await startShell();
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {

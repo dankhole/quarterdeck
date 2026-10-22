@@ -21,6 +21,10 @@ import {
 import { getProjectLifecycleOperationsPath } from "../../src/state/project-state-utils";
 import type * as TaskWorktreeLifecycle from "../../src/workdir/task-worktree-lifecycle";
 import { archiveTaskWorktreeForTrash } from "../../src/workdir/task-worktree-lifecycle";
+import {
+	completeTaskWorktreeTrashRestore,
+	restoreTaskWorktreeBranchFromTrash,
+} from "../../src/workdir/task-worktree-trash-branch";
 import { initGitRepository } from "../utilities/git-env";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
@@ -42,6 +46,11 @@ vi.mock("../../src/workdir/task-worktree-lifecycle", async (importOriginal) => (
 		baseCommit: "abc123",
 		branch: options.branch ?? null,
 	}),
+}));
+
+vi.mock("../../src/workdir/task-worktree-trash-branch", () => ({
+	completeTaskWorktreeTrashRestore: vi.fn(async () => {}),
+	restoreTaskWorktreeBranchFromTrash: vi.fn(async () => undefined),
 }));
 
 const TASK_SPEC = {
@@ -85,6 +94,8 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 describe("ProjectTaskLifecycleService integration", { concurrent: false }, () => {
 	beforeEach(() => {
 		vi.mocked(archiveTaskWorktreeForTrash).mockClear();
+		vi.mocked(completeTaskWorktreeTrashRestore).mockClear();
+		vi.mocked(restoreTaskWorktreeBranchFromTrash).mockClear();
 	});
 
 	it("keeps converted tasks through trash and restore without creating or deleting Git worktrees", async () => {
@@ -226,6 +237,10 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					sourceColumnId: "in_progress",
 					expectedRevision: created.state.revision,
 				};
+				vi.mocked(archiveTaskWorktreeForTrash).mockImplementationOnce(async () => {
+					expect(stopTaskSession).toHaveBeenCalledTimes(2);
+					return { ok: true, removed: false };
+				});
 				const trashed = await lifecycle.execute(scope, trashCommand);
 				const replayed = await lifecycle.execute(scope, trashCommand);
 
@@ -260,6 +275,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 					expect.objectContaining({
 						existingPath: worktreePath,
 						restoreFromTrash: false,
+						reattachFromTrash: true,
 					}),
 				);
 				expect(startTaskSession).toHaveBeenCalledWith(
@@ -276,7 +292,12 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 				});
 				expect(findCardInBoard(restored.state.board, TASK_SPEC.taskId)?.workingDirectory).toBe(worktreePath);
 				expect(readFileSync(join(worktreePath, "retained.txt"), "utf8")).toBe("Complete task workspace\n");
-				expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+				expect(archiveTaskWorktreeForTrash).toHaveBeenCalledTimes(1);
+				expect(completeTaskWorktreeTrashRestore).toHaveBeenCalledWith({
+					repoPath: fixture.path,
+					taskId: TASK_SPEC.taskId,
+					existingPath: worktreePath,
+				});
 				expect(purgeTaskWorkspace).not.toHaveBeenCalled();
 			} finally {
 				fixture.cleanup();
@@ -348,72 +369,269 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 		});
 	});
 
-	it("keeps unstarted Review tasks distinct through stop, restart, Trash, restore, and Start", async () => {
+	it("surfaces branch release and restore warnings without losing the task or blocking resume", async () => {
 		await withTemporaryHome(async () => {
-			const { path: projectPath, cleanup } = createTempDir("quarterdeck-unstarted-");
+			const fixture = createTempDir("quarterdeck-trash-branch-warning-");
 			try {
-				initGitRepository(projectPath);
-				const context = await loadProjectContext(projectPath);
-				const scope = { projectId: context.projectId, projectPath };
+				initGitRepository(fixture.path);
+				const { projectId } = await loadProjectContext(fixture.path);
+				const scope = { projectId, projectPath: fixture.path };
 				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
-				const created = await boardCommands.execute(scope, {
-					commandId: "create-unstarted",
+				const seeded = await boardCommands.execute(scope, {
+					commandId: "seed-warning",
 					expectedRevision: 0,
-					command: { ...TASK_SPEC, useWorktree: false, kind: "create_task", columnId: "review" },
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "in_progress" },
 				});
-				const startTaskSession = vi.fn(async () => ({
-					ok: true,
-					summary: createTestTaskSessionSummary({ taskId: TASK_SPEC.taskId, state: "running" }),
+				const stopTaskSession = vi.fn(async () => ({
+					summary: null,
+					requestedSessionInstanceId: null,
+					didExit: true,
+					outcome: "not_running" as const,
 				}));
-				const restartStructuredTaskSession = vi.fn();
+				const archiveTaskWorktree = vi.fn(async () => ({
+					ok: false,
+					removed: false,
+					error: "A Git operation is in progress.",
+				}));
 				const lifecycle = new ProjectTaskLifecycleService({
 					boardCommands,
-					startTaskSession,
-					restartStructuredTaskSession,
+					stopTaskSession,
+					archiveTaskWorktree,
+					ensureTaskWorktree: async () => ({
+						ok: true as const,
+						path: "retained-workspace",
+						baseRef: "main",
+						baseCommit: "abc123",
+						branch: null,
+						warning: "The original branch is occupied. Continue detached.",
+					}),
+					startTaskSession: async () => ({
+						ok: true,
+						summary: createTestTaskSessionSummary({
+							taskId: TASK_SPEC.taskId,
+							state: "awaiting_review",
+							startedAt: 300,
+						}),
+					}),
 				});
-				const identity = { taskId: TASK_SPEC.taskId, taskCreatedAt: TASK_SPEC.createdAt };
-				for (const kind of ["stop", "restart"] as const) {
-					const result = await lifecycle.execute(scope, {
-						...identity,
-						kind,
-						operationId: kind,
-						expectedRevision: created.state.revision,
-					});
-					expect(result.operation.outcomeCode).toBe("invalid_transition");
-				}
-				expect(restartStructuredTaskSession).not.toHaveBeenCalled();
 				const trashed = await lifecycle.execute(scope, {
-					...identity,
 					kind: "trash",
-					operationId: "trash-unstarted",
-					sourceColumnId: "review",
-					expectedRevision: created.state.revision,
+					operationId: "trash-warning",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					sourceColumnId: "in_progress",
+					expectedRevision: seeded.state.revision,
 				});
-				expect(trashed.ok).toBe(true);
+				expect(trashed).toMatchObject({
+					ok: true,
+					operation: { outcomeCode: "completed_with_warning" },
+					warning: expect.stringContaining("branch could not be released"),
+				});
+				expect(getTaskColumnId(trashed.state.board, TASK_SPEC.taskId)).toBe("trash");
+				expect(archiveTaskWorktree).toHaveBeenCalledWith({
+					repoPath: fixture.path,
+					taskId: TASK_SPEC.taskId,
+					existingPath: undefined,
+					operationId: "trash-warning",
+				});
 				const restored = await lifecycle.execute(scope, {
-					...identity,
 					kind: "restore",
-					operationId: "restore-unstarted",
+					operationId: "restore-warning",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
 					expectedRevision: trashed.state.revision,
 				});
-				expect(restored.ok).toBe(true);
-				expect(findCardInBoard(restored.state.board, TASK_SPEC.taskId)?.unstarted).toBe(true);
-				expect(getTaskColumnId(restored.state.board, TASK_SPEC.taskId)).toBe("review");
-				expect(startTaskSession).not.toHaveBeenCalled();
-				const started = await lifecycle.execute(scope, {
-					...identity,
-					kind: "start",
-					operationId: "start-unstarted",
-					expectedRevision: restored.state.revision,
+				expect(restored).toMatchObject({
+					ok: true,
+					operation: { outcomeCode: "completed_with_warning" },
+					warning: expect.stringContaining("Continue detached"),
 				});
-				expect(started.ok).toBe(true);
-				expect(findCardInBoard(started.state.board, TASK_SPEC.taskId)?.unstarted).not.toBe(true);
-				expect(startTaskSession).toHaveBeenCalledOnce();
+				expect(completeTaskWorktreeTrashRestore).toHaveBeenCalledWith(
+					expect.objectContaining({ taskId: TASK_SPEC.taskId, existingPath: undefined }),
+				);
 			} finally {
-				cleanup();
+				fixture.cleanup();
 			}
 		});
 	});
+
+	it.each([
+		"launch failed",
+		"compensation stop failed",
+		"restore guard failed",
+		"restore detail shell failed",
+	] as const)("preserves branch ownership when restore cannot complete: %s", async (failure) => {
+		await withTemporaryHome(async () => {
+			const fixture = createTempDir("quarterdeck-restore-branch-compensation-");
+			try {
+				initGitRepository(fixture.path);
+				const { projectId } = await loadProjectContext(fixture.path);
+				const scope = { projectId, projectPath: fixture.path };
+				const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				const seeded = await boardCommands.execute(scope, {
+					commandId: "seed-compensation",
+					expectedRevision: 0,
+					command: { ...TASK_SPEC, kind: "create_task", columnId: "trash" },
+				});
+				let attached = false;
+				let stopCalls = 0;
+				const stopTaskSession = vi.fn(async (_scope, taskId: string) => {
+					stopCalls++;
+					const failed =
+						(failure === "restore detail shell failed" &&
+							taskId === getRuntimeDetailTerminalTaskId(TASK_SPEC.taskId)) ||
+						(failure === "compensation stop failed" && stopCalls === 3);
+					return {
+						summary: null,
+						requestedSessionInstanceId: null,
+						didExit: !failed,
+						outcome: failed ? ("failed" as const) : ("not_running" as const),
+						...(failed ? { error: "Stop failed." } : {}),
+					};
+				});
+				const ensureTaskWorktree = vi.fn(async () => {
+					expect(stopCalls).toBe(2);
+					attached = true;
+					return {
+						ok: true as const,
+						path: "retained-workspace",
+						baseRef: "main",
+						baseCommit: "abc123",
+						branch: TASK_SPEC.branch,
+					};
+				});
+				const archiveTaskWorktree = vi.fn(async () => {
+					expect(stopCalls).toBe(4);
+					attached = false;
+					return { ok: true, removed: false };
+				});
+				const lifecycle = new ProjectTaskLifecycleService({
+					boardCommands,
+					stopTaskSession,
+					ensureTaskWorktree,
+					archiveTaskWorktree,
+					runStoppedTaskWorktreeOperation: async (_scope, _taskId, action) => {
+						if (failure === "restore guard failed") throw new Error("Concurrent session became active.");
+						return await action();
+					},
+					startTaskSession: async () => ({ ok: false, summary: null, error: "Provider launch failed." }),
+				});
+				const result = await lifecycle.execute(scope, {
+					kind: "restore",
+					operationId: "restore-compensation",
+					taskId: TASK_SPEC.taskId,
+					taskCreatedAt: TASK_SPEC.createdAt,
+					expectedRevision: seeded.state.revision,
+				});
+				expect(result.ok).toBe(false);
+				expect(getTaskColumnId(result.state.board, TASK_SPEC.taskId)).toBe("trash");
+				expect(completeTaskWorktreeTrashRestore).not.toHaveBeenCalled();
+				if (failure === "launch failed") {
+					expect(archiveTaskWorktree).toHaveBeenCalledTimes(1);
+					expect(attached).toBe(false);
+				} else {
+					expect(archiveTaskWorktree).not.toHaveBeenCalled();
+					if (failure === "compensation stop failed") {
+						expect(attached).toBe(true);
+						expect(result.warning).toContain("session could not be stopped");
+					} else {
+						expect(ensureTaskWorktree).not.toHaveBeenCalled();
+						expect(attached).toBe(false);
+					}
+				}
+			} finally {
+				fixture.cleanup();
+			}
+		});
+	});
+
+	it.each([false, true])(
+		"keeps unstarted Review tasks distinct through stop, restart, Trash, restore, and Start (worktree %s)",
+		async (useWorktree) => {
+			await withTemporaryHome(async () => {
+				const { path: projectPath, cleanup } = createTempDir("quarterdeck-unstarted-");
+				try {
+					initGitRepository(projectPath);
+					const context = await loadProjectContext(projectPath);
+					const scope = { projectId: context.projectId, projectPath };
+					const boardCommands = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+					const created = await boardCommands.execute(scope, {
+						commandId: "create-unstarted",
+						expectedRevision: 0,
+						command: { ...TASK_SPEC, useWorktree, kind: "create_task", columnId: "review" },
+					});
+					const startTaskSession = vi.fn(async () => ({
+						ok: true,
+						summary: createTestTaskSessionSummary({ taskId: TASK_SPEC.taskId, state: "running" }),
+					}));
+					const restartStructuredTaskSession = vi.fn();
+					const ensureTaskWorktree = vi.fn(async () => ({
+						ok: true as const,
+						path: join(projectPath, "task-a"),
+						baseRef: "main",
+						baseCommit: "abc123",
+					}));
+					const lifecycle = new ProjectTaskLifecycleService({
+						boardCommands,
+						startTaskSession,
+						restartStructuredTaskSession,
+						ensureTaskWorktree,
+					});
+					const identity = { taskId: TASK_SPEC.taskId, taskCreatedAt: TASK_SPEC.createdAt };
+					for (const kind of ["stop", "restart"] as const) {
+						const result = await lifecycle.execute(scope, {
+							...identity,
+							kind,
+							operationId: kind,
+							expectedRevision: created.state.revision,
+						});
+						expect(result.operation.outcomeCode).toBe("invalid_transition");
+					}
+					expect(restartStructuredTaskSession).not.toHaveBeenCalled();
+					const trashed = await lifecycle.execute(scope, {
+						...identity,
+						kind: "trash",
+						operationId: "trash-unstarted",
+						sourceColumnId: "review",
+						expectedRevision: created.state.revision,
+					});
+					expect(trashed.ok).toBe(true);
+					const restored = await lifecycle.execute(scope, {
+						...identity,
+						kind: "restore",
+						operationId: "restore-unstarted",
+						expectedRevision: trashed.state.revision,
+					});
+					expect(restored.ok).toBe(true);
+					expect(findCardInBoard(restored.state.board, TASK_SPEC.taskId)?.unstarted).toBe(true);
+					expect(getTaskColumnId(restored.state.board, TASK_SPEC.taskId)).toBe("review");
+					expect(startTaskSession).not.toHaveBeenCalled();
+					expect(ensureTaskWorktree).not.toHaveBeenCalled();
+					if (useWorktree) {
+						expect(restoreTaskWorktreeBranchFromTrash).toHaveBeenCalledWith({
+							repoPath: projectPath,
+							taskId: TASK_SPEC.taskId,
+							existingPath: undefined,
+						});
+						expect(completeTaskWorktreeTrashRestore).toHaveBeenCalledOnce();
+					} else {
+						expect(restoreTaskWorktreeBranchFromTrash).not.toHaveBeenCalled();
+					}
+					const started = await lifecycle.execute(scope, {
+						...identity,
+						kind: "start",
+						operationId: "start-unstarted",
+						expectedRevision: restored.state.revision,
+					});
+					expect(started.ok).toBe(true);
+					expect(findCardInBoard(started.state.board, TASK_SPEC.taskId)?.unstarted).not.toBe(true);
+					expect(startTaskSession).toHaveBeenCalledOnce();
+				} finally {
+					cleanup();
+				}
+			});
+		},
+	);
 
 	it("publishes setup progress, prevents launch on failure, and permits a new explicit Start to retry", async () => {
 		await withTemporaryHome(async () => {
@@ -1365,7 +1583,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 	);
 
 	it.each(["board_transition", "archiving_worktree"] as const)(
-		"replays a committed Trash move from %s without archiving or purging its workspace",
+		"replays branch release after a committed Trash move from %s without purging its workspace",
 		async (phase) => {
 			await withTemporaryHome(async () => {
 				const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-task-trash-recovery-");
@@ -1449,7 +1667,7 @@ describe("ProjectTaskLifecycleService integration", { concurrent: false }, () =>
 						findCardInBoard(recovered?.state.board ?? initial.board, TASK_SPEC.taskId)?.workingDirectory,
 					).toBe(worktreePath);
 					expect(readFileSync(join(worktreePath, "retained.txt"), "utf8")).toBe("Recoverable task workspace\n");
-					expect(archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+					expect(archiveTaskWorktreeForTrash).toHaveBeenCalledTimes(1);
 					expect(purgeTaskWorkspace).not.toHaveBeenCalled();
 				} finally {
 					cleanup();

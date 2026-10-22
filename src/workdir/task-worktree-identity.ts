@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { areFileSystemPathsEqual } from "../core";
 import { isNodeError } from "../fs/node-error";
+import { getGitStdout } from "./git-utils";
 
 /** Stable across directory aliases and deletion of the checkout or its parent folders. */
 export async function getTaskWorktreePathKey(worktreePath: string): Promise<string> {
@@ -21,6 +22,18 @@ export async function getTaskWorktreePathKey(worktreePath: string): Promise<stri
 			existingPath = parent;
 		}
 	}
+}
+
+/** Fresh Git registration lookup, preserving path whitespace and physical aliases. */
+export async function isGitWorktreePathRegistered(repoPath: string, worktreePath: string): Promise<boolean> {
+	const key = await getTaskWorktreePathKey(worktreePath);
+	const entries = (
+		await getGitStdout(["worktree", "list", "--porcelain", "-z"], repoPath, { trimStdout: false })
+	).split("\0");
+	for (const entry of entries) {
+		if (entry.startsWith("worktree ") && (await getTaskWorktreePathKey(entry.slice(9))) === key) return true;
+	}
+	return false;
 }
 
 export class TaskWorktreeRegistrationError extends Error {

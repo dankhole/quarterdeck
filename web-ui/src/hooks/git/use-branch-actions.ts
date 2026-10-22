@@ -17,6 +17,7 @@ import {
 import type { BoardData } from "@/types";
 import { useLoadingGuard } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
+import { useWorktreeBranches } from "./use-worktree-branches";
 
 interface UseBranchActionsOptions {
 	projectId: string | null;
@@ -151,18 +152,7 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		return homeGitSummary?.currentBranch ?? null;
 	}, [taskId, taskBranch, homeGitSummary]);
 
-	// Derive worktree branches — map of branch name to task title
-	const worktreeBranches = useMemo(() => {
-		const map = new Map<string, string>();
-		for (const column of board.columns.filter((c) => c.id !== "trash")) {
-			for (const card of column.cards) {
-				if (card.branch && card.useWorktree !== false) {
-					map.set(card.branch, card.title ?? card.id);
-				}
-			}
-		}
-		return map;
-	}, [board]);
+	const worktreeBranches = useWorktreeBranches(projectId, board);
 
 	const handleSelectBranchView = useCallback(
 		(ref: string) => {

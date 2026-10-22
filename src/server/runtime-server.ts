@@ -18,6 +18,7 @@ import {
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimeOrigin,
 	getQuarterdeckRuntimePort,
+	getRuntimeDetailTerminalTaskId,
 	KeyedOperationCoordinator,
 	normalizeDiagnosticErrorClass,
 	QUARTERDECK_BUILD_ID,
@@ -536,6 +537,19 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		startupPreparation.push(disposeAutomaticTitleListener);
 		const taskLifecycle = new ProjectTaskLifecycleService({
 			boardCommands: deps.boardCommands,
+			runStoppedTaskWorktreeOperation: async (scope, taskId, operation) =>
+				await taskResourceOperations.run(scope.projectId, taskId, async () => {
+					const manager = await getScopedTerminalManager(scope);
+					if (
+						manager.hasTaskSessionLifecycleActivity(taskId) ||
+						manager.hasTaskSessionLifecycleActivity(getRuntimeDetailTerminalTaskId(taskId))
+					) {
+						throw new Error(
+							"Task branch maintenance was skipped because a task or detail-shell session is active.",
+						);
+					}
+					return await operation();
+				}),
 			startTaskSession: async (scope, input) =>
 				await handleStartTaskSession(scope, input, {
 					runProjectOperation,

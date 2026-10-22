@@ -66,6 +66,8 @@ function boundedGitErrorCode(code: unknown): GitCommandErrorCode | null {
 
 export interface RunGitOptions {
 	trimStdout?: boolean;
+	/** Input for Git's transactional plumbing; never interpreted by a shell. */
+	stdin?: string;
 	env?: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 	timeoutClass?: GitCommandTimeoutClass;
@@ -124,6 +126,7 @@ function executeGitCommand(
 	args: string[],
 	env: NodeJS.ProcessEnv,
 	timeoutMs: number,
+	stdin?: string,
 ): Promise<GitCommandOutput> {
 	return new Promise((resolveCommand, rejectCommand) => {
 		let timedOut = false;
@@ -170,6 +173,9 @@ function executeGitCommand(
 				resolveCommand({ stdout: normalizedStdout, stderr: normalizedStderr });
 			},
 		);
+		// A failed/unsupported command can close its pipe before consuming input.
+		child.stdin?.on("error", () => {});
+		child.stdin?.end(stdin);
 
 		timeout = setTimeout(() => {
 			timedOut = true;
@@ -220,7 +226,7 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 	try {
 		const fullArgs = buildGitCommandArgs(args);
 		const env = options.env || createGitProcessEnv();
-		const execute = () => executeGitCommand(cwd, fullArgs, env, resolveGitTimeoutMs(options));
+		const execute = () => executeGitCommand(cwd, fullArgs, env, resolveGitTimeoutMs(options), options.stdin);
 		const remotePrefix = remoteGitCommandPrefix(args);
 		// Fetch, pull and push update remote refs shared across linked worktrees.
 		// Admit one remote process per canonical common directory; inspections

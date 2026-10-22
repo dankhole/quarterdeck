@@ -59,6 +59,7 @@ vi.mock("@/runtime/use-runtime-project-changes", () => ({
 vi.mock("@/stores/project-metadata-store", () => ({
 	useTaskWorktreeStateVersionValue: () => 0,
 	useTaskRepositoryInfoValue: () => null,
+	useTaskRepositoryInfosValue: () => ({}),
 	useTaskWorktreeInfoValue: () => null,
 	useTaskWorktreeSnapshotValue: () => null,
 	useHomeGitSummaryValue: () => null,

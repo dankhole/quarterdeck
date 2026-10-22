@@ -126,11 +126,13 @@ vi.mock("../../../src/workdir/read-workdir-file.js", () => ({
 }));
 
 import {
+	getRuntimeDetailTerminalTaskId,
 	type RuntimeBoardCard,
 	type RuntimeTaskSessionSummary,
 	TaskResourceOperationCoordinator,
 } from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
+import { handleStartShellSession } from "../../../src/trpc/handlers/start-shell-session";
 import {
 	createTestTaskNativeWorkEvidence,
 	createTestTaskOutstandingInteraction,
@@ -163,6 +165,14 @@ const defaultScope = {
 	projectId: "project-1",
 	projectPath: "/tmp/repo",
 };
+
+function deferred() {
+	let resolve!: () => void;
+	const promise = new Promise<void>((complete) => {
+		resolve = complete;
+	});
+	return { promise, resolve };
+}
 
 describe("createProjectApi runGitSyncAction", () => {
 	const defaultSummary = {
@@ -640,27 +650,30 @@ describe("createProjectApi deleteWorktree", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("refuses to delete a worktree while its task session lifecycle is active", async () => {
-		const hasTaskSessionLifecycleActivity = vi.fn(() => true);
-		const api = createProjectApi(
-			createProjectDeps({
-				terminals: {
-					getTerminalManagerForProject: vi.fn(() => ({ hasTaskSessionLifecycleActivity })),
-					ensureTerminalManagerForProject: vi.fn(async () => ({}) as never),
-				},
-			}),
-		);
+	it.each(["task-1", getRuntimeDetailTerminalTaskId("task-1")])(
+		"refuses branch release while a task or detail shell has lifecycle activity: %s",
+		async (activeTaskId) => {
+			const hasTaskSessionLifecycleActivity = vi.fn((taskId: string) => taskId === activeTaskId);
+			const api = createProjectApi(
+				createProjectDeps({
+					terminals: {
+						getTerminalManagerForProject: vi.fn(() => ({ hasTaskSessionLifecycleActivity })),
+						ensureTerminalManagerForProject: vi.fn(async () => ({}) as never),
+					},
+				}),
+			);
 
-		const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
+			const result = await api.deleteWorktree(defaultScope, { taskId: "task-1" });
 
-		expect(result).toEqual({
-			ok: false,
-			removed: false,
-			error: "Task worktree cleanup was skipped because an agent session is active.",
-		});
-		expect(hasTaskSessionLifecycleActivity).toHaveBeenCalledWith("task-1");
-		expect(worktreeMocks.archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
-	});
+			expect(result).toEqual({
+				ok: false,
+				removed: false,
+				error: "Task worktree cleanup was skipped because a task or detail-shell session is active.",
+			});
+			expect(hasTaskSessionLifecycleActivity).toHaveBeenCalledWith("task-1");
+			expect(worktreeMocks.archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+		},
+	);
 
 	it("waits for an earlier server-side task resource operation before deleting", async () => {
 		const taskResourceOperations = new TaskResourceOperationCoordinator();
@@ -681,6 +694,67 @@ describe("createProjectApi deleteWorktree", () => {
 		await blocker;
 		await expect(deletion).resolves.toMatchObject({ ok: true });
 		expect(worktreeMocks.archiveTaskWorktreeForTrash).toHaveBeenCalledTimes(1);
+	});
+
+	it("waits for detail-shell preparation and launch, then preserves its active workspace", async () => {
+		const taskResourceOperations = new TaskResourceOperationCoordinator();
+		const run = vi.spyOn(taskResourceOperations, "run");
+		const preparing = deferred();
+		const prepared = deferred();
+		const launching = deferred();
+		const launched = deferred();
+		const shellTaskId = getRuntimeDetailTerminalTaskId("task-1");
+		let shellActive = false;
+		const manager = {
+			startShellSession: vi.fn(async () => {
+				launching.resolve();
+				await launched.promise;
+				shellActive = true;
+				return createTestTaskSessionSummary({ taskId: shellTaskId });
+			}),
+			hasTaskSessionLifecycleActivity: vi.fn((taskId: string) => shellActive && taskId === shellTaskId),
+		};
+		worktreeMocks.resolveTaskWorkingDirectory.mockImplementationOnce(async () => {
+			preparing.resolve();
+			await prepared.promise;
+			return "/tmp/worktree";
+		});
+		const starting = handleStartShellSession(
+			defaultScope,
+			{ taskId: shellTaskId, projectTaskId: "task-1", baseRef: "main" },
+			{
+				getScopedTerminalManager: async () => manager as never,
+				resolveInteractiveShellCommand: () => ({ binary: "/bin/sh", args: [] }),
+				taskResourceOperations,
+			},
+		);
+		await preparing.promise;
+		const api = createProjectApi(
+			createProjectDeps({
+				taskResourceOperations,
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager as never,
+				},
+			}),
+		);
+		const maintenance = api.deleteWorktree(defaultScope, { taskId: "task-1" });
+		expect(run).toHaveBeenCalledTimes(2);
+		for (const call of run.mock.calls) expect(call.slice(0, 2)).toEqual(["project-1", "task-1"]);
+		await Promise.resolve();
+		expect(manager.hasTaskSessionLifecycleActivity).not.toHaveBeenCalled();
+		expect(worktreeMocks.archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
+		prepared.resolve();
+		await launching.promise;
+		expect(manager.hasTaskSessionLifecycleActivity).not.toHaveBeenCalled();
+		launched.resolve();
+		await expect(starting).resolves.toMatchObject({ ok: true });
+		await expect(maintenance).resolves.toMatchObject({
+			ok: false,
+			error: expect.stringContaining("detail-shell session is active"),
+		});
+		expect(manager.hasTaskSessionLifecycleActivity).toHaveBeenCalledWith(shellTaskId);
+		expect(worktreeMocks.archiveTaskWorktreeForTrash).not.toHaveBeenCalled();
 	});
 });
 

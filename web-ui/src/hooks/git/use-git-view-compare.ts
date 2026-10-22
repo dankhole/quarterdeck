@@ -8,6 +8,7 @@ import { useTaskRepositoryInfoValue, useTaskWorktreeSnapshotValue } from "@/stor
 import type { BoardData, CardSelection } from "@/types";
 import { useBooleanLocalStorageValue } from "@/utils/react-use";
 import { resolveDefaultCompareSourceRef } from "./git-view-compare";
+import { useWorktreeBranches } from "./use-worktree-branches";
 
 export { resolveDefaultCompareSourceRef } from "./git-view-compare";
 
@@ -137,18 +138,7 @@ export function useGitViewCompare({
 
 	const branches = refsQuery.data?.refs ?? null;
 
-	// Derive worktree branches map
-	const worktreeBranches = useMemo(() => {
-		const map = new Map<string, string>();
-		for (const column of board.columns.filter((c) => c.id !== "trash")) {
-			for (const card of column.cards) {
-				if (card.branch && card.useWorktree !== false) {
-					map.set(card.branch, card.title ?? card.id);
-				}
-			}
-		}
-		return map;
-	}, [board]);
+	const worktreeBranches = useWorktreeBranches(currentProjectId, board);
 
 	return {
 		sourceRef,

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -12,10 +12,37 @@ import {
 	resolveTaskCwd,
 	resolveTaskWorkingDirectory,
 } from "../../src/workdir";
+import { isGitWorktreePathRegistered } from "../../src/workdir/task-worktree-identity";
 import { runGit } from "../utilities/git-env";
 import { createTempDir, withTemporaryHome } from "../utilities/temp-dir";
 
 describe("task worktree registration identity", { concurrent: false }, () => {
+	it("matches listed physical paths without losing whitespace or missing registrations", async () => {
+		const fixture = createTempDir("quarterdeck-listed-worktree-");
+		try {
+			const repoPath = join(fixture.path, "repo");
+			mkdirSync(repoPath);
+			runGit(repoPath, ["init"]);
+			runGit(repoPath, ["config", "user.name", "Quarterdeck Test"]);
+			runGit(repoPath, ["config", "user.email", "quarterdeck-test@example.com"]);
+			writeFileSync(join(repoPath, "tracked.txt"), "initial\n");
+			runGit(repoPath, ["add", "."]);
+			runGit(repoPath, ["commit", "-m", "initial"]);
+			const path = join(fixture.path, process.platform === "win32" ? "linked checkout" : " linked\ncheckout ");
+			runGit(repoPath, ["worktree", "add", "--detach", path]);
+			const alias = join(fixture.path, "alias");
+			symlinkSync(path, alias, process.platform === "win32" ? "junction" : "dir");
+			expect(await isGitWorktreePathRegistered(repoPath, path)).toBe(true);
+			expect(await isGitWorktreePathRegistered(repoPath, alias)).toBe(true);
+			expect(await isGitWorktreePathRegistered(repoPath, join(fixture.path, "absent"))).toBe(false);
+			rmSync(alias, { recursive: true });
+			rmSync(path, { recursive: true });
+			expect(await isGitWorktreePathRegistered(repoPath, path)).toBe(true);
+		} finally {
+			fixture.cleanup();
+		}
+	});
+
 	it.each([false, true])("preserves a broken task directory when registration is reused: %s", async (reused) => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-worktree-identity-");

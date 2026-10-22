@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import {
 	findCardInBoard,
+	getRuntimeDetailTerminalTaskId,
 	normalizeDiagnosticErrorClass,
 	parseWorktreeDeleteRequest,
 	parseWorktreeEnsureRequest,
@@ -120,11 +121,14 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 			const body = parseWorktreeDeleteRequest(input);
 			return await ctx.deps.taskResourceOperations.run(projectScope.projectId, body.taskId, async () => {
 				const terminalManager = ctx.deps.terminals.getTerminalManagerForProject(projectScope.projectId);
-				if (terminalManager?.hasTaskSessionLifecycleActivity(body.taskId)) {
+				if (
+					terminalManager?.hasTaskSessionLifecycleActivity(body.taskId) ||
+					terminalManager?.hasTaskSessionLifecycleActivity(getRuntimeDetailTerminalTaskId(body.taskId))
+				) {
 					return {
 						ok: false,
 						removed: false,
-						error: "Task worktree cleanup was skipped because an agent session is active.",
+						error: "Task worktree cleanup was skipped because a task or detail-shell session is active.",
 					};
 				}
 				// Legacy Trash callers must preserve the workspace. Permanent deletion

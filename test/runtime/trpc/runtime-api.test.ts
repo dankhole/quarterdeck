@@ -1083,6 +1083,7 @@ describe("createRuntimeApi startShellSession", () => {
 			startShellSession: vi.fn(async () => createSummary()),
 		};
 		const deps = createDeps(terminalManager);
+		const run = vi.spyOn(deps.taskResourceOperations, "run");
 		deps.resolveInteractiveShellCommand.mockReturnValue({ binary: "/bin/zsh", args: [] });
 		const api = createRuntimeApi(deps);
 
@@ -1093,6 +1094,7 @@ describe("createRuntimeApi startShellSession", () => {
 
 		expect(result.ok).toBe(true);
 		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
+		expect(run).not.toHaveBeenCalled();
 		expect(terminalManager.startShellSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
 	});
 });

@@ -11,7 +11,7 @@ import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
 import { readGitHeadInfo, runGit } from "./git-utils";
 import { resolveTaskWorktreeCleanupPath } from "./task-worktree-cleanup-path";
-import { assertTaskWorktreeRegistration } from "./task-worktree-identity";
+import { assertTaskWorktreeRegistration, isGitWorktreePathRegistered } from "./task-worktree-identity";
 import { deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
 import {
@@ -30,6 +30,7 @@ import {
 } from "./task-worktree-setup";
 import { withTaskWorktreeOperationLock, withTaskWorktreeSetupLock } from "./task-worktree-setup-lock";
 import { pathExists } from "./task-worktree-symlinks";
+import { detachTaskWorktreeBranchForTrash, restoreTaskWorktreeBranchFromTrash } from "./task-worktree-trash-branch";
 
 const USER_GIT_ACTION_OPTIONS = { timeoutClass: "userAction" } as const;
 
@@ -126,6 +127,8 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 	existingPath?: string;
 	/** Internal authorization from lifecycle restore of a legacy Trash card without a durable path. */
 	restoreFromTrash?: boolean;
+	/** Explicit lifecycle Restore; ordinary starts and recovery must never reattach HEAD. */
+	reattachFromTrash?: boolean;
 }): Promise<RuntimeWorktreeEnsureResponse> {
 	let recoveryWarning: string | undefined;
 	try {
@@ -295,6 +298,19 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 				retrySetup: options.retrySetup,
 				onSetupProgress: options.onSetupProgress,
 			});
+			if (options.reattachFromTrash) {
+				const warning = await restoreTaskWorktreeBranchFromTrash({
+					repoPath: context.repoPath,
+					taskId,
+					existingPath: worktreePath,
+				});
+				const head = await readGitHeadInfo(worktreePath);
+				return {
+					...result,
+					branch: head.branch,
+					warning: [result.warning, warning].filter(Boolean).join(" ") || undefined,
+				};
+			}
 		}
 		return result;
 	} catch (error) {
@@ -310,7 +326,7 @@ export async function ensureTaskWorktreeIfDoesntExist(options: {
 }
 
 /**
- * Compatibility Trash operation: retain the complete workspace and every legacy restore patch.
+ * Retain the complete workspace and release its local branch without checking out files.
  * Permanent deletion is the only operation that removes task files.
  */
 export async function archiveTaskWorktreeForTrash(options: {
@@ -322,16 +338,20 @@ export async function archiveTaskWorktreeForTrash(options: {
 	existingPath?: string;
 }): Promise<RuntimeWorktreeDeleteResponse> {
 	try {
+		if (options.folderOnly) return { ok: true, removed: false };
 		const worktreePath = await resolveTaskWorktreeCleanupPath(options);
-		if (!(await pathExists(worktreePath)) && options.folderOnly) {
-			return { ok: true, removed: false };
-		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
 				if (await taskWorktreeEntryExists(worktreePath)) {
-					if (!options.folderOnly || (await taskWorktreeEntryExists(join(worktreePath, ".git")))) {
-						await assertTaskWorktreeRegistration(worktreePath);
+					await detachTaskWorktreeBranchForTrash({ taskId: options.taskId, worktreePath });
+				} else {
+					if (await isGitWorktreePathRegistered(options.repoPath, worktreePath)) {
+						throw new Error(
+							"The registered task worktree is unavailable. Its branch could not be released; its registration was preserved.",
+						);
 					}
+					if (options.existingPath)
+						throw new Error("The existing task worktree is unavailable. Its registration was preserved.");
 				}
 				return { ok: true, removed: false };
 			}),

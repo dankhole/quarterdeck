@@ -16,6 +16,7 @@ import type {
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
 import {
+	areFileSystemPathsEqual,
 	createTaggedLogger,
 	findCardInBoard,
 	getRuntimeDetailTerminalTaskId,
@@ -36,7 +37,16 @@ import {
 	ProjectTaskLifecycleOperationStore,
 } from "../state";
 import type { StopTaskSessionResult } from "../terminal/session-manager-types";
-import { ensureTaskWorktreeIfDoesntExist, pathExists, purgeTaskWorkspaceForDelete } from "../workdir";
+import {
+	archiveTaskWorktreeForTrash,
+	ensureTaskWorktreeIfDoesntExist,
+	pathExists,
+	purgeTaskWorkspaceForDelete,
+} from "../workdir";
+import {
+	completeTaskWorktreeTrashRestore,
+	restoreTaskWorktreeBranchFromTrash,
+} from "../workdir/task-worktree-trash-branch";
 
 import { clearTrashTasks } from "./clear-trash";
 
@@ -72,8 +82,16 @@ export interface ProjectTaskLifecycleServiceDependencies {
 		retrySetup?: boolean;
 		/** Server-validated legacy Trash restore whose persisted workspace path was cleared. */
 		restoreFromTrash?: boolean;
+		reattachFromTrash?: boolean;
 		onSetupProgress?: (phase: "running" | "succeeded" | "failed") => Promise<void>;
 	}) => Promise<RuntimeWorktreeEnsureResponse>;
+	archiveTaskWorktree?: typeof archiveTaskWorktreeForTrash;
+	completeTaskWorktreeRestore?: typeof completeTaskWorktreeTrashRestore;
+	runStoppedTaskWorktreeOperation?: <T>(
+		scope: ProjectBoardCommandScope,
+		taskId: string,
+		operation: () => Promise<T>,
+	) => Promise<T>;
 	purgeTaskWorkspace?: (options: {
 		existingPath?: string;
 		folderOnly?: boolean;
@@ -564,11 +582,16 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 
-		// Preserve the complete workspace for restore. A patch archive cannot retain
-		// ignored files, index state, or writes from unmanaged background processes.
+		const warning = await this.releaseTrashedTaskBranch(
+			scope,
+			precondition.card,
+			moveResult.state,
+			command.operationId,
+		);
 		return await this.finish(scope, operation, {
-			status: "completed",
-			outcomeCode: "completed",
+			status: warning ? "completed_with_warning" : "completed",
+			outcomeCode: warning ? "completed_with_warning" : "completed",
+			warning,
 		});
 	}
 
@@ -604,20 +627,13 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 		operation = await this.recordBoardAccepted(scope, operation, moveResult.state.revision);
-		if (findCardInBoard(moveResult.state.board, command.taskId)?.unstarted) {
-			return await this.finish(scope, operation, {
-				status: "completed",
-				outcomeCode: "completed",
-				state: moveResult.state,
-			});
-		}
 		const existing = await this.getMatchingLaunchSummary(scope, command.taskId, command.operationId);
 		if (isSuccessfulLaunch(existing, command.operationId)) {
 			return await this.completeWithSummary(scope, operation, moveResult.state, existing, "already_applied");
 		}
 
 		operation = await this.setPhase(scope, operation, "stopping_session");
-		const stopped = await this.stopOne(scope, command.taskId, undefined);
+		const stopped = await this.stopTaskAndDetailShell(scope, command.taskId, command.operationId);
 		if (!this.didStop(stopped)) {
 			const compensated = await this.compensateMove(
 				scope,
@@ -646,22 +662,58 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 		let warning: string | undefined;
+		if (card.unstarted) {
+			if (
+				!moveResult.state.git.folderOnly &&
+				card.useWorktree !== false &&
+				!(card.workingDirectory && areFileSystemPathsEqual(card.workingDirectory, scope.projectPath))
+			) {
+				try {
+					warning = await this.runStoppedWorktreeOperation(scope, card.id, () =>
+						restoreTaskWorktreeBranchFromTrash({
+							repoPath: scope.projectPath,
+							taskId: card.id,
+							existingPath: card.workingDirectory ?? undefined,
+						}),
+					);
+				} catch (error) {
+					warning = `The task was restored, but its original branch could not be reattached: ${toErrorMessage(error)}`;
+				}
+				warning =
+					[warning, await this.consumeRestoreOrigin(scope, card, moveResult.state)].filter(Boolean).join(" ") ||
+					undefined;
+			}
+			return await this.finish(scope, operation, {
+				status: warning ? "completed_with_warning" : "completed",
+				outcomeCode: warning ? "completed_with_warning" : "completed",
+				warning,
+				state: moveResult.state,
+			});
+		}
 		if (!moveResult.state.git.folderOnly && card.useWorktree !== false) {
 			operation = await this.setPhase(scope, operation, "ensuring_worktree");
-			const ensured = await (this.dependencies.ensureTaskWorktree ?? ensureTaskWorktreeIfDoesntExist)({
-				cwd: scope.projectPath,
-				taskId: card.id,
-				baseRef: card.baseRef,
-				branch: card.branch,
-				existingPath: card.workingDirectory ?? undefined,
-				retrySetup: operation.attempt === 1,
-				// Only legacy Trash cards cleared their workspace identity before archive.
-				// Retained paths still require intact registration and fail closed.
-				restoreFromTrash: !card.workingDirectory,
-				onSetupProgress: async (phase) => {
-					if (phase === "running") operation = await this.setPhase(scope, operation, "running_setup");
-				},
-			});
+			let ensured: RuntimeWorktreeEnsureResponse;
+			try {
+				ensured = await this.runStoppedWorktreeOperation(scope, card.id, () =>
+					(this.dependencies.ensureTaskWorktree ?? ensureTaskWorktreeIfDoesntExist)({
+						cwd: scope.projectPath,
+						taskId: card.id,
+						baseRef: card.baseRef,
+						branch: card.branch,
+						existingPath: card.workingDirectory ?? undefined,
+						retrySetup: operation.attempt === 1,
+						// Only legacy Trash cards cleared their workspace identity before archive.
+						// Retained paths still require intact registration and fail closed.
+						restoreFromTrash: !card.workingDirectory,
+						reattachFromTrash: true,
+						onSetupProgress: async (phase) => {
+							if (phase === "running") operation = await this.setPhase(scope, operation, "running_setup");
+						},
+					}),
+				);
+			} catch (error) {
+				ensured = { ok: false, path: null, baseRef: card.baseRef, baseCommit: null, error: toErrorMessage(error) };
+			}
 			if (!ensured.ok) {
 				const compensated = await this.compensateMove(
 					scope,
@@ -1001,10 +1053,18 @@ export class ProjectTaskLifecycleService {
 			compensateTo,
 			operation.requestedAt,
 		);
+		let warning: string | undefined;
+		if (compensateTo === "trash" && compensated.ok) {
+			const stopped = await this.stopTaskAndDetailShell(scope, card.id, operation.operationId);
+			warning = this.didStop(stopped)
+				? await this.releaseTrashedTaskBranch(scope, card, compensated.state, operation.operationId)
+				: "The task returned to Trash, but its branch was left attached because its session could not be stopped.";
+		}
 		return await this.finish(scope, operation, {
 			status: "failed",
 			outcomeCode: compensated.ok ? "session_start_failed" : "compensation_failed",
 			error,
+			warning,
 			state: compensated.state,
 		});
 	}
@@ -1313,13 +1373,80 @@ export class ProjectTaskLifecycleService {
 		outcomeCode: "completed" | "completed_with_warning" | "already_applied",
 		warning?: string,
 	): Promise<RuntimeTaskLifecycleResult> {
+		if (operation.kind === "restore") {
+			const card = findCardInBoard(state.board, operation.taskId);
+			if (card)
+				warning =
+					[warning, await this.consumeRestoreOrigin(scope, card, state)].filter(Boolean).join(" ") || undefined;
+		}
 		return await this.finish(scope, operation, {
 			status: warning ? "completed_with_warning" : "completed",
-			outcomeCode,
+			outcomeCode: warning ? "completed_with_warning" : outcomeCode,
 			warning,
 			state: withSessionSummary(state, summary),
 			summary,
 		});
+	}
+
+	private async runStoppedWorktreeOperation<T>(
+		scope: ProjectBoardCommandScope,
+		taskId: string,
+		operation: () => Promise<T>,
+	): Promise<T> {
+		return this.dependencies.runStoppedTaskWorktreeOperation
+			? await this.dependencies.runStoppedTaskWorktreeOperation(scope, taskId, operation)
+			: await operation();
+	}
+
+	private async releaseTrashedTaskBranch(
+		scope: ProjectBoardCommandScope,
+		card: RuntimeBoardCard,
+		state: RuntimeProjectStateResponse,
+		operationId: string,
+	): Promise<string | undefined> {
+		if (
+			state.git.folderOnly ||
+			card.useWorktree === false ||
+			(card.workingDirectory && areFileSystemPathsEqual(card.workingDirectory, scope.projectPath))
+		)
+			return undefined;
+		try {
+			const archived = await this.runStoppedWorktreeOperation(scope, card.id, () =>
+				(this.dependencies.archiveTaskWorktree ?? archiveTaskWorktreeForTrash)({
+					repoPath: scope.projectPath,
+					taskId: card.id,
+					existingPath: card.workingDirectory ?? undefined,
+					operationId,
+				}),
+			);
+			if (archived.ok) return undefined;
+			throw new Error(archived.error ?? "Git could not release the task branch.");
+		} catch (error) {
+			return `The task is in Trash and its workspace was preserved, but its branch could not be released: ${toErrorMessage(error)}`;
+		}
+	}
+
+	private async consumeRestoreOrigin(
+		scope: ProjectBoardCommandScope,
+		card: RuntimeBoardCard,
+		state: RuntimeProjectStateResponse,
+	): Promise<string | undefined> {
+		if (
+			state.git.folderOnly ||
+			card.useWorktree === false ||
+			(card.workingDirectory && areFileSystemPathsEqual(card.workingDirectory, scope.projectPath))
+		)
+			return undefined;
+		try {
+			await (this.dependencies.completeTaskWorktreeRestore ?? completeTaskWorktreeTrashRestore)({
+				repoPath: scope.projectPath,
+				taskId: card.id,
+				existingPath: card.workingDirectory ?? undefined,
+			});
+			return undefined;
+		} catch (error) {
+			return `The task was restored, but its saved Trash branch marker could not be cleared: ${toErrorMessage(error)}`;
+		}
 	}
 
 	private async finish(

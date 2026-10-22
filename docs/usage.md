@@ -127,7 +127,11 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
 7. Clean up or resume.
 
-   Moving a card to Trash stops its agent and detail shell while preserving the task worktree, files, and provider resume identity. Restore the card to resume work when the agent supports it. Permanent deletion removes the task workspace; Trash itself does not reclaim that disk space.
+   Moving a card to Trash stops its agent and detail shell while preserving the task worktree, files, and provider resume identity. For an isolated worktree on a branch, Trash detaches it at the current commit so another checkout can use that branch. Staged and unstaged changes stay in place.
+
+   Restore the card to resume work when the agent supports it. Quarterdeck tries to reattach the original branch if it still points to the saved commit and is available. If the branch moved, was deleted, or is checked out elsewhere, the task resumes with detached HEAD and a warning; its saved files and commit remain intact. Tasks that were already detached stay detached. Permanent deletion removes the task workspace; Trash itself does not reclaim that disk space.
+
+   If an unfinished Git operation or a worktree verification failure prevents safe detachment, Trash preserves the checkout and reports a warning. Its branch can remain occupied until the issue is resolved or the task is permanently deleted. Existing Trash worktrees are not automatically detached during an upgrade.
 
 ## Troubleshooting
 
