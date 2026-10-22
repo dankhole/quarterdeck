@@ -84,6 +84,9 @@ export function getProjectDirectoryLockRequest(projectId: string): LockRequest {
 		path: getProjectDirectoryPath(projectId),
 		type: "directory",
 		lockfilePath: join(getProjectsRootPath(), `${projectId}.lock`),
+		// Board state, lifecycle journal, and state reads share this lock; concurrent
+		// lifecycle workers (Clear Trash) must queue rather than race its retry budget.
+		serializeInProcess: true,
 	};
 }
 

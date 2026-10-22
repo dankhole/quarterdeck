@@ -3,6 +3,7 @@ import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "no
 import { dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
+import { KeyedOperationCoordinator } from "../core/keyed-operation-coordinator";
 import { assertRuntimeWriteAdmission, withRuntimeWriteOperation } from "../state/runtime-write-admission.js";
 import { isNodeError } from "./node-error";
 import { removeDirectoryWithRetries } from "./remove-path";
@@ -21,6 +22,15 @@ interface BaseLockRequest {
 	staleMs?: number;
 	retries?: LockOptions["retries"];
 	onCompromised?: LockOptions["onCompromised"];
+	/**
+	 * Queue this runtime's owners of the same lockfile before polling it. Polling
+	 * is unfair: an owner that releases and immediately re-requests wins over
+	 * sleeping waiters, so heavily shared locks with slow holds (durable writes on
+	 * Windows) can exhaust a waiter's retry budget without any other process.
+	 * The retry budget still bounds cross-process contention. Only use for locks
+	 * that are never re-entered or nested in conflicting orders in-process.
+	 */
+	serializeInProcess?: boolean;
 }
 
 export interface FileLockRequest extends BaseLockRequest {
@@ -40,7 +50,11 @@ interface NormalizedLockRequest {
 	path: string;
 	options: LockOptions;
 	sortKey: string;
+	serializeInProcess: boolean;
 }
+
+/** Process-wide: every LockedFileSystem instance shares one owner queue per lockfile. */
+const inProcessLockOwners = new KeyedOperationCoordinator();
 
 export interface AtomicTextWriteOptions {
 	lock?: LockRequest | null;
@@ -124,6 +138,7 @@ export class LockedFileSystem {
 				path: request.path,
 				options: createLockOptions(request, lockfilePath),
 				sortKey: lockfilePath,
+				serializeInProcess: request.serializeInProcess === true,
 			};
 		}
 
@@ -133,6 +148,7 @@ export class LockedFileSystem {
 			path: request.path,
 			options: createLockOptions(request, lockfilePath),
 			sortKey: lockfilePath,
+			serializeInProcess: request.serializeInProcess === true,
 		};
 	}
 
@@ -157,27 +173,35 @@ export class LockedFileSystem {
 			const r = caseInsensitive ? right.sortKey.toLowerCase() : right.sortKey;
 			return l.localeCompare(r);
 		});
-		const uniqueRequests: NormalizedLockRequest[] = [];
+		const uniqueRequests: Array<{ request: NormalizedLockRequest; identity: string }> = [];
 		const seenSortKeys = new Set<string>();
 		for (const request of orderedRequests) {
 			const identity = caseInsensitive ? request.sortKey.toLowerCase() : request.sortKey;
 			if (seenSortKeys.has(identity)) continue;
 			seenSortKeys.add(identity);
-			uniqueRequests.push(request);
+			uniqueRequests.push({ request, identity });
 		}
-		const releases: Array<() => Promise<void>> = [];
-		try {
-			for (const request of uniqueRequests) {
+		// Acquire in sorted order; each queued owner keeps its in-process turn until
+		// its filesystem lock is released, so the queue always wraps the file lock.
+		const acquireFrom = async (index: number): Promise<T> => {
+			const entry = uniqueRequests[index];
+			if (!entry) {
+				for (const { request } of uniqueRequests) assertRuntimeWriteAdmission(request.path);
+				return await operation();
+			}
+			const { request, identity } = entry;
+			const acquire = async (): Promise<T> => {
 				assertRuntimeWriteAdmission(request.path);
-				releases.push(await lockfile.lock(request.path, request.options));
-			}
-			for (const request of uniqueRequests) assertRuntimeWriteAdmission(request.path);
-			return await operation();
-		} finally {
-			for (const release of releases.reverse()) {
-				await release();
-			}
-		}
+				const release = await lockfile.lock(request.path, request.options);
+				try {
+					return await acquireFrom(index + 1);
+				} finally {
+					await release();
+				}
+			};
+			return request.serializeInProcess ? await inProcessLockOwners.run(identity, acquire) : await acquire();
+		};
+		return await acquireFrom(0);
 	}
 
 	async writeTextFileAtomic(path: string, content: string, options: AtomicTextWriteOptions = {}): Promise<void> {
