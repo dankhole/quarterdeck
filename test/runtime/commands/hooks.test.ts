@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CODEX_HOOK_TIMEOUT_SECONDS } from "../../../src/codex-hooks";
+import { HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS } from "../../../src/hook-transition-outbox";
 import {
 	HOOK_INGEST_ATTEMPT_TIMEOUT_MS,
 	HOOK_INGEST_RETRY_DELAY_MS,
 	HOOK_INGEST_TOTAL_TIMEOUT_MS,
 	withAbortableTimeout,
-} from "../../../src/commands/hooks";
-import { HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS } from "../../../src/hook-transition-outbox";
+} from "../../../src/hooks-runtime-client";
 
 describe("withAbortableTimeout", () => {
 	it("keeps both reliable ingest attempts inside Codex's hook deadline", () => {

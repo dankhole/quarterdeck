@@ -8,6 +8,7 @@ import { WebSocketServer } from "ws";
 import { getQuarterdeckRuntimeOrigin } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { handleSocketUpgrade } from "../server/middleware";
+import { toBrowserTaskSessionSummary } from "../server/runtime-state-messages";
 import type { TerminalInputWriter, TerminalSessionService } from "./terminal-session-service";
 import { createTerminalWsIoOutputState } from "./terminal-ws-backpressure-policy";
 import { TerminalWsConnectionRegistry, type TerminalWsDiagnosticSnapshot } from "./terminal-ws-connection-registry";
@@ -243,7 +244,7 @@ export function createTerminalWebSocketBridge({
 				onState: (summary) => {
 					sendControlMessage(ws, {
 						type: "state",
-						summary,
+						summary: toBrowserTaskSessionSummary(summary),
 					});
 				},
 				onExit: (code) => {

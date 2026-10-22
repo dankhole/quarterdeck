@@ -13,8 +13,15 @@ export interface TaskGitState {
 	changedFiles: number;
 	additions: number;
 	deletions: number;
-	behindBaseCount: number | null;
-	behindRemoteBaseCount: number | null;
+	/**
+	 * `undefined` means no worktree/home metadata has arrived for this task
+	 * yet (pending); `null` means metadata arrived but the comparison is
+	 * genuinely unavailable (e.g. a failed or missing ref). Keep these
+	 * distinct all the way to display — see `formatBehindCount` in
+	 * `task-base-ref-display.ts`.
+	 */
+	behindBaseCount: number | null | undefined;
+	behindRemoteBaseCount: number | null | undefined;
 	isDetached: boolean;
 	hasRepositoryMetadata: boolean;
 }
@@ -48,8 +55,11 @@ export function resolveTaskGitState(input: {
 			changedFiles: sharedSnapshot?.changedFiles ?? input.homeGitSummary?.changedFiles ?? 0,
 			additions: sharedSnapshot?.additions ?? input.homeGitSummary?.additions ?? 0,
 			deletions: sharedSnapshot?.deletions ?? input.homeGitSummary?.deletions ?? 0,
-			behindBaseCount: sharedSnapshot?.behindBaseCount ?? null,
-			behindRemoteBaseCount: sharedSnapshot?.behindRemoteBaseCount ?? null,
+			// Only collapse to `null` ("unavailable") once a snapshot actually
+			// exists and says so; with no snapshot yet, stay `undefined`
+			// ("pending") instead of fabricating unavailability.
+			behindBaseCount: sharedSnapshot ? sharedSnapshot.behindBaseCount : undefined,
+			behindRemoteBaseCount: sharedSnapshot ? sharedSnapshot.behindRemoteBaseCount : undefined,
 			isDetached: hasFreshAssignedMetadata
 				? identity.assignedIsDetached
 				: input.homeGitSummary
@@ -66,8 +76,8 @@ export function resolveTaskGitState(input: {
 		changedFiles: input.worktreeSnapshot?.changedFiles ?? 0,
 		additions: input.worktreeSnapshot?.additions ?? 0,
 		deletions: input.worktreeSnapshot?.deletions ?? 0,
-		behindBaseCount: input.worktreeSnapshot?.behindBaseCount ?? null,
-		behindRemoteBaseCount: input.worktreeSnapshot?.behindRemoteBaseCount ?? null,
+		behindBaseCount: input.worktreeSnapshot ? input.worktreeSnapshot.behindBaseCount : undefined,
+		behindRemoteBaseCount: input.worktreeSnapshot ? input.worktreeSnapshot.behindRemoteBaseCount : undefined,
 		isDetached: identity.assignedIsDetached,
 		hasRepositoryMetadata: Boolean(input.repositoryInfo || input.worktreeSnapshot),
 	};

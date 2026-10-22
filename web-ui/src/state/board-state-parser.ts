@@ -4,7 +4,7 @@ import {
 	runtimeBoardColumnIdSchema,
 	runtimeClaudeOptionsSchema,
 	runtimeCodexOptionsSchema,
-	runtimeTaskImageSchema,
+	runtimeTaskImageReadSchema,
 } from "@runtime-contract";
 import { z } from "zod";
 import type { BoardCard, BoardColumnId, TaskImage } from "@/types";
@@ -143,7 +143,9 @@ export function parsePersistedTaskImages(rawImages: unknown): TaskImage[] | unde
 	}
 
 	const images = result.data.flatMap((rawImage) => {
-		const image = runtimeTaskImageSchema.safeParse(rawImage);
+		// Accept stored references and inline uploads; dropping a reference here
+		// would let the next edit erase the attachment from the durable card.
+		const image = runtimeTaskImageReadSchema.safeParse(rawImage);
 		return image.success ? [image.data] : [];
 	});
 	return images.length > 0 ? images : undefined;

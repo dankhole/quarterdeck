@@ -45,34 +45,108 @@ describe("armChildProcessTimeout against real child processes", () => {
 	);
 
 	it.runIf(process.platform !== "win32")(
-		"reports a timeout after the close grace period when a descendant still holds stdio open",
+		"releases pipes a descendant still holds after exit and reports the child's own result",
 		async () => {
-			// The direct child exits at once, but a detached descendant keeps its stdout open past the grace period.
+			// The direct child exits at once, but a detached descendant keeps its stdout open far past the grace period.
 			const script = [
 				"const { spawn } = require('node:child_process');",
-				"const d = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 1000)'], {",
+				"const d = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 5000)'], {",
 				"  stdio: 'inherit',",
 				"  detached: true,",
 				"});",
 				"d.unref();",
+				"process.stdout.write('child-output');",
 				"process.exit(0);",
 			].join(" ");
 			const start = Date.now();
-			const result = await new Promise<{ timedOut: boolean; elapsedMs: number }>((resolve) => {
+			const result = await new Promise<{ timedOut: boolean; stdout: string; elapsedMs: number }>((resolve) => {
 				let guard: ChildProcessTimeoutGuard | null = null;
-				const child = execFile(process.execPath, ["-e", script], {}, () => {
-					resolve({ timedOut: guard?.isTimedOut() ?? false, elapsedMs: Date.now() - start });
+				const child = execFile(process.execPath, ["-e", script], {}, (_error, stdout) => {
+					guard?.settle();
+					resolve({
+						timedOut: guard?.isTimedOut() ?? false,
+						stdout: String(stdout),
+						elapsedMs: Date.now() - start,
+					});
 				});
-				// Arm only after exit so the timer always finds an exited child and takes the grace path.
+				// Arm only after exit so the timer always finds an exited child.
 				child.once("exit", () => {
 					guard = armChildProcessTimeout(child, 50, { closeGraceMs: 100 });
 				});
 			});
-			expect(result.timedOut).toBe(true);
-			expect(result.elapsedMs).toBeGreaterThanOrEqual(150);
+			expect(result).toMatchObject({ timedOut: false, stdout: "child-output" });
+			expect(result.elapsedMs).toBeLessThan(4_000);
 		},
 		10_000,
 	);
+});
+
+describe("armChildProcessTimeout escalation", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function createChild(exitCode: number | null = null) {
+		return {
+			pid: 4321,
+			exitCode,
+			signalCode: null,
+			kill: vi.fn(() => true),
+			stdout: { destroy: vi.fn() },
+			stderr: { destroy: vi.fn() },
+		};
+	}
+
+	it("terminates, force-kills, releases pipes, and finally abandons a child that never exits", async () => {
+		vi.useFakeTimers();
+		const child = createChild();
+		const onAbandoned = vi.fn();
+		const guard = armChildProcessTimeout(child, 100, {
+			platform: "linux",
+			killGraceMs: 200,
+			closeGraceMs: 300,
+			onAbandoned,
+		});
+
+		// Each step runs one fake millisecond after its timer: fake timers delay an
+		// immediate scheduled during a tick by 1 ms.
+		await vi.advanceTimersByTimeAsync(101);
+		expect(guard.isTimedOut()).toBe(true);
+		expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+		await vi.advanceTimersByTimeAsync(201);
+		expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+		expect(onAbandoned).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(301);
+		expect(child.stdout.destroy).toHaveBeenCalled();
+		expect(child.stderr.destroy).toHaveBeenCalled();
+		await vi.runAllTimersAsync();
+		expect(onAbandoned).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not time out a child that already exited when a stalled timer fires", async () => {
+		vi.useFakeTimers();
+		const child = createChild(0);
+		const onAbandoned = vi.fn();
+		const guard = armChildProcessTimeout(child, 100, { platform: "linux", onAbandoned });
+		await vi.runAllTimersAsync();
+		expect(guard.isTimedOut()).toBe(false);
+		expect(child.kill).not.toHaveBeenCalled();
+		expect(child.stdout.destroy).toHaveBeenCalled();
+		expect(onAbandoned).not.toHaveBeenCalled();
+	});
+
+	it("stops every step once settled", async () => {
+		vi.useFakeTimers();
+		const child = createChild();
+		const onAbandoned = vi.fn();
+		const guard = armChildProcessTimeout(child, 100, { platform: "linux", onAbandoned });
+		await vi.advanceTimersByTimeAsync(101);
+		guard.settle();
+		await vi.runAllTimersAsync();
+		expect(child.kill).toHaveBeenCalledTimes(1);
+		expect(child.stdout.destroy).not.toHaveBeenCalled();
+		expect(onAbandoned).not.toHaveBeenCalled();
+	});
 });
 
 describe("terminateProcessTree", () => {

@@ -72,7 +72,6 @@ export const runtimeConfigResponseSchema = z.object({
 	showSummaryOnHover: z.boolean(),
 	llmSummaryPolishEnabled: z.boolean(),
 	claudeLaunchPermissionMode: claudeLaunchPermissionModeSchema,
-	statuslineEnabled: z.boolean(),
 	codexApprovalsReviewer: codexApprovalsReviewerSchema,
 	terminalFontWeight: z.number(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]),
@@ -129,7 +128,6 @@ export const runtimeConfigSaveRequestSchema = z.object({
 		})
 		.optional(),
 	claudeLaunchPermissionMode: claudeLaunchPermissionModeSchema.optional(),
-	statuslineEnabled: z.boolean().optional(),
 	codexApprovalsReviewer: codexApprovalsReviewerSchema.optional(),
 	terminalFontWeight: z.number().min(100).max(900).optional(),
 	logLevel: z.enum(["debug", "info", "warn", "error"]).optional(),

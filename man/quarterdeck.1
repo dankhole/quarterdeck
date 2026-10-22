@@ -14,8 +14,6 @@ quarterdeck \- local orchestration board for coding agents
 .RI " " ingest|notify
 .RI " " [ options ]
 .br
-.B quarterdeck statusline
-.br
 .B quarterdeck desktop
 .RI " " install|status|uninstall
 .RI " " [ options ]
@@ -115,10 +113,6 @@ Best-effort variant of
 .BR "hooks ingest" .
 It accepts the same hook fields and does not fail the calling agent when
 delivery is unavailable.
-.TP
-.B statusline
-Read Claude Code status JSON from standard input and render the Quarterdeck
-statusline.
 .TP
 .B recover [--confirm-stopped]
 Inspect saved process evidence after an unconfirmed shutdown. Stop any

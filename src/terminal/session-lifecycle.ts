@@ -131,7 +131,6 @@ export async function spawnTaskSession(
 			projectPath: request.projectPath,
 			hookSessionInstanceId,
 			claudeLaunchPermissionMode: request.claudeLaunchPermissionMode,
-			statuslineEnabled: request.statuslineEnabled,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			codexOptions: request.codexOptions,
 			claudeOptions: request.claudeOptions,

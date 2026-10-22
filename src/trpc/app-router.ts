@@ -49,6 +49,7 @@ import {
 import { runtimeUiPreferencesPatchSchema, runtimeUiPreferencesSchema } from "../core/api/ui-preferences.js";
 import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
 import { checkLanguageServerCommand } from "../language-navigation/command";
+import { toBrowserSessionResponse } from "../server/runtime-state-messages";
 import {
 	optionalProjectProcedure,
 	projectProcedure,
@@ -57,6 +58,7 @@ import {
 	t,
 } from "./app-router-init";
 import { projectRouter } from "./project-procedures";
+import { taskImagesRouter } from "./task-images-router";
 
 // Re-export context types for consumers.
 export type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
@@ -98,42 +100,47 @@ const runtimeRouter = t.router({
 		.input(runtimeTaskSessionStartRequestSchema)
 		.output(runtimeTaskSessionStartResponseSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.startTaskSession(ctx.projectScope, input);
+			return toBrowserSessionResponse(await ctx.runtimeApi.startTaskSession(ctx.projectScope, input));
 		}),
 	stopTaskSession: savedProjectProcedure
 		.input(runtimeTaskSessionStopRequestSchema)
 		.output(runtimeTaskSessionStopResponseSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.stopTaskSession(ctx.projectScope, input);
+			return toBrowserSessionResponse(await ctx.runtimeApi.stopTaskSession(ctx.projectScope, input));
 		}),
 	clearTrash: projectProcedure
 		.input(runtimeClearTrashRequestSchema)
 		.output(runtimeClearTrashResultSchema)
-		.mutation(({ ctx, input }) => ctx.runtimeApi.clearTrash(ctx.projectScope, input)),
+		.mutation(async ({ ctx, input }) =>
+			toBrowserSessionResponse(await ctx.runtimeApi.clearTrash(ctx.projectScope, input)),
+		),
 	executeTaskLifecycle: scopedProjectProcedure
 		.input(runtimeTaskLifecycleCommandSchema)
 		.output(runtimeTaskLifecycleResultSchema)
 		.mutation(async ({ ctx, input }) => {
 			const execute = async () => await ctx.runtimeApi.executeTaskLifecycle(ctx.projectScope, input);
-			return await ctx.runProjectOperation(ctx.projectScope, execute, { allowUnavailable: input.kind === "stop" });
+			return toBrowserSessionResponse(
+				await ctx.runProjectOperation(ctx.projectScope, execute, { allowUnavailable: input.kind === "stop" }),
+			);
 		}),
 	getTaskLifecycleOperation: savedProjectProcedure
 		.input(runtimeTaskLifecycleGetRequestSchema)
 		.output(runtimeTaskLifecycleResultSchema.nullable())
 		.query(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.getTaskLifecycleOperation(ctx.projectScope, input.operationId);
+			const operation = await ctx.runtimeApi.getTaskLifecycleOperation(ctx.projectScope, input.operationId);
+			return operation ? toBrowserSessionResponse(operation) : null;
 		}),
 	sendTaskSessionInput: projectProcedure
 		.input(runtimeTaskSessionInputRequestSchema)
 		.output(runtimeTaskSessionInputResponseSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.sendTaskSessionInput(ctx.projectScope, input);
+			return toBrowserSessionResponse(await ctx.runtimeApi.sendTaskSessionInput(ctx.projectScope, input));
 		}),
 	startShellSession: projectProcedure
 		.input(runtimeShellSessionStartRequestSchema)
 		.output(runtimeShellSessionStartResponseSchema)
 		.mutation(async ({ ctx, input }) => {
-			return await ctx.runtimeApi.startShellSession(ctx.projectScope, input);
+			return toBrowserSessionResponse(await ctx.runtimeApi.startShellSession(ctx.projectScope, input));
 		}),
 	openProject: projectProcedure
 		.input(runtimeOpenProjectRequestSchema)
@@ -159,19 +166,21 @@ const projectsRouter = t.router({
 	rename: t.procedure
 		.input(runtimeProjectRenameRequestSchema)
 		.output(runtimeProjectManagementResponseSchema)
-		.mutation(({ ctx, input }) => ctx.projectsApi.renameProject(input)),
+		.mutation(async ({ ctx, input }) => toBrowserSessionResponse(await ctx.projectsApi.renameProject(input))),
 	locate: t.procedure
 		.input(runtimeProjectLocateRequestSchema)
 		.output(runtimeProjectManagementResponseSchema)
-		.mutation(({ ctx, input }) => ctx.projectsApi.locateProject(input)),
+		.mutation(async ({ ctx, input }) => toBrowserSessionResponse(await ctx.projectsApi.locateProject(input))),
 	renameFolder: t.procedure
 		.input(runtimeProjectRenameFolderRequestSchema)
 		.output(runtimeProjectManagementResponseSchema)
-		.mutation(({ ctx, input }) => ctx.projectsApi.renameProjectFolder(input)),
+		.mutation(async ({ ctx, input }) => toBrowserSessionResponse(await ctx.projectsApi.renameProjectFolder(input))),
 	checkAvailability: t.procedure
 		.input(runtimeProjectCheckAvailabilityRequestSchema)
 		.output(runtimeProjectManagementResponseSchema)
-		.mutation(({ ctx, input }) => ctx.projectsApi.checkProjectAvailability(input)),
+		.mutation(async ({ ctx, input }) =>
+			toBrowserSessionResponse(await ctx.projectsApi.checkProjectAvailability(input)),
+		),
 	organize: t.procedure
 		.input(projectOrganizationRequestSchema)
 		.output(projectOrganizationResponseSchema)
@@ -215,6 +224,7 @@ export const runtimeAppRouter = t.router({
 	runtime: runtimeRouter,
 	project: projectRouter,
 	projects: projectsRouter,
+	taskImages: taskImagesRouter,
 	hooks: hooksRouter,
 });
 

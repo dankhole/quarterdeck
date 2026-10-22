@@ -16,11 +16,8 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 import { buildCodexHooksConfig } from "../../../src/codex-hooks";
 import { normalizeHookMetadata } from "../../../src/commands/hook-metadata";
 import type { RuntimeHookIngestRequest } from "../../../src/core";
-import {
-	buildQuarterdeckCommandLine,
-	deriveTaskIndicatorState,
-	runtimeTaskSessionSummarySchema,
-} from "../../../src/core";
+import { deriveTaskIndicatorState, runtimeTaskSessionSummarySchema } from "../../../src/core";
+import { buildQuarterdeckHookCommandLine } from "../../../src/core/quarterdeck-command";
 import { createPersistedHookTransition } from "../../../src/hook-transition-outbox";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createCodexApprovalPromptDetector } from "../../../src/terminal/codex-approval-prompt";
@@ -1017,7 +1014,7 @@ describe("TerminalSessionManager ordering invariants", () => {
 			if (group.matcher && group.matcher !== "*" && !new RegExp(group.matcher).test("clear")) continue;
 			for (const command of group.hooks) {
 				expect(command.command).toBe(
-					buildQuarterdeckCommandLine(["hooks", "ingest", "--event", "activity", "--source", "codex"]),
+					buildQuarterdeckHookCommandLine(["hooks", "ingest", "--event", "activity", "--source", "codex"]),
 				);
 				await ingest("replacement", "activity", "SessionStart", "clear");
 			}

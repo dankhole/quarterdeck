@@ -5,17 +5,25 @@ import type { FlushProjectBoardCommandsResult } from "@/hooks/project/use-projec
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeClearTrashRequest, RuntimeClearTrashResult, RuntimeProjectStateResponse } from "@/runtime/types";
 import { sendClearTrashRequest, summarizeClearTrash } from "./clear-trash-operation";
-import { createTaskLifecycleOperationId } from "./task-lifecycle-operations";
+import { createTaskLifecycleOperationId, waitForAuthoritativeRevision } from "./task-lifecycle-operations";
 
 export type ClearTrash = (tasks: RuntimeClearTrashRequest["tasks"]) => Promise<RuntimeClearTrashResult | null>;
 
+/** After this long still running, replace the aggregate toast with a
+ * non-error status update instead of leaving the original "Clearing…"
+ * message unexplained for an operation that is taking a while. */
+const CLEAR_TRASH_STILL_RUNNING_NOTICE_DELAY_MS = 60_000;
+
 export function useClearTrashOperation({
 	currentProjectId,
+	projectName = null,
 	flushBoardCommands,
 	getAuthoritativeRevision,
 	applyLifecycleProjectState,
 }: {
 	currentProjectId: string | null;
+	/** Display name of the current project, shown in the Clear Trash aggregate toast. */
+	projectName?: string | null;
 	flushBoardCommands: () => Promise<FlushProjectBoardCommandsResult>;
 	getAuthoritativeRevision: () => number | null;
 	applyLifecycleProjectState: (state: RuntimeProjectStateResponse) => void;
@@ -28,7 +36,9 @@ export function useClearTrashOperation({
 			if (!guardFileEditorScopes(editorTarget)) return null;
 			const existing = inFlight.current.get(currentProjectId);
 			if (existing) return existing;
-			const initialRevision = getAuthoritativeRevision();
+			// Wait (bounded) for the project's first authoritative revision instead
+			// of failing instantly if Clear Trash races hydration.
+			const initialRevision = await waitForAuthoritativeRevision(getAuthoritativeRevision);
 			if (initialRevision === null) {
 				notifyError("The project is still loading. Try the action again.");
 				return null;
@@ -36,14 +46,28 @@ export function useClearTrashOperation({
 			const projectId = currentProjectId;
 			const operationId = createTaskLifecycleOperationId("delete");
 			const taskIdentities = tasks.map((task) => ({ ...task }));
+			const projectSuffix = projectName ? ` in ${projectName}` : "";
 			const promise = (async () => {
 				showAppToast(
 					{
-						message: `Clearing ${tasks.length} task${tasks.length === 1 ? "" : "s"} from Trash…`,
+						message: `Clearing ${tasks.length} task${tasks.length === 1 ? "" : "s"} from Trash${projectSuffix}…`,
 						timeout: Infinity,
 					},
 					operationId,
 				);
+				// Never leave the aggregate toast frozen on the initial "Clearing…"
+				// message if this runs long; replace it with a non-error update.
+				const stillRunningTimer = setTimeout(() => {
+					showAppToast(
+						{
+							message: projectName
+								? `Still clearing in ${projectName} — check Trash.`
+								: "Still clearing Trash — check back shortly.",
+							timeout: Infinity,
+						},
+						operationId,
+					);
+				}, CLEAR_TRASH_STILL_RUNNING_NOTICE_DELAY_MS);
 				try {
 					const flushed = await flushBoardCommands();
 					if (!flushed.ok) throw new Error(flushed.message ?? "Could not save pending board changes.");
@@ -82,6 +106,8 @@ export function useClearTrashOperation({
 						{ key: operationId },
 					);
 					return null;
+				} finally {
+					clearTimeout(stillRunningTimer);
 				}
 			})();
 			inFlight.current.set(projectId, promise);
@@ -91,6 +117,6 @@ export function useClearTrashOperation({
 				inFlight.current.delete(projectId);
 			}
 		},
-		[currentProjectId, flushBoardCommands, getAuthoritativeRevision, applyLifecycleProjectState],
+		[currentProjectId, projectName, flushBoardCommands, getAuthoritativeRevision, applyLifecycleProjectState],
 	);
 }

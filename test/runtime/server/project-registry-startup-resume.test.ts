@@ -184,12 +184,12 @@ describe("validateIndexedProjectsForStream", () => {
 		expect(result?.availability).toEqual({ status: "unavailable", reason: "missing" });
 	});
 
-	it("reports an indeterminate probe conservatively with exactly one probe call (no pre-listen retry)", async () => {
+	it("reports an indeterminate probe as provisionally available with exactly one probe call (no pre-listen retry)", async () => {
 		// Startup runs before the server listens: retrying an indeterminate probe
 		// here would multiply pre-listen latency per indeterminate project and can
 		// blow past the desktop supervisor's startup window under the very load
-		// this is meant to tolerate. Startup also has no prior evidence to carry
-		// forward, so indeterminate conservatively reports unavailable.
+		// this is meant to tolerate. The accessible folder stays provisionally
+		// available so startup still hydrates it; launches require a definite answer.
 		const projects: RuntimeProjectIndexEntry[] = [{ projectId: "p1", repoPath: "/tmp/p1" }];
 		const probeGitRepository = vi.fn(async () => "indeterminate" as const);
 
@@ -199,7 +199,7 @@ describe("validateIndexedProjectsForStream", () => {
 		});
 
 		expect(probeGitRepository).toHaveBeenCalledTimes(1);
-		expect(result?.availability).toEqual({ status: "unavailable", reason: "not_git_repository" });
+		expect(result?.availability).toEqual({ status: "available" });
 		expect(result?.indeterminate).toBe(true);
 	});
 

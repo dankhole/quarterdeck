@@ -32,6 +32,50 @@ import type {
 import type { ProjectOrganization } from "../core/api/project-organization.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../core/api/runtime-protocol";
 
+/**
+ * Browsers never read provider delivery IDs or ordering observations; they are
+ * durable-only receipts that `sessions.json` keeps for hook deduplication and
+ * ordering hydration. Up to 640 entries per task would otherwise ride along on
+ * every session delta and project-state payload. The fields stay present and
+ * empty so the wire shape is unchanged.
+ */
+export function toBrowserTaskSessionSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
+	if (summary.recentProviderHookDeliveryIds.length === 0 && summary.recentProviderHookOrderObservations.length === 0) {
+		return summary;
+	}
+	return { ...summary, recentProviderHookDeliveryIds: [], recentProviderHookOrderObservations: [] };
+}
+
+function toBrowserTaskSessionSummaries(summaries: RuntimeTaskSessionSummary[]): RuntimeTaskSessionSummary[] {
+	return summaries.map(toBrowserTaskSessionSummary);
+}
+
+function toBrowserTaskSessionSummaryRecord(
+	sessions: Record<string, RuntimeTaskSessionSummary>,
+): Record<string, RuntimeTaskSessionSummary> {
+	return Object.fromEntries(
+		Object.entries(sessions).map(([taskId, summary]) => [taskId, toBrowserTaskSessionSummary(summary)]),
+	);
+}
+
+/** Browser-facing copy of authoritative project state; see `toBrowserTaskSessionSummary`. */
+export function toBrowserProjectStateResponse<T extends RuntimeProjectStateResponse>(projectState: T): T {
+	return { ...projectState, sessions: toBrowserTaskSessionSummaryRecord(projectState.sessions) };
+}
+
+interface BrowserSessionResponse {
+	state?: RuntimeProjectStateResponse;
+	summary?: RuntimeTaskSessionSummary | null;
+}
+
+/** Browser-facing copy of a tRPC response carrying project `state` and/or a session `summary`. */
+export function toBrowserSessionResponse<T extends BrowserSessionResponse>(response: T): T {
+	const browserResponse: T = { ...response };
+	if (response.state) browserResponse.state = toBrowserProjectStateResponse(response.state);
+	if (response.summary) browserResponse.summary = toBrowserTaskSessionSummary(response.summary);
+	return browserResponse;
+}
+
 export function buildSnapshotMessage(
 	runtimeBuildId: string,
 	currentProjectId: string | null,
@@ -48,9 +92,14 @@ export function buildSnapshotMessage(
 		currentProjectId,
 		projects,
 		...(organization !== undefined ? { organization } : {}),
-		projectState,
+		projectState: projectState ? toBrowserProjectStateResponse(projectState) : null,
 		projectMetadata: null,
-		notificationSummariesByProject,
+		notificationSummariesByProject: Object.fromEntries(
+			Object.entries(notificationSummariesByProject).map(([projectId, summaries]) => [
+				projectId,
+				toBrowserTaskSessionSummaries(summaries),
+			]),
+		),
 		notificationRevisionsByProject,
 	};
 }
@@ -62,7 +111,7 @@ export function buildProjectStateUpdatedMessage(
 	return {
 		type: "project_state_updated",
 		projectId,
-		projectState,
+		projectState: toBrowserProjectStateResponse(projectState),
 	};
 }
 
@@ -97,7 +146,7 @@ export function buildTaskSessionsUpdatedMessage(
 	return {
 		type: "task_sessions_updated",
 		projectId,
-		summaries,
+		summaries: toBrowserTaskSessionSummaries(summaries),
 	};
 }
 
@@ -151,7 +200,7 @@ export function buildTaskNotificationMessage(
 		type: "task_notification",
 		projectId,
 		notificationRevision,
-		summaries,
+		summaries: toBrowserTaskSessionSummaries(summaries),
 		...(options?.removedTaskIds?.length ? { removedTaskIds: options.removedTaskIds } : undefined),
 		...(options?.replace ? { replace: true } : undefined),
 	};

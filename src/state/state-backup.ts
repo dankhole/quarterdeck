@@ -12,7 +12,8 @@
 //         index.json
 //         {projectId}/
 //           board.json, sessions.json, meta.json, pinned-branches.json,
-//           lifecycle-operations.json, execution-ownership.json
+//           lifecycle-operations.json, execution-ownership.json,
+//           images/{sha256} (hard links to immutable task image blobs)
 
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -42,6 +43,7 @@ import {
 	SESSIONS_FILENAME,
 } from "./project-state-utils";
 import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
+import { getProjectTaskImagesPath, linkTaskImageBlobs, TASK_IMAGES_DIRNAME } from "./task-image-store";
 
 const DEFAULT_BACKUP_HOME = join(homedir(), ".quarterdeck-backups");
 const DEFAULT_MAX_BACKUPS = 10;
@@ -232,6 +234,10 @@ async function createBackupUnderIndexLock(options: CreateBackupOptions): Promise
 						`Project "${projectId}" has a folder relocation awaiting recovery. Finish it before backing up.`,
 					);
 				}
+				// Link blobs before copying the board so a snapshot never references a missing image.
+				await linkTaskImageBlobs(getProjectTaskImagesPath(projectId), join(wsBackupDir, TASK_IMAGES_DIRNAME), {
+					admissionPath: runtimeHome,
+				});
 				await copyFileIfExists(getProjectBoardPath(projectId), join(wsBackupDir, BOARD_FILENAME));
 				await copyFileIfExists(getProjectSessionsPath(projectId), join(wsBackupDir, SESSIONS_FILENAME));
 				await copyFileIfExists(getProjectMetaPath(projectId), join(wsBackupDir, META_FILENAME));
@@ -352,6 +358,11 @@ export async function restoreBackup(backupPathOrName: string): Promise<BackupMan
 		await mkdir(wsDir, { recursive: true });
 		// Recover and remove any pending commit before replacing it with the backup.
 		await withProjectStateLock(projectId, async () => {
+			// Restore referenced blobs before the board that names them. Extra live
+			// blobs are harmless; the next collection removes unreferenced ones.
+			await linkTaskImageBlobs(join(wsBackupDir, TASK_IMAGES_DIRNAME), getProjectTaskImagesPath(projectId), {
+				verifySource: true,
+			});
 			for (const filename of PROJECT_STATE_FILENAMES) {
 				if (COORDINATION_JOURNAL_FILENAMES.includes(filename)) {
 					await restoreCoordinationJournal(join(wsBackupDir, filename), join(wsDir, filename));

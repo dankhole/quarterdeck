@@ -34,7 +34,7 @@ The separate `--ax-screen-reader` mode is not the primary presentation fix. It d
 
 - New, resumed, restarted, pooled, parked, and reattached Claude sessions restore to the bottom without duplicated frames or a premature loading-overlay reveal.
 - Trackpad and mouse-wheel scrolling, Page Up/Down, Ctrl+Home/End, and Claude's transcript search work through xterm mouse reporting.
-- Text selection, copy/paste, links, permission prompts, and the optional Quarterdeck status line work in both short and tall terminals.
+- Text selection, copy/paste, links, and permission prompts work in both short and tall terminals.
 - Resizing while output is active, switching task terminals, detaching and reattaching, and restoring while the alternate screen is active do not lose visible output.
 - Codex, Pi, home shell, and detail shell terminal behavior remains unchanged.
 - Linux/macOS are dogfooded separately; Windows ConPTY keeps its existing same-size-resize caveat until native validation is available.

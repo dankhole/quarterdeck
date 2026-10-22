@@ -1,9 +1,21 @@
 import { randomUUID } from "node:crypto";
 
-import type { RuntimeHookEvent, RuntimeHookIngestRequest, RuntimeHookMetadata } from "../core";
-import { runtimeCodexSessionStartSourceSchema } from "../core";
+import type { RuntimeHookEvent, RuntimeHookIngestRequest, RuntimeHookMetadata } from "../core/api/task-session.js";
+import { CODEX_SESSION_START_SOURCES, type CodexSessionStartSource } from "../core/codex-session-start-sources.js";
 
 const HOOK_METADATA_TEXT_MAX_LENGTH = 500;
+
+// Validates against the same canonical tuple `runtimeCodexSessionStartSourceSchema`
+// (core/api/task-session.ts) builds its zod enum from, without importing zod or the
+// broader task-session schema surface into this hot CLI path, which is shared by the
+// lightweight hook entry (dist/hooks.js).
+const CODEX_SESSION_START_SOURCE_SET: ReadonlySet<string> = new Set(CODEX_SESSION_START_SOURCES);
+
+function parseCodexSessionStartSource(value: unknown): CodexSessionStartSource | null {
+	return typeof value === "string" && CODEX_SESSION_START_SOURCE_SET.has(value)
+		? (value as CodexSessionStartSource)
+		: null;
+}
 
 function normalizeWhitespace(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
@@ -442,7 +454,7 @@ export function normalizeHookMetadata(
 	const source = flagMetadata.source ?? inferredSource ?? null;
 	const sessionStartSource =
 		source?.trim().toLowerCase() === "codex" && hookEventName?.toLowerCase() === "sessionstart"
-			? runtimeCodexSessionStartSourceSchema.safeParse(payload?.source)
+			? parseCodexSessionStartSource(payload?.source)
 			: null;
 	const backgroundWork = classifyClaudeStopBackgroundWork(payload, source, hookEventName);
 	const waitingForBackgroundWork = backgroundWork === "pending";
@@ -513,7 +525,7 @@ export function normalizeHookMetadata(
 		elicitationId: flagMetadata.elicitationId ?? elicitationId ?? null,
 		providerAgentId: flagMetadata.providerAgentId ?? providerAgentId ?? null,
 		transcriptPath: flagMetadata.transcriptPath ?? transcriptPath ?? null,
-		...(sessionStartSource?.success ? { sessionStartSource: sessionStartSource.data } : undefined),
+		...(sessionStartSource ? { sessionStartSource } : undefined),
 		conversationSummaryText: waitingForBackgroundWork
 			? null
 			: (flagMetadata.conversationSummaryText ??
@@ -532,6 +544,34 @@ export function normalizeHookMetadata(
 export function readPayloadStringField(payload: Record<string, unknown>, key: string): string | null {
 	return readStringField(payload, key);
 }
+
+/**
+ * Single source of truth for the `hooks ingest|notify` metadata flag set, shared by
+ * commander's `.option()` registration (`commands/hooks.ts`) and the lightweight hook
+ * entry's manual argv parser (`hook-entry.ts`), which cannot depend on commander.
+ */
+export const HOOK_METADATA_FLAG_SPECS: ReadonlyArray<{
+	flag: string;
+	key: keyof HookCommandMetadataOptionValues;
+	description: string;
+}> = [
+	{ flag: "--source", key: "source", description: "Hook source." },
+	{ flag: "--activity-text", key: "activityText", description: "Activity summary text." },
+	{ flag: "--tool-name", key: "toolName", description: "Tool name." },
+	{ flag: "--tool-input-summary", key: "toolInputSummary", description: "Tool input summary." },
+	{ flag: "--final-message", key: "finalMessage", description: "Final message." },
+	{ flag: "--hook-event-name", key: "hookEventName", description: "Original hook event name." },
+	{ flag: "--notification-type", key: "notificationType", description: "Notification type." },
+	{ flag: "--session-id", key: "sessionId", description: "Resumable agent session id." },
+	{ flag: "--session-instance-id", key: "sessionInstanceId", description: "Quarterdeck task-process instance id." },
+	{ flag: "--turn-id", key: "turnId", description: "Agent turn id." },
+	{ flag: "--prompt-id", key: "promptId", description: "Provider prompt id." },
+	{ flag: "--tool-use-id", key: "toolUseId", description: "Agent tool-use id." },
+	{ flag: "--elicitation-id", key: "elicitationId", description: "Provider elicitation id." },
+	{ flag: "--provider-agent-id", key: "providerAgentId", description: "Provider background-agent id." },
+	{ flag: "--transcript-path", key: "transcriptPath", description: "Agent transcript JSONL path." },
+	{ flag: "--metadata-base64", key: "metadataBase64", description: "Base64-encoded JSON metadata payload." },
+];
 
 /** The launch-scoped identity a native hook invocation reports for. */
 export interface HookIngestIdentity {

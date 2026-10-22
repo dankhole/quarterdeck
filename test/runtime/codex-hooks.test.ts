@@ -9,14 +9,14 @@ import {
 	type CodexHooksConfig,
 	serializeCodexTomlValue,
 } from "../../src/codex-hooks";
-import { buildQuarterdeckCommandLine } from "../../src/core";
+import { buildQuarterdeckHookCommandLine } from "../../src/core/quarterdeck-command";
 
 const SESSION_FLAGS_CONFIG_SOURCE =
 	process.platform === "win32" ? "C:\\<session-flags>\\config.toml" : "/<session-flags>/config.toml";
 
 function hookCommand(event: string, options: { reliable?: boolean } = {}): string {
 	const subcommand = options.reliable || event !== "activity" ? "ingest" : "notify";
-	return buildQuarterdeckCommandLine(["hooks", subcommand, "--event", event, "--source", "codex"]);
+	return buildQuarterdeckHookCommandLine(["hooks", subcommand, "--event", event, "--source", "codex"]);
 }
 
 describe("serializeCodexTomlValue", () => {

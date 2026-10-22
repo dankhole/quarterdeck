@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
 	createTaggedLogger,
+	isRuntimeTaskImageRef,
 	type RuntimeTaskLifecycleCommand,
 	type RuntimeTaskLifecycleOperation,
 	runtimeTaskLifecycleCommandSchema,
@@ -13,6 +14,7 @@ import { isNodeError, lockedFileSystem } from "../fs";
 import type { ProjectBoardCommandScope } from "./project-board-command-service";
 import { getProjectDirectoryLockRequest, getProjectLifecycleOperationsPath } from "./project-state-utils";
 import { assertRuntimeWriteAdmission } from "./runtime-write-admission.js";
+import { toTaskImageReference } from "./task-image-store";
 
 const MAX_TERMINAL_OPERATIONS = 200;
 const log = createTaggedLogger("task-lifecycle-journal");
@@ -154,12 +156,30 @@ async function readJournal(scope: ProjectBoardCommandScope): Promise<OperationJo
 	}
 }
 
+/**
+ * Retained terminal operations keep attachment metadata but not image bytes.
+ * Pending operations keep the exact command: crash recovery replays it, and
+ * its board-step and lifecycle fingerprints must match the originals. Terminal
+ * replay compares the incoming command with the stored fingerprint only.
+ */
+function compactTerminalOperation(operation: PersistedTaskLifecycleOperation): PersistedTaskLifecycleOperation {
+	const command = operation.command;
+	if (!isTerminal(operation) || command.kind !== "create_and_start") return operation;
+	const images = command.task.images;
+	if (!images?.some((image) => !isRuntimeTaskImageRef(image))) return operation;
+	return {
+		...operation,
+		command: { ...command, task: { ...command.task, images: images.map(toTaskImageReference) } },
+	};
+}
+
 function pruneJournal(journal: OperationJournal): OperationJournal {
 	const active = journal.operations.filter((operation) => !isTerminal(operation));
 	const terminal = journal.operations
 		.filter(isTerminal)
 		.sort((left, right) => right.updatedAt - left.updatedAt)
-		.slice(0, MAX_TERMINAL_OPERATIONS);
+		.slice(0, MAX_TERMINAL_OPERATIONS)
+		.map(compactTerminalOperation);
 	return { version: 1, operations: [...active, ...terminal] };
 }
 

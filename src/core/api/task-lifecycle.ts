@@ -2,7 +2,7 @@ import { z } from "zod";
 import { runtimeClaudeOptionsSchema, runtimeCodexOptionsSchema } from "./board.js";
 
 import { runtimeProjectStateResponseSchema } from "./project-state.js";
-import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageSchema } from "./shared.js";
+import { runtimeAgentIdSchema, runtimeBoardColumnIdSchema, runtimeTaskImageInputSchema } from "./shared.js";
 import { runtimeTaskSessionSummarySchema } from "./task-session.js";
 
 const operationIdSchema = z.string().trim().min(1).max(128);
@@ -67,7 +67,7 @@ export const runtimeTaskLifecycleCommandSchema = z.discriminatedUnion("kind", [
 			taskId: taskIdSchema,
 			title: z.string().nullable().optional(),
 			prompt: z.string(),
-			images: z.array(runtimeTaskImageSchema).optional(),
+			images: z.array(runtimeTaskImageInputSchema).optional(),
 			baseRef: z.string(),
 			agentId: runtimeAgentIdSchema.optional(),
 			codexOptions: runtimeCodexOptionsSchema.optional(),

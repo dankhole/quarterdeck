@@ -317,6 +317,115 @@ describe("RuntimeSessionPersistence", () => {
 		}
 	});
 
+	it("re-arms the automatic writer for a change made during a barrier-driven write", async () => {
+		const write = createDeferred<ReturnType<typeof createBoardCommandResult>>();
+		const dependencies = createDependencies();
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		reconcileRuntimeSessions.mockImplementationOnce(async () => await write.promise);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1" }) });
+		persistence.trackTerminalManager("project-1", new TerminalSessionManager(store));
+
+		try {
+			const barrier = persistence.persistRuntimeSessions("project-1");
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledOnce());
+			store.update("task-1", { warningMessage: "changed during barrier write" });
+			write.resolve(createBoardCommandResult());
+			await barrier;
+
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2));
+		} finally {
+			write.resolve(createBoardCommandResult());
+			await persistence.close();
+		}
+	});
+
+	it("coalesces a burst of hook barriers into at most two writes", async () => {
+		const firstWrite = createDeferred<ReturnType<typeof createBoardCommandResult>>();
+		const dependencies = createDependencies();
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		reconcileRuntimeSessions.mockImplementationOnce(async () => await firstWrite.promise);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1" }) });
+		persistence.trackTerminalManager("project-1", new TerminalSessionManager(store));
+
+		try {
+			const barriers = [persistence.persistRuntimeSessions("project-1")];
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledOnce());
+			for (let index = 0; index < 20; index += 1) {
+				store.update("task-1", { warningMessage: `burst ${index}` });
+				barriers.push(persistence.persistRuntimeSessions("project-1"));
+			}
+			firstWrite.resolve(createBoardCommandResult());
+			await Promise.all(barriers);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+			await new Promise((resolve) => setTimeout(resolve, 150));
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+		} finally {
+			firstWrite.resolve(createBoardCommandResult());
+			await persistence.close();
+		}
+	});
+
+	it("forces a fresh generation for a barrier after the store listener is detached", async () => {
+		const dependencies = createDependencies();
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1" }) });
+		persistence.trackTerminalManager("project-1", new TerminalSessionManager(store));
+
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			await persistence.disposeProject("project-1");
+			store.update("task-1", { warningMessage: "unobserved change" });
+			await persistence.persistRuntimeSessions("project-1");
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("follows a replacement terminal manager for the same project", async () => {
+		vi.useFakeTimers();
+		const dependencies = createDependencies();
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const retiredStore = new InMemorySessionSummaryStore();
+		retiredStore.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1" }) });
+		const currentStore = new InMemorySessionSummaryStore();
+		currentStore.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1" }) });
+		const retiredManager = new TerminalSessionManager(retiredStore);
+
+		try {
+			persistence.trackTerminalManager("project-1", retiredManager);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+			persistence.trackTerminalManager("project-1", retiredManager);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+
+			persistence.trackTerminalManager("project-1", new TerminalSessionManager(currentStore));
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+
+			retiredStore.update("task-1", { warningMessage: "retired manager" });
+			await vi.advanceTimersByTimeAsync(200);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(2);
+
+			currentStore.update("task-1", { warningMessage: "current manager" });
+			const barrier = persistence.persistRuntimeSessions("project-1");
+			await vi.advanceTimersByTimeAsync(1);
+			await barrier;
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(3);
+		} finally {
+			await persistence.close();
+			vi.useRealTimers();
+		}
+	});
+
 	it("retries a failed final session flush before completing shutdown", async () => {
 		const dependencies = createDependencies();
 		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);

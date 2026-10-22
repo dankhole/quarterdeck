@@ -1460,7 +1460,6 @@ export class TaskExecutionOwnershipService {
 				launchOperationId: operationId,
 				claudeLaunchPermissionMode: prepared.request.claudeLaunchPermissionMode,
 				codexApprovalsReviewer: prepared.request.codexApprovalsReviewer,
-				statuslineEnabled: prepared.request.statuslineEnabled,
 				worktreeSystemPromptTemplate: prepared.request.worktreeSystemPromptTemplate,
 				onProcessStarted: async ({ pid }) => {
 					await this.store.updateOwnership(scope, ownership.taskId, (current) => {

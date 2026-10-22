@@ -2,6 +2,7 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { FuseState, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { sha256File } from "./checksums.mjs";
+import { DESKTOP_RESOURCE_PATHS } from "./desktop-resource-paths.mjs";
 import { desktopRoot } from "./paths.mjs";
 import { verifyApp } from "./verify-artifact.mjs";
 
@@ -12,18 +13,7 @@ export async function recordPackagedApp(outputPath, arch) {
 	const manifest = await verifyApp(appPath);
 	if (manifest.arch !== arch) throw new Error("Packaged app architecture differs from Forge target.");
 	const resources = join(appPath, "Contents", "Resources");
-	const files = [
-		"app.asar",
-		"runtime/bin/node",
-		"runtime/bin/nodeHost",
-		"runtime/dist/cli.js",
-		"runtime/dist/hooks.js",
-		"runtime/dist/build-manifest.json",
-		"runtime/installation-admission",
-		"runtime/dist/web-ui/index.html",
-		"runtime/bundle-manifest.json",
-		"runtime/release-policy.json",
-	];
+	const files = DESKTOP_RESOURCE_PATHS;
 	const checksums = Object.fromEntries(
 		await Promise.all(files.map(async (file) => [file, await sha256File(join(resources, file))])),
 	);

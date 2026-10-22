@@ -74,6 +74,8 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 	const [replyDrafts] = useState(() => new BoardReplyDrafts());
 	const { currentProjectId, projects, currentProjectAvailability } = useProjectNavigationContext();
 	const availableProjectId = currentProjectAvailability?.status === "unavailable" ? null : currentProjectId;
+	const currentProject = projects.find((project) => project.id === currentProjectId) ?? null;
+	const currentProjectName = currentProject?.displayName ?? currentProject?.name ?? null;
 	const { streamedProjectState, hasReceivedSnapshot, streamError } = useProjectRuntimeStreamContext();
 	const {
 		boardProjectId,
@@ -107,6 +109,7 @@ export function BoardProvider({ board, sessions, setSessions, children }: BoardP
 	});
 	const taskLifecycle = useTaskLifecycleOperations({
 		currentProjectId: availableProjectId,
+		projectName: currentProjectName,
 		flushBoardCommands,
 		getAuthoritativeRevision,
 		applyLifecycleProjectState,

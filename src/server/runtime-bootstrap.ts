@@ -18,6 +18,7 @@ import { setLogLevel } from "../core/runtime-logger";
 import { createRuntimeDiagnostics, type RuntimeDiagnostics } from "../diagnostics/runtime-diagnostics";
 import { cleanupGlobalStaleLockArtifacts, cleanupProjectStaleLockArtifacts } from "../fs/lock-cleanup";
 import { createHookTransitionOutboxReplayer, loadPendingHookTransitions } from "../hook-transition-outbox";
+import { probeGitRepository } from "../projects/git-repository-probe";
 import { resolveProjectInputPath } from "../projects/project-path";
 import { listProjectIndexEntries, ProjectBoardCommandService, pruneProjectSessionsForBoard } from "../state";
 import { readProjectRelocationJournal } from "../state/project-relocation-journal";
@@ -36,6 +37,7 @@ import {
 } from "../terminal/pty-runtime-health";
 import type { RuntimeTrpcContext } from "../trpc";
 import { createHooksApi } from "../trpc/hooks-api";
+import { getGitProcessLimiterSnapshot } from "../workdir/git-utils";
 import { stopRuntimeOwnedProcessTrees } from "./owned-process-shutdown";
 import {
 	createCoalescingGitRepositoryProbe,
@@ -46,13 +48,14 @@ import {
 	createProjectRegistry,
 	type ProjectRegistry,
 } from "./project-registry";
+import { ProjectStatePublicationScheduler } from "./project-state-publication-scheduler";
 import type { RuntimeClientAccess } from "./runtime-client-access";
 import { type CreateRuntimeHostIntegrationsOptions, createRuntimeHostIntegrations } from "./runtime-host-integrations";
 import { loadRuntimeHostSimulation } from "./runtime-host-simulation";
 import { createRuntimeServer } from "./runtime-server";
 import { RuntimeSessionPersistence } from "./runtime-session-persistence";
 import { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
-import { assertPathIsDirectory, pathIsDirectory, probeGitRepository } from "./runtime-startup-paths";
+import { assertPathIsDirectory, pathIsDirectory } from "./runtime-startup-paths";
 import { createRuntimeStateHub, type RuntimeStateHub } from "./runtime-state-hub";
 import { resolveInteractiveShellCommand } from "./shell";
 import { type RuntimeShutdownCoordinatorDependencies, shutdownRuntimeServer } from "./shutdown-coordinator";
@@ -102,6 +105,7 @@ interface RuntimeBootstrapResources {
 	projectRegistry?: ProjectRegistry;
 	runtimeHub?: RuntimeStateHub;
 	runtimeSessionPersistence?: RuntimeSessionPersistence;
+	projectStatePublications?: ProjectStatePublicationScheduler;
 }
 
 async function runRuntimeStartupCleanup(warn: (message: string) => void): Promise<void> {
@@ -153,6 +157,7 @@ async function createRuntimeBootstrapState(
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	let sessionPersistence: RuntimeSessionPersistence | undefined;
+	let registryForCallbacks: ProjectRegistry | undefined;
 	// Every projects broadcast re-probes every project, so this coalesces repeat probe failures per project instead of recording one event per broadcast.
 	const gitValidationDiagnostics = new ProjectGitValidationDiagnostics(diagnostics);
 	const projectRegistry = await createProjectRegistry({
@@ -161,6 +166,9 @@ async function createRuntimeBootstrapState(
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
 		probeGitRepository: createCoalescingGitRepositoryProbe(gitValidationDiagnostics, diagnostics, probeGitRepository),
+		onProjectAvailabilityChanged: () => {
+			void runtimeStateHub?.broadcastRuntimeProjectsUpdated(registryForCallbacks?.getActiveProjectId() ?? null);
+		},
 		pathIsDirectory,
 		diagnostics,
 		waitForStartupAgentCleanup: async () => await startupAgentCleanup,
@@ -170,6 +178,7 @@ async function createRuntimeBootstrapState(
 		},
 	});
 	resources.projectRegistry = projectRegistry;
+	registryForCallbacks = projectRegistry;
 	const activeConfig = projectRegistry.getActiveRuntimeConfig();
 	setLogLevel(activeConfig.logLevel as "debug" | "info" | "warn" | "error");
 	diagnostics.registerSnapshotProvider({
@@ -194,6 +203,11 @@ async function createRuntimeBootstrapState(
 		capture: (scope) => gitValidationDiagnostics.getSnapshot(scope),
 	});
 
+	diagnostics.registerSnapshotProvider({
+		name: "git_processes",
+		capture: () => getGitProcessLimiterSnapshot(),
+	});
+
 	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.
 	createBackup({ trigger: "startup" })
 		.then((path) => {
@@ -211,16 +225,16 @@ async function createRuntimeBootstrapState(
 			);
 		});
 	startPeriodicBackups(activeConfig.backupIntervalMinutes);
+	let projectStatePublications: ProjectStatePublicationScheduler | undefined;
 	const boardCommands = new ProjectBoardCommandService({
 		getAuthoritativeSessions: async ({ projectId, projectPath }) => {
 			const manager = await projectRegistry.ensureTerminalManagerForProject(projectId, projectPath);
 			return Object.fromEntries(manager.store.listSummaries().map((summary) => [summary.taskId, summary]));
 		},
-		publishAuthoritativeState: async ({ projectId }, result) => {
-			const hub = runtimeStateHub;
-			if (!hub) return;
-			const state = await projectRegistry.buildProjectStatePublication(projectId, result.state);
-			if (state) hub.broadcastRuntimeProjectStateSnapshot(projectId, state);
+		// Returns at once: enrichment and broadcast run in the per-project scheduler,
+		// never on the committing caller's path.
+		publishAuthoritativeState: ({ projectId }, result) => {
+			projectStatePublications?.schedule(projectId, result.state);
 		},
 	});
 	sessionPersistence = new RuntimeSessionPersistence({ projectRegistry, boardCommands });
@@ -233,6 +247,21 @@ async function createRuntimeBootstrapState(
 	});
 	const runtimeHub = runtimeStateHub;
 	resources.runtimeHub = runtimeHub;
+	projectStatePublications = new ProjectStatePublicationScheduler({
+		prepare: (projectId, state) => projectRegistry.prepareProjectStatePublication(projectId, state),
+		publish: (projectId, state) => runtimeHub.broadcastRuntimeProjectStateSnapshot(projectId, state),
+		onPublicationDropped: (projectId, reason) => {
+			if (reason !== "retries_exhausted") return;
+			diagnostics.recordEvent(
+				"project.state_publication_dropped",
+				{ reason },
+				{ projectId },
+				{ level: "warn", essential: true },
+			);
+		},
+	});
+	const publicationScheduler = projectStatePublications;
+	resources.projectStatePublications = publicationScheduler;
 	for (const { projectId, terminalManager } of projectRegistry.listManagedProjects()) {
 		runtimeSessionPersistence.trackTerminalManager(projectId, terminalManager);
 		runtimeHub.trackTerminalManager(projectId, terminalManager);
@@ -263,6 +292,7 @@ async function createRuntimeBootstrapState(
 							: await startupHooksApi.ingest(request),
 				});
 				try {
+					// The previous runtime is gone, so no live CLI attempt can still own a record.
 					await startupOutboxReplayer.replayOnce();
 					const pending = await loadPendingHookTransitions();
 					const blockedTasks = Array.from(
@@ -299,11 +329,22 @@ async function createRuntimeBootstrapState(
 			stopTerminalSessions?: boolean;
 		},
 	): Promise<{ terminalManager: TerminalSessionManager | null; projectPath: string | null }> => {
+		// Fence publication before the final persistence flush so no scheduled run
+		// observes (or touches the index of) a project that is being removed.
+		const publicationsDrained = publicationScheduler.drainProject(projectId);
 		const disposed = projectRegistry.disposeProject(projectId, {
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
 		gitValidationDiagnostics.disposeProject(projectId);
-		await Promise.all([runtimeSessionPersistence.disposeProject(projectId), runtimeHub.disposeProject(projectId)]);
+		try {
+			await Promise.all([
+				publicationsDrained,
+				runtimeSessionPersistence.disposeProject(projectId),
+				runtimeHub.disposeProject(projectId),
+			]);
+		} finally {
+			publicationScheduler.releaseProject(projectId);
+		}
 		return disposed;
 	};
 
@@ -312,6 +353,7 @@ async function createRuntimeBootstrapState(
 		runtimeHub,
 		runtimeSessionPersistence,
 		boardCommands,
+		projectStatePublications: publicationScheduler,
 		initializeProjectsForStartup,
 		diagnostics,
 		disposeTrackedProject,
@@ -366,6 +408,7 @@ async function createRuntimeServerHandle(
 		runtimeStateHub: bootstrap.runtimeHub,
 		runtimeSessionPersistence: bootstrap.runtimeSessionPersistence,
 		boardCommands: bootstrap.boardCommands,
+		projectStatePublications: bootstrap.projectStatePublications,
 		initializeProjectsForStartup: bootstrap.initializeProjectsForStartup,
 		diagnostics: bootstrap.diagnostics,
 		warn: bootstrap.warn,
@@ -541,6 +584,7 @@ export async function startRuntime(options: RuntimeBootstrapOptions): Promise<Ru
 							resources.runtimeSessionPersistence?.close({
 								skipPersistence: options.persistenceAllowed?.() === false,
 							}),
+							resources.projectStatePublications?.close(),
 							resources.runtimeHub?.close(),
 						]);
 						const failures = closed.filter((result) => result.status === "rejected");

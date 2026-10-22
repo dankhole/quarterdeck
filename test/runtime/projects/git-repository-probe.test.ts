@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DiagnosticJournal, DiagnosticRecorder, readDiagnosticJournal } from "../../../src/diagnostics";
 import { hasGitRepository, probeGitRepository } from "../../../src/projects/git-repository-probe";
-import { observeProjectAvailability } from "../../../src/projects/project-availability";
+import {
+	observeProjectAvailability,
+	observeProjectAvailabilityDetailed,
+} from "../../../src/projects/project-availability";
 import { runGit } from "../../../src/workdir/git-utils";
 
 vi.mock("../../../src/workdir/git-utils", async (importOriginal) => {
@@ -121,28 +124,30 @@ describe("Git repository probe diagnostics", () => {
 		},
 	);
 
-	it.each(["command_failed", "spawn_unavailable", "permission_denied"] as const)(
-		"classifies a %s probe as a definitive not_repository result",
-		async (failureKind) => {
-			const directory = await mkdtemp(join(tmpdir(), "quarterdeck-git-not-repo-"));
-			vi.mocked(runGit).mockResolvedValue({
-				ok: false,
-				stdout: "",
-				stderr: "",
-				output: "",
-				error: "synthetic failure",
-				exitCode: 1,
-				timedOut: false,
-				failureKind,
-				errorCode: null,
-			});
-			try {
-				await expect(probeGitRepository(directory)).resolves.toBe("not_repository");
-			} finally {
-				await rm(directory, { recursive: true, force: true });
-			}
-		},
-	);
+	// Windows reads a spawn permission failure as transient antivirus or handle contention.
+	it.each(
+		process.platform === "win32"
+			? (["command_failed", "spawn_unavailable"] as const)
+			: (["command_failed", "spawn_unavailable", "permission_denied"] as const),
+	)("classifies a %s probe as a definitive not_repository result", async (failureKind) => {
+		const directory = await mkdtemp(join(tmpdir(), "quarterdeck-git-not-repo-"));
+		vi.mocked(runGit).mockResolvedValue({
+			ok: false,
+			stdout: "",
+			stderr: "",
+			output: "",
+			error: "synthetic failure",
+			exitCode: 1,
+			timedOut: false,
+			failureKind,
+			errorCode: null,
+		});
+		try {
+			await expect(probeGitRepository(directory)).resolves.toBe("not_repository");
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
 
 	it.each(["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"] as const)(
 		"classifies a command_failed probe with resource-exhaustion errorCode %s as indeterminate",
@@ -227,6 +232,60 @@ describe("Git repository probe diagnostics", () => {
 		try {
 			await expect(probeGitRepository(directory)).resolves.toBe("repository");
 			await expect(hasGitRepository(directory)).resolves.toBe(true);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+});
+
+function failedGit(overrides: Partial<Awaited<ReturnType<typeof runGit>>>): Awaited<ReturnType<typeof runGit>> {
+	return {
+		ok: false,
+		stdout: "",
+		stderr: "",
+		output: "",
+		error: "synthetic failure",
+		exitCode: 128,
+		timedOut: false,
+		failureKind: "command_failed",
+		errorCode: null,
+		...overrides,
+	};
+}
+
+describe("Git repository probe tri-state", () => {
+	it.each([
+		["a timeout", { timedOut: true, failureKind: "timed_out", errorCode: "ETIMEDOUT", exitCode: -1 }],
+		["a launch fence", { failureKind: "launch_blocked", exitCode: -1 }],
+		["a cancelled queued command", { failureKind: "aborted", exitCode: -1 }],
+		["a signalled process without exit status", { failureKind: "command_failed", exitCode: -1 }],
+	] as const)("reports %s as indeterminate and keeps the folder provisionally available", async (_label, failure) => {
+		const directory = await mkdtemp(join(tmpdir(), "quarterdeck-git-indeterminate-tri-state-"));
+		vi.mocked(runGit).mockResolvedValue(failedGit(failure));
+		const onFailure = vi.fn();
+		try {
+			await expect(probeGitRepository(directory, { onFailure })).resolves.toBe("indeterminate");
+			await expect(hasGitRepository(directory)).resolves.toBe(false);
+			expect(onFailure).toHaveBeenCalledTimes(1);
+			await expect(
+				observeProjectAvailabilityDetailed({ repoPath: directory }, { hasPendingRelocation: async () => false }),
+			).resolves.toEqual({ availability: { status: "available" }, indeterminate: "git" });
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps definite Git failures as a not-a-repository observation", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "quarterdeck-git-absent-"));
+		vi.mocked(runGit).mockResolvedValue(failedGit({ exitCode: 128 }));
+		try {
+			await expect(probeGitRepository(directory)).resolves.toBe("not_repository");
+			await expect(
+				observeProjectAvailabilityDetailed({ repoPath: directory }, { hasPendingRelocation: async () => false }),
+			).resolves.toEqual({
+				availability: { status: "unavailable", reason: "not_git_repository" },
+				indeterminate: null,
+			});
 		} finally {
 			await rm(directory, { recursive: true, force: true });
 		}

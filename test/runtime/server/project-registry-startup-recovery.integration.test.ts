@@ -109,7 +109,6 @@ function createRuntimeConfig(): RuntimeConfigState {
 	return {
 		selectedAgentId: "codex",
 		claudeLaunchPermissionMode: "plan",
-		statuslineEnabled: false,
 		worktreeSystemPromptTemplate: "",
 		llmSummaryPolishEnabled: false,
 	} as RuntimeConfigState;
@@ -773,6 +772,34 @@ describe("project registry startup recovery integration", () => {
 		// `unavailable` instead of the evidence recorded above.
 		probeResult = "indeterminate";
 		await expect(registry.checkProjectAvailability("available-project")).resolves.toEqual({ status: "available" });
+	});
+
+	it("spends one Git probe per project across startup validation, selection, and the recovery gate", async () => {
+		const projectEntries = [
+			{ projectId: "project-a", repoPath: "/tmp/project-a" },
+			{ projectId: "project-b", repoPath: "/tmp/project-b" },
+		];
+		stateMocks.listProjectIndexEntries.mockResolvedValue(projectEntries);
+		const state = createProjectState();
+		state.sessions = {};
+		stateMocks.loadProjectState.mockResolvedValue(state);
+		const config = createRuntimeConfig();
+		const probeGitRepository = vi.fn(async (_path: string) => "repository" as const);
+		registry = await createProjectRegistry({
+			cwd: "/tmp/runtime",
+			registerCwdProject: false,
+			loadGlobalRuntimeConfig: async () => config,
+			loadRuntimeConfig: async () => config,
+			probeGitRepository,
+			pathIsDirectory: async () => true,
+		});
+
+		await expect(registry.initializeIndexedProjectsForStartup()).resolves.toBe(2);
+		for (const project of projectEntries) {
+			await registry.resumeInterruptedSessions(project.projectId, project.repoPath);
+		}
+		const probedPaths = probeGitRepository.mock.calls.map(([path]) => path).filter((path) => path !== "/tmp/runtime");
+		expect(probedPaths.sort()).toEqual(["/tmp/project-a", "/tmp/project-b"]);
 	});
 
 	it("orders availability changes independently of board revisions and keeps the display name", async () => {

@@ -33,6 +33,8 @@ export interface ProjectMetadataRemoteFetchDiagnosticSnapshot {
 
 export class ProjectMetadataRemoteFetchPolicy {
 	private fetchTimer: NodeJS.Timeout | null = null;
+	/** Cadence anchor: only a successful fetch defers the next one. */
+	private lastSucceededAt: number | null = null;
 	private fetchPromise: Promise<void> | null = null;
 	private lastStartedAt: number | null = null;
 	private lastCompletedAt: number | null = null;
@@ -56,9 +58,18 @@ export class ProjectMetadataRemoteFetchPolicy {
 		if (this.fetchTimer) {
 			return;
 		}
-		this.fetchTimer = setInterval(() => {
+		// Keep the cadence anchored to the last successful fetch: restarting the
+		// policy (visibility or reconnect) must not push a due fetch a full interval out.
+		const sinceSuccess = this.lastSucceededAt === null ? null : Date.now() - this.lastSucceededAt;
+		const firstDelay =
+			sinceSuccess === null ? REMOTE_FETCH_INTERVAL_MS : Math.max(0, REMOTE_FETCH_INTERVAL_MS - sinceSuccess);
+		this.fetchTimer = setTimeout(() => {
 			void this.performFetch();
-		}, REMOTE_FETCH_INTERVAL_MS);
+			this.fetchTimer = setInterval(() => {
+				void this.performFetch();
+			}, REMOTE_FETCH_INTERVAL_MS);
+			this.fetchTimer.unref();
+		}, firstDelay);
 		this.fetchTimer.unref();
 	}
 
@@ -66,11 +77,18 @@ export class ProjectMetadataRemoteFetchPolicy {
 		if (!this.fetchTimer) {
 			return;
 		}
-		clearInterval(this.fetchTimer);
+		// clearTimeout and clearInterval are interchangeable in Node.
+		clearTimeout(this.fetchTimer);
 		this.fetchTimer = null;
 	}
 
 	requestFetch(): void {
+		// Respect the normal cadence instead of fetching on every call: visibility
+		// transitions and reconnects both route here, and a reconnect within the
+		// idle grace period must not force a redundant `git fetch`.
+		if (this.lastSucceededAt !== null && Date.now() - this.lastSucceededAt < REMOTE_FETCH_INTERVAL_MS) {
+			return;
+		}
 		void this.performFetch();
 	}
 
@@ -95,6 +113,7 @@ export class ProjectMetadataRemoteFetchPolicy {
 					});
 				});
 				if (result.ok) {
+					this.lastSucceededAt = Date.now();
 					await this.deps.onFetchSucceeded();
 				} else {
 					this.lastErrorClass = "GitCommandFailed";

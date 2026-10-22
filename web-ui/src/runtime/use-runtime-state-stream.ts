@@ -49,6 +49,15 @@ export interface UseRuntimeStateStreamResult {
 
 export function useRuntimeStateStream(requestedProjectId: string | null): UseRuntimeStateStreamResult {
 	const streamGenerationRef = useRef(0);
+	// invalidateRuntimeConfig() is for config that may actually have changed:
+	// the very first snapshot this hook ever sees, and any snapshot that
+	// follows a genuine disconnect/reconnect (the runtime may have changed
+	// config while this client was offline). A deliberate project switch also
+	// tears down and recreates the socket (see the effect below) and gets its
+	// own fresh "snapshot" message, but nothing about global config changed
+	// just because the user switched projects — explicit `config_changed`
+	// messages already cover real mid-session config edits.
+	const shouldInvalidateConfigOnNextSnapshotRef = useRef(true);
 	const [state, dispatch] = useReducer(
 		runtimeStateStreamReducer,
 		requestedProjectId,
@@ -98,6 +107,10 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 				dispatchStreamAction({ type: "stream_connected" });
 			},
 			onDisconnected: (message) => {
+				// A genuine disconnect (network drop, server error) — unlike a
+				// deliberate project switch — means config may have changed while
+				// this client could not hear about it. Invalidate once on reconnect.
+				shouldInvalidateConfigOnNextSnapshotRef.current = true;
 				dispatchStreamAction({
 					type: "stream_disconnected",
 					message,
@@ -138,7 +151,10 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 					}
 					transport?.acceptCurrentConnection();
 					if (payload.uiPreferences) sharedUiPreferences.apply(payload.uiPreferences);
-					invalidateRuntimeConfig();
+					if (shouldInvalidateConfigOnNextSnapshotRef.current) {
+						shouldInvalidateConfigOnNextSnapshotRef.current = false;
+						invalidateRuntimeConfig();
+					}
 					applyRuntimeNotificationPresentation(payload.notificationPresentation);
 				}
 				if (payload.type === "ui_preferences") {

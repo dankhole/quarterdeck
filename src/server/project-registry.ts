@@ -16,14 +16,18 @@ import {
 	areFileSystemPathsEqual,
 	createTaggedLogger,
 	deriveProjectSummary,
-	KeyedOperationCoordinator,
 	normalizeDiagnosticErrorClass,
 	normalizeRuntimeTaskSessionSummary,
 	pruneOrphanSessionsForBroadcast,
 } from "../core";
+import { CoalescedRefresh } from "../core/coalesced-refresh";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { GitRepositoryProbeResult } from "../projects/git-repository-probe";
-import { observeProjectAvailability } from "../projects/project-availability";
+import { observeProjectAvailabilityDetailed } from "../projects/project-availability";
+import {
+	ProjectAvailabilityObserver,
+	type ProjectAvailabilityReadMode,
+} from "../projects/project-availability-observer";
 import {
 	isUnderWorktreesHome,
 	listProjectIndexEntries,
@@ -33,28 +37,21 @@ import {
 	loadProjectState,
 	loadSavedProjectStateById,
 	type RuntimeProjectIndexEntry,
-	type RuntimeProjectScopeContext,
 	updateProjectIndexMetadata,
 } from "../state";
 import { upgradeProjectDirectoryIdentities } from "../state/project-directory-identity-upgrade";
 import { ProjectExecutionOwnershipStore } from "../state/project-execution-ownership-store";
-import { readProjectNavigationIndex } from "../state/project-state-index.js";
-import { detectGitRepositoryInfo } from "../state/project-state-utils";
+import { loadProjectBoardRevisionById, readProjectNavigationIndex } from "../state/project-state-index.js";
+import { detectGitRepositoryInfo, invalidateGitRepositoryInfoCache } from "../state/project-state-utils";
 import {
 	deriveStartupRecoveryPolicy,
 	InMemorySessionSummaryStore,
 	LEGACY_STARTUP_SEMANTIC_STATE_WARNING,
 	TerminalSessionManager,
 } from "../terminal";
-import {
-	CONSERVATIVE_INDETERMINATE_AVAILABILITY,
-	previousAvailabilityForScope,
-	projectAvailabilityScopeFingerprint,
-	resolveIndeterminateAvailability,
-	type StoredProjectAvailability,
-} from "./project-availability-carry-forward";
 import { createProjectOrphanMaintenanceTimer, type ProjectOrphanMaintenanceTimer } from "./project-orphan-maintenance";
 import { ProjectStateDiagnosticTracker } from "./project-state-diagnostics";
+import { ProjectSummaryCache } from "./project-summary-cache";
 import { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
 import { type StartupSessionRecoveryCandidate, StartupSessionRecoveryCoordinator } from "./startup-session-recovery";
 import { launchPreparedTaskSession, prepareTaskSessionStart } from "./task-session-start-service";
@@ -135,7 +132,12 @@ export interface CreateProjectRegistryDependencies {
 	registerCwdProject?: boolean;
 	loadGlobalRuntimeConfig: () => Promise<RuntimeConfigState>;
 	loadRuntimeConfig: (projectId?: string | null) => Promise<RuntimeConfigState>;
+	/** Tri-state Git root probe; an indeterminate answer never marks a project unavailable. */
 	probeGitRepository: (path: string, projectId?: string) => Promise<GitRepositoryProbeResult>;
+	/** Reuse window for definite Git root observations; zero probes on every availability read. */
+	gitProbeCacheTtlMs?: number;
+	/** A background re-probe changed a project's observed availability. */
+	onProjectAvailabilityChanged?: (projectId: string) => void;
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
@@ -150,6 +152,29 @@ export interface ResolvedProjectStreamTarget {
 	projectId: string | null;
 	projectPath: string | null;
 }
+
+export type { ProjectAvailabilityReadMode };
+
+export type ProjectStatePublicationPreparation =
+	| { status: "ready"; state: RuntimeProjectStateResponse }
+	/** Removed or moved: a later publication or relocation refresh owns the new location. */
+	| { status: "superseded" }
+	/** Index metadata advanced while enriching; retry from the latest committed state. */
+	| { status: "metadata_changed" };
+
+/** Git could not answer at launch admission; the folder was not judged unavailable. */
+export class ProjectGitBusyError extends Error {
+	constructor() {
+		super("Git is busy checking the project folder. Try again in a moment.");
+		this.name = "ProjectGitBusyError";
+	}
+}
+
+type ProjectsPayloadBase = {
+	projects: RuntimeProjectIndexEntry[];
+	organization: Awaited<ReturnType<typeof readProjectNavigationIndex>>["organization"];
+	summaries: RuntimeProjectSummary[];
+};
 
 export type ProjectRemovalPreparationHandler = (
 	projectId: string,
@@ -195,7 +220,14 @@ export interface ProjectRegistry
 	) => Promise<number>;
 	resolveTaskSessionSummary: (projectId: string, taskId: string) => Promise<RuntimeTaskSessionSummary | null>;
 	setProjectRemovalPreparationHandler: (handler: ProjectRemovalPreparationHandler | null) => void;
-	checkProjectAvailability: (projectId: string) => Promise<RuntimeProjectAvailability>;
+	/**
+	 * Availability for display and gating. `fresh` (the default) probes Git again;
+	 * see `ProjectAvailabilityReadMode` for the reuse modes.
+	 */
+	checkProjectAvailability: (
+		projectId: string,
+		mode?: ProjectAvailabilityReadMode,
+	) => Promise<RuntimeProjectAvailability>;
 	/** For explicit "Check again" UX only: exposes whether this specific fresh probe was indeterminate. */
 	checkProjectAvailabilityFreshness: (
 		projectId: string,
@@ -205,6 +237,14 @@ export interface ProjectRegistry
 		projectId: string,
 		state: RuntimeProjectStateResponse,
 	) => Promise<RuntimeProjectStateResponse | null>;
+	/** Same enrichment, reporting why a projection could not be published. */
+	prepareProjectStatePublication: (
+		projectId: string,
+		state: RuntimeProjectStateResponse,
+	) => Promise<ProjectStatePublicationPreparation>;
+	/** Relocation quiesce: drop cached observations and fence background re-probes. */
+	suspendProjectObservation: (projectId: string) => void;
+	resumeProjectObservation: (projectId: string) => void;
 	rebindProjectLocation: (projectId: string, projectPath: string) => Promise<void>;
 	setProjectOperationRunner: (runner: ProjectOperationRunner) => void;
 	prepareProjectRemoval: (projectId: string, projectPath: string) => Promise<{ ok: boolean; error?: string }>;
@@ -221,20 +261,20 @@ export type ProjectOperationRunner = <T>(projectId: string, operation: () => Pro
 
 export interface ProjectStreamValidationResult {
 	project: RuntimeProjectIndexEntry;
+	/** Definite, or provisional when `indeterminate` (startup has no prior evidence to carry forward). */
 	availability: RuntimeProjectAvailability;
-	/** True when the probe itself was indeterminate; `availability` is the conservative fallback (not carry-forward — startup has no prior evidence). */
-	indeterminate?: boolean;
+	/** The observation itself had no definite answer. */
+	indeterminate: boolean;
 }
 
 /**
  * Startup runs before the server listens, so an indeterminate probe here gets
- * no retry: retrying with a longer budget would multiply pre-listen latency
- * by the number of indeterminate projects and can blow past the desktop
- * supervisor's startup window under exactly the load this fixes. Startup also
- * has no prior evidence to fall back on, so indeterminate conservatively
- * reports unavailable; a later, normal `checkProjectAvailability` call (the
- * next broadcast, selection, or explicit Check again) still probes fresh and
- * self-corrects once the runtime is no longer under load.
+ * no retry: retrying would multiply pre-listen latency by the number of
+ * indeterminate projects and can blow past the desktop supervisor's startup
+ * window under exactly the load that causes it. An accessible folder whose Git
+ * probe could not answer is provisionally available, so startup still hydrates
+ * it and queues its recovery; every launch still requires a definite answer,
+ * and the probe cache re-probes it in the background.
  */
 export async function validateIndexedProjectsForStream(
 	projects: RuntimeProjectIndexEntry[],
@@ -244,11 +284,12 @@ export async function validateIndexedProjectsForStream(
 	return await Promise.all(
 		projects.map((project) =>
 			limit(async () => {
-				const observation = await observeProjectAvailability(project, deps);
-				if (observation.status === "indeterminate") {
-					return { project, availability: CONSERVATIVE_INDETERMINATE_AVAILABILITY, indeterminate: true };
-				}
-				return { project, availability: observation, indeterminate: false };
+				const observation = await observeProjectAvailabilityDetailed(project, deps);
+				return {
+					project,
+					availability: observation.availability,
+					indeterminate: observation.indeterminate !== null,
+				};
 			}),
 		),
 	);
@@ -300,8 +341,20 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const executionOwnershipStore = new ProjectExecutionOwnershipStore();
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
-	const availabilityOperations = new KeyedOperationCoordinator();
-	const observedAvailability = new Map<string, StoredProjectAvailability>();
+	const summaryCache = new ProjectSummaryCache();
+	const projectsPayloadRefresh = new CoalescedRefresh<ProjectsPayloadBase>();
+	const availabilityObserver = new ProjectAvailabilityObserver({
+		loadScope: loadProjectScopeById,
+		pathIsDirectory: deps.pathIsDirectory,
+		probeGitRepository: deps.probeGitRepository,
+		touchIndex: (projectId, expectedPath) => updateProjectIndexMetadata({ projectId, expectedPath, touch: true }),
+		onScopeObserved: (projectId, repoPath) => {
+			rememberProject(projectId, repoPath);
+			if (activeProjectId === projectId) activeProjectPath = repoPath;
+		},
+		onAvailabilityChanged: (projectId) => deps.onProjectAvailabilityChanged?.(projectId),
+		gitProbeCacheTtlMs: deps.gitProbeCacheTtlMs,
+	});
 	let runProjectOperation: ProjectOperationRunner = async (_projectId, operation) => await operation();
 	const deferredStartupRecoveries = new Map<string, { projectId: string; projectPath: string; taskId: string }>();
 	const deferredStartupRecoveryProjects = new Map<string, string>();
@@ -320,72 +373,24 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		if (!wasKnown) deps.diagnostics?.recordEvent("project.registered", {}, { projectId }, { essential: true });
 	};
 
-	/**
-	 * Every caller — launch admission, selection, relocation, startup, explicit
-	 * "Check again", and projection reads alike — always runs a fresh Git probe
-	 * here. The only optimization is evidence reuse on an indeterminate result,
-	 * delegated to `project-availability-carry-forward.ts`'s scope-gated policy,
-	 * which never skips the probe.
-	 */
-	const observeProjectLocation = async (
-		projectId: string,
-	): Promise<{
-		scope: RuntimeProjectScopeContext | null;
-		availability: RuntimeProjectAvailability;
-		/** The raw fresh probe outcome, before any carry-forward substitution. */
-		indeterminate: boolean;
-	}> => {
-		return await availabilityOperations.run(projectId, async () => {
-			let scope = await loadProjectScopeById(projectId);
-			if (!scope) {
-				return {
-					scope: null,
-					availability: { status: "unavailable", reason: "invalid_location" },
-					indeterminate: false,
-				};
-			}
-			rememberProject(projectId, scope.repoPath);
-			if (activeProjectId === projectId) activeProjectPath = scope.repoPath;
-			const observation = await observeProjectAvailability(scope, deps);
-			const previous = previousAvailabilityForScope(observedAvailability.get(projectId), scope);
-			if (observation.status === "indeterminate") {
-				// A timed-out, blocked, or resource-exhausted probe proves nothing: the
-				// carry-forward policy decides whether a prior Git-level verdict for
-				// this exact scope is still safe to report. Either way, nothing is
-				// stored and no index touch happens here — a reused verdict is already
-				// recorded, and the conservative fallback must let the next definitive
-				// observation be treated as first evidence, not a "change".
-				const { availability } = resolveIndeterminateAvailability(previous);
-				return { scope, availability, indeterminate: true };
-			}
-			const availability = observation;
-			if (
-				(previous && JSON.stringify(previous) !== JSON.stringify(availability)) ||
-				(!previous && availability.status === "unavailable")
-			) {
-				scope = {
-					...scope,
-					...(await updateProjectIndexMetadata({ projectId, expectedPath: scope.repoPath, touch: true })),
-				};
-			}
-			observedAvailability.set(projectId, { ...projectAvailabilityScopeFingerprint(scope), availability });
-			return { scope, availability, indeterminate: false };
-		});
-	};
+	const observeProjectLocation = (projectId: string, mode: ProjectAvailabilityReadMode) =>
+		availabilityObserver.observe(projectId, mode);
 
-	const checkProjectAvailability = async (projectId: string): Promise<RuntimeProjectAvailability> =>
-		(await observeProjectLocation(projectId)).availability;
+	const checkProjectAvailability = async (
+		projectId: string,
+		mode: ProjectAvailabilityReadMode = "fresh",
+	): Promise<RuntimeProjectAvailability> => (await observeProjectLocation(projectId, mode)).availability;
 
 	/**
 	 * Surfaces whether *this* fresh probe was indeterminate, distinct from
 	 * `checkProjectAvailability`'s carried-forward result. Explicit "Check again"
-	 * uses this to tell the user the check itself timed out, instead of silently
-	 * reporting stale evidence as a confirmed answer.
+	 * uses this to tell the user the check itself could not complete, instead of
+	 * silently reporting earlier evidence as a confirmed answer.
 	 */
 	const checkProjectAvailabilityFreshness = async (
 		projectId: string,
 	): Promise<{ availability: RuntimeProjectAvailability; indeterminate: boolean }> => {
-		const { availability, indeterminate } = await observeProjectLocation(projectId);
+		const { availability, indeterminate } = await observeProjectLocation(projectId, "fresh");
 		return { availability, indeterminate };
 	};
 
@@ -394,9 +399,13 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectPath: string,
 		manager: TerminalSessionManager,
 	): Promise<void> => {
-		const availability = await checkProjectAvailability(projectId);
+		// Launch admission never relies on the reuse window. An indeterminate Git
+		// answer is retried once and then reported as retryable, not as unavailable.
+		let observed = await observeProjectLocation(projectId, "fresh");
+		if (observed.indeterminate) observed = await observeProjectLocation(projectId, "fresh");
+		if (observed.indeterminate) throw new ProjectGitBusyError();
 		if (
-			availability.status !== "available" ||
+			observed.availability.status !== "available" ||
 			!areFileSystemPathsEqual(projectPathsById.get(projectId) ?? "", projectPath) ||
 			terminalManagersByProjectId.get(projectId) !== manager
 		) {
@@ -565,7 +574,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			rememberProject(projectId, scope.repoPath);
 			activeRuntimeConfig = await deps.loadRuntimeConfig(projectId);
 			globalRuntimeConfig = toGlobalRuntimeConfigState(activeRuntimeConfig);
-			if ((await checkProjectAvailability(projectId)).status === "available") {
+			if ((await checkProjectAvailability(projectId, "cached")).status === "available") {
 				await prepareTerminalManagerForProject(projectId, scope.repoPath, "selection");
 			}
 		});
@@ -591,7 +600,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectStateDiagnostics.remove(projectId);
 		const projectPath = projectPathsById.get(projectId) ?? null;
 		projectPathsById.delete(projectId);
-		observedAvailability.delete(projectId);
+		availabilityObserver.forget(projectId);
+		summaryCache.purge(projectId);
+		if (projectPath) invalidateGitRepositoryInfoCache(projectPath);
 		for (const [key, deferred] of deferredStartupRecoveries) {
 			if (deferred.projectId === projectId) deferredStartupRecoveries.delete(key);
 		}
@@ -627,6 +638,13 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			if (deferred.projectId === projectId) deferredStartupRecoveries.delete(key);
 		}
 		deferredStartupRecoveryProjects.delete(projectId);
+		// Observations of the previous location say nothing about the new one.
+		const previousPath = projectPathsById.get(projectId);
+		availabilityObserver.reset(projectId);
+		summaryCache.purge(projectId);
+		if (previousPath && !areFileSystemPathsEqual(previousPath, scope.repoPath)) {
+			invalidateGitRepositoryInfoCache(previousPath);
+		}
 		rememberProject(projectId, scope.repoPath);
 		if (activeProjectId === projectId) {
 			activeProjectPath = scope.repoPath;
@@ -639,26 +657,39 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	};
 
 	const buildProjectSummary = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
-		const snapshot = await loadProjectBoardSnapshotById(projectId);
-		const availability = await checkProjectAvailability(projectId);
+		// List rebuilds never spawn Git for a project already observed: they reuse its
+		// last Git answer, while directory, identity, and journal checks still run.
+		const availability = await checkProjectAvailability(projectId, "lastKnown");
 		const scope = await loadProjectScopeById(projectId);
-		return deriveProjectSummary({
+		const summaryInput = {
 			projectId,
 			repoPath: scope?.repoPath ?? repoPath,
-			board: snapshot.board,
-			boardRevision: snapshot.revision,
 			folderOnly: scope?.folderOnly,
 			displayName: scope?.displayName,
 			metadataRevision: scope?.metadataRevision,
 			availability,
+		};
+		// Validate cheaply by board revision before reading and parsing the board.
+		const cached = summaryCache.get(projectId, {
+			...summaryInput,
+			boardRevision: await loadProjectBoardRevisionById(projectId),
 		});
+		if (cached) return cached;
+		const snapshot = await loadProjectBoardSnapshotById(projectId);
+		const summary = deriveProjectSummary({
+			...summaryInput,
+			board: snapshot.board,
+			boardRevision: snapshot.revision,
+		});
+		summaryCache.set(projectId, { ...summaryInput, boardRevision: snapshot.revision }, summary);
+		return summary;
 	};
 
 	const buildProjectStateSnapshot = async (projectId: string): Promise<RuntimeProjectStateResponse> =>
 		await runProjectOperation(projectId, async () => {
 			// A snapshot may hydrate and publish a manager. Hold admission through
 			// that publication so relocation cannot dispose its owner mid-read.
-			const availability = await checkProjectAvailability(projectId);
+			const availability = await checkProjectAvailability(projectId, "cached");
 			const scope = await loadProjectScopeById(projectId);
 			if (!scope) throw new Error("Project is no longer registered.");
 			const response =
@@ -679,15 +710,15 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			return response;
 		});
 
-	const buildProjectStatePublication = async (
+	const prepareProjectStatePublication = async (
 		projectId: string,
 		state: RuntimeProjectStateResponse,
-	): Promise<RuntimeProjectStateResponse | null> => {
-		// Runtime persistence owners await publication while draining inside relocation's
-		// exclusion. Read metadata only: admission or manager hydration here can deadlock
-		// that drain or resurrect a manager whose subscriptions were already disposed.
-		const { scope, availability } = await observeProjectLocation(projectId);
-		if (!scope || scope.repoPath !== state.repoPath) return null;
+	): Promise<ProjectStatePublicationPreparation> => {
+		// Publication can run while relocation drains runtime persistence owners inside
+		// its exclusion. Read metadata only: admission or manager hydration here can
+		// deadlock that drain or resurrect a manager whose subscriptions were disposed.
+		const { scope, availability } = await observeProjectLocation(projectId, "cached");
+		if (!scope || scope.repoPath !== state.repoPath) return { status: "superseded" };
 		const git =
 			availability.status === "available" && !scope.folderOnly
 				? await detectGitRepositoryInfo(scope.repoPath)
@@ -698,24 +729,42 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 						branches: [],
 					};
 		const currentScope = await loadProjectScopeById(projectId);
-		if (
-			!currentScope ||
-			currentScope.repoPath !== scope.repoPath ||
-			currentScope.metadataRevision !== scope.metadataRevision
-		) {
-			return null;
-		}
+		if (!currentScope || currentScope.repoPath !== scope.repoPath) return { status: "superseded" };
+		if (currentScope.metadataRevision !== scope.metadataRevision) return { status: "metadata_changed" };
 		return {
-			...state,
-			git,
-			availability,
-			metadataRevision: scope.metadataRevision,
-			sessions: projectSessionsForAvailability(state.sessions, availability),
+			status: "ready",
+			state: {
+				...state,
+				git,
+				availability,
+				metadataRevision: scope.metadataRevision,
+				sessions: projectSessionsForAvailability(state.sessions, availability),
+			},
 		};
 	};
 
+	const buildProjectStatePublication = async (
+		projectId: string,
+		state: RuntimeProjectStateResponse,
+	): Promise<RuntimeProjectStateResponse | null> => {
+		const prepared = await prepareProjectStatePublication(projectId, state);
+		return prepared.status === "ready" ? prepared.state : null;
+	};
+
 	const buildProjectsPayload = async (preferredCurrentProjectId: string | null) => {
-		const { entries: projects, organization } = await readProjectNavigationIndex();
+		// Concurrent publications share one build; a caller arriving mid-build waits
+		// for the follow-up so it never receives summaries older than its request.
+		const { projects, organization, summaries } = await projectsPayloadRefresh.run(async () => {
+			const { entries, organization } = await readProjectNavigationIndex();
+			const limit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
+			return {
+				projects: entries,
+				organization,
+				summaries: await Promise.all(
+					entries.map((project) => limit(() => buildProjectSummary(project.projectId, project.repoPath))),
+				),
+			};
+		});
 		const fallbackProjectId =
 			projects.find((project) => project.projectId === activeProjectId)?.projectId ?? projects[0]?.projectId ?? null;
 		const resolvedCurrentProjectId =
@@ -723,15 +772,20 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				projects.some((project) => project.projectId === preferredCurrentProjectId) &&
 				preferredCurrentProjectId) ||
 			fallbackProjectId;
-		const limit = pLimit(PROJECT_STREAM_VALIDATION_CONCURRENCY);
-		const projectSummaries = await Promise.all(
-			projects.map((project) => limit(() => buildProjectSummary(project.projectId, project.repoPath))),
-		);
 		return {
 			currentProjectId: resolvedCurrentProjectId,
-			projects: projectSummaries,
+			projects: summaries,
 			organization,
 		};
+	};
+
+	const suspendProjectObservation = (projectId: string): void => {
+		availabilityObserver.fence(projectId);
+		summaryCache.purge(projectId);
+	};
+
+	const resumeProjectObservation = (projectId: string): void => {
+		availabilityObserver.unfence(projectId);
 	};
 
 	const inspectIndexedProjects = async (): Promise<{
@@ -740,28 +794,23 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		unavailableProjects: RuntimeProjectIndexEntry[];
 	}> => {
 		const allProjects = await listProjectIndexEntries();
-		const validationResults = await validateIndexedProjectsForStream(allProjects, deps);
+		// One Git probe per project: it goes through the observer's probe cache, so
+		// startup selection and recovery reuse it instead of probing again.
+		const validationResults = await validateIndexedProjectsForStream(allProjects, {
+			pathIsDirectory: deps.pathIsDirectory,
+			probeGitRepository: (path, projectId) =>
+				projectId
+					? availabilityObserver.probeGitRepository(projectId, path, "cached")
+					: deps.probeGitRepository(path),
+		});
 		const existingProjects: RuntimeProjectIndexEntry[] = [];
 		const unavailableProjects: RuntimeProjectIndexEntry[] = [];
 
 		for (const { project, availability, indeterminate } of validationResults) {
-			// Seed carry-forward evidence from every definitive startup verdict, so a
-			// later load-induced timeout during runtime has real evidence to carry
-			// forward instead of treating it as "no previous". Written inside the
-			// same per-project queue `observeProjectLocation` uses, and only when
-			// nothing has already observed this project (e.g. a concurrent explicit
-			// check that reached the queue first) — startup must never clobber
-			// fresher evidence.
-			if (!indeterminate) {
-				await availabilityOperations.run(project.projectId, async () => {
-					if (!observedAvailability.has(project.projectId)) {
-						observedAvailability.set(project.projectId, {
-							...projectAvailabilityScopeFingerprint(project),
-							availability,
-						});
-					}
-				});
-			}
+			// Seed carry-forward evidence from every definite startup verdict, so a
+			// later load-induced timeout has real evidence to carry forward. Seeding
+			// never replaces an observation another caller already recorded.
+			if (!indeterminate) await availabilityObserver.seed(project.projectId, project, availability);
 
 			if (availability.status === "available") {
 				existingProjects.push(project);
@@ -808,7 +857,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			) {
 				await setActiveProject(selected.projectId);
 			} else {
-				await checkProjectAvailability(selected.projectId);
+				await checkProjectAvailability(selected.projectId, "cached");
 			}
 		} else {
 			clearActiveProject();
@@ -831,7 +880,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		options: { recoveryBarrier?: StartupRecoveryBarrier | null } = {},
 	): Promise<number> => {
 		const acquired = await runProjectOperation(projectId, async () => {
-			if ((await checkProjectAvailability(projectId)).status !== "available") return null;
+			// Reuses startup's Git answer however long hydration took; every launch
+			// below still passes fresh admission.
+			if ((await checkProjectAvailability(projectId, "lastKnown")).status !== "available") return null;
 			if (!areFileSystemPathsEqual(projectPathsById.get(projectId) ?? "", projectPath)) return null;
 			const manager = await ensureTerminalManagerForProject(projectId, projectPath);
 			try {
@@ -1216,6 +1267,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			buildProjectSummary,
 			buildProjectStateSnapshot,
 			buildProjectStatePublication,
+			prepareProjectStatePublication,
 			buildProjectsPayload,
 			resolveProjectForStream,
 			initializeIndexedProjectsForStartup,
@@ -1223,6 +1275,8 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			releaseDeferredStartupRecoveries,
 			resolveTaskSessionSummary,
 			checkProjectAvailability,
+			suspendProjectObservation,
+			resumeProjectObservation,
 			checkProjectAvailabilityFreshness,
 			rebindProjectLocation,
 			setProjectOperationRunner: (runner) => {
@@ -1241,10 +1295,11 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				disposeProjectStateDiagnosticProvider?.();
 				startupRecoveryCoordinator.close();
 				projectOrphanMaintenance.stop();
+				availabilityObserver.close();
 			},
 			waitForMaintenance: async () => {
 				await projectOrphanMaintenance.waitForIdle();
-				await availabilityOperations.waitForIdle();
+				await availabilityObserver.waitForIdle();
 			},
 			listManagedProjects: () => {
 				return Array.from(terminalManagersByProjectId.entries()).map(([projectId, terminalManager]) => ({
@@ -1257,6 +1312,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	} catch (error) {
 		projectOrphanMaintenance.stop();
 		startupRecoveryCoordinator.close();
+		availabilityObserver.close();
 		const failures: unknown[] = [];
 		for (const dispose of [disposeDiagnosticProvider, disposeProjectStateDiagnosticProvider]) {
 			try {
@@ -1275,7 +1331,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		}
 		const drained = await Promise.allSettled([
 			projectOrphanMaintenance.waitForIdle(),
-			availabilityOperations.waitForIdle(),
+			availabilityObserver.waitForIdle(),
 			...Array.from(terminalManagersByProjectId.values(), (manager) => manager.waitForShutdownQuiescence()),
 		]);
 		failures.push(...drained.filter((result) => result.status === "rejected").map((result) => result.reason));

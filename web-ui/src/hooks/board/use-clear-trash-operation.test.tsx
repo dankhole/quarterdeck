@@ -128,3 +128,114 @@ it("blocks Clear Trash on hidden drafts and preserves them for review", async ()
 		clearCachedFileEditorTabs();
 	}
 });
+
+it("waits (bounded) for the first authoritative revision instead of failing instantly", async () => {
+	vi.useFakeTimers();
+	try {
+		mocks.mutate.mockReset();
+		mocks.client.mockReset();
+		mocks.toast.mockReset();
+		mocks.error.mockReset();
+		let revision: number | null = null;
+		mocks.mutate.mockResolvedValue({
+			projectId: "proj-1",
+			state: createTestProjectStateResponse({ revision: 9 }),
+			results: [{ taskId: "task-1", taskCreatedAt: 1, ok: true, outcomeCode: "completed" }],
+		});
+		let clear: ClearTrash = async () => null;
+		function Harness() {
+			clear = useClearTrashOperation({
+				currentProjectId: "proj-1",
+				flushBoardCommands: async () => ({ ok: true }),
+				getAuthoritativeRevision: () => revision,
+				applyLifecycleProjectState: vi.fn(),
+			});
+			return null;
+		}
+		const root = createRoot(document.createElement("div"));
+		try {
+			await act(async () => root.render(<Harness />));
+			let pending: Promise<RuntimeClearTrashResult | null> | null = null;
+			await act(async () => {
+				pending = clear([{ taskId: "task-1", taskCreatedAt: 1 }]);
+			});
+			expect(mocks.mutate).not.toHaveBeenCalled();
+
+			revision = 4;
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(250);
+				await pending;
+			});
+			expect(mocks.mutate).toHaveBeenCalledOnce();
+			expect(mocks.mutate.mock.calls[0]?.[0].expectedRevision).toBe(4);
+		} finally {
+			await act(async () => root.unmount());
+		}
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
+it("includes the project name in the toast and replaces it with a non-error status update after the still-running deadline", async () => {
+	vi.useFakeTimers();
+	try {
+		mocks.mutate.mockReset();
+		mocks.client.mockReset();
+		mocks.toast.mockReset();
+		mocks.error.mockReset();
+		let resolveMutate: ((result: RuntimeClearTrashResult) => void) | null = null;
+		mocks.mutate.mockImplementation(
+			() =>
+				new Promise<RuntimeClearTrashResult>((resolve) => {
+					resolveMutate = resolve;
+				}),
+		);
+		let clear: ClearTrash = async () => null;
+		function Harness() {
+			clear = useClearTrashOperation({
+				currentProjectId: "proj-1",
+				projectName: "Acme Web",
+				flushBoardCommands: async () => ({ ok: true }),
+				getAuthoritativeRevision: () => 4,
+				applyLifecycleProjectState: vi.fn(),
+			});
+			return null;
+		}
+		const root = createRoot(document.createElement("div"));
+		try {
+			await act(async () => root.render(<Harness />));
+			let pending: Promise<RuntimeClearTrashResult | null> = Promise.resolve(null);
+			await act(async () => {
+				pending = clear([{ taskId: "task-1", taskCreatedAt: 1 }]);
+			});
+			expect(mocks.toast).toHaveBeenCalledWith(
+				expect.objectContaining({ message: expect.stringContaining("Acme Web") }),
+				expect.any(String),
+			);
+			const toastKey = mocks.toast.mock.calls[0]?.[1];
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(60_000);
+			});
+			expect(mocks.toast).toHaveBeenLastCalledWith(
+				{ message: "Still clearing in Acme Web — check Trash.", timeout: Infinity },
+				toastKey,
+			);
+
+			const result: RuntimeClearTrashResult = {
+				projectId: "proj-1",
+				state: createTestProjectStateResponse({ revision: 5 }),
+				results: [{ taskId: "task-1", taskCreatedAt: 1, ok: true, outcomeCode: "completed" }],
+			};
+			await act(async () => {
+				resolveMutate?.(result);
+				await pending;
+			});
+			expect(mocks.toast).toHaveBeenLastCalledWith(expect.objectContaining({ intent: "success" }), toastKey);
+		} finally {
+			await act(async () => root.unmount());
+		}
+	} finally {
+		vi.useRealTimers();
+	}
+});

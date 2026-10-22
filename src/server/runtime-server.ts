@@ -74,7 +74,9 @@ import { stopRuntimeOwnedProcessTrees } from "./owned-process-shutdown";
 import { ProjectLocationService } from "./project-location-service";
 import { normalizeProjectMetadataClientId } from "./project-metadata-visibility";
 import type { ProjectRegistry } from "./project-registry";
+import { createRelocationFailureResume, ProjectRelocationQuiesceGuard } from "./project-relocation-quiesce";
 import { assertProjectRelocationRuntimeIsExclusive } from "./project-relocation-runtime-guard";
+import type { ProjectStatePublicationScheduler } from "./project-state-publication-scheduler";
 import { ProjectTaskLifecycleService } from "./project-task-lifecycle-service";
 import type { RuntimeClientAccess } from "./runtime-client-access";
 import { handleRuntimeHostEventRequest } from "./runtime-host-event-endpoint";
@@ -108,6 +110,8 @@ export interface CreateRuntimeServerDependencies {
 	>;
 	initializeProjectsForStartup?: (runProjectOperation: RuntimeTrpcContext["runProjectOperation"]) => Promise<void>;
 	boardCommands: ProjectBoardCommandService;
+	/** Committed-state publication lanes; drained across relocation and closed on shutdown. */
+	projectStatePublications?: Pick<ProjectStatePublicationScheduler, "drainProject" | "releaseProject" | "close">;
 	diagnostics: RuntimeDiagnostics;
 	warn: (message: string) => void;
 	resolveInteractiveShellCommand: () => { binary: string; args: string[] };
@@ -210,7 +214,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				throw new TRPCError({ code: "CONFLICT", message: "The project folder changed. Refresh and try again." });
 			}
 			if (!options?.allowUnavailable) {
-				const availability = await deps.projectRegistry.checkProjectAvailability(scope.projectId);
+				// Scope checks run on every hook and request; they reuse the short Git
+				// probe window. Launch admission performs its own fresh check.
+				const availability = await deps.projectRegistry.checkProjectAvailability(scope.projectId, "cached");
 				if (availability.status !== "available") {
 					throw new TRPCError({
 						code: "PRECONDITION_FAILED",
@@ -384,13 +390,50 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				outcome: "not_running" as const,
 			};
 		};
+		// A relocation that fails after quiesce has no refresh. Resume the project's
+		// read paths for its saved location; launches stay gated by availability
+		// (a pending journal remains "relocation pending" until Locate finishes it).
+		const relocationQuiesce = new ProjectRelocationQuiesceGuard(
+			(projectId, operation) => taskResourceOperations.runProjectExclusive(projectId, operation),
+			createRelocationFailureResume({
+				releaseFences: (projectId) => {
+					try {
+						codeNavigation.restoreProject(projectId);
+					} finally {
+						deps.projectRegistry.resumeProjectObservation(projectId);
+						deps.projectStatePublications?.releaseProject(projectId);
+					}
+				},
+				loadScope: loadProjectScopeById,
+				reattachManager: async (projectId, repoPath) => {
+					if (deps.projectRegistry.getTerminalManagerForProject(projectId)) {
+						await deps.projectRegistry.ensureTerminalManagerForProject(projectId, repoPath);
+					}
+				},
+				refreshHub: (projectId, repoPath) => deps.runtimeStateHub.refreshProject(projectId, repoPath),
+			}),
+			(projectId, error) => {
+				deps.diagnostics.recordEvent(
+					"project.relocation_resume_failed",
+					{ errorClass: error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError" },
+					{ projectId },
+					{ level: "warn", essential: true },
+				);
+			},
+		);
 		const projectLocations = new ProjectLocationService({
 			runRegistrationMutation,
-			operations: taskResourceOperations,
+			operations: relocationQuiesce,
 			registry: deps.projectRegistry,
 			boardCommands: deps.boardCommands,
 			assertRuntimeExclusive: () => assertProjectRelocationRuntimeIsExclusive(deps.diagnostics.runtimeInstanceId),
 			stopProject: async (scope) => {
+				// Quiesce begins here: fence background availability re-probes and
+				// committed-state publication before any owner is stopped, so neither
+				// observes or touches the project index while its location changes.
+				relocationQuiesce.markQuiesced(scope.projectId);
+				deps.projectRegistry.suspendProjectObservation(scope.projectId);
+				await deps.projectStatePublications?.drainProject(scope.projectId);
 				const manager = deps.projectRegistry.getTerminalManagerForProject(scope.projectId);
 				// Startup cleanup has already retired old-runtime processes. A manager is
 				// present whenever this runtime owns native, structured, or shell execution.
@@ -409,12 +452,20 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				await deps.runtimeSessionPersistence.persistRuntimeSessions(scope.projectId);
 			},
 			suspendProject: async (projectId) => {
+				relocationQuiesce.markQuiesced(projectId);
+				deps.projectRegistry.suspendProjectObservation(projectId);
+				const publicationsDrained = deps.projectStatePublications?.drainProject(projectId);
 				await codeNavigation.stopProject(projectId);
+				// The hub also purges retained project metadata for the old location.
 				await deps.runtimeStateHub.suspendProject(projectId);
 				await deps.runtimeSessionPersistence.disposeProject(projectId);
+				await publicationsDrained;
 			},
 			refreshProject: async (projectId, projectPath) => {
+				relocationQuiesce.markRefreshed(projectId);
 				codeNavigation.restoreProject(projectId);
+				deps.projectRegistry.resumeProjectObservation(projectId);
+				deps.projectStatePublications?.releaseProject(projectId);
 				await deps.runtimeStateHub.refreshProject(projectId, projectPath);
 			},
 			publishProjects: () =>
@@ -446,7 +497,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		};
 		const ownershipRecoveryEntries = await listProjectIndexEntries();
 		for (const entry of ownershipRecoveryEntries) {
-			if ((await deps.projectRegistry.checkProjectAvailability(entry.projectId)).status !== "available") continue;
+			if ((await deps.projectRegistry.checkProjectAvailability(entry.projectId, "cached")).status !== "available")
+				continue;
 			await executionOwnership
 				.recoverProject({ projectId: entry.projectId, projectPath: entry.repoPath })
 				.catch((error) => {
@@ -598,7 +650,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		const recoveryEntries = await listProjectIndexEntries();
 		const recoveryResults = await Promise.allSettled(
 			recoveryEntries.map(async (entry) => {
-				if ((await deps.projectRegistry.checkProjectAvailability(entry.projectId)).status !== "available") return;
+				if ((await deps.projectRegistry.checkProjectAvailability(entry.projectId, "cached")).status !== "available")
+					return;
 				await taskResourceOperations.runProject(entry.projectId, () =>
 					taskLifecycle.recover({ projectId: entry.projectId, projectPath: entry.repoPath }),
 				);
@@ -1069,6 +1122,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 					executionOwnershipReconciliation,
 				]);
 				await Promise.all([taskResourceOperations.waitForIdle(), projectRegistrationOperations.waitForIdle()]);
+				// Drained requests may have committed and scheduled publications; close after them.
+				await deps.projectStatePublications?.close();
 				// A drained request may have scheduled a detached stale refresh.
 				await waitForPendingAgentAvailabilityProbes();
 				const failures = producerResults.filter((result) => result.status === "rejected");
@@ -1157,6 +1212,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 						}),
 				);
 				await runCloseStep(() => deps.clientAccess?.clear());
+				await runCloseStep(async () => await deps.projectStatePublications?.close());
 				await runCloseStep(async () => await deps.runtimeStateHub.close());
 				await runCloseStep(async () => await terminalWebSocketBridge.close());
 				await runCloseStep(

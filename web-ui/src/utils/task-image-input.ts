@@ -1,4 +1,4 @@
-import type { TaskImage } from "@/types";
+import type { RuntimeTaskImage } from "@/runtime/types";
 
 const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
@@ -10,7 +10,8 @@ export function isAcceptedTaskImageFile(file: File): boolean {
 	return ACCEPTED_IMAGE_TYPE_SET.has(file.type);
 }
 
-export async function fileToTaskImage(file: File): Promise<TaskImage | null> {
+/** New attachments stay inline until the runtime stores them with the committed card. */
+export async function fileToTaskImage(file: File): Promise<RuntimeTaskImage | null> {
 	return await new Promise((resolve) => {
 		if (!isAcceptedTaskImageFile(file)) {
 			resolve(null);
@@ -75,9 +76,9 @@ export function collectImageFilesFromDataTransfer(dataTransfer: DataTransfer): F
 	return files;
 }
 
-export async function extractImagesFromDataTransfer(dataTransfer: DataTransfer): Promise<TaskImage[]> {
+export async function extractImagesFromDataTransfer(dataTransfer: DataTransfer): Promise<RuntimeTaskImage[]> {
 	const files = collectImageFilesFromDataTransfer(dataTransfer);
-	const images: TaskImage[] = [];
+	const images: RuntimeTaskImage[] = [];
 	for (const file of files) {
 		const image = await fileToTaskImage(file);
 		if (image) {

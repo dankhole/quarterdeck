@@ -10,8 +10,9 @@ import { createDefaultMockConfig } from "../../utilities/runtime-config-factory"
 import { createTempDir } from "../../utilities/temp-dir";
 
 /**
- * Workstream B: an indeterminate Git probe (load-induced timeout or a blocked
- * launch) must never flip a project's availability by itself. These tests
+ * An indeterminate observation (a load-induced Git timeout, a blocked launch,
+ * or resource pressure on a folder check) must never flip a project's
+ * availability by itself. These tests
  * exercise `observeProjectLocation`/`checkProjectAvailability` through a real
  * registry and a temp project index so carry-forward, scope-gating, and index
  * metadata touches are all observed end to end rather than mocked away.
@@ -31,8 +32,12 @@ async function createFixture() {
 
 	let probeResult: GitRepositoryProbeResult = "repository";
 	let directoryExists = true;
+	let directoryError: Error | null = null;
 	const probeGitRepository = vi.fn(async (): Promise<GitRepositoryProbeResult> => probeResult);
-	const pathIsDirectory = vi.fn(async (): Promise<boolean> => directoryExists);
+	const pathIsDirectory = vi.fn(async (): Promise<boolean> => {
+		if (directoryError) throw directoryError;
+		return directoryExists;
+	});
 
 	const config = createDefaultMockConfig();
 	const registry = await createProjectRegistry({
@@ -53,6 +58,10 @@ async function createFixture() {
 		},
 		setDirectoryExists: (value: boolean) => {
 			directoryExists = value;
+		},
+		/** Simulates resource pressure on the folder check itself. */
+		setDirectoryError: (code: string | null) => {
+			directoryError = code ? Object.assign(new Error(code), { code }) : null;
 		},
 		cleanup: () => {
 			registry.stopMaintenance();
@@ -124,13 +133,12 @@ describe("project availability carry-forward across an indeterminate probe", () 
 
 			// The directory reappearing disproves "missing", but the probe itself is
 			// indeterminate: the stale "missing" verdict must not be reused, and the
-			// conservative fallback must not touch metadata a second time.
+			// provisional answer for the accessible folder must not touch metadata.
 			await rename(movedAsidePath, fixture.project.repoPath);
 			fixture.setDirectoryExists(true);
 			fixture.setProbe("indeterminate");
 			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
-				status: "unavailable",
-				reason: "not_git_repository",
+				status: "available",
 			});
 			const scopeAfterSecond = await loadProjectScopeById(fixture.project.projectId);
 			expect(scopeAfterSecond?.metadataRevision).toBe(scopeAfterFirst?.metadataRevision);
@@ -147,43 +155,75 @@ describe("project availability carry-forward across an indeterminate probe", () 
 	it("does not carry forward across a scope change made without rebindProjectLocation", async () => {
 		const fixture = await createFixture();
 		try {
-			// Flip the existing entry to folderOnly (e.g. re-adding an existing path)
-			// without ever calling `rebindProjectLocation`, so `observedAvailability`
-			// is never cleared for this project.
-			await loadProjectContext(fixture.project.repoPath, { folderOnly: true });
-			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
-				status: "available",
-			});
-
-			// Flip back to a Git project scope. The "available" verdict above was
-			// observed for the folderOnly scope: it must not be treated as evidence
-			// for this different scope now that the probe is indeterminate.
-			await loadProjectContext(fixture.project.repoPath, { folderOnly: false });
-			fixture.setProbe("indeterminate");
+			fixture.setProbe("not_repository");
 			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
 				status: "unavailable",
 				reason: "not_git_repository",
 			});
+
+			// Flip the existing entry to folderOnly (e.g. re-adding an existing path)
+			// without ever calling `rebindProjectLocation`, so the stored observation
+			// is never cleared for this project.
+			await loadProjectContext(fixture.project.repoPath, { folderOnly: true });
+
+			// The folder check itself is indeterminate. That would carry forward any
+			// verdict for the same scope, but "not a Git repository" was observed for
+			// the Git scope and says nothing about this folder-only scope.
+			fixture.setDirectoryError("EMFILE");
+			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
+				status: "available",
+			});
+			await expect(
+				fixture.registry.checkProjectAvailabilityFreshness(fixture.project.projectId),
+			).resolves.toMatchObject({ indeterminate: true });
 		} finally {
 			fixture.cleanup();
 		}
 	});
 
-	it("has no previous evidence to carry forward on the very first observation", async () => {
+	it("carries any scope-matched verdict across an indeterminate folder check", async () => {
 		const fixture = await createFixture();
 		try {
-			fixture.setProbe("indeterminate");
+			fixture.setProbe("not_repository");
+			await fixture.registry.checkProjectAvailability(fixture.project.projectId);
+			const scopeAfterFirst = await loadProjectScopeById(fixture.project.projectId);
+
+			// Resource pressure on the folder check established nothing about it.
+			fixture.setDirectoryError("EMFILE");
 			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
 				status: "unavailable",
 				reason: "not_git_repository",
 			});
+			expect((await loadProjectScopeById(fixture.project.projectId))?.metadataRevision).toBe(
+				scopeAfterFirst?.metadataRevision,
+			);
+		} finally {
+			fixture.cleanup();
+		}
+	});
 
-			// Because the conservative fallback above was never stored, the next
-			// definitive probe is treated as first evidence rather than a "change".
-			fixture.setProbe("repository");
+	it("reports an accessible, never-observed folder as provisionally available without recording it", async () => {
+		const fixture = await createFixture();
+		try {
+			const scopeBefore = await loadProjectScopeById(fixture.project.projectId);
+			fixture.setProbe("indeterminate");
 			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
 				status: "available",
 			});
+			expect((await loadProjectScopeById(fixture.project.projectId))?.metadataRevision).toBe(
+				scopeBefore?.metadataRevision,
+			);
+
+			// The provisional answer was never stored, so the next definite probe is
+			// first evidence: an unavailable verdict is recorded as a change.
+			fixture.setProbe("not_repository");
+			await expect(fixture.registry.checkProjectAvailability(fixture.project.projectId)).resolves.toEqual({
+				status: "unavailable",
+				reason: "not_git_repository",
+			});
+			expect((await loadProjectScopeById(fixture.project.projectId))?.metadataRevision).toBe(
+				(scopeBefore?.metadataRevision ?? 0) + 1,
+			);
 		} finally {
 			fixture.cleanup();
 		}

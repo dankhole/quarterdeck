@@ -36,6 +36,7 @@ import {
 	ProjectTaskLifecycleIdentityConflictError,
 	ProjectTaskLifecycleOperationStore,
 } from "../state";
+import { loadTaskImagesForLaunch, TaskImageUnavailableError } from "../state/task-image-store";
 import type { StopTaskSessionResult } from "../terminal/session-manager-types";
 import {
 	archiveTaskWorktreeForTrash,
@@ -332,8 +333,17 @@ export class ProjectTaskLifecycleService {
 					return await this.executeDelete(scope, command, begun.operation);
 			}
 		} catch (error) {
-			if (error instanceof ProjectStateConflictError || error instanceof ProjectBoardCommandIdentityConflictError) {
-				const outcomeCode = error instanceof ProjectStateConflictError ? "revision_conflict" : "identity_conflict";
+			if (
+				error instanceof ProjectStateConflictError ||
+				error instanceof ProjectBoardCommandIdentityConflictError ||
+				error instanceof TaskImageUnavailableError
+			) {
+				const outcomeCode =
+					error instanceof ProjectStateConflictError
+						? "revision_conflict"
+						: error instanceof TaskImageUnavailableError
+							? "invalid_transition"
+							: "identity_conflict";
 				log.warn("task lifecycle operation rejected by durable board state", {
 					projectId: scope.projectId,
 					taskId: begun.operation.taskId,
@@ -966,7 +976,9 @@ export class ProjectTaskLifecycleService {
 				taskId: card.id,
 				launchOperationId: operation.operationId,
 				prompt: options.resumeConversation ? "" : card.prompt,
-				images: options.resumeConversation ? undefined : card.images,
+				images: options.resumeConversation
+					? undefined
+					: await loadTaskImagesForLaunch(scope.projectId, card.images),
 				agentId: card.agentId,
 				resumeConversation: options.resumeConversation,
 				awaitReview: options.awaitReview,

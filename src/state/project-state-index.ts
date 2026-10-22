@@ -463,6 +463,11 @@ export async function readProjectMetaUnderLock(projectId: string): Promise<Proje
 	});
 }
 
+/** Reads only the board revision; cheap validation for derived projections such as project summaries. */
+export async function loadProjectBoardRevisionById(projectId: string): Promise<number> {
+	return await withProjectStateLock(projectId, async () => (await readProjectMetaUnderLock(projectId)).revision);
+}
+
 // --- Index CRUD ---
 
 export async function readProjectIndex(): Promise<ProjectIndexFile> {

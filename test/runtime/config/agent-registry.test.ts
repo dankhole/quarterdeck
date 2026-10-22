@@ -474,7 +474,8 @@ describe("agent-registry", () => {
 		});
 
 		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		await vi.runAllTimersAsync();
+		// The probe timeout plus the deferred check it schedules (one fake millisecond later).
+		await vi.advanceTimersByTimeAsync(3_001);
 		if (process.platform === "win32") {
 			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
 		} else {
@@ -500,6 +501,8 @@ describe("agent-registry", () => {
 		// afterward must not be read as "Codex ran but reported no version" (unsupported_version).
 		vi.useFakeTimers();
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const diagnostics = vi.fn();
+		setAgentAvailabilityDiagnosticSink(diagnostics);
 		const kill = vi.fn(() => true);
 		let probeCallback: ExecFileCallback = () => {
 			throw new Error("Expected the version probe callback.");
@@ -511,7 +514,8 @@ describe("agent-registry", () => {
 		});
 
 		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		await vi.runAllTimersAsync();
+		// The probe timeout plus the deferred check it schedules (one fake millisecond later).
+		await vi.advanceTimersByTimeAsync(3_001);
 		if (process.platform === "win32") {
 			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
 		} else {
@@ -520,6 +524,28 @@ describe("agent-registry", () => {
 		probeCallback(null, "", "");
 
 		await expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
+		expect(diagnostics).toHaveBeenCalledWith({
+			name: "agent.availability_probe_completed",
+			payload: expect.objectContaining({ probeKind: "version", outcome: "probe_timeout" }),
+			level: "warn",
+		});
+	});
+
+	it("settles a timed-out probe whose launcher never exits as a transient timeout", async () => {
+		vi.useFakeTimers();
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		const kill = vi.fn(() => true);
+		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[]) => {
+			if (args.includes("/pid")) return {} as ChildProcess;
+			// Never invokes its callback: neither termination nor force-kill reaps it.
+			return { pid: 4321, kill, exitCode: null, signalCode: null } as unknown as ChildProcess;
+		});
+
+		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		const settled = expect(resolution).rejects.toMatchObject({ reason: "probe_timeout", transient: true });
+		await vi.runAllTimersAsync();
+		await settled;
+		expect(kill).toHaveBeenCalledWith("SIGKILL");
 	});
 
 	// Real-process tests below delegate the module-mocked `execFile` to the real
@@ -571,7 +597,8 @@ describe("agent-registry", () => {
 		});
 
 		const resolution = resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
-		await vi.runAllTimersAsync();
+		// The probe timeout plus the deferred check it schedules (one fake millisecond later).
+		await vi.advanceTimersByTimeAsync(3_001);
 		if (process.platform === "win32") {
 			expect(childProcessMocks.execFile.mock.calls.some((call) => call[1]?.includes("/pid"))).toBe(true);
 		} else {

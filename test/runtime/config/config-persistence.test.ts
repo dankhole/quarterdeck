@@ -55,7 +55,6 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 				expect(state.projectConfigPath).toBeNull();
 				expect(state.shortcuts).toEqual([]);
 				expect(state.claudeLaunchPermissionMode).toBe("inherit");
-				expect(state.statuslineEnabled).toBe(false);
 				expect(state.codexApprovalsReviewer).toBe("inherit");
 			});
 		} finally {
@@ -96,10 +95,10 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 					mkdirSync(configDir, { recursive: true });
 					writeFileSync(join(configDir, "config.json"), JSON.stringify({ piToolApprovalsEnabled: enabled }));
 					expect(await loadGlobalRuntimeConfig()).not.toHaveProperty("piToolApprovalsEnabled");
-					await updateRuntimeConfig(null, { statuslineEnabled: true });
+					await updateRuntimeConfig(null, { codeNavigationEnabled: true });
 					const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
 					expect(saved).not.toHaveProperty("piToolApprovalsEnabled");
-					expect(saved.statuslineEnabled).toBe(true);
+					expect(saved.codeNavigationEnabled).toBe(true);
 				});
 			} finally {
 				cleanupHome();
@@ -138,10 +137,28 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 				mkdirSync(configDir, { recursive: true });
 				writeFileSync(join(configDir, "config.json"), JSON.stringify({ claudeFullscreenEnabled: false }));
 				expect(await loadGlobalRuntimeConfig()).not.toHaveProperty("claudeFullscreenEnabled");
-				await updateRuntimeConfig(null, { statuslineEnabled: true });
+				await updateRuntimeConfig(null, { codeNavigationEnabled: true });
 				const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
 				expect(saved).not.toHaveProperty("claudeFullscreenEnabled");
-				expect(saved.statuslineEnabled).toBe(true);
+				expect(saved.codeNavigationEnabled).toBe(true);
+			});
+		} finally {
+			cleanupHome();
+		}
+	});
+
+	it("loads a config containing the retired statusline setting without error, and removes it on save", async () => {
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-retired-statusline-");
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const configDir = join(tempHome, ".quarterdeck");
+				mkdirSync(configDir, { recursive: true });
+				writeFileSync(join(configDir, "config.json"), JSON.stringify({ statuslineEnabled: true }));
+				expect(await loadGlobalRuntimeConfig()).not.toHaveProperty("statuslineEnabled");
+				await updateRuntimeConfig(null, { codeNavigationEnabled: true });
+				const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
+				expect(saved).not.toHaveProperty("statuslineEnabled");
+				expect(saved.codeNavigationEnabled).toBe(true);
 			});
 		} finally {
 			cleanupHome();

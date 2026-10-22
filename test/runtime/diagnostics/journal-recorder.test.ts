@@ -218,9 +218,129 @@ describe("diagnostic journal and recorder", () => {
 		recorder.recordEvent("low.priority", {}, {}, { level: "info", essential: true });
 		const retained = recorder.getRecentRecords();
 		expect(retained.some((entry) => entry.name === "low.priority")).toBe(false);
-		expect(retained.some((entry) => entry.name === "diagnostics.records_dropped")).toBe(true);
+		// With the ring already saturated by two genuine warnings and no
+		// low-priority victim available, the drop notice itself cannot be
+		// retained in the ring either -- it must never evict a real warning to
+		// make room for itself. The exact drop is still visible via the health
+		// counter and the persisted journal evidence.
+		expect(retained.map((entry) => entry.name)).toEqual(["first.warning", "second.warning"]);
+		await recorder.flush();
+		const capture = await recorder.collectCaptureRecords();
+		expect(capture.records.some((entry) => entry.name === "diagnostics.records_dropped")).toBe(true);
 		expect(recorder.getHealth().droppedRecords).toBeGreaterThan(0);
 		await recorder.close();
+	});
+
+	it("never lets a recorder_health notice evict a genuine warn/error record from the ring", async () => {
+		// Regression: the ring previously evicted index 0 unconditionally when
+		// saturated with high-priority evidence, so a flood of synthetic
+		// `records_dropped` notices could crowd out real warn/error records.
+		const journal = new DiagnosticJournal(directory, { flushRecordCount: 100, flushIntervalMs: 60_000 });
+		const recorder = new DiagnosticRecorder({ runtimeInstanceId: "runtime", journal, memoryCapacity: 2 });
+		recorder.recordEvent("first.warning", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("second.warning", {}, {}, { level: "warn", essential: true });
+		// The ring is now full of two genuine warnings with no low-priority or
+		// recorder_health victim available. Force several ring-level drops; each
+		// attempt to retain a `records_dropped` notice must also fail closed
+		// (dropping the notice itself) rather than evicting a real warning.
+		for (let index = 0; index < 5; index += 1) {
+			recorder.recordEvent(`low.priority.${index}`, {}, {}, { level: "info", essential: true });
+		}
+		const retained = recorder.getRecentRecords();
+		expect(retained.map((entry) => entry.name)).toEqual(["first.warning", "second.warning"]);
+		expect(recorder.getHealth().droppedRecords).toBeGreaterThanOrEqual(5);
+		await recorder.close();
+	});
+
+	it("rate-limits a burst of ring drops to at most one journal notice per interval", async () => {
+		const journal = new DiagnosticJournal(directory, { flushRecordCount: 100, flushIntervalMs: 60_000 });
+		const recorder = new DiagnosticRecorder({ runtimeInstanceId: "runtime", journal, memoryCapacity: 2 });
+		recorder.recordEvent("anchor.a", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("anchor.b", {}, {}, { level: "warn", essential: true });
+		// The ring is now saturated with two genuine warnings and zero
+		// low-priority slots, so every further low-priority record is a real
+		// drop. Fire several in immediate succession, well inside the
+		// coalescing window: this must not flood the journal with one notice
+		// per drop, and the notices that do land must never have evicted
+		// `anchor.a`/`anchor.b` to make room for themselves.
+		for (let index = 0; index < 5; index += 1) {
+			recorder.recordEvent(`low.priority.${index}`, {}, {}, { level: "info", essential: true });
+		}
+		await recorder.flush();
+		const capture = await recorder.collectCaptureRecords();
+		const notices = capture.records.filter((entry) => entry.name === "diagnostics.records_dropped");
+		expect(notices).toHaveLength(1);
+		const noticePayload = notices[0]?.payload as { dropped: number } | undefined;
+		expect(noticePayload?.dropped).toBeGreaterThanOrEqual(1);
+		expect(recorder.getRecentRecords().map((entry) => entry.name)).toEqual(["anchor.a", "anchor.b"]);
+		expect(recorder.getHealth().droppedRecords).toBeGreaterThanOrEqual(5);
+		await recorder.close();
+	});
+
+	it("emits a fresh drop notice, with the exact running total, once the coalescing window has elapsed", async () => {
+		vi.useFakeTimers();
+		const journal = new DiagnosticJournal(directory, { flushRecordCount: 100, flushIntervalMs: 60_000 });
+		const recorder = new DiagnosticRecorder({ runtimeInstanceId: "runtime", journal, memoryCapacity: 2 });
+		recorder.recordEvent("anchor.a", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("anchor.b", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("low.priority.0", {}, {}, { level: "info", essential: true });
+
+		vi.advanceTimersByTime(1_500);
+		recorder.recordEvent("low.priority.1", {}, {}, { level: "info", essential: true });
+
+		await recorder.flush();
+		const capture = await recorder.collectCaptureRecords();
+		const notices = capture.records.filter((entry) => entry.name === "diagnostics.records_dropped");
+		expect(notices).toHaveLength(2);
+		const first = notices[0]?.payload as { dropped: number; totalDropped: number };
+		const second = notices[1]?.payload as { dropped: number; totalDropped: number };
+		// Each notice carries the exact running total as of when it fired; the
+		// second notice's total must be strictly greater than the first's, and
+		// the live counter (which keeps advancing after the last notice) is
+		// always at least as large as the most recently reported total.
+		expect(second.totalDropped).toBeGreaterThan(first.totalDropped);
+		expect(recorder.getHealth().droppedRecords).toBeGreaterThanOrEqual(second.totalDropped);
+		await recorder.close();
+	});
+
+	it("flushes a trailing drop notice via timer when no later record triggers one", async () => {
+		vi.useFakeTimers();
+		const journal = new DiagnosticJournal(directory, { flushRecordCount: 100, flushIntervalMs: 60_000 });
+		const recorder = new DiagnosticRecorder({ runtimeInstanceId: "runtime", journal, memoryCapacity: 2 });
+		recorder.recordEvent("anchor.a", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("anchor.b", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("low.priority.0", {}, {}, { level: "info", essential: true });
+		// This second drop lands inside the same coalescing window as the first
+		// notice, so it must not emit immediately. With nothing else ever
+		// calling back in, only the trailing timer can report it.
+		recorder.recordEvent("low.priority.1", {}, {}, { level: "info", essential: true });
+
+		await recorder.flush();
+		const beforeTimer = await recorder.collectCaptureRecords();
+		expect(beforeTimer.records.filter((entry) => entry.name === "diagnostics.records_dropped")).toHaveLength(1);
+
+		vi.advanceTimersByTime(1_000);
+		await recorder.flush();
+		const afterTimer = await recorder.collectCaptureRecords();
+		const notices = afterTimer.records.filter((entry) => entry.name === "diagnostics.records_dropped");
+		expect(notices).toHaveLength(2);
+		expect((notices[1]?.payload as { dropped: number } | undefined)?.dropped).toBeGreaterThanOrEqual(1);
+		await recorder.close();
+	});
+
+	it("does not fire a trailing drop-notice timer after the recorder is closed", async () => {
+		vi.useFakeTimers();
+		const journal = new DiagnosticJournal(directory, { flushRecordCount: 100, flushIntervalMs: 60_000 });
+		const recorder = new DiagnosticRecorder({ runtimeInstanceId: "runtime", journal, memoryCapacity: 2 });
+		recorder.recordEvent("anchor.a", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("anchor.b", {}, {}, { level: "warn", essential: true });
+		recorder.recordEvent("low.priority.0", {}, {}, { level: "info", essential: true });
+		recorder.recordEvent("low.priority.1", {}, {}, { level: "info", essential: true });
+		await recorder.close();
+
+		// The pending trailing timer must not fire against a closed recorder
+		// (e.g. writing to a closed journal) once its window elapses.
+		expect(() => vi.advanceTimersByTime(1_000)).not.toThrow();
 	});
 
 	it("collects the persisted journal together with the bounded memory tail", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeProjectStateResponse } from "../../../src/core";
+import { TaskImageUnavailableError } from "../../../src/state/task-image-store";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
 import { createStateOps } from "../../../src/trpc/project-api-state";
 import {
@@ -108,6 +109,20 @@ describe("createStateOps runtime board ownership", () => {
 
 		expect(executeBatch).toHaveBeenCalledWith(scope, input);
 		expect(applyEffects).toHaveBeenCalledWith(createBoardCommandCommittedEffects(scope));
+	});
+
+	it("rejects a command referencing a missing image as a client precondition", async () => {
+		const { applyEffects, executeBatch, stateOps } = createHarness();
+		executeBatch.mockRejectedValueOnce(new TaskImageUnavailableError());
+
+		await expect(
+			stateOps.applyBoardCommands(scope, {
+				commandId: "browser:image",
+				expectedRevision: 1,
+				commands: [{ kind: "delete_tasks" as const, taskIds: ["task-1"] }],
+			}),
+		).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: new TaskImageUnavailableError().message });
+		expect(applyEffects).not.toHaveBeenCalled();
 	});
 
 	it("persists manual title updates before publishing the lightweight update", async () => {

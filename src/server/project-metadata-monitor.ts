@@ -15,6 +15,14 @@ import {
 
 const GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT = 4;
 const PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT = 2;
+/**
+ * How long a project's controller (and its cached home/task Git metadata) is
+ * retained after the last client disconnects, with polling stopped. A
+ * reconnect inside this window reuses the retained controller and serves its
+ * cache immediately instead of re-probing from empty. Set to 0 to restore the
+ * previous immediate-retirement behavior.
+ */
+export const PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS = 10 * 60_000;
 
 export interface CreateProjectMetadataMonitorDependencies {
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
@@ -59,6 +67,16 @@ export interface ProjectMetadataMonitor {
 	requestHomeRefresh: (projectId: string) => void;
 	disconnectProject: (projectId: string, clientId?: string | null) => void;
 	disposeProject: (projectId: string) => void;
+	/**
+	 * Immediately drops a project's retained controller/cache (home + task
+	 * worktree Git metadata) and cancels its queued probes and any pending
+	 * idle-grace retirement timer. Call this when a project relocates or is
+	 * removed: the grace-retained cache holds worktree paths that become
+	 * wrong once the project's location changes, so it must not be served to
+	 * a later reconnect. Safe to call whether or not the project currently
+	 * has connected clients.
+	 */
+	purgeProject: (projectId: string) => void;
 	suspendProject: (projectId: string) => Promise<void>;
 	getDiagnosticSnapshot: (scope?: Readonly<DiagnosticCaptureScope>) => ProjectMetadataMonitorDiagnosticSnapshot;
 	close: () => void;
@@ -71,6 +89,14 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	const clients = new Map<string, ProjectMetadataVisibilityReports>();
 	const globalMetadataProbeLimit = pLimit(GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT);
 	const projectMetadataProbeLimits = new Map<string, ReturnType<typeof pLimit>>();
+	const idleRetirementTimers = new Map<string, NodeJS.Timeout>();
+
+	const cancelScheduledIdleRetirement = (projectId: string): void => {
+		const timer = idleRetirementTimers.get(projectId);
+		if (!timer) return;
+		clearTimeout(timer);
+		idleRetirementTimers.delete(projectId);
+	};
 
 	const getProjectMetadataProbeLimit = (projectId: string): ReturnType<typeof pLimit> => {
 		const existing = projectMetadataProbeLimits.get(projectId);
@@ -90,6 +116,12 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	};
 
 	const retireController = (projectId: string): void => {
+		// Cancel any pending idle-grace timer unconditionally: a controller can
+		// be retired through this function via several paths (explicit
+		// suspend/dispose/purge, or a path/revision scope change), and a stale
+		// timer left running must never later retire a *replacement* controller
+		// created for the same project ID.
+		cancelScheduledIdleRetirement(projectId);
 		const controller = projects.get(projectId);
 		if (!controller) return;
 		controller.dispose();
@@ -109,6 +141,38 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 		retireController(projectId);
 		await Promise.allSettled(Array.from(retiringControllers.get(projectId) ?? []));
 		projectMetadataProbeLimits.delete(projectId);
+	};
+
+	/** Immediately and fully tears down a project's controller, cache, and queued probes. */
+	const purgeProjectState = (projectId: string): void => {
+		cancelScheduledIdleRetirement(projectId);
+		clients.delete(projectId);
+		retireController(projectId);
+		projectMetadataProbeLimits.delete(projectId);
+	};
+
+	/**
+	 * Keeps the controller (and its cached home/task Git metadata) alive for a
+	 * grace window after the last client disconnects, with polling already
+	 * stopped by `controller.disconnect`. A reconnect before the timer fires
+	 * cancels it via `cancelScheduledIdleRetirement` and reuses the retained
+	 * controller; if it fires, this is the same teardown `disconnectProject`
+	 * used to run immediately.
+	 */
+	const scheduleIdleRetirement = (projectId: string): void => {
+		cancelScheduledIdleRetirement(projectId);
+		if (PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS <= 0) {
+			retireController(projectId);
+			projectMetadataProbeLimits.delete(projectId);
+			return;
+		}
+		const timer = setTimeout(() => {
+			idleRetirementTimers.delete(projectId);
+			retireController(projectId);
+			projectMetadataProbeLimits.delete(projectId);
+		}, PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS);
+		timer.unref();
+		idleRetirementTimers.set(projectId, timer);
 	};
 
 	const getOrCreateController = (
@@ -184,6 +248,9 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			metadataRevision,
 			available = true,
 		}) => {
+			// Any connect means the project is active again: a retained idle
+			// controller must not retire out from under this reconnect.
+			cancelScheduledIdleRetirement(projectId);
 			const reports = clients.get(projectId) ?? new Map();
 			clients.set(projectId, reports);
 			connectProjectMetadataClient(reports, clientId, isDocumentVisible);
@@ -202,6 +269,10 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			return await controller.connect({ projectPath, board, clientId, isDocumentVisible });
 		},
 		updateProjectState: async ({ projectId, projectPath, board, folderOnly, metadataRevision, available = true }) => {
+			// Defensive: the hub only calls updateProjectState while clients are
+			// connected, but cancel any pending grace timer anyway so this never
+			// races a retirement that was scheduled a moment earlier.
+			cancelScheduledIdleRetirement(projectId);
 			if (!available) {
 				await suspendProject(projectId);
 				return createEmptyProjectMetadata();
@@ -244,15 +315,16 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				return;
 			}
 			if (controller.disconnect(clientId)) {
-				retireController(projectId);
-				projectMetadataProbeLimits.delete(projectId);
+				// Keep the controller's cached Git metadata warm for a grace
+				// window instead of retiring it immediately: a reconnect within
+				// that window (e.g. switching back to this project) reuses it
+				// and gets the cache delivered immediately. See
+				// PROJECT_METADATA_IDLE_RETIREMENT_GRACE_MS.
+				scheduleIdleRetirement(projectId);
 			}
 		},
-		disposeProject: (projectId) => {
-			clients.delete(projectId);
-			retireController(projectId);
-			projectMetadataProbeLimits.delete(projectId);
-		},
+		disposeProject: purgeProjectState,
+		purgeProject: purgeProjectState,
 		suspendProject,
 		getDiagnosticSnapshot: (scope = {}) => {
 			const scopedProjects = Array.from(projects.entries()).flatMap(([projectId, controller]) => {
@@ -299,6 +371,8 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			clients.clear();
 			for (const projectId of projects.keys()) retireController(projectId);
 			projectMetadataProbeLimits.clear();
+			for (const timer of idleRetirementTimers.values()) clearTimeout(timer);
+			idleRetirementTimers.clear();
 		},
 	};
 }

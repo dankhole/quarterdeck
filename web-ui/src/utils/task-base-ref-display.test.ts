@@ -34,7 +34,9 @@ describe("task base-ref display state", () => {
 		[0, 2, "0 behind local · 2 behind remote", true],
 		[null, 0, "local unavailable · 0 behind remote", false],
 		[0, null, "0 behind local · remote unavailable", false],
-		[undefined, undefined, "local unavailable · remote unavailable", false],
+		[undefined, undefined, "local pending · remote pending", false],
+		[undefined, 2, "local pending · 2 behind remote", true],
+		[null, undefined, "local unavailable · remote pending", false],
 	] as const)("formats local %s and remote %s comparisons", (local, remote, label, isBehind) => {
 		const state = resolveTaskBaseRefDisplayState({
 			baseRef: "main",

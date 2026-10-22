@@ -1,8 +1,8 @@
-import { open, readFile, unlink } from "node:fs/promises";
+import { access, open, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { runtimeBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
+import { runtimeBoardDataSchema, runtimePersistedBoardDataSchema, runtimeTaskSessionSummarySchema } from "../core";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { isNodeError } from "../fs/node-error";
 import { migrateLegacyBacklog } from "./legacy-backlog-migration";
@@ -49,21 +49,37 @@ export const projectStateMetaSchema = z.object({
 		.default([]),
 });
 
+// New commits are reference-only: inline task image bytes must be externalized
+// to the project image store before the journal is written.
 const projectStateTransactionSchema = z.object({
 	version: z.literal(1),
-	board: runtimeBoardDataSchema,
+	board: runtimePersistedBoardDataSchema,
 	sessions: z.record(z.string(), runtimeTaskSessionSummarySchema),
 	meta: projectStateMetaSchema,
 });
 
+// A journal left by an older runtime may hold legacy Backlog cards or inline
+// image data. Install it unchanged; the next runtime write externalizes images.
 const recoveredProjectStateTransactionSchema = projectStateTransactionSchema.extend({
 	board: z.preprocess(migrateLegacyBacklog, runtimeBoardDataSchema),
 });
 
 type ProjectStateTransaction = z.infer<typeof projectStateTransactionSchema>;
+type RecoveredProjectStateTransaction = z.infer<typeof recoveredProjectStateTransactionSchema>;
 
 export function getProjectStateTransactionPath(projectId: string): string {
 	return join(getProjectDirectoryPath(projectId), "state-transaction.json");
+}
+
+/** Requires the project directory lock. True while a commit record awaits installation. */
+export async function hasPendingProjectStateTransaction(projectId: string): Promise<boolean> {
+	try {
+		await access(getProjectStateTransactionPath(projectId));
+		return true;
+	} catch (error) {
+		if (isNodeError(error, "ENOENT")) return false;
+		throw error;
+	}
 }
 
 async function syncFile(path: string): Promise<void> {
@@ -89,7 +105,10 @@ async function syncProjectDirectory(projectId: string): Promise<void> {
 }
 
 /** Caller must hold the project directory lock throughout installation. */
-async function installProjectStateTransaction(projectId: string, transaction: ProjectStateTransaction): Promise<void> {
+async function installProjectStateTransaction(
+	projectId: string,
+	transaction: ProjectStateTransaction | RecoveredProjectStateTransaction,
+): Promise<void> {
 	// Flush the journal before replacing any destination, including on recovery
 	// of a writer that died immediately after the journal rename.
 	await syncFile(getProjectStateTransactionPath(projectId));

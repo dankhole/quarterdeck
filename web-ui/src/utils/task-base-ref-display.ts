@@ -35,7 +35,13 @@ function formatShortCommit(headCommit: string | null | undefined): string | null
 }
 
 function formatBehindCount(count: number | null | undefined, source: "local" | "remote"): string {
-	return count == null ? `${source} unavailable` : `${count} behind ${source}`;
+	// `undefined` means the comparison hasn't been probed/delivered yet (a
+	// loading/pending state, e.g. no cached metadata for this task); `null`
+	// means it was probed and is genuinely unavailable (a failed or missing
+	// comparison). Never conflate the two — doing so would show "unavailable"
+	// for data that simply hasn't arrived yet. Never fabricate a zero either.
+	if (count === undefined) return `${source} pending`;
+	return count === null ? `${source} unavailable` : `${count} behind ${source}`;
 }
 
 export function resolveTaskBaseRefDisplayState(

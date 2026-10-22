@@ -35,7 +35,7 @@ That command fails immediately off Windows. It runs the packaged CLI smoke plus 
 - a real `cmd.exe` shell session executing a persisted project shortcut;
 - protected launch-scoped process records and DACLs, direct runtime/root parentage, and clean record retirement;
 - ordinary runtime restart preserving a separately abandoned synthetic `codex.exe` tree and its ownership evidence, followed by an explicit fixture call to the exact registry cleanup helper, which discovers and reverifies creation identities before terminating that tree while an unregistered Claude/Codex/Pi-looking process remains alive; this helper check does not claim automatic startup cleanup;
-- generated hook/status-line execution through `cmd.exe`, including working-directory and `PATH` `powershell.exe` decoys, a copied `node.exe` under a metacharacter-heavy path, and byte-for-byte argv/stdin/stdout checks for spaces, multiline values, carriage returns, `%NAME%`, `!`, `^`, `&`, `|`, and parentheses;
+- generated hook-command execution through `cmd.exe`, including working-directory and `PATH` `powershell.exe` decoys, a copied `node.exe` under a metacharacter-heavy path, and byte-for-byte argv/stdin/stdout checks for spaces, multiline values, carriage returns, `%NAME%`, `!`, `^`, `&`, `|`, and parentheses;
 - task-worktree create/delete, task-local copies of an ignored directory and setup file selected through `.worktreeinclude`, and checkout of a tracked path longer than 260 characters;
 - Git/files API fidelity for tracked and untracked leading-space names plus a case-only rename on the native case-insensitive filesystem;
 - Open in VS Code through an isolated `code.cmd` host-launch stub, without opening a real application;

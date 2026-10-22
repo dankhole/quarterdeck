@@ -91,7 +91,6 @@ export interface StartCodexStructuredOwnerInput extends Omit<StartStructuredOwne
 	ownerGeneration: number;
 	ownerSessionInstanceId: string;
 	launchOperationId: string;
-	statuslineEnabled?: boolean;
 	worktreeSystemPromptTemplate?: string;
 	onProcessStarted?: (identity: { pid: number; ownerSessionInstanceId: string }) => Promise<void>;
 }
@@ -483,7 +482,6 @@ export class CodexStructuredOwnerRegistry {
 			projectPath: input.projectPath,
 			hookSessionInstanceId: input.ownerSessionInstanceId,
 			codexApprovalsReviewer: input.codexApprovalsReviewer,
-			statuslineEnabled: input.statuslineEnabled,
 			worktreeSystemPromptTemplate: input.worktreeSystemPromptTemplate,
 		});
 		const env: NodeJS.ProcessEnv = { ...process.env, ...input.env, ...structuredLaunch.env };

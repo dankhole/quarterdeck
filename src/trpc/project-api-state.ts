@@ -14,6 +14,7 @@ import {
 	ProjectBoardLifecycleCommandRequiredError,
 	ProjectStateConflictError,
 } from "../state";
+import { TaskImageUnavailableError } from "../state/task-image-store";
 import { archiveTaskWorktreeForTrash, ensureTaskWorktreeIfDoesntExist, getTaskRepositoryInfo } from "../workdir";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "./app-router-context";
 import {
@@ -210,6 +211,16 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 						message: error.message,
 						cause: { currentRevision: error.currentRevision },
 					});
+				}
+				if (error instanceof TaskImageUnavailableError) {
+					// The client referenced bytes this project no longer stores; nothing was committed.
+					ctx.deps.diagnostics?.recordEvent(
+						"project.board_save_rejected",
+						{ reason: "task_image_unavailable", durationMs: Date.now() - startedAt },
+						{ projectId: projectScope.projectId, operationId },
+						{ level: "warn", essential: true },
+					);
+					throw new TRPCError({ code: "PRECONDITION_FAILED", message: error.message });
 				}
 				ctx.deps.diagnostics?.recordEvent(
 					"project.board_save_failed",

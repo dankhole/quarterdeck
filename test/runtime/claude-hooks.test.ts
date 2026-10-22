@@ -8,12 +8,12 @@ import {
 	CLAUDE_NOTIFY_HOOK_TIMEOUT_SECONDS,
 	type ClaudeHooksSettings,
 } from "../../src/claude-hooks";
-import { buildQuarterdeckCommandLine } from "../../src/core";
+import { buildQuarterdeckHookCommandLine } from "../../src/core";
 import { HookHttpChannel, type HookHttpTransport } from "../../src/terminal/hook-http-channel";
 
 function hookCommand(event: string, options: { reliable?: boolean } = {}): string {
 	const subcommand = options.reliable || event !== "activity" ? "ingest" : "notify";
-	return buildQuarterdeckCommandLine(["hooks", subcommand, "--event", event, "--source", "claude"]);
+	return buildQuarterdeckHookCommandLine(["hooks", subcommand, "--event", event, "--source", "claude"]);
 }
 
 function allHookCommands(settings: ClaudeHooksSettings): Array<{ command: string; timeout?: number }> {
@@ -129,19 +129,8 @@ describe("buildClaudeHooksSettings", () => {
 		}
 	});
 
-	it("omits statusLine when no command is supplied", () => {
-		const settings = buildClaudeHooksSettings();
-		expect(settings.statusLine).toBeUndefined();
-	});
-
-	it("omits statusLine when the caller explicitly disables it with null", () => {
-		const settings = buildClaudeHooksSettings({ statusLineCommand: null });
-		expect(settings.statusLine).toBeUndefined();
-	});
-
-	it("includes a command-type statusLine entry when a command is supplied", () => {
-		const settings = buildClaudeHooksSettings({ statusLineCommand: "quarterdeck statusline" });
-		expect(settings.statusLine).toEqual({ type: "command", command: "quarterdeck statusline" });
+	it("configures only hooks, never a Claude statusLine", () => {
+		expect(Object.keys(buildClaudeHooksSettings())).toEqual(["hooks"]);
 	});
 });
 
@@ -221,12 +210,7 @@ describe("buildClaudeHttpHooksSettings", () => {
 		});
 	});
 
-	it("preserves the status line choice", () => {
-		const settings = buildClaudeHttpHooksSettings({
-			httpNotify: publishedTransport(),
-			statusLineCommand: "quarterdeck statusline",
-		});
-		expect(settings.statusLine).toEqual({ type: "command", command: "quarterdeck statusline" });
-		expect(buildClaudeHttpHooksSettings({ httpNotify: publishedTransport() }).statusLine).toBeUndefined();
+	it("configures only hooks, never a Claude statusLine", () => {
+		expect(Object.keys(buildClaudeHttpHooksSettings({ httpNotify: publishedTransport() }))).toEqual(["hooks"]);
 	});
 });

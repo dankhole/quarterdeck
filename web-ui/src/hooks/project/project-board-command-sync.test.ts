@@ -181,6 +181,39 @@ describe("project board command sync", () => {
 		expect(applyPendingProjectBoardCommands(created.board, [commands])).toEqual(edited.board);
 	});
 
+	it("keeps stored image references and adds new uploads inline when editing", () => {
+		const stored = { id: "image-1", mimeType: "image/png", sha256: "a".repeat(64), byteLength: 1 };
+		const upload = { id: "image-2", data: "Yg==", mimeType: "image/png" };
+		const created = addTaskToColumnWithResult(createInitialBoardData(), "review", {
+			prompt: "Task with a stored attachment",
+			baseRef: "main",
+			images: [stored],
+		});
+		const edited = saveEditedTaskToBoard({
+			board: created.board,
+			editingTaskId: created.task.id,
+			prompt: created.task.prompt,
+			images: [stored, upload],
+			branchRef: "main",
+			defaultBranchRef: "main",
+		});
+		expect(deriveProjectBoardCommands(created.board, edited.board)).toEqual([
+			expect.objectContaining({ kind: "update_task", images: [stored, upload] }),
+		]);
+
+		// An authoritative reference for the same upload is not a user edit.
+		const committedImages = [stored, { id: "image-2", mimeType: "image/png", sha256: "b".repeat(64), byteLength: 1 }];
+		const committed = {
+			columns: edited.board.columns.map((column) => ({
+				...column,
+				cards: column.cards.map((card) =>
+					card.id === created.task.id ? { ...card, images: committedImages } : card,
+				),
+			})),
+		};
+		expect(deriveProjectBoardCommands(edited.board, committed)).toEqual([]);
+	});
+
 	it("preserves an explicit manual rename even when the title words stay the same", () => {
 		const initial = createInitialBoardData();
 		const card: BoardCard = {
