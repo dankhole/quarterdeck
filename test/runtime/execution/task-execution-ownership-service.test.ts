@@ -1991,6 +1991,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 				return transport;
 			},
 		});
+		const taskResourceOperations = new TaskResourceOperationCoordinator();
 		const service = new TaskExecutionOwnershipService({
 			store,
 			structuredOwners: registry,
@@ -1999,7 +2000,7 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 			assertDurableHistoryAvailable: async () => true,
 			resolveProviderVersion: async () => "0.149.1",
 			isLaunchPathAvailable: async () => true,
-			taskResourceOperations: new TaskResourceOperationCoordinator(),
+			taskResourceOperations,
 		});
 		const scope = { projectId: "project-1", projectPath: `${root}/project` };
 		await expect(
@@ -2026,6 +2027,9 @@ describe("TaskExecutionOwnershipService", { concurrent: false }, () => {
 			});
 		});
 
+		// Startup recovery runs in a fresh process; here, let any structured
+		// owner event from the shutdown finish on the task queue before recovering.
+		await taskResourceOperations.run(scope.projectId, "task-1", async () => {});
 		await expect(service.recoverProject(scope)).resolves.toEqual([
 			{ taskId: "task-1", outcome: "turn_outcome_unknown" },
 		]);
