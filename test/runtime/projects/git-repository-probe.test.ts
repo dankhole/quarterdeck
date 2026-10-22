@@ -9,7 +9,10 @@ import { hasGitRepository, probeGitRepository } from "../../../src/projects/git-
 import { observeProjectAvailability } from "../../../src/projects/project-availability";
 import { runGit } from "../../../src/workdir/git-utils";
 
-vi.mock("../../../src/workdir/git-utils", () => ({ runGit: vi.fn() }));
+vi.mock("../../../src/workdir/git-utils", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../../src/workdir/git-utils")>();
+	return { ...actual, runGit: vi.fn() };
+});
 
 afterEach(() => vi.resetAllMocks());
 

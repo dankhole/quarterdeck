@@ -318,6 +318,34 @@ export async function runGit(cwd: string, args: string[], options: RunGitOptions
 	}
 }
 
+const INDETERMINATE_RESOURCE_EXHAUSTION_ERROR_CODES: ReadonlySet<GitCommandErrorCode> = new Set([
+	"EAGAIN",
+	"EMFILE",
+	"ENFILE",
+	"ENOMEM",
+]);
+
+/**
+ * Shared classifier for whether a failed git command result is indeterminate: the
+ * command never produced Git's own exit status, so it proves nothing about the
+ * repository or ref being inspected. Timeouts, blocked launches, external signal
+ * deaths (not our own timeout termination), and resource-exhaustion spawn errors
+ * are indeterminate; every other failure (including a real non-zero Git exit code)
+ * is definitive. Only applies to an actual failed git command; a caller with
+ * additional non-command failure kinds of its own (e.g. a probe's root-mismatch
+ * check) must resolve those first and not pass them here.
+ */
+export function isIndeterminateGitCommandFailure(failure: {
+	failureKind?: GitCommandFailureKind;
+	errorCode?: GitCommandErrorCode | null;
+	terminatedBySignal?: boolean;
+}): boolean {
+	if (failure.failureKind === "timed_out" || failure.failureKind === "launch_blocked") return true;
+	if (failure.failureKind !== "command_failed") return false;
+	if (failure.terminatedBySignal) return true;
+	return failure.errorCode != null && INDETERMINATE_RESOURCE_EXHAUSTION_ERROR_CODES.has(failure.errorCode);
+}
+
 export async function getGitStdout(args: string[], cwd: string, options: RunGitOptions = {}): Promise<string> {
 	const result = await runGit(cwd, args, options);
 	if (!result.ok) {

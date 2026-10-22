@@ -1,10 +1,18 @@
 import { realpath } from "node:fs/promises";
 
 import { areFileSystemPathsEqual } from "../core/path-comparison";
-import { type GitCommandErrorCode, type GitCommandFailureKind, runGit } from "../workdir/git-utils";
+import {
+	type GitCommandErrorCode,
+	type GitCommandFailureKind,
+	isIndeterminateGitCommandFailure,
+	runGit,
+} from "../workdir/git-utils";
+
+/** Beyond a failed git command itself, the probe's own root check can report these definitive "no" outcomes. */
+type GitRepositoryProbeOwnFailureKind = "empty_root" | "root_mismatch" | "root_unreadable";
 
 export interface GitRepositoryProbeFailure {
-	failureKind: GitCommandFailureKind | "empty_root" | "root_mismatch" | "root_unreadable";
+	failureKind: GitCommandFailureKind | GitRepositoryProbeOwnFailureKind;
 	errorCode: GitCommandErrorCode | null;
 	exitCode: number | null;
 	terminatedBySignal: boolean;
@@ -17,21 +25,6 @@ export interface GitRepositoryProbeOptions {
 /** `indeterminate` means the probe never produced Git's own answer and proves nothing about the repository. */
 export type GitRepositoryProbeResult = "repository" | "not_repository" | "indeterminate";
 
-const RESOURCE_EXHAUSTION_ERROR_CODES: ReadonlySet<GitCommandErrorCode> = new Set([
-	"EAGAIN",
-	"EMFILE",
-	"ENFILE",
-	"ENOMEM",
-]);
-
-/** Timeouts, blocked launches, signal deaths, and resource-exhaustion spawn errors never reached a Git exit status. */
-function isIndeterminateFailure(failure: GitRepositoryProbeFailure): boolean {
-	if (failure.failureKind === "timed_out" || failure.failureKind === "launch_blocked") return true;
-	if (failure.failureKind !== "command_failed") return false;
-	if (failure.terminatedBySignal) return true;
-	return failure.errorCode !== null && RESOURCE_EXHAUSTION_ERROR_CODES.has(failure.errorCode);
-}
-
 /** Probe details stay with the runtime observer; command output and paths never enter diagnostics. */
 export async function probeGitRepository(
 	path: string,
@@ -43,7 +36,23 @@ export async function probeGitRepository(
 		} catch {
 			// Diagnostics must not change filesystem admission.
 		}
-		return isIndeterminateFailure(failure) ? "indeterminate" : "not_repository";
+		// The probe's own root-check outcomes never ran a git command and are always
+		// a definitive "no"; only a failure shaped like a `runGit` failure goes to
+		// the shared command classifier.
+		if (
+			failure.failureKind === "empty_root" ||
+			failure.failureKind === "root_mismatch" ||
+			failure.failureKind === "root_unreadable"
+		) {
+			return "not_repository";
+		}
+		return isIndeterminateGitCommandFailure({
+			failureKind: failure.failureKind,
+			errorCode: failure.errorCode,
+			terminatedBySignal: failure.terminatedBySignal,
+		})
+			? "indeterminate"
+			: "not_repository";
 	};
 	const result = await runGit(path, ["rev-parse", "--show-toplevel"], { timeoutClass: "sync" });
 	if (!result.ok) {

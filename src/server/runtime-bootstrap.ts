@@ -38,6 +38,10 @@ import type { RuntimeTrpcContext } from "../trpc";
 import { createHooksApi } from "../trpc/hooks-api";
 import { stopRuntimeOwnedProcessTrees } from "./owned-process-shutdown";
 import {
+	createCoalescingGitRepositoryProbe,
+	ProjectGitValidationDiagnostics,
+} from "./project-git-validation-diagnostics";
+import {
 	collectProjectWorktreeTaskIdsForRemoval,
 	createProjectRegistry,
 	type ProjectRegistry,
@@ -149,21 +153,14 @@ async function createRuntimeBootstrapState(
 ) {
 	let runtimeStateHub: RuntimeStateHub | undefined;
 	let sessionPersistence: RuntimeSessionPersistence | undefined;
+	// Every projects broadcast re-probes every project, so this coalesces repeat probe failures per project instead of recording one event per broadcast.
+	const gitValidationDiagnostics = new ProjectGitValidationDiagnostics(diagnostics);
 	const projectRegistry = await createProjectRegistry({
 		cwd,
 		registerCwdProject,
 		loadGlobalRuntimeConfig,
 		loadRuntimeConfig,
-		probeGitRepository: (path, projectId) =>
-			probeGitRepository(path, {
-				onFailure: (failure) =>
-					diagnostics.recordEvent(
-						"project.git_validation_failed",
-						failure,
-						{ projectId },
-						{ level: "warn", essential: true },
-					),
-			}),
+		probeGitRepository: createCoalescingGitRepositoryProbe(gitValidationDiagnostics, diagnostics, probeGitRepository),
 		pathIsDirectory,
 		diagnostics,
 		waitForStartupAgentCleanup: async () => await startupAgentCleanup,
@@ -191,6 +188,10 @@ async function createRuntimeBootstrapState(
 					: null,
 			};
 		},
+	});
+	diagnostics.registerSnapshotProvider({
+		name: "project_git_validation",
+		capture: (scope) => gitValidationDiagnostics.getSnapshot(scope),
 	});
 
 	// Phase 4: State backup — snapshot before any mutations, then start periodic timer.
@@ -301,6 +302,7 @@ async function createRuntimeBootstrapState(
 		const disposed = projectRegistry.disposeProject(projectId, {
 			stopTerminalSessions: options?.stopTerminalSessions,
 		});
+		gitValidationDiagnostics.disposeProject(projectId);
 		await Promise.all([runtimeSessionPersistence.disposeProject(projectId), runtimeHub.disposeProject(projectId)]);
 		return disposed;
 	};

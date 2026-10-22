@@ -5,16 +5,45 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type RuntimeProjectStateResponse, TaskResourceOperationCoordinator } from "../../src/core";
 import { createProjectRegistry } from "../../src/server/project-registry";
 import {
+	applyProjectBoardMutation,
+	invalidateGitRepositoryInfoCache,
 	loadProjectContext,
 	loadProjectState,
 	ProjectBoardCommandService,
 	saveProjectState,
 	updateProjectIndexMetadata,
 } from "../../src/state";
+import * as gitUtils from "../../src/workdir/git-utils";
 import { commitAll, initGitRepository } from "../utilities/git-env";
 import { createDefaultMockConfig } from "../utilities/runtime-config-factory";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 import { createTempDir } from "../utilities/temp-dir";
+
+/**
+ * Spies on `runGit` so a specific git subcommand (matched by an argument it
+ * contains, e.g. "for-each-ref" or "rev-parse") answers with an indeterminate
+ * timeout while every other command runs for real against the fixture's repo.
+ */
+function mockIndeterminateGitCommand(matchArg: string) {
+	const originalRunGit = gitUtils.runGit;
+	return vi.spyOn(gitUtils, "runGit").mockImplementation(async (cwd, args, options) => {
+		if (args.includes(matchArg)) {
+			return {
+				ok: false,
+				stdout: "",
+				stderr: "",
+				output: "",
+				error: "synthetic timeout",
+				exitCode: -1,
+				timedOut: true,
+				terminatedBySignal: false,
+				failureKind: "timed_out",
+				errorCode: "ETIMEDOUT",
+			};
+		}
+		return originalRunGit(cwd, args, options);
+	});
+}
 
 function deferred() {
 	let resolve!: () => void;
@@ -110,7 +139,11 @@ async function createFixture() {
 }
 
 describe("committed project state publication", { concurrent: false }, () => {
-	afterEach(() => vi.unstubAllEnvs());
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.restoreAllMocks();
+		invalidateGitRepositoryInfoCache();
+	});
 
 	it("preserves Git metadata and publishes unavailable drain writes without admission or manager acquisition", async () => {
 		const fixture = await createFixture();
@@ -181,6 +214,59 @@ describe("committed project state publication", { concurrent: false }, () => {
 			expect(fixture.onTerminalManagerReady).not.toHaveBeenCalled();
 		} finally {
 			releaseProbe.resolve();
+			fixture.cleanup();
+		}
+	});
+
+	it("publishes the prior good branch list, not an empty one, when a later git probe times out", async () => {
+		const fixture = await createFixture();
+		try {
+			const initial = await loadProjectState(fixture.project.repoPath);
+			expect(initial.git.branches).toContain("main");
+
+			// Force a re-probe (as if the 30s TTL had expired) and make the branch
+			// listing command specifically indeterminate; every other git command
+			// still runs for real.
+			invalidateGitRepositoryInfoCache(fixture.project.repoPath);
+			mockIndeterminateGitCommand("for-each-ref");
+
+			const result = await fixture.commands.reconcileRuntimeTaskBaseRef(fixture.scope, "task", "feature");
+			const published = fixture.publications.at(-1);
+			expect(published).not.toBeNull();
+			expect(published?.revision).toBe(result.state.revision);
+			// The timed-out probe must fall back to the last-known-good branch list,
+			// not replace it with an empty one.
+			expect(published?.git.branches).toEqual(initial.git.branches);
+		} finally {
+			fixture.cleanup();
+		}
+	});
+
+	it("keeps a board command succeeding when the project's git root check times out", async () => {
+		const fixture = await createFixture();
+		try {
+			const initial = await loadProjectState(fixture.project.repoPath);
+			expect(initial.git.branches).toContain("main");
+
+			// Simulate the exact scenario this follow-up fixes: a timed-out root
+			// check used to throw "No git repository detected" from inside
+			// loadFullProjectContext, which backs nearly every write path
+			// (loadProjectContext -> applyProjectBoardMutation, saveProjectState,
+			// etc). It must now degrade gracefully instead of failing the write.
+			invalidateGitRepositoryInfoCache(fixture.project.repoPath);
+			mockIndeterminateGitCommand("rev-parse");
+
+			const result = await applyProjectBoardMutation(fixture.project.repoPath, {
+				sessions: {},
+				mutate: (board) => ({ board, changed: false }),
+			});
+			expect(result.changed).toBe(false);
+			// Resolves at all (instead of rejecting with a misleading "No git
+			// repository detected") and, since this process already holds a
+			// last-known-good value for this path, falls back to it rather than an
+			// empty branch list.
+			expect(result.state.git.branches).toEqual(initial.git.branches);
+		} finally {
 			fixture.cleanup();
 		}
 	});

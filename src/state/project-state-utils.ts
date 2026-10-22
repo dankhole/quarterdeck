@@ -1,14 +1,12 @@
 import { realpath } from "node:fs/promises";
 import { join, posix, resolve, win32 } from "node:path";
 
-import {
-	isFileSystemPathWithin,
-	normalizeFileSystemPathForComparison,
-	type RuntimeGitRepositoryInfo,
-} from "../core/index.js";
+import { isFileSystemPathWithin } from "../core/index.js";
 import { getRuntimeHomePath, getRuntimeHomePathForPlatform } from "../core/runtime-state-home.js";
 import type { LockRequest } from "../fs/locked-file-system.js";
 import { runGit } from "../workdir/git-utils.js";
+
+export { detectGitRepositoryInfo, invalidateGitRepositoryInfoCache } from "./git-repository-info.js";
 
 // --- Path constants and getters ---
 
@@ -98,38 +96,10 @@ export function getProjectsRootLockRequest(): LockRequest {
 }
 
 // --- Git detection ---
-
-const GIT_REPOSITORY_INFO_CACHE_TTL_MS = 30_000;
-
-// Repository info is intentionally cached here because project state hydration
-// needs branch context, while many project-scoped request paths only need the
-// lightweight scope from project-state.ts. If more git mutation entry points are
-// added, prefer centralizing invalidation in the git mutation/effects layer over
-// adding another one-off invalidateGitRepositoryInfoCache() call.
-interface CachedGitRepositoryInfo {
-	info: RuntimeGitRepositoryInfo;
-	loadedAt: number;
-}
-
-const gitRepositoryInfoCache = new Map<string, CachedGitRepositoryInfo>();
-const gitRepositoryInfoLoadPromises = new Map<string, Promise<RuntimeGitRepositoryInfo>>();
-let gitRepositoryInfoCacheGeneration = 0;
-
-function normalizeGitRepositoryCacheKey(repoPath: string): string {
-	return normalizeFileSystemPathForComparison(repoPath);
-}
-
-export function invalidateGitRepositoryInfoCache(repoPath?: string): void {
-	gitRepositoryInfoCacheGeneration += 1;
-	if (!repoPath) {
-		gitRepositoryInfoCache.clear();
-		gitRepositoryInfoLoadPromises.clear();
-		return;
-	}
-	const cacheKey = normalizeGitRepositoryCacheKey(repoPath);
-	gitRepositoryInfoCache.delete(cacheKey);
-	gitRepositoryInfoLoadPromises.delete(cacheKey);
-}
+// The git-info loader, its TTL cache, last-known-good fallback, and retry floor
+// policy live in ./git-repository-info.ts (re-exported above). Only the plain
+// root lookup used by resolveProjectPath (never cached, no fallback policy)
+// stays here.
 
 async function readGitStdout(cwd: string, args: string[]): Promise<string | null> {
 	const result = await runGit(cwd, args, { timeoutClass: "metadata" });
@@ -141,98 +111,6 @@ async function readGitStdout(cwd: string, args: string[]): Promise<string | null
 
 async function detectGitRoot(cwd: string): Promise<string | null> {
 	return await readGitStdout(cwd, ["--no-optional-locks", "rev-parse", "--show-toplevel"]);
-}
-
-async function detectGitCurrentBranch(repoPath: string): Promise<string | null> {
-	return await readGitStdout(repoPath, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"]);
-}
-
-async function detectGitBranches(repoPath: string): Promise<string[]> {
-	// TODO: support showing remote branches again once worktree creation can safely fetch/pull
-	// and resolve missing local tracking branches automatically.
-	const output = await readGitStdout(repoPath, [
-		"--no-optional-locks",
-		"for-each-ref",
-		"--format=%(refname:short)",
-		"refs/heads",
-	]);
-	if (!output) {
-		return [];
-	}
-
-	const unique = new Set<string>();
-	for (const line of output.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed || trimmed === "HEAD") {
-			continue;
-		}
-		unique.add(trimmed);
-	}
-	return Array.from(unique).sort((left, right) => left.localeCompare(right));
-}
-
-function resolveGitDefaultBranch(remoteHead: string | null, branches: string[]): string | null {
-	if (remoteHead) {
-		const normalized = remoteHead.startsWith("origin/") ? remoteHead.slice("origin/".length) : remoteHead;
-		if (normalized && branches.includes(normalized)) {
-			return normalized;
-		}
-	}
-	if (branches.includes("main")) {
-		return "main";
-	}
-	if (branches.includes("master")) {
-		return "master";
-	}
-	return branches[0] ?? null;
-}
-
-async function loadGitRepositoryInfo(repoPath: string): Promise<RuntimeGitRepositoryInfo> {
-	const gitRoot = await detectGitRoot(repoPath);
-	if (!gitRoot) {
-		throw new Error(`No git repository detected at ${repoPath}`);
-	}
-
-	const [currentBranch, branches, remoteHead] = await Promise.all([
-		detectGitCurrentBranch(gitRoot),
-		detectGitBranches(gitRoot),
-		readGitStdout(gitRoot, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]),
-	]);
-	const orderedBranches = currentBranch && !branches.includes(currentBranch) ? [currentBranch, ...branches] : branches;
-	const defaultBranch = resolveGitDefaultBranch(remoteHead, orderedBranches);
-
-	return {
-		currentBranch,
-		defaultBranch,
-		branches: orderedBranches,
-	};
-}
-
-export async function detectGitRepositoryInfo(repoPath: string): Promise<RuntimeGitRepositoryInfo> {
-	const cacheKey = normalizeGitRepositoryCacheKey(repoPath);
-	const cached = gitRepositoryInfoCache.get(cacheKey);
-	if (cached && Date.now() - cached.loadedAt < GIT_REPOSITORY_INFO_CACHE_TTL_MS) {
-		return cached.info;
-	}
-
-	const existingLoad = gitRepositoryInfoLoadPromises.get(cacheKey);
-	if (existingLoad) {
-		return await existingLoad;
-	}
-
-	const loadGeneration = gitRepositoryInfoCacheGeneration;
-	const loadPromise = loadGitRepositoryInfo(repoPath).then((info) => {
-		if (loadGeneration === gitRepositoryInfoCacheGeneration) {
-			gitRepositoryInfoCache.set(cacheKey, { info, loadedAt: Date.now() });
-		}
-		return info;
-	});
-	gitRepositoryInfoLoadPromises.set(cacheKey, loadPromise);
-	try {
-		return await loadPromise;
-	} finally {
-		gitRepositoryInfoLoadPromises.delete(cacheKey);
-	}
 }
 
 export async function resolveProjectPath(cwd: string): Promise<string> {
