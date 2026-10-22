@@ -143,9 +143,7 @@ describe("runtime state projection consistency", () => {
 			review: 3,
 			needsInput: 0,
 		});
-		expect(describeSessionState(afterNotification.projectState?.sessions["task-3"] ?? null)).toBe(
-			"Response sent — awaiting agent confirmation",
-		);
+		expect(describeSessionState(afterNotification.projectState?.sessions["task-3"] ?? null)).toBe("Response sent");
 		expect(
 			isNewAudibleNotification(
 				deriveAudibleTaskNotificationState(waiting),

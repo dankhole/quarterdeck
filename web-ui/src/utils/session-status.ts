@@ -20,7 +20,7 @@ export function describeSessionState(summary: RuntimeTaskSessionSummary | null):
 		case "approval_required":
 			return "Waiting for approval";
 		case "response_pending":
-			return "Response sent — awaiting agent confirmation";
+			return "Response sent";
 		case "interaction_unknown":
 			return "Response outcome unknown";
 		case "review_ready":

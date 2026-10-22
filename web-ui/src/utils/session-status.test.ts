@@ -92,9 +92,7 @@ describe("describeSessionState", () => {
 	});
 
 	it("distinguishes a submitted response from confirmed running work", () => {
-		expect(describeSessionState(withInteractionStatus("response_submitted"))).toBe(
-			"Response sent — awaiting agent confirmation",
-		);
+		expect(describeSessionState(withInteractionStatus("response_submitted"))).toBe("Response sent");
 	});
 
 	it("surfaces an unknown response outcome after provider process loss", () => {
