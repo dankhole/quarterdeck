@@ -133,6 +133,7 @@ export async function spawnTaskSession(
 			claudeLaunchPermissionMode: request.claudeLaunchPermissionMode,
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			codexOptions: request.codexOptions,
+			piOptions: request.piOptions,
 			claudeOptions: request.claudeOptions,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});

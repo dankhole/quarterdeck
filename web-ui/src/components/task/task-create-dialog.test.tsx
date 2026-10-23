@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskCreateDialog } from "@/components/task/task-create-dialog";
 import type { TaskImage } from "@/types";
 
+const { piModelsQuery } = vi.hoisted(() => ({ piModelsQuery: vi.fn() }));
+vi.mock("@/runtime/trpc-client", () => ({
+	getRuntimeTrpcClient: () => ({ runtime: { piModels: { query: piModelsQuery } } }),
+}));
+
 vi.mock("react-hotkeys-hook", () => ({
 	useHotkeys: () => {},
 }));
@@ -149,9 +154,21 @@ function Harness({
 					installed: true,
 					configured: false,
 				},
+				{
+					id: "pi",
+					label: "Pi",
+					binary: "pi",
+					command: "pi",
+					defaultArgs: [],
+					status: "installed",
+					statusMessage: null,
+					installed: true,
+					configured: false,
+				},
 			]}
 			agentId={agentId}
 			onAgentIdChange={setAgentId}
+			onPiOptionsChange={() => {}}
 			onCreate={onCreate}
 			onCreateAndStart={() => "task-2"}
 			onCreateStartAndOpen={() => "task-3"}
@@ -211,6 +228,7 @@ describe("TaskCreateDialog", () => {
 
 	beforeEach(() => {
 		localStorage.clear();
+		piModelsQuery.mockReset().mockRejectedValue(new Error("No procedure found on older runtime"));
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -251,6 +269,23 @@ describe("TaskCreateDialog", () => {
 		expect(onCreateMultiple).toHaveBeenCalledExactlyOnceWith(["Draft changelog", "Ship beta"], {
 			keepDialogOpen: false,
 		});
+	});
+
+	it("shows Pi starting models only for Pi and does not block creation when discovery fails", async () => {
+		const onCreate = vi.fn(() => "pi-task");
+		await act(async () => root.render(<Harness initialPrompt="Pi work" onCreate={onCreate} />));
+		expect(piModelsQuery).not.toHaveBeenCalled();
+		const harness = container.querySelector<HTMLSelectElement>('[aria-label="Task harness"]');
+		if (!harness) throw new Error("Missing harness selector");
+		await act(async () => {
+			harness.value = "pi";
+			harness.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		expect(piModelsQuery).toHaveBeenCalledOnce();
+		expect(container.querySelector('[aria-label="Starting model"]')?.textContent).toContain("Pi default");
+		expect(container.querySelector('[role="status"]')?.textContent).toContain("You can still start with Pi default");
+		await act(async () => findButtonByText(container, "Create").click());
+		expect(onCreate).toHaveBeenCalledOnce();
 	});
 
 	it("keeps the last task row without creating tasks when remove is clicked", async () => {

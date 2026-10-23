@@ -360,6 +360,7 @@ export async function prepareTaskSessionStart(
 		claudeLaunchPermissionMode: scopedRuntimeConfig.claudeLaunchPermissionMode,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		codexOptions: resolved.agentId === "codex" ? existingCard?.codexOptions : undefined,
+		piOptions: resolved.agentId === "pi" ? existingCard?.piOptions : undefined,
 		claudeOptions: resolved.agentId === "claude" ? existingCard?.claudeOptions : undefined,
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,

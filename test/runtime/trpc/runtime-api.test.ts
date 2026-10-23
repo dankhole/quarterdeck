@@ -8,7 +8,8 @@ import {
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
-const modelCatalogMocks = vi.hoisted(() => ({ load: vi.fn() }));
+const modelCatalogMocks = vi.hoisted(() => ({ load: vi.fn(), loadPi: vi.fn() }));
+vi.mock("../../../src/config/pi-model-catalog.js", () => ({ loadPiModelCatalog: modelCatalogMocks.loadPi }));
 vi.mock("../../../src/config/codex-model-catalog", () => ({ loadCodexModelCatalog: modelCatalogMocks.load }));
 
 const agentRegistryMocks = vi.hoisted(() => ({
@@ -298,6 +299,48 @@ describe("createRuntimeApi startTaskSession", () => {
 				agentId: "codex",
 				binary: "codex",
 				codexOptions: { model: "test-model", reasoningEffort: "high" },
+				claudeOptions: undefined,
+			}),
+		);
+	});
+
+	it("uses the task card agent and starting Pi options for fresh starts", async () => {
+		const card = createCard({
+			agentId: "pi",
+			workingDirectory: "/tmp/pi-worktree",
+			piOptions: { model: { provider: "alpha", id: "test-model" } },
+		});
+		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
+		taskWorktreeMocks.pathExists.mockResolvedValue(true);
+		agentRegistryMocks.resolveAgentCommand.mockReturnValue({
+			agentId: "pi",
+			label: "Pi",
+			command: "pi",
+			binary: "pi",
+			args: [],
+		});
+
+		const terminalManager = {
+			startTaskSession: vi.fn(async () => createSummary({ agentId: "pi" })),
+		};
+		const api = createRuntimeApi(createDeps(terminalManager));
+
+		const response = await api.startTaskSession(defaultScope, {
+			taskId: "task-1",
+			baseRef: "main",
+			prompt: "Do something",
+		});
+
+		expect(response.ok).toBe(true);
+		expect(agentRegistryMocks.resolveAgentCommand).toHaveBeenCalledWith(
+			expect.objectContaining({ selectedAgentId: "pi" }),
+			{ retryTransient: true },
+		);
+		expect(terminalManager.startTaskSession).toHaveBeenCalledWith(
+			expect.objectContaining({
+				agentId: "pi",
+				binary: "pi",
+				piOptions: { model: { provider: "alpha", id: "test-model" } },
 				claudeOptions: undefined,
 			}),
 		);
@@ -1264,5 +1307,21 @@ describe("createRuntimeApi Codex model catalog", () => {
 		await api.codexModels({ projectId: "other", projectPath: "/tmp/other" });
 		await createRuntimeApi(deps).codexModels(defaultScope);
 		expect(modelCatalogMocks.load).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe("createRuntimeApi Pi model catalog", () => {
+	it("loads metadata with the originating project's scope and no cross-project cache", async () => {
+		modelCatalogMocks.loadPi.mockReset().mockResolvedValue({ models: [{ provider: "alpha", id: "chosen" }] });
+		const deps = createDeps();
+		const api = createRuntimeApi(deps);
+		await api.piModels(defaultScope);
+		await api.piModels({ projectId: "other", projectPath: "/tmp/other" });
+		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(
+			1,
+			deps.config.getActiveRuntimeConfig(),
+			defaultScope.projectPath,
+		);
+		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(2, deps.config.getActiveRuntimeConfig(), "/tmp/other");
 	});
 });

@@ -9,6 +9,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeCodexOptions,
 	RuntimePersistedClaudeOptions,
+	RuntimePiOptions,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core";
@@ -49,6 +50,7 @@ export interface AgentAdapterLaunchInput {
 	claudeLaunchPermissionMode?: ClaudeLaunchPermissionMode;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	codexOptions?: RuntimeCodexOptions;
+	piOptions?: RuntimePiOptions;
 	claudeOptions?: RuntimePersistedClaudeOptions;
 	worktreeSystemPromptTemplate?: string;
 }
@@ -534,6 +536,13 @@ const piAdapter: AgentSessionAdapter = {
 		const separatorIndex = args.indexOf("--");
 		const positionalArgs = separatorIndex < 0 ? [] : args.splice(separatorIndex + 1);
 		if (separatorIndex >= 0) args.pop();
+		// Starting choices must not override model changes recorded in a resumed Pi session.
+		if (!input.resumeConversation && input.piOptions?.model) {
+			removeCliOptionWithValue(args, "--provider");
+			removeCliOptionWithValue(args, "--model");
+			removeCliOptionWithValue(args, "--models");
+			args.push("--provider", input.piOptions.model.provider, "--model", input.piOptions.model.id);
+		}
 		if (input.resumeConversation) {
 			const resumeSessionId = input.resumeSessionId?.trim();
 			if (resumeSessionId) {

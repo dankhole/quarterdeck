@@ -65,6 +65,18 @@ describe("normalizeBoardData", () => {
 		).toBeUndefined();
 	});
 
+	it("retains Pi starting options through authoritative hydration", () => {
+		const piOptions = { model: { provider: "alpha", id: "test-model" } };
+		const card = parsePersistedBoardCard(
+			{ id: "task-1", prompt: "Task", baseRef: "main", agentId: "pi", piOptions },
+			{ createTaskId: () => "unused" },
+		);
+		expect(card?.piOptions).toEqual(piOptions);
+		expect(
+			parsePersistedBoardCard({ ...card, piOptions: { model: 42 } }, { createTaskId: () => "unused" })?.piOptions,
+		).toBeUndefined();
+	});
+
 	it("retains Claude starting options only for Claude cards through authoritative hydration", () => {
 		const claudeOptions = { model: "sonnet", effort: "xhigh" };
 		const card = parsePersistedBoardCard(

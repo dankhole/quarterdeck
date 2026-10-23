@@ -1568,3 +1568,70 @@ describe("Claude rendered interruption launch hooks", () => {
 		expect(launch.shouldInspectOutputForTransition?.(running)).toBe(false);
 	});
 });
+
+describe("Pi starting model options", () => {
+	it("replaces conflicting model/provider/scope args only on fresh launches before the separator", async () => {
+		const launch = await prepareAgentLaunch({
+			taskId: "pi-task",
+			agentId: "pi",
+			binary: "pi",
+			cwd: process.cwd(),
+			prompt: "-task prompt",
+			args: [
+				"--provider=old",
+				"--provider",
+				"other",
+				"--model",
+				"old-model",
+				"--model=another",
+				"--models",
+				"scope*",
+				"--thinking",
+				"high",
+				"--",
+				"custom positional",
+			],
+			piOptions: { model: { provider: "local", id: "qwen:7b" } },
+		});
+		expect(launch.args).toEqual([
+			"--thinking",
+			"high",
+			"--provider",
+			"local",
+			"--model",
+			"qwen:7b",
+			"--",
+			"custom positional",
+			"-task prompt",
+		]);
+	});
+	it.each([undefined, {}])("inherits custom arguments when starting options are %j", async (piOptions) => {
+		const launch = await prepareAgentLaunch({
+			taskId: "pi-task",
+			agentId: "pi",
+			binary: "pi",
+			cwd: process.cwd(),
+			prompt: "",
+			args: ["--provider", "configured", "--model", "configured-model"],
+			piOptions,
+		});
+		expect(launch.args).toEqual(["--provider", "configured", "--model", "configured-model"]);
+	});
+	it.each([undefined, "exact-session-id"])(
+		"does not reapply starting choices on resume (id=%s)",
+		async (resumeSessionId) => {
+			const launch = await prepareAgentLaunch({
+				taskId: "pi-task",
+				agentId: "pi",
+				binary: "pi",
+				cwd: process.cwd(),
+				prompt: "",
+				args: [],
+				resumeConversation: true,
+				resumeSessionId,
+				piOptions: { model: { provider: "alpha", id: "original-starting-model" } },
+			});
+			expect(launch.args).toEqual(resumeSessionId ? ["--session", resumeSessionId] : ["--continue"]);
+		},
+	);
+});

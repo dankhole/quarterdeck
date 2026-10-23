@@ -1,11 +1,13 @@
 import { UiPreferencesStore } from "../config/ui-preferences-store.js";
 import type { RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
+
 // Coordinates the runtime-side TRPC handlers used by the browser.
 // Each handler is a standalone function in src/trpc/handlers/. This class
 // is a thin dispatcher that delegates to them, providing the shared
 // dependency bag each handler needs.
 
 import { CodexModelCatalogCache } from "../config/codex-model-catalog-cache";
+import { loadPiModelCatalog } from "../config/pi-model-catalog.js";
 import type { ConversationSourceHintReader } from "../conversation/types";
 import type {
 	IRuntimeBroadcaster,
@@ -86,6 +88,11 @@ class RuntimeApiImpl implements RuntimeApi {
 			: this.deps.config.getActiveRuntimeConfig();
 		if (!config) throw new Error("No active runtime config provider is available.");
 		return this.codexModelCatalog.get(config, projectScope?.projectPath ?? process.cwd());
+	}
+
+	async piModels(projectScope: RuntimeTrpcProjectScope) {
+		const config = await this.deps.config.loadScopedRuntimeConfig(projectScope);
+		return loadPiModelCatalog(config, projectScope.projectPath);
 	}
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {

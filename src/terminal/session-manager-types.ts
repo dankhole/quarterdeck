@@ -120,6 +120,7 @@ export interface StartTaskSessionRequest {
 	claudeLaunchPermissionMode?: AgentAdapterLaunchInput["claudeLaunchPermissionMode"];
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
+	piOptions?: AgentAdapterLaunchInput["piOptions"];
 	claudeOptions?: AgentAdapterLaunchInput["claudeOptions"];
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
@@ -183,6 +184,12 @@ export function cloneStartTaskSessionRequest(request: StartTaskSessionRequest): 
 	return {
 		...request,
 		args: [...request.args],
+		piOptions: request.piOptions
+			? {
+					...request.piOptions,
+					...(request.piOptions.model ? { model: { ...request.piOptions.model } } : {}),
+				}
+			: undefined,
 		images: request.images ? request.images.map((image) => ({ ...image })) : undefined,
 		env: request.env ? { ...request.env } : undefined,
 		resumeSemanticState: resumeSemanticState

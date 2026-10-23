@@ -4,6 +4,7 @@ import type {
 	RuntimeCodexOptions,
 	RuntimeConflictState,
 	RuntimePersistedClaudeOptions,
+	RuntimePiOptions,
 	RuntimeTaskImageInput,
 } from "@/runtime/types";
 
@@ -22,6 +23,7 @@ export interface BoardCard {
 	baseRefPinned?: boolean;
 	agentId?: RuntimeAgentId;
 	codexOptions?: RuntimeCodexOptions;
+	piOptions?: RuntimePiOptions;
 	claudeOptions?: RuntimePersistedClaudeOptions;
 	useWorktree?: boolean;
 	workingDirectory?: string | null;

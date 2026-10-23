@@ -124,8 +124,11 @@ describe("useTaskStartActions lifecycle creation", () => {
 		});
 	});
 
-	it("preserves Pi ownership in create-and-start commands", async () => {
-		const task = createTask("task-pi", 101, "pi");
+	it("preserves Pi ownership and model choice in create-and-start commands", async () => {
+		const task = {
+			...createTask("task-pi", 101, "pi"),
+			piOptions: { model: { provider: "alpha", id: "chosen-model" } },
+		};
 		const executeTaskLifecycle = vi.fn(async () => null);
 		await act(async () => {
 			root.render(
@@ -146,7 +149,7 @@ describe("useTaskStartActions lifecycle creation", () => {
 		expect(executeTaskLifecycle).toHaveBeenCalledWith(
 			expect.objectContaining({
 				kind: "create_and_start",
-				task: expect.objectContaining({ taskId: "task-pi", agentId: "pi" }),
+				task: expect.objectContaining({ taskId: "task-pi", agentId: "pi", piOptions: task.piOptions }),
 			}),
 		);
 	});

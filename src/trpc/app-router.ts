@@ -14,6 +14,7 @@ import {
 	runtimeOpenFileResponseSchema,
 	runtimeOpenProjectRequestSchema,
 	runtimeOpenProjectResponseSchema,
+	runtimePiModelsResponseSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectAddResponseSchema,
 	runtimeProjectCheckAvailabilityRequestSchema,
@@ -84,6 +85,9 @@ const runtimeRouter = t.router({
 		)
 		.output(z.object({ available: z.boolean(), message: z.string() }))
 		.query(({ input }) => checkLanguageServerCommand(input.command, input.env)),
+	piModels: projectProcedure
+		.output(runtimePiModelsResponseSchema)
+		.query(({ ctx }) => ctx.runtimeApi.piModels(ctx.projectScope)),
 	codexModels: optionalProjectProcedure
 		.output(runtimeCodexModelsResponseSchema)
 		.query(({ ctx }) => ctx.runtimeApi.codexModels(ctx.projectScope)),

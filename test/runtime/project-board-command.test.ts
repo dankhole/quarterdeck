@@ -5,6 +5,7 @@ import {
 	applyProjectBoardCommand,
 	runtimeClaudeOptionsSchema,
 	runtimeCodexOptionsSchema,
+	runtimePiOptionsSchema,
 	runtimeProjectBoardCommandSchema,
 	runtimeTaskLifecycleCommandSchema,
 } from "../../src/core";
@@ -421,7 +422,43 @@ describe("starting Claude options", () => {
 		});
 	});
 
-	// Runtimes that predate claudeOptions use non-strict command schemas, which strip rather than reject it.
+	it("validates Pi choices, retains them through create/start schemas, and detects changed provider identity", () => {
+		const piOptions = { model: { provider: "alpha", id: "same-model:7b" } };
+		expect(runtimePiOptionsSchema.parse({})).toEqual({});
+		for (const model of [
+			{ id: "missing-provider" },
+			{ provider: "alpha", id: "bad\nmodel" },
+			{ provider: "alpha", id: "--flag" },
+		]) {
+			expect(runtimePiOptionsSchema.safeParse({ model }).success).toBe(false);
+		}
+		const command = runtimeProjectBoardCommandSchema.parse({
+			...createTaskCommand("pi-task", "Pi task", 100),
+			agentId: "pi",
+			piOptions,
+		});
+		if (command.kind !== "create_task") throw new Error("Expected create command");
+		const created = applyProjectBoardCommand(createBoard(), command);
+		expect(created.board.columns[1]?.cards[0]?.piOptions).toEqual(piOptions);
+		expect(applyProjectBoardCommand(created.board, command).changed).toBe(false);
+		expect(() =>
+			applyProjectBoardCommand(created.board, {
+				...command,
+				agentId: "pi",
+				piOptions: { model: { provider: "beta", id: "same-model:7b" } },
+			}),
+		).toThrow("different data");
+		const parsed = runtimeTaskLifecycleCommandSchema.parse({
+			kind: "create_and_start",
+			operationId: "pi-op",
+			expectedRevision: 0,
+			startedAt: 100,
+			task: { taskId: "pi-task", prompt: "Pi task", baseRef: "main", agentId: "pi", piOptions, createdAt: 100 },
+		});
+		expect(parsed.kind === "create_and_start" && parsed.task.piOptions).toEqual(piOptions);
+	});
+
+	// Older runtimes strip additive provider options instead of rejecting create intent.
 	it("strips unknown task fields instead of rejecting the command", () => {
 		const parsed = runtimeProjectBoardCommandSchema.safeParse({
 			...createTaskCommand("task-future", "Ship it", 100),

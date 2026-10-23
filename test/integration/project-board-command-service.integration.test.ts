@@ -197,6 +197,44 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 		});
 	});
 
+	it("persists Pi model identity and replay receipts across a service restart", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-pi-model-");
+			try {
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const envelope = {
+					commandId: "create-pi-task",
+					expectedRevision: initial.revision,
+					command: {
+						kind: "create_task" as const,
+						columnId: "review" as const,
+						taskId: "pi-task",
+						agentId: "pi" as const,
+						piOptions: { model: { provider: "alpha", id: "chosen-model" } },
+						prompt: "Pi task",
+						baseRef: "main",
+						createdAt: 100,
+					},
+				};
+				const scope = { projectId: context.projectId, projectPath };
+				const service = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				await service.execute(scope, envelope);
+				const reloaded = await loadProjectState(projectPath);
+				expect(findCardInBoard(reloaded.board, "pi-task")?.piOptions).toEqual(envelope.command.piOptions);
+				const persisted = runtimeBoardDataSchema.parse(
+					JSON.parse(readFileSync(join(context.statePath, "board.json"), "utf8")),
+				);
+				expect(findCardInBoard(persisted, "pi-task")?.piOptions).toEqual(envelope.command.piOptions);
+				const restarted = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
+				expect(await restarted.execute(scope, envelope)).toMatchObject({ replayed: true, changed: false });
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("serializes competing commands and rejects the stale expected revision", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-board-command-race-");

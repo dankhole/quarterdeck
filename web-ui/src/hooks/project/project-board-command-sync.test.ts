@@ -56,6 +56,7 @@ describe("project board command sync", () => {
 		const before = createInitialBoardData();
 		const created = addTaskToColumnWithResult(before, "review", {
 			prompt: "Use Pi",
+			piOptions: { model: { provider: "alpha", id: "test-model" } },
 			baseRef: "main",
 			agentId: "pi",
 			useWorktree: true,
@@ -63,7 +64,13 @@ describe("project board command sync", () => {
 
 		const result = applyDerived(before, created.board);
 
-		expect(result.commands).toContainEqual(expect.objectContaining({ kind: "create_task", agentId: "pi" }));
+		expect(result.commands).toContainEqual(
+			expect.objectContaining({
+				kind: "create_task",
+				agentId: "pi",
+				piOptions: { model: { provider: "alpha", id: "test-model" } },
+			}),
+		);
 		expect(result.board).toEqual(created.board);
 	});
 

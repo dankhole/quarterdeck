@@ -4,6 +4,7 @@ import {
 	runtimeBoardColumnIdSchema,
 	runtimeClaudeOptionsSchema,
 	runtimeCodexOptionsSchema,
+	runtimePiOptionsSchema,
 	runtimeTaskImageReadSchema,
 } from "@runtime-contract";
 import { z } from "zod";
@@ -28,6 +29,7 @@ const rawPersistedBoardCardSchema = z.object({
 	baseRefPinned: z.unknown().optional(),
 	agentId: z.unknown().optional(),
 	codexOptions: z.unknown().optional(),
+	piOptions: z.unknown().optional(),
 	claudeOptions: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
 	workingDirectory: z.unknown().optional(),
@@ -90,6 +92,7 @@ export function parsePersistedBoardCard(
 	const now = options.now ?? Date.now();
 	const agentId = parsePersistedAgentId(result.data.agentId);
 	const codexOptions = runtimeCodexOptionsSchema.safeParse(result.data.codexOptions);
+	const piOptions = runtimePiOptionsSchema.safeParse(result.data.piOptions);
 	const claudeOptions = agentId === "claude" ? parsePersistedClaudeOptions(result.data.claudeOptions) : undefined;
 
 	return {
@@ -104,6 +107,7 @@ export function parsePersistedBoardCard(
 		...(typeof result.data.baseRefPinned === "boolean" ? { baseRefPinned: result.data.baseRefPinned } : {}),
 		...(agentId ? { agentId } : {}),
 		...(agentId === "codex" && codexOptions.success ? { codexOptions: codexOptions.data } : {}),
+		...(agentId === "pi" && piOptions.success ? { piOptions: piOptions.data } : {}),
 		...(claudeOptions ? { claudeOptions } : {}),
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),

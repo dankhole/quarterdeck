@@ -108,6 +108,28 @@ describe("task-editor-drafts", () => {
 			expect(task.codexOptions).toBeUndefined();
 		}
 	});
+	it("keeps Pi starting options on single and bulk tasks and drops them for other harnesses", () => {
+		const options = {
+			board: createBoard(),
+			prompt: "Single task",
+			prompts: ["First", "Second"],
+			images: [],
+			branchRef: "main",
+			defaultBranchRef: "main",
+			useWorktree: true,
+			branchName: "",
+			createFeatureBranch: false,
+			piOptions: { model: { provider: "alpha", id: "test-model" } },
+		};
+		expect(createTaskOnBoard({ ...options, agentId: "pi" }).createdTask?.piOptions).toEqual(options.piOptions);
+		for (const task of createTasksOnBoard({ ...options, agentId: "pi" }).createdTasks) {
+			expect(task.piOptions).toEqual(options.piOptions);
+		}
+		expect(createTaskOnBoard({ ...options, agentId: "claude" }).createdTask?.piOptions).toBeUndefined();
+		for (const task of createTasksOnBoard({ ...options, agentId: "codex" }).createdTasks) {
+			expect(task.piOptions).toBeUndefined();
+		}
+	});
 	it("keeps Claude starting options on single and bulk tasks and drops them for other harnesses", () => {
 		const options = {
 			board: createBoard(),

@@ -45,6 +45,7 @@ function createAndStartDraft(task: BoardCard): Extract<TaskLifecycleCommandDraft
 			baseRef: task.baseRef,
 			agentId: task.agentId,
 			codexOptions: task.codexOptions,
+			piOptions: task.piOptions,
 			claudeOptions: toRuntimeClaudeOptions(task.claudeOptions),
 			useWorktree: task.useWorktree,
 			branch: task.branch ?? undefined,

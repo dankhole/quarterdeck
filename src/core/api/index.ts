@@ -10,6 +10,7 @@ export * from "./git-merge.js";
 export * from "./git-revert.js";
 export * from "./git-sync.js";
 export * from "./host-integrations.js";
+export * from "./pi-models.js";
 export * from "./project-board-command.js";
 export * from "./project-organization.js";
 export * from "./project-state.js";

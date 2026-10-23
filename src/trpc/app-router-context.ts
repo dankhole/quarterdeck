@@ -105,6 +105,7 @@ import type {
 	RuntimeWorktreeEnsureRequest,
 	RuntimeWorktreeEnsureResponse,
 } from "../core";
+import type { RuntimePiModelsResponse } from "../core/api/pi-models.js";
 import type { ProjectOrganizationRequest, ProjectOrganizationResponse } from "../core/api/project-organization.js";
 import type { RuntimeUiPreferences, RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 import type { RuntimeCodexModelsResponse } from "../core/codex-model-contracts";
@@ -133,6 +134,7 @@ export interface RuntimeTrpcContext {
 			scope: RuntimeTrpcProjectScope,
 			input: RuntimeTaskConversationRequest,
 		) => Promise<RuntimeTaskConversationResponse>;
+		piModels: (scope: RuntimeTrpcProjectScope) => Promise<RuntimePiModelsResponse>;
 		codexModels: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeCodexModelsResponse>;
 		loadConfig: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (

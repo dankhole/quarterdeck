@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TASK_CARD_COLORS } from "../task-card-colors.js";
+import { runtimePiModelSchema } from "./pi-models.js";
 
 import {
 	runtimeAgentIdSchema,
@@ -29,6 +30,10 @@ export const runtimeCodexOptionsSchema = z.object({
 	reasoningEffort: runtimeAgentEffortTokenSchema.optional(),
 });
 export type RuntimeCodexOptions = z.infer<typeof runtimeCodexOptionsSchema>;
+
+/** Omission inherits Pi configuration; explicit choices retain provider identity. */
+export const runtimePiOptionsSchema = z.object({ model: runtimePiModelSchema.optional() });
+export type RuntimePiOptions = z.infer<typeof runtimePiOptionsSchema>;
 
 /**
  * Effort levels accepted by the Claude Code CLI `--effort` option. All predate the 2.1.198 launch
@@ -98,6 +103,7 @@ export const runtimeBoardCardSchema = z.object({
 	baseRefPinned: z.boolean().optional(),
 	agentId: runtimeAgentIdSchema.optional(),
 	codexOptions: runtimeCodexOptionsSchema.optional(),
+	piOptions: runtimePiOptionsSchema.optional(),
 	claudeOptions: runtimePersistedClaudeOptionsSchema.optional(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),

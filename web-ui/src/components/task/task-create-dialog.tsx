@@ -20,6 +20,7 @@ import { TaskClaudeOptions } from "@/components/task/task-claude-options";
 import { TaskCodexOptions } from "@/components/task/task-codex-options";
 import { ButtonShortcut, DIALOG_STYLE } from "@/components/task/task-create-dialog-utils";
 import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
+import { TaskPiOptions } from "@/components/task/task-pi-options";
 import { TaskPromptComposer } from "@/components/task/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -31,6 +32,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeClaudeOptions,
 	RuntimeCodexOptions,
+	RuntimePiOptions,
 } from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
@@ -46,7 +48,9 @@ export function TaskCreateDialog({
 	agentId,
 	onAgentIdChange,
 	codexOptions,
+	piOptions,
 	onCodexOptionsChange,
+	onPiOptionsChange,
 	claudeOptions,
 	onClaudeOptionsChange,
 	onCreate,
@@ -81,7 +85,9 @@ export function TaskCreateDialog({
 	agentId: RuntimeAgentId;
 	onAgentIdChange: (value: RuntimeAgentId) => void;
 	codexOptions?: RuntimeCodexOptions;
+	piOptions?: RuntimePiOptions;
 	onCodexOptionsChange?: (value: RuntimeCodexOptions | undefined) => void;
+	onPiOptionsChange?: (value: RuntimePiOptions | undefined) => void;
 	claudeOptions?: RuntimeClaudeOptions;
 	onClaudeOptionsChange?: (value: RuntimeClaudeOptions | undefined) => void;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
@@ -217,6 +223,15 @@ export function TaskCreateDialog({
 								projectId={projectId}
 								value={codexOptions}
 								onValueChange={onCodexOptionsChange}
+								portalContainer={dropdownPortalContainer}
+							/>
+						) : null}
+						{open && agentId === "pi" && onPiOptionsChange ? (
+							<TaskPiOptions
+								key={projectId}
+								projectId={projectId}
+								value={piOptions}
+								onValueChange={onPiOptionsChange}
 								portalContainer={dropdownPortalContainer}
 							/>
 						) : null}

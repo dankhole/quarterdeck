@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskEditor } from "@/hooks/board/use-task-editor";
-import type { RuntimeCodexOptions } from "@/runtime/types";
+import type { RuntimeCodexOptions, RuntimePiOptions } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardCard, BoardData, TaskImage } from "@/types";
 
@@ -38,7 +38,9 @@ interface HookSnapshot {
 	newTaskImages: TaskImage[];
 	newTaskAgentId: "claude" | "codex" | "pi";
 	newTaskCodexOptions: RuntimeCodexOptions | undefined;
+	newTaskPiOptions: RuntimePiOptions | undefined;
 	setNewTaskCodexOptions: (value: RuntimeCodexOptions | undefined) => void;
+	setNewTaskPiOptions: (value: RuntimePiOptions | undefined) => void;
 	newTaskBranchRef: string;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
@@ -107,7 +109,9 @@ function HookHarness({
 			newTaskImages: editor.newTaskImages,
 			newTaskAgentId: editor.newTaskAgentId,
 			newTaskCodexOptions: editor.newTaskCodexOptions,
+			newTaskPiOptions: editor.newTaskPiOptions,
 			setNewTaskCodexOptions: editor.setNewTaskCodexOptions,
+			setNewTaskPiOptions: editor.setNewTaskPiOptions,
 			newTaskBranchRef: editor.newTaskBranchRef,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
@@ -138,7 +142,9 @@ function HookHarness({
 		editor.newTaskImages,
 		editor.newTaskAgentId,
 		editor.newTaskCodexOptions,
+		editor.newTaskPiOptions,
 		editor.setNewTaskCodexOptions,
+		editor.setNewTaskPiOptions,
 		editor.newTaskBranchRef,
 		editor.setEditTaskPrompt,
 		editor.setNewTaskAgentId,
@@ -244,6 +250,57 @@ describe("useTaskEditor", () => {
 		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.codexOptions).toEqual({ model: "test-model" });
 		await act(async () => requireSnapshot(latestSnapshot).handleOpenCreateTask());
 		expect(requireSnapshot(latestSnapshot).newTaskCodexOptions).toBeUndefined();
+	});
+
+	it("inherits Pi settings by default and after overrides are disabled or the dialog is reopened", async () => {
+		let latestSnapshot: HookSnapshot | null = null;
+		await act(async () =>
+			root.render(
+				<HookHarness
+					initialBoard={createBoard()}
+					fallbackTaskAgentId="pi"
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			),
+		);
+		await act(async () => requireSnapshot(latestSnapshot).handleOpenCreateTask());
+		expect(requireSnapshot(latestSnapshot).newTaskPiOptions).toBeUndefined();
+		await act(async () => requireSnapshot(latestSnapshot).setNewTaskPrompt("Use configured settings"));
+		await act(async () => requireSnapshot(latestSnapshot).handleCreateTask({ keepDialogOpen: true }));
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.piOptions).toBeUndefined();
+		await act(async () =>
+			requireSnapshot(latestSnapshot).setNewTaskPiOptions({ model: { provider: "alpha", id: "test-model" } }),
+		);
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setNewTaskPiOptions(undefined);
+			requireSnapshot(latestSnapshot).setNewTaskPrompt("Overrides disabled");
+		});
+		await act(async () => requireSnapshot(latestSnapshot).handleCreateTask({ keepDialogOpen: true }));
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.piOptions).toBeUndefined();
+		await act(async () => {
+			requireSnapshot(latestSnapshot).setNewTaskPiOptions({ model: { provider: "alpha", id: "test-model" } });
+			requireSnapshot(latestSnapshot).setNewTaskPrompt("Use explicit override");
+		});
+		await act(async () => requireSnapshot(latestSnapshot).handleCreateTask());
+		expect(requireSnapshot(latestSnapshot).board.columns[0]?.cards[0]?.piOptions).toEqual({
+			model: { provider: "alpha", id: "test-model" },
+		});
+		await act(async () => requireSnapshot(latestSnapshot).handleOpenCreateTask());
+		expect(requireSnapshot(latestSnapshot).newTaskPiOptions).toBeUndefined();
+		await act(async () =>
+			requireSnapshot(latestSnapshot).setNewTaskPiOptions({ model: { provider: "beta", id: "other" } }),
+		);
+		await act(async () =>
+			requireSnapshot(latestSnapshot).handleCreateTasks(["First Pi", "Second Pi"], { keepDialogOpen: true }),
+		);
+		expect(
+			requireSnapshot(latestSnapshot)
+				.board.columns[0]?.cards.slice(0, 2)
+				.map((task) => task.piOptions),
+		).toEqual([{ model: { provider: "beta", id: "other" } }, { model: { provider: "beta", id: "other" } }]);
+		expect(requireSnapshot(latestSnapshot).newTaskPiOptions).toEqual({ model: { provider: "beta", id: "other" } });
 	});
 
 	it("does not open the draft editor for started Review tasks", async () => {
