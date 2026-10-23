@@ -7,8 +7,10 @@ import {
 	createWorkdirEntry,
 	deleteWorkdirEntry,
 	listAllWorkdirFileEntries,
+	listAllWorkdirFiles,
 	renameWorkdirEntry,
 } from "../../src/workdir";
+import { stageAndCommitAll as commitAll, initGitRepository as initRepository } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
 
 describe("workdir entry mutations", () => {
@@ -27,6 +29,65 @@ describe("workdir entry mutations", () => {
 			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
 				files: ["src/app.ts"],
 				directories: ["src", "src/foo"],
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("refreshes Git-aware listings after mutations without making ignored paths immutable", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-git-ignore-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, ".gitignore"), "dist/\n", "utf8");
+			writeFileSync(join(repoPath, "tracked.ts"), "tracked\n", "utf8");
+			commitAll(repoPath, "add tracked file and ignore rule");
+			const visible = [".gitignore", "tracked.ts"];
+			expect(await listAllWorkdirFiles(repoPath)).toEqual(visible);
+
+			await createWorkdirEntry(repoPath, "dist", "directory");
+			await createWorkdirEntry(repoPath, "dist/generated.js", "file");
+			expect(existsSync(join(repoPath, "dist/generated.js"))).toBe(true);
+			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({ files: visible, directories: [] });
+
+			await renameWorkdirEntry(repoPath, "tracked.ts", "dist/moved.ts", "file");
+			expect(await listAllWorkdirFiles(repoPath)).toEqual([".gitignore"]);
+			await renameWorkdirEntry(repoPath, "dist/moved.ts", "restored.ts", "file");
+			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+				files: [".gitignore", "restored.ts"],
+				directories: [],
+			});
+
+			await deleteWorkdirEntry(repoPath, "restored.ts", "file");
+			await deleteWorkdirEntry(repoPath, "dist", "directory");
+			expect(await listAllWorkdirFiles(repoPath)).toEqual([".gitignore"]);
+			expect(existsSync(join(repoPath, "dist"))).toBe(false);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("refreshes ignored-directory visibility immediately when browser mutations rename or delete .gitignore", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-ignore-mutation-");
+		try {
+			initRepository(repoPath);
+			writeFileSync(join(repoPath, ".gitignore"), "generated/\n", "utf8");
+			mkdirSync(join(repoPath, "generated"));
+			writeFileSync(join(repoPath, "generated/item.js"), "local\n", "utf8");
+			commitAll(repoPath, "add ignore rule");
+			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({ files: [".gitignore"], directories: [] });
+
+			await renameWorkdirEntry(repoPath, ".gitignore", "ignore.saved", "file");
+			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+				files: ["generated/item.js", "ignore.saved"],
+				directories: ["generated"],
+			});
+			await renameWorkdirEntry(repoPath, "ignore.saved", ".gitignore", "file");
+			expect(await listAllWorkdirFiles(repoPath)).toEqual([".gitignore"]);
+			await deleteWorkdirEntry(repoPath, ".gitignore", "file");
+			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+				files: ["generated/item.js"],
+				directories: ["generated"],
 			});
 		} finally {
 			cleanup();

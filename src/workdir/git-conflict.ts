@@ -23,6 +23,7 @@ import {
 	validateGitRef,
 } from "./git-utils";
 import { readWorkdirFile, resolveWorkdirFilePath } from "./read-workdir-file";
+import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 
 // ---------------------------------------------------------------------------
 // Conflict detection / query functions
@@ -289,6 +290,7 @@ export async function resolveConflictFile(
 		}
 		if (resolution !== "manual") {
 			const checkoutResult = await runGit(cwd, ["checkout", `--${resolution}`, "--", path], GIT_USER_ACTION_OPTIONS);
+			invalidateWorkdirFileListCache(cwd);
 			if (!checkoutResult.ok)
 				return { ok: false, error: checkoutResult.error ?? `Failed to checkout --${resolution} for ${path}.` };
 		}
@@ -329,6 +331,7 @@ export async function continueMergeOrRebase(cwd: string): Promise<RuntimeConflic
 		continueResult = await runGit(cwd, ["commit", "--no-edit"], GIT_USER_ACTION_OPTIONS);
 	}
 
+	invalidateWorkdirFileListCache(cwd);
 	// Check if new conflicts appeared after the continue
 	const lsUnmerged = await runGit(cwd, ["ls-files", "-u"]);
 	const hasNewConflicts = lsUnmerged.ok && lsUnmerged.stdout.trim().length > 0;
@@ -380,6 +383,7 @@ export async function abortMergeOrRebase(cwd: string): Promise<RuntimeConflictAb
 
 	const abortArgs = [detected.operation, "--abort"];
 	const abortResult = await runGit(cwd, abortArgs, GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(cwd);
 	const summary = await getGitSyncSummary(cwd, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 	if (!abortResult.ok) {
@@ -413,6 +417,8 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 	}
 
 	const rebaseResult = await runGit(repoRoot, ["rebase", ontoRef], GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 
 	if (!rebaseResult.ok) {
 		const lsUnmerged = await runGit(repoRoot, ["ls-files", "-u"]);
@@ -437,6 +443,8 @@ export async function runGitRebaseAction(options: { cwd: string; onto: string })
 		}
 
 		await runGit(repoRoot, ["rebase", "--abort"], GIT_USER_ACTION_OPTIONS);
+		invalidateWorkdirFileListCache(options.cwd);
+		if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 		const abortedSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 		return {
 			ok: false,
@@ -490,6 +498,8 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 		["merge", branchToMerge, "--no-commit", "--no-edit"],
 		GIT_USER_ACTION_OPTIONS,
 	);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 
 	if (!mergeResult.ok) {
 		// Check if this is a conflict (unmerged files present) vs some other merge error
@@ -518,6 +528,8 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 
 		// Non-conflict merge failure — abort to restore clean state
 		await runGit(repoRoot, ["merge", "--abort"], GIT_USER_ACTION_OPTIONS);
+		invalidateWorkdirFileListCache(options.cwd);
+		if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 		const abortedSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });
 
 		const hasUncommittedChanges =
@@ -541,6 +553,8 @@ export async function runGitMergeAction(options: { cwd: string; branch: string }
 	const detected = await detectActiveConflict(repoRoot);
 	if (detected) {
 		const commitResult = await runGit(repoRoot, ["commit", "--no-edit"], GIT_USER_ACTION_OPTIONS);
+		invalidateWorkdirFileListCache(options.cwd);
+		if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 		if (!commitResult.ok) {
 			const conflictState = await getConflictState(repoRoot);
 			const nextSummary = await getGitSyncSummary(repoRoot, { runOptions: GIT_USER_ACTION_PREFLIGHT_OPTIONS });

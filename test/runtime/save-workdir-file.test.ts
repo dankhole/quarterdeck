@@ -4,13 +4,18 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+	listAllWorkdirFiles,
 	MAX_WORKDIR_FILE_EDIT_SIZE,
 	readWorkdirFile,
 	saveWorkdirFile,
 	WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE,
 	WorkdirFileConflictError,
 } from "../../src/workdir";
+import { initGitRepository } from "../utilities/git-env";
+import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+
+useProcessTestBudget();
 
 function requireContentHash(contentHash: string | undefined): string {
 	expect(contentHash).toBeTruthy();
@@ -92,6 +97,41 @@ describe("workdir file editing", () => {
 			});
 			expect(saved.contentHash).toBeTruthy();
 			expect(saved.contentHash).not.toBe(loaded.contentHash);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it.each([".gitignore", "nested/.gitignore"])("refreshes a warm file listing after saving %s", async (ignorePath) => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-save-ignore-listing-");
+		try {
+			initGitRepository(repoPath);
+			const prefix = ignorePath.startsWith("nested/") ? "nested/" : "";
+			mkdirSync(join(repoPath, prefix, "dist"), { recursive: true });
+			writeFileSync(join(repoPath, ignorePath), "", "utf8");
+			writeFileSync(join(repoPath, prefix, "dist", "output.txt"), "output\n", "utf8");
+			expect(await listAllWorkdirFiles(repoPath)).toContain(`${prefix}dist/output.txt`);
+			const loaded = await readWorkdirFile(repoPath, ignorePath);
+
+			await saveWorkdirFile(repoPath, ignorePath, "dist/\n", requireContentHash(loaded.contentHash));
+
+			expect(await listAllWorkdirFiles(repoPath)).not.toContain(`${prefix}dist/output.txt`);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("retains a warm file listing during ordinary autosaves", async () => {
+		const { path: repoPath, cleanup } = createTempDir("quarterdeck-save-autosave-listing-");
+		try {
+			writeFileSync(join(repoPath, "note.txt"), "before\n", "utf8");
+			expect(await listAllWorkdirFiles(repoPath)).toEqual(["note.txt"]);
+			const loaded = await readWorkdirFile(repoPath, "note.txt");
+			writeFileSync(join(repoPath, "external.txt"), "external\n", "utf8");
+
+			await saveWorkdirFile(repoPath, "note.txt", "after\n", requireContentHash(loaded.contentHash));
+
+			expect(await listAllWorkdirFiles(repoPath)).toEqual(["note.txt"]);
 		} finally {
 			cleanup();
 		}

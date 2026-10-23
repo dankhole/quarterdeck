@@ -21,6 +21,7 @@ import { useFileTreeData } from "./use-file-tree-data";
 export interface UseFileBrowserDataResult {
 	files: string[] | null;
 	directories: string[] | null;
+	fileListError: Error | null;
 	contentScopeKey: string;
 	editorScope?: FileEditorScopeIdentity;
 	searchScope: WorkdirSearchScope;
@@ -185,6 +186,7 @@ export function useFileBrowserData(options: {
 	const mutationBlockedReason = resolveFileBrowserMutationBlockedReason({
 		scope,
 		fileListData: treeData.fileListData,
+		fileListError: treeData.fileListError,
 	});
 	const canMutateEntries = mutationBlockedReason === null;
 
@@ -282,6 +284,7 @@ export function useFileBrowserData(options: {
 		editorScope,
 		files: treeData.files,
 		directories: treeData.directories,
+		fileListError: treeData.fileListError,
 		contentScopeKey,
 		searchScope: scope.searchScope,
 		canMutateEntries,

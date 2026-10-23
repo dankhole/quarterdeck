@@ -21,6 +21,7 @@ import {
 	validateGitPath,
 	validateGitRef,
 } from "./git-utils";
+import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 
 const LAST_KNOWN_GOOD_SYNC_SUMMARY_MAX_ENTRIES = 128;
 
@@ -121,6 +122,7 @@ export async function runGitSyncAction(options: {
 	}
 
 	const commandResult = await runGit(options.cwd, gitArgs, GIT_USER_ACTION_OPTIONS);
+	if (options.action === "pull" && !isOtherBranch) invalidateWorkdirFileListCache(options.cwd);
 	const nextSummary = await getGitSyncSummaryOrStale(options.cwd, initialSummary ?? createEmptySummary());
 
 	if (!commandResult.ok) {
@@ -210,6 +212,9 @@ export async function runGitCheckoutAction(options: {
 			: remoteTrackingRef
 				? await runGit(repoRoot, ["switch", "--track", remoteTrackingRef.name], GIT_USER_ACTION_OPTIONS)
 				: await runGit(repoRoot, ["switch", "--", requestedBranch], GIT_USER_ACTION_OPTIONS);
+	// Failed switches can still have changed paths or ignore rules.
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 	if (
 		!commandResult.ok &&
 		remoteTrackingRef?.explicit &&
@@ -222,6 +227,8 @@ export async function runGitCheckoutAction(options: {
 			["switch", "--detach", "--", remoteTrackingRef.name],
 			GIT_USER_ACTION_OPTIONS,
 		);
+		invalidateWorkdirFileListCache(options.cwd);
+		if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 	}
 	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, initialSummary);
 
@@ -425,6 +432,8 @@ export async function resetToRef(options: { cwd: string; ref: string }): Promise
 	}
 
 	const resetResult = await runGit(repoRoot, ["reset", "--hard", targetRef], GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 	const summary = await getGitSyncSummaryOrStale(repoRoot, createEmptySummary());
 
 	if (!resetResult.ok) {
@@ -457,9 +466,15 @@ export async function discardGitChanges(options: { cwd: string }): Promise<Runti
 		["restore", "--source=HEAD", "--staged", "--worktree", "--", "."],
 		GIT_USER_ACTION_OPTIONS,
 	);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 	const cleanResult = restoreResult.ok
 		? await runGit(repoRoot, ["clean", "-fd", "--", "."], GIT_USER_ACTION_OPTIONS)
 		: null;
+	if (cleanResult) {
+		invalidateWorkdirFileListCache(options.cwd);
+		if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
+	}
 	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, initialSummary);
 	const output = [restoreResult.output, cleanResult?.output ?? ""].filter(Boolean).join("\n");
 
@@ -581,6 +596,8 @@ export async function discardSingleFile(options: {
 					GIT_USER_ACTION_OPTIONS,
 				);
 
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 	const nextSummary = await getGitSyncSummaryOrStale(repoRoot, createEmptySummary());
 
 	if (!result.ok) {

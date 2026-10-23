@@ -47,8 +47,29 @@ describe("file browser scope policy", () => {
 		expect(scope.searchScope).toEqual({ taskId: null, ref: "feature/refactor" });
 		expect(scope.isReadOnly).toBe(true);
 		expect(createListFilesRequest(scope)).toEqual({ taskId: null, ref: "feature/refactor" });
-		expect(resolveFileBrowserMutationBlockedReason({ scope, fileListData: { files: [], mutable: false } })).toBe(
-			"Branch/ref browsing is read-only.",
+		expect(
+			resolveFileBrowserMutationBlockedReason({
+				scope,
+				fileListData: { files: [], mutable: false },
+				fileListError: null,
+			}),
+		).toBe("Branch/ref browsing is read-only.");
+	});
+
+	it("distinguishes a failed listing from loading when blocking mutations", () => {
+		const scope = resolveFileBrowserScope({ projectId: "project-1", taskId: null });
+		expect(resolveFileBrowserMutationBlockedReason({ scope, fileListData: null, fileListError: null })).toBe(
+			"Files are still loading.",
+		);
+		expect(
+			resolveFileBrowserMutationBlockedReason({
+				scope,
+				fileListData: null,
+				fileListError: new Error("File tree exceeds the 20,000-entry limit."),
+			}),
+		).toBe("File tree exceeds the 20,000-entry limit.");
+		expect(resolveFileBrowserMutationBlockedReason({ scope, fileListData: null, fileListError: new Error("") })).toBe(
+			"Unable to load files.",
 		);
 	});
 
@@ -61,6 +82,8 @@ describe("file browser scope policy", () => {
 
 		expect(scope.searchScope).toEqual({ taskId: null });
 		expect(scope.canQueryRuntime).toBe(false);
-		expect(resolveFileBrowserMutationBlockedReason({ scope, fileListData: null })).toBe("Files view is not active.");
+		expect(resolveFileBrowserMutationBlockedReason({ scope, fileListData: null, fileListError: null })).toBe(
+			"Files view is not active.",
+		);
 	});
 });

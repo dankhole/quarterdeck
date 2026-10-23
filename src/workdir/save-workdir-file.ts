@@ -11,6 +11,7 @@ import {
 	resolveWorkdirFilePath,
 	WORKDIR_FILE_TOO_LARGE_TO_EDIT_MESSAGE,
 } from "./read-workdir-file";
+import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 import { assertMutableWorkdirPath, normalizeWorkdirRelativePath } from "./workdir-path-policy";
 
 export class WorkdirFileConflictError extends Error {
@@ -63,6 +64,7 @@ export async function saveWorkdirFile(
 			lock: null,
 			mode: openedFile.fileStat.mode & 0o7777,
 		});
+		if (normalizedPath.split("/").at(-1) === ".gitignore") invalidateWorkdirFileListCache(worktreePath);
 		return {
 			content,
 			language: detectWorkdirFileLanguage(normalizedPath),

@@ -1,84 +1,75 @@
-import type { Dirent } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
-
-import pLimit from "p-limit";
-
 import { normalizeFileSystemPathForComparison, type RuntimeWorkdirFileSearchMatch } from "../core";
 import { runGit, splitNullSeparatedGitOutput } from "./git-utils";
-import { hasSkippedWorkdirPathComponent } from "./workdir-path-policy";
+import {
+	type WorkdirFileTree,
+	WorkdirFileTreeLimitError,
+	type WorkdirFileTreeOptions,
+	walkWorkdirFileTree,
+} from "./workdir-file-tree";
 
 const CACHE_TTL_MS = 5_000;
+const FILE_LIST_CACHE_TTL_MS = 30_000;
+const FILE_LIST_CACHE_MAX_ROOTS = 100;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-const FILE_WALK_CONCURRENCY = 16;
 
 // ── Filesystem-based file listing (used by file browser) ────────────────────
 
 interface CachedFileList {
 	expiresAt: number;
-	files: string[];
-	directories: string[];
+	result: WorkdirFileTree | WorkdirFileTreeLimitError;
 }
 
 const fsFileListCache = new Map<string, CachedFileList>();
+const fsFileListLoads = new Map<string, Promise<WorkdirFileTree>>();
 
-interface DirectoryReadResult {
-	files: string[];
-	directories: string[];
+function cacheFileListResult(cacheKey: string, result: CachedFileList["result"]): void {
+	const now = Date.now();
+	for (const [key, cached] of fsFileListCache) {
+		if (cached.expiresAt <= now) fsFileListCache.delete(key);
+	}
+	fsFileListCache.set(cacheKey, { expiresAt: now + FILE_LIST_CACHE_TTL_MS, result });
+	if (fsFileListCache.size > FILE_LIST_CACHE_MAX_ROOTS) {
+		const oldest = fsFileListCache.keys().next().value;
+		if (oldest !== undefined) fsFileListCache.delete(oldest);
+	}
 }
 
-function toWorkdirRelativePath(rootDir: string, fullPath: string): string {
-	const relPath = relative(rootDir, fullPath);
-	return sep === "\\" ? relPath.replaceAll("\\", "/") : relPath;
+function fileListCacheKey(cwd: string, useGitIgnores: boolean): string {
+	return `${useGitIgnores ? "git" : "folder"}:${normalizeFileSystemPathForComparison(cwd)}`;
 }
 
-/** Read one directory, returning visible files and subdirectories for the next bounded batch. */
-async function readDirectory(rootDir: string, dirPath: string): Promise<DirectoryReadResult> {
-	let entries: Dirent[];
+async function loadFileList(cwd: string, options: WorkdirFileTreeOptions): Promise<WorkdirFileTree> {
+	const useGitIgnores = options.useGitIgnores !== false;
+	const cacheKey = fileListCacheKey(cwd, useGitIgnores);
+	const cached = fsFileListCache.get(cacheKey);
+	if (cached && cached.expiresAt > Date.now()) {
+		if (cached.result instanceof WorkdirFileTreeLimitError) throw cached.result;
+		return cached.result;
+	}
+	fsFileListCache.delete(cacheKey);
+
+	const inFlight = fsFileListLoads.get(cacheKey);
+	if (inFlight) return inFlight;
+
+	const load = walkWorkdirFileTree(cwd, { useGitIgnores });
+	fsFileListLoads.set(cacheKey, load);
 	try {
-		entries = await readdir(dirPath, { withFileTypes: true });
-	} catch {
-		return { files: [], directories: [] }; // Permission denied, symlink loop, etc.
-	}
-
-	const files: string[] = [];
-	const directories: string[] = [];
-	for (const entry of entries) {
-		const fullPath = join(dirPath, entry.name);
-
-		if (entry.isDirectory()) {
-			if (!hasSkippedWorkdirPathComponent(entry.name)) {
-				directories.push(fullPath);
-			}
-		} else {
-			files.push(toWorkdirRelativePath(rootDir, fullPath));
+		const entries = await load;
+		// Invalidations detach the old load. It may finish for existing callers,
+		// but must not populate the cache or interfere with its replacement.
+		if (fsFileListLoads.get(cacheKey) === load) cacheFileListResult(cacheKey, entries);
+		return entries;
+	} catch (error) {
+		// Do not rebuild an over-limit tree on every poll. Transient failures
+		// remain immediately retryable, and invalidation detaches this failure too.
+		if (error instanceof WorkdirFileTreeLimitError && fsFileListLoads.get(cacheKey) === load) {
+			cacheFileListResult(cacheKey, error);
 		}
+		throw error;
+	} finally {
+		if (fsFileListLoads.get(cacheKey) === load) fsFileListLoads.delete(cacheKey);
 	}
-	return { files, directories };
-}
-
-/** Walk a directory tree with bounded breadth-first concurrency, collecting all file paths. */
-async function walkDirectory(rootDir: string): Promise<{ files: string[]; directories: string[] }> {
-	const limit = pLimit(FILE_WALK_CONCURRENCY);
-	const files: string[] = [];
-	const collectedDirectories: string[] = [];
-	let directories = [rootDir];
-
-	while (directories.length > 0) {
-		const currentDirectories = directories;
-		directories = [];
-		const results = await Promise.all(
-			currentDirectories.map((dirPath) => limit(() => readDirectory(rootDir, dirPath))),
-		);
-		for (const result of results) {
-			files.push(...result.files);
-			collectedDirectories.push(...result.directories.map((dirPath) => toWorkdirRelativePath(rootDir, dirPath)));
-			directories.push(...result.directories);
-		}
-	}
-
-	return { files, directories: collectedDirectories };
 }
 
 // ── Git-based file index (used by search for change-status metadata) ────────
@@ -227,41 +218,25 @@ function normalizeLimit(limit: number | undefined): number {
 	return Math.max(1, Math.min(MAX_LIMIT, rounded));
 }
 
-export async function listAllWorkdirFiles(cwd: string): Promise<string[]> {
-	const cacheKey = normalizeFileSystemPathForComparison(cwd);
-	const cached = fsFileListCache.get(cacheKey);
-	if (cached && cached.expiresAt > Date.now()) {
-		return [...cached.files];
-	}
-	fsFileListCache.delete(cacheKey);
-
-	const { files, directories } = await walkDirectory(cwd);
-	files.sort();
-	directories.sort();
-
-	fsFileListCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, files, directories });
-	return [...files];
+export async function listAllWorkdirFiles(cwd: string, options: WorkdirFileTreeOptions = {}): Promise<string[]> {
+	return [...(await loadFileList(cwd, options)).files];
 }
 
-export async function listAllWorkdirFileEntries(cwd: string): Promise<{ files: string[]; directories: string[] }> {
-	const cacheKey = normalizeFileSystemPathForComparison(cwd);
-	const cached = fsFileListCache.get(cacheKey);
-	if (cached && cached.expiresAt > Date.now()) {
-		return { files: [...cached.files], directories: [...cached.directories] };
-	}
-	fsFileListCache.delete(cacheKey);
-
-	const entries = await walkDirectory(cwd);
-	entries.files.sort();
-	entries.directories.sort();
-
-	fsFileListCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, ...entries });
+export async function listAllWorkdirFileEntries(
+	cwd: string,
+	options: WorkdirFileTreeOptions = {},
+): Promise<{ files: string[]; directories: string[] }> {
+	const entries = await loadFileList(cwd, options);
 	return { files: [...entries.files], directories: [...entries.directories] };
 }
 
 export function invalidateWorkdirFileListCache(cwd: string): void {
 	const cacheKey = normalizeFileSystemPathForComparison(cwd);
-	fsFileListCache.delete(cacheKey);
+	for (const useGitIgnores of [true, false]) {
+		const listingKey = fileListCacheKey(cwd, useGitIgnores);
+		fsFileListCache.delete(listingKey);
+		fsFileListLoads.delete(listingKey);
+	}
 	fileIndexCache.delete(cacheKey);
 }
 

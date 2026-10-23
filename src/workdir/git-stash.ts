@@ -14,6 +14,7 @@ import {
 	runGit,
 	validateGitPath,
 } from "./git-utils";
+import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 
 /**
  * Stash changes in the working tree.
@@ -43,6 +44,8 @@ export async function stashPush(options: {
 	}
 
 	const result = await runGit(repoRoot, args, GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 	if (!result.ok) {
 		return { ok: false, error: result.error ?? "Stash push failed." };
 	}
@@ -111,6 +114,8 @@ export async function stashList(cwd: string): Promise<RuntimeStashListResponse> 
 export async function stashPop(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const result = await runGit(repoRoot, ["stash", "pop", `stash@{${options.index}}`], GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 
 	if (!result.ok) {
 		// Git writes CONFLICT messages to stdout, not stderr.
@@ -132,6 +137,8 @@ export async function stashPop(options: { cwd: string; index: number }): Promise
 export async function stashApply(options: { cwd: string; index: number }): Promise<RuntimeStashPopApplyResponse> {
 	const repoRoot = await resolveRepoRoot(options.cwd, GIT_USER_ACTION_PREFLIGHT_OPTIONS);
 	const result = await runGit(repoRoot, ["stash", "apply", `stash@{${options.index}}`], GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (repoRoot !== options.cwd) invalidateWorkdirFileListCache(repoRoot);
 
 	if (!result.ok) {
 		// Git writes CONFLICT messages to stdout, not stderr.

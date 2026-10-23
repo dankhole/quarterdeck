@@ -19,6 +19,8 @@ const workdirChangesMocks = vi.hoisted(() => ({
 	getWorkdirChangesFromRef: vi.fn(),
 }));
 
+const listingMocks = vi.hoisted(() => ({ entries: vi.fn(), searchFilePaths: vi.fn() }));
+
 const fileMutationMocks = vi.hoisted(() => ({
 	createWorkdirEntry: vi.fn(),
 	deleteWorkdirEntry: vi.fn(),
@@ -30,6 +32,7 @@ const fileMutationMocks = vi.hoisted(() => ({
 
 const projectStateMocks = vi.hoisted(() => ({
 	loadProjectState: vi.fn(),
+	loadProjectScopeById: vi.fn().mockResolvedValue(null),
 	saveProjectState: vi.fn(),
 	ProjectStateConflictError: class extends Error {},
 }));
@@ -91,6 +94,7 @@ vi.mock("../../../src/workdir/get-workdir-changes.js", () => ({
 
 vi.mock("../../../src/state/project-state.js", () => ({
 	loadProjectState: projectStateMocks.loadProjectState,
+	loadProjectScopeById: projectStateMocks.loadProjectScopeById,
 	saveProjectState: projectStateMocks.saveProjectState,
 	ProjectStateConflictError: projectStateMocks.ProjectStateConflictError,
 }));
@@ -107,9 +111,9 @@ vi.mock("../../../src/workdir/git-history.js", () => ({
 
 vi.mock("../../../src/workdir/search-workdir-files.js", () => ({
 	searchWorkdirFiles: vi.fn(),
-	searchFilePaths: vi.fn(),
+	searchFilePaths: listingMocks.searchFilePaths,
 	listAllWorkdirFiles: vi.fn(),
-	listAllWorkdirFileEntries: vi.fn(),
+	listAllWorkdirFileEntries: listingMocks.entries,
 }));
 
 vi.mock("../../../src/title/title-generator.js", () => ({
@@ -430,5 +434,29 @@ describe("createProjectApi loadChanges", () => {
 
 		expect(response).toBe(emptyResponse);
 		expect(workdirChangesMocks.getWorkdirChangesFromRef).not.toHaveBeenCalled();
+	});
+});
+
+describe("createProjectApi folder listing mode", () => {
+	beforeEach(() => {
+		projectStateMocks.loadProjectScopeById.mockReset();
+		listingMocks.entries.mockReset().mockResolvedValue({ files: ["dist/file.txt"], directories: ["dist"] });
+		listingMocks.searchFilePaths.mockReset().mockReturnValue([]);
+	});
+
+	it.each([true, false])("passes folderOnly=%s to the listing without full project hydration", async (folderOnly) => {
+		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly });
+		const api = createProjectApi(createProjectDeps());
+		await api.listFiles({ projectId: "project-1", projectPath: "/tmp/repo" }, { taskId: null });
+		expect(listingMocks.entries).toHaveBeenCalledWith("/tmp/repo", { useGitIgnores: !folderOnly });
+		expect(projectStateMocks.loadProjectScopeById).toHaveBeenCalledWith("project-1");
+	});
+
+	it("bypasses Git ignores in folder quick-open search", async () => {
+		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly: true });
+		const api = createProjectApi(createProjectDeps());
+		await api.searchFiles({ projectId: "project-1", projectPath: "/tmp/repo" }, { query: "file" });
+		expect(listingMocks.entries).toHaveBeenCalledWith("/tmp/repo", { useGitIgnores: false });
+		expect(listingMocks.searchFilePaths).toHaveBeenCalledWith(["dist/file.txt"], "file", undefined);
 	});
 });

@@ -7,7 +7,7 @@ import { createFileBrowserContentScopeKey } from "@/hooks/git/file-browser-scope
 import { setLastSelectedFileBrowserPath } from "@/hooks/git/file-browser-selection-cache";
 import { clearCachedFileEditorTabs } from "@/hooks/git/file-editor-cache";
 import { useFileBrowserData } from "@/hooks/git/use-file-browser-data";
-import type { RuntimeFileContentRequest, RuntimeFileContentResponse } from "@/runtime/types";
+import type { RuntimeFileContentRequest, RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
 import { FilesView } from "./files-view";
 
 const rpc = vi.hoisted(() => ({
@@ -106,8 +106,8 @@ function contentResponse(content: string, editable: boolean): RuntimeFileContent
 	};
 }
 
-function Harness() {
-	const browser = useFileBrowserData({ projectId, taskId: null, rootPath: "/project" });
+function Harness({ taskId = null }: { taskId?: string | null }) {
+	const browser = useFileBrowserData({ projectId, taskId, rootPath: "/project" });
 	return (
 		<FilesView
 			projectId={projectId}
@@ -132,7 +132,7 @@ function Harness() {
 	);
 }
 
-describe("FilesView code navigation", () => {
+describe("FilesView", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
@@ -162,12 +162,99 @@ describe("FilesView code navigation", () => {
 		clearCachedFileEditorTabs();
 		setLastSelectedFileBrowserPath(scopeKey, null);
 		(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+		vi.useRealTimers();
 	});
 	function button(text: string): HTMLButtonElement {
 		const match = Array.from(container.querySelectorAll("button")).find((item) => item.textContent === text);
 		if (!match) throw new Error(`Missing button: ${text}`);
 		return match;
 	}
+
+	it("shows the listing error instead of No files and drops the error when switching scope", async () => {
+		vi.useFakeTimers();
+		const message = "File tree exceeds the 20,000-entry limit. Narrow the workspace root.";
+		rpc.listFiles.mockRejectedValueOnce(new Error(message));
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness />
+				</TooltipProvider>,
+			),
+		);
+		expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
+		expect(container.textContent).not.toContain("No files");
+		// Hold the next poll pending: the existing failure must remain visible.
+		rpc.listFiles.mockImplementationOnce(() => new Promise<RuntimeListFilesResponse>(() => {}));
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
+		expect(container.textContent).not.toContain("No files");
+
+		let resolveListing: (value: RuntimeListFilesResponse) => void = () => {
+			throw new Error("Missing new scope request");
+		};
+		rpc.listFiles.mockImplementationOnce(
+			() => new Promise<RuntimeListFilesResponse>((resolve) => (resolveListing = resolve)),
+		);
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness taskId="empty-task" />
+				</TooltipProvider>,
+			),
+		);
+		expect(container.querySelector('[role="alert"]')).toBeNull();
+		expect(container.textContent).not.toContain(message);
+		await act(async () => resolveListing({ files: [], directories: [], mutable: false }));
+		expect(container.querySelector('[role="alert"]')).toBeNull();
+		expect(container.textContent).toContain("No files");
+	});
+
+	it("preserves an open editor draft through a listing failure and clears the alert after recovery", async () => {
+		vi.useFakeTimers();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness />
+				</TooltipProvider>,
+			),
+		);
+		await act(async () => button("src/app.ts").click());
+		await act(async () => button("Edit source").click());
+		const editor = container.querySelector("[data-editor-path]");
+		expect(editor?.textContent).toContain("// draft");
+
+		const message = "File tree exceeds the 20,000-entry limit.";
+		rpc.listFiles.mockRejectedValue(new Error(message));
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
+		expect(container.textContent).not.toContain("No files");
+		expect(container.querySelector("[data-editor-path]")).toBe(editor);
+		expect(editor?.textContent).toContain("// draft");
+		expect(editor?.getAttribute("data-read-only")).toBe("false");
+
+		let resolveRetry!: (value: RuntimeListFilesResponse) => void;
+		rpc.listFiles.mockImplementationOnce(
+			() =>
+				new Promise<RuntimeListFilesResponse>((resolve) => {
+					resolveRetry = resolve;
+				}),
+		);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
+		expect(container.querySelector('[aria-label="File tree"]')).toBeNull();
+		expect(container.querySelector("[data-editor-path]")).toBe(editor);
+		await act(async () => resolveRetry({ files: ["src/app.ts"], directories: ["src"], mutable: true }));
+		expect(container.querySelector('[role="alert"]')).toBeNull();
+		expect(container.querySelector('[aria-label="File tree"]')?.textContent).toContain("src/app.ts");
+		expect(container.querySelector("[data-editor-path]")).toBe(editor);
+		expect(editor?.textContent).toContain("// draft");
+	});
 
 	it("opens an excluded dependency result read-only at its complete range and permits revisiting its tab", async () => {
 		await act(async () =>

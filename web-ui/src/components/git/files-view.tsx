@@ -296,6 +296,8 @@ export function FilesView({
 
 	const hasEntries = (fileBrowserData.files?.length ?? 0) > 0 || (fileBrowserData.directories?.length ?? 0) > 0;
 	const canMutateEntries = fileBrowserData.canMutateEntries;
+	const fileListError = fileBrowserData.fileListError;
+	const showFileTree = fileTreeVisible && !fileListError;
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0 min-w-0">
@@ -321,9 +323,15 @@ export function FilesView({
 				</Tooltip>
 			</div>
 
+			{fileListError ? (
+				<div role="alert" className="px-3 py-2 border-b border-border text-sm text-status-red break-words">
+					Unable to load files: {fileListError.message}
+				</div>
+			) : null}
+
 			{/* Content area: file tree + file viewer */}
 			<div ref={contentRowRef} className="flex flex-1 min-h-0">
-				{!hasEntries && !fileBrowserData.selectedPath && !canMutateEntries ? (
+				{!fileListError && !hasEntries && !fileBrowserData.selectedPath && !canMutateEntries ? (
 					<div className="flex flex-1 items-center justify-center">
 						<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
 							<FolderOpen size={40} />
@@ -332,7 +340,7 @@ export function FilesView({
 					</div>
 				) : (
 					<>
-						{fileTreeVisible && (
+						{showFileTree && (
 							<>
 								<div
 									style={{
@@ -372,7 +380,7 @@ export function FilesView({
 							style={{
 								display: "flex",
 								flexDirection: "column",
-								flex: fileTreeVisible ? `0 0 ${contentPercent}` : "1 1 0",
+								flex: showFileTree ? `0 0 ${contentPercent}` : "1 1 0",
 								minWidth: 0,
 								minHeight: 0,
 							}}

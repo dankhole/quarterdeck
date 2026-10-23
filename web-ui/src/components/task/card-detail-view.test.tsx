@@ -309,6 +309,7 @@ const noopGitContext: GitContextValue = {
 	homeFileBrowserData: {
 		files: null,
 		directories: null,
+		fileListError: null,
 		contentScopeKey: "test-home",
 		searchScope: { taskId: null },
 		canMutateEntries: true,

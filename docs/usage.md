@@ -144,6 +144,14 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
    If an unfinished Git operation or a worktree verification failure prevents safe detachment, Trash preserves the checkout and reports a warning. Its branch can remain occupied until the issue is resolved or the task is permanently deleted. Existing Trash worktrees are not automatically detached during an upgrade.
 
+## File browser discovery
+
+The live Files tree skips VCS metadata directories and `node_modules`. Git projects also prune wholly ignored directories using the current repository's ignore rules; tracked files and individually ignored files such as `.env.local` remain visible. Folder projects do not consult Git, even when they contain a repository. Nested repositories and submodules do not receive separate ignore discovery.
+
+While Files is active, it polls every five seconds and reuses listing snapshots for 30 seconds. Agent or external filesystem changes appear on the next poll after expiry, plus scan time. Quarterdeck's file-entry mutations, `.gitignore` saves, and worktree-changing Git actions invalidate affected listings immediately. Paths accessed through different symlink aliases may still wait for expiry. Ordinary content saves do not trigger a tree rescan.
+
+Listings are bounded to 20,000 files and directories, with additional limits on visited entries and ignore-discovery paths. Exceeding a limit shows an error rather than a partial or misleadingly empty tree; open editor drafts are preserved. Limit failures are also reused for 30 seconds. To reduce the tree, ignore generated directories in a Git project or add a smaller folder as a separate project. Creating an ignored directory does not make it visible in the Git project's tree, and pruning does not change file-mutation permissions.
+
 ## Troubleshooting
 
 If `quarterdeck` is not found after `npm install --global quarterdeck`, make sure your npm global bin directory is on `PATH`. Contributors using a source checkout can run `npm run link` instead.

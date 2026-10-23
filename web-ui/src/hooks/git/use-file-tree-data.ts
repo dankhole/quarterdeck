@@ -11,6 +11,7 @@ const FILE_LIST_POLL_INTERVAL_MS = 5_000;
 export interface UseFileTreeDataResult {
 	readonly files: string[] | null;
 	readonly directories: string[] | null;
+	readonly fileListError: Error | null;
 	readonly fileListData: RuntimeListFilesResponse | null;
 	reloadFileListForScope: (requestScopeKey: string) => Promise<RuntimeListFilesResponse | null>;
 }
@@ -31,6 +32,7 @@ export function useFileTreeData(scope: FileBrowserScope): UseFileTreeDataResult 
 	});
 	const setFileListData = fileListQuery.setData;
 	const [fileListCacheKey, setFileListCacheKey] = useState(scope.contentScopeKey);
+	const [lastFailure, setLastFailure] = useState<{ scopeKey: string; error: Error } | null>(null);
 	const contentScopeKeyRef = useRef(scope.contentScopeKey);
 	contentScopeKeyRef.current = scope.contentScopeKey;
 
@@ -68,9 +70,23 @@ export function useFileTreeData(scope: FileBrowserScope): UseFileTreeDataResult 
 	const hasActiveFileListCache = fileListCacheKey === scope.contentScopeKey;
 	const fileListData = hasActiveFileListCache ? fileListQuery.data : null;
 
+	// Poll retries clear the query's transient error before they settle. Keep the
+	// last failure visible until a successful listing, disable, or scope change.
+	useEffect(() => {
+		if (!hasActiveFileListCache || !scope.canQueryRuntime || fileListData !== null) {
+			setLastFailure(null);
+		} else if (fileListQuery.error) {
+			setLastFailure({ scopeKey: scope.contentScopeKey, error: fileListQuery.error });
+		}
+	}, [hasActiveFileListCache, scope.canQueryRuntime, scope.contentScopeKey, fileListData, fileListQuery.error]);
+
 	return {
 		files: fileListData?.files ?? null,
 		directories: fileListData?.directories ?? null,
+		fileListError:
+			hasActiveFileListCache && scope.canQueryRuntime && fileListData === null
+				? (fileListQuery.error ?? (lastFailure?.scopeKey === scope.contentScopeKey ? lastFailure.error : null))
+				: null,
 		fileListData,
 		reloadFileListForScope,
 	};

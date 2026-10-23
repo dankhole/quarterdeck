@@ -308,7 +308,11 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			const files = input.ref
 				? searchFilePaths(await listFilesAtRef(cwd, input.ref), query, input.limit)
 				: folderOnly
-					? searchFilePaths((await listAllWorkdirFileEntries(cwd)).files, query, input.limit)
+					? searchFilePaths(
+							(await listAllWorkdirFileEntries(cwd, { useGitIgnores: false })).files,
+							query,
+							input.limit,
+						)
 					: await searchWorkdirFiles(cwd, query, input.limit);
 			return { query, files } satisfies RuntimeWorkdirFileSearchResponse;
 		},
@@ -335,6 +339,8 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 		},
 
 		listFiles: async (projectScope, input) => {
+			const folderOnly = (await loadProjectScopeById(projectScope.projectId))?.folderOnly;
+			if (folderOnly && input.ref) throw new Error("Git ref browsing is disabled for folder projects.");
 			const scope = await resolveProjectFileScope(projectScope.projectPath, input);
 			if (!scope.cwd) {
 				return createUnavailableFileListResponse(scope.mutationBlockedReason ?? "Worktree is unavailable.");
@@ -348,7 +354,7 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 				} satisfies RuntimeListFilesResponse;
 			}
 
-			const entries = await listAllWorkdirFileEntries(scope.cwd);
+			const entries = await listAllWorkdirFileEntries(scope.cwd, { useGitIgnores: !folderOnly });
 			return { ...entries, mutable: scope.mutable } satisfies RuntimeListFilesResponse;
 		},
 

@@ -159,6 +159,109 @@ describe("useFileBrowserData", () => {
 		await expect(getLatest().createEntry("src/home.ts", "file")).rejects.toThrow("Files are still loading.");
 	});
 
+	it("exposes listing errors and recovers on polling without clearing the selected file content", async () => {
+		vi.useFakeTimers();
+		let latest: UseFileBrowserDataResult | undefined;
+		const current = () => {
+			if (!latest) throw new Error("No browser result");
+			return latest;
+		};
+		const listing = { files: ["src/home.ts"], directories: ["src"], mutable: true };
+		const content = contentResponse("source", "hash");
+		const error = new Error("File tree exceeds the 20,000-entry limit.");
+		listFilesQueryMock.mockResolvedValue(listing);
+		getFileContentQueryMock.mockResolvedValue(content);
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+		await act(async () => current().onSelectPath("src/home.ts"));
+
+		listFilesQueryMock.mockRejectedValue(error);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		expect(current().fileListError).toBe(error);
+		expect(current().files).toBeNull();
+		expect(current().canMutateEntries).toBe(false);
+		expect(current().mutationBlockedReason).toBe(error.message);
+		await expect(current().createEntry("new.ts", "file")).rejects.toThrow(error.message);
+		expect(current().selectedPath).toBe("src/home.ts");
+		expect(current().fileContent).toEqual(content);
+		expect(current().isContentError).toBe(false);
+
+		listFilesQueryMock.mockResolvedValue(listing);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		expect(current().fileListError).toBeNull();
+		expect(current().files).toEqual(["src/home.ts"]);
+		expect(current().canMutateEntries).toBe(true);
+		expect(current().mutationBlockedReason).toBeNull();
+		expect(current().selectedPath).toBe("src/home.ts");
+		expect(current().fileContent).toEqual(content);
+	});
+
+	it("hides an old scope's listing error immediately and ignores its late retry failure", async () => {
+		vi.useFakeTimers();
+		let latest: UseFileBrowserDataResult | undefined;
+		const capture = (result: UseFileBrowserDataResult) => {
+			latest = result;
+		};
+		const current = () => {
+			if (!latest) throw new Error("No browser result");
+			return latest;
+		};
+		listFilesQueryMock.mockRejectedValueOnce(new Error("Home tree exceeds the entry limit."));
+		await act(async () => root.render(<HookHarness taskId={null} onResult={capture} />));
+		expect(current().fileListError?.message).toBe("Home tree exceeds the entry limit.");
+
+		const newScopeResults: UseFileBrowserDataResult[] = [];
+		let resolveTask: (value: RuntimeListFilesResponse) => void = () => {
+			throw new Error("Missing task request");
+		};
+		listFilesQueryMock.mockImplementation(
+			() => new Promise<RuntimeListFilesResponse>((resolve) => (resolveTask = resolve)),
+		);
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId="listing-error-task"
+					onResult={(result) => {
+						capture(result);
+						newScopeResults.push(result);
+					}}
+				/>,
+			),
+		);
+		expect(newScopeResults.every((result) => result.fileListError === null)).toBe(true);
+		expect(current().files).toBeNull();
+		await act(async () => resolveTask({ files: ["task.ts"], directories: [], mutable: true }));
+		expect(current().fileListError).toBeNull();
+		expect(current().files).toEqual(["task.ts"]);
+
+		let rejectTask: (error: Error) => void = () => {
+			throw new Error("Missing task retry");
+		};
+		listFilesQueryMock.mockImplementationOnce(
+			() => new Promise<RuntimeListFilesResponse>((_resolve, reject) => (rejectTask = reject)),
+		);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(5_000);
+		});
+		listFilesQueryMock.mockResolvedValue({ files: ["home.ts"], directories: [], mutable: true });
+		await act(async () => root.render(<HookHarness taskId={null} onResult={capture} />));
+		await act(async () => rejectTask(new Error("Retired task tree failed.")));
+		expect(current().fileListError).toBeNull();
+		expect(current().files).toEqual(["home.ts"]);
+	});
+
 	it("skips file-list loading and polling while disabled", async () => {
 		vi.useFakeTimers();
 		let latest: UseFileBrowserDataResult | null = null;

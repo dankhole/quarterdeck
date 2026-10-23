@@ -153,6 +153,7 @@ function createFileBrowserData(): UseFileBrowserDataResult {
 	return {
 		files: null,
 		directories: null,
+		fileListError: null,
 		contentScopeKey: "test-task",
 		searchScope: { taskId: "task-1", baseRef: "main" },
 		canMutateEntries: true,

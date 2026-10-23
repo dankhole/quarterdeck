@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { RuntimeGitCherryPickResponse } from "../core";
+import { areFileSystemPathsEqual, type RuntimeGitCherryPickResponse } from "../core";
 import {
 	GIT_USER_ACTION_OPTIONS,
 	GIT_USER_ACTION_PREFLIGHT_OPTIONS,
@@ -11,6 +11,7 @@ import {
 	runGit,
 	validateGitRef,
 } from "./git-utils";
+import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 
 /**
  * Parse `git worktree list --porcelain` output to find which directory
@@ -81,7 +82,9 @@ export async function cherryPickCommit(options: {
 	const checkedOutPath = worktreeListResult.ok ? findWorktreeForBranch(worktreeListResult.stdout, targetBranch) : null;
 
 	if (checkedOutPath) {
-		return await cherryPickInDirectory(checkedOutPath, commitHash, targetBranch);
+		const result = await cherryPickInDirectory(checkedOutPath, commitHash, targetBranch);
+		if (areFileSystemPathsEqual(checkedOutPath, repoRoot)) invalidateWorkdirFileListCache(options.cwd);
+		return result;
 	}
 
 	return await cherryPickViaTempWorktree(repoRoot, commitHash, targetBranch);
@@ -105,9 +108,12 @@ async function cherryPickInDirectory(
 	}
 
 	const pickResult = await runGit(targetDir, ["cherry-pick", "--no-edit", commitHash], GIT_USER_ACTION_OPTIONS);
+	// The target branch may be checked out in a different worktree than the request cwd.
+	invalidateWorkdirFileListCache(targetDir);
 	if (!pickResult.ok) {
 		// Abort to restore clean state
 		await runGit(targetDir, ["cherry-pick", "--abort"], GIT_USER_ACTION_OPTIONS);
+		invalidateWorkdirFileListCache(targetDir);
 		return {
 			ok: false,
 			commitHash,

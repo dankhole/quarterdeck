@@ -153,6 +153,7 @@ export function createWorkdirEntryDeleteRequest(
 export function resolveFileBrowserMutationBlockedReason(input: {
 	scope: FileBrowserScope;
 	fileListData: RuntimeListFilesResponse | null;
+	fileListError: Error | null;
 }): string | null {
 	if (input.scope.projectId === null) {
 		return "No project selected.";
@@ -162,6 +163,9 @@ export function resolveFileBrowserMutationBlockedReason(input: {
 	}
 	if (input.scope.isReadOnly) {
 		return "Branch/ref browsing is read-only.";
+	}
+	if (input.fileListError) {
+		return input.fileListError.message || "Unable to load files.";
 	}
 	if (input.fileListData === null) {
 		return "Files are still loading.";

@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path";
 import type { RuntimeGitRevertRequest, RuntimeGitRevertResponse } from "../core";
 import { getConflictState } from "./git-conflict";
 import { GIT_USER_ACTION_OPTIONS, GIT_USER_ACTION_PREFLIGHT_OPTIONS, resolveRepoRoot, runGit } from "./git-utils";
+import { invalidateWorkdirFileListCache } from "./search-workdir-files";
 
 /** Revert one ordinary commit in the scoped checkout, leaving conflicts recoverable. */
 export async function revertCommit(
@@ -54,6 +55,8 @@ export async function revertCommit(
 	if (!ancestor.ok) return fail("Select a commit from the checked-out branch's history.");
 	// Singleton revision range keeps a sequencer for continue/abort even if a commit hook fails.
 	const result = await runGit(cwd, ["revert", "--no-edit", `${commitHash}^!`], GIT_USER_ACTION_OPTIONS);
+	invalidateWorkdirFileListCache(options.cwd);
+	if (cwd !== options.cwd) invalidateWorkdirFileListCache(cwd);
 	const conflictState = result.ok ? undefined : ((await getConflictState(cwd)) ?? undefined);
 	return {
 		ok: result.ok,
