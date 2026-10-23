@@ -4,6 +4,7 @@ This file tracks useful upstream capabilities that Quarterdeck cannot implement 
 
 ## Codex native hooks
 
+- **Process-free activity hooks:** Reassess when Codex exposes native HTTP hooks or an MCP telemetry contract without memory and failure-visibility side effects. The existing MCP route is not a feature-equivalent replacement for best-effort command hooks, and its performance benefit is unmeasured. See the [hook transport investigation](history/2026-10-23-codex-hook-transport-investigation.md) for evidence and conditional follow-ups.
 - **Effective reviewer identity:** `PermissionRequest` currently fires before auto-review routing and does not identify whether a request reached a person. Quarterdeck can suppress false Needs Input for its exact launch-scoped Approve for me mode, but inherited user configuration remains conservatively actionable until Codex exposes effective reviewer or post-decision identity.
 
 The rendered-screen approval fallback and unpaired slash-command behavior remain actionable local compatibility work tracked in the primary checkout's local `docs/qDeck.yaml`. That gitignored list is not distributed with documentation or copied into worktrees.
