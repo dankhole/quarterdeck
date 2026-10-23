@@ -42,6 +42,48 @@ describe("TerminalStateMirror", () => {
 		expect((await renderedPromise)[0]).toBe("batched");
 	});
 
+	it("coalesces output queued behind an in-flight write into one write", async () => {
+		const mirror = createMirror(40, 10);
+		const order: string[] = [];
+		const screens: string[] = [];
+		const done = new Promise<void>((resolve) => {
+			mirror.applyOutput(Buffer.from("a", "utf8"), (screen) => {
+				order.push("a");
+				screens.push(screen.lines[0] ?? "");
+			});
+			// Later macrotasks, as PTY data events arrive, while "a" is still parsing.
+			setImmediate(() => {
+				for (const letter of ["b", "c", "d"]) {
+					mirror.applyOutput(Buffer.from(letter, "utf8"), (screen) => {
+						order.push(letter);
+						screens.push(screen.lines[0] ?? "");
+						if (letter === "d") resolve();
+					});
+				}
+			});
+		});
+		await done;
+
+		expect(order).toEqual(["a", "b", "c", "d"]);
+		expect(screens).toEqual(["a", "abcd", "abcd", "abcd"]);
+	});
+
+	it("never moves queued output ahead of a later resize", async () => {
+		const mirror = createMirror(10, 4);
+		const widths: number[] = [];
+		await new Promise<void>((resolve) => {
+			mirror.applyOutput(Buffer.from("first", "utf8"));
+			mirror.applyOutput(Buffer.from("x", "utf8"), (screen) => widths.push(screen.cols));
+			mirror.resize(20, 4);
+			mirror.applyOutput(Buffer.from("y", "utf8"), (screen) => {
+				widths.push(screen.cols);
+				resolve();
+			});
+		});
+
+		expect(widths).toEqual([10, 20]);
+	});
+
 	it("serializes inline terminal content and dimensions", async () => {
 		const mirror = createMirror(100, 30);
 

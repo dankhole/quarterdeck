@@ -1,4 +1,5 @@
 export {
+	AGENT_AVAILABILITY_DISPLAY_TTL_MS,
 	type AgentAvailabilityDiagnosticEvent,
 	type AgentAvailabilityDiagnosticSink,
 	type AgentAvailabilityProbeKind,
@@ -8,6 +9,7 @@ export {
 	detectInstalledCommands,
 	detectRunnableAgentIds,
 	getAgentAvailability,
+	LAUNCH_AGENT_AVAILABILITY_FRESH_MS,
 	parseCodexFeaturesListOutput,
 	type ResolveAgentCommandForLaunchOptions,
 	type ResolvedAgentCommand,
@@ -18,6 +20,7 @@ export {
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 	setAgentProbeTimeoutMsForTests,
+	setBinaryIdentityResolverForTests,
 	waitForPendingAgentAvailabilityProbes,
 } from "./agent-registry";
 export {

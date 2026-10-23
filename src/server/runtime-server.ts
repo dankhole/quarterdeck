@@ -47,6 +47,7 @@ import {
 	loadProjectState,
 	loadSavedProjectStateById,
 	ProjectExecutionOwnershipStore,
+	projectBoardReadCache,
 } from "../state";
 import { readProjectRelocationJournal } from "../state/project-relocation-journal";
 import type { TerminalSessionManager } from "../terminal";
@@ -566,7 +567,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		});
 		const claudeTitles = createClaudeTaskTitleMonitor({
 			listManagedProjects: () => deps.projectRegistry.listManagedProjects(),
-			loadBoard: loadProjectBoardById,
+			// A 2 s poll per project: reuse the committed board instead of taking the
+			// project lock that hook ingest needs. Adoption revalidates under the lock.
+			loadBoard: (projectId) => projectBoardReadCache.loadBoard(projectId),
 			boardCommands: deps.boardCommands,
 			hints: conversationSourceHints,
 			publishTitleUpdated: ({ projectId, taskId, title }) =>

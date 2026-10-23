@@ -67,6 +67,20 @@ const recoveredProjectStateTransactionSchema = projectStateTransactionSchema.ext
 type ProjectStateTransaction = z.infer<typeof projectStateTransactionSchema>;
 type RecoveredProjectStateTransaction = z.infer<typeof recoveredProjectStateTransactionSchema>;
 
+// Per-project count of installs started by this process. Lock-free derived
+// readers compare it alongside file identity, so this runtime's own commits
+// invalidate them without relying on filesystem timestamp resolution.
+const installGenerations = new Map<string, number>();
+
+function advanceProjectStateInstallGeneration(projectId: string): void {
+	installGenerations.set(projectId, (installGenerations.get(projectId) ?? 0) + 1);
+}
+
+/** Changes before any destination file of an in-process install (commit or recovery) is replaced. */
+export function getProjectStateInstallGeneration(projectId: string): number {
+	return installGenerations.get(projectId) ?? 0;
+}
+
 export function getProjectStateTransactionPath(projectId: string): string {
 	return join(getProjectDirectoryPath(projectId), "state-transaction.json");
 }
@@ -113,12 +127,12 @@ async function installProjectStateTransaction(
 	// of a writer that died immediately after the journal rename.
 	await syncFile(getProjectStateTransactionPath(projectId));
 	await syncProjectDirectory(projectId);
-	for (const [path, payload] of [
-		[getProjectBoardPath(projectId), transaction.board],
-		[getProjectSessionsPath(projectId), transaction.sessions],
-		[getProjectMetaPath(projectId), transaction.meta],
+	for (const [path, payload, compact] of [
+		[getProjectBoardPath(projectId), transaction.board, false],
+		[getProjectSessionsPath(projectId), transaction.sessions, true],
+		[getProjectMetaPath(projectId), transaction.meta, false],
 	] as const) {
-		await lockedFileSystem.writeJsonFileAtomic(path, payload, { lock: null });
+		await lockedFileSystem.writeJsonFileAtomic(path, payload, { lock: null, compact });
 		await syncFile(path);
 	}
 	// Destination renames must reach disk before the recovery record is removed.
@@ -138,7 +152,11 @@ export async function writeProjectStateTransaction(
 	state: Omit<ProjectStateTransaction, "version">,
 ): Promise<void> {
 	const transaction = projectStateTransactionSchema.parse({ version: 1, ...state });
-	await lockedFileSystem.writeJsonFileAtomic(getProjectStateTransactionPath(projectId), transaction, { lock: null });
+	advanceProjectStateInstallGeneration(projectId);
+	await lockedFileSystem.writeJsonFileAtomic(getProjectStateTransactionPath(projectId), transaction, {
+		lock: null,
+		compact: true,
+	});
 	await installProjectStateTransaction(projectId, transaction);
 }
 
@@ -153,6 +171,7 @@ export async function recoverProjectStateTransaction(projectId: string): Promise
 		throw error;
 	}
 	const transaction = recoveredProjectStateTransactionSchema.parse(JSON.parse(raw));
+	advanceProjectStateInstallGeneration(projectId);
 	await installProjectStateTransaction(projectId, transaction);
 }
 

@@ -54,6 +54,44 @@ describe("mergeTaskSessionSummaryMap", () => {
 		expect(merged["task-1"]?.updatedAt).toBe(200);
 		expect(merged["task-2"]?.updatedAt).toBe(150);
 	});
+
+	it("keeps the unrelated task's existing summary reference stable", () => {
+		const task2Summary = createSessionSummary("task-2", 150);
+		const current = {
+			"task-1": createSessionSummary("task-1", 100),
+			"task-2": task2Summary,
+		};
+
+		const merged = mergeTaskSessionSummaryMap(current, [createSessionSummary("task-1", 200)]);
+
+		expect(merged["task-2"]).toBe(task2Summary);
+	});
+
+	it("returns the same map object when a content-identical duplicate ties on updatedAt", () => {
+		const current = {
+			"task-1": createSessionSummary("task-1", 100),
+			"task-2": createSessionSummary("task-2", 150),
+		};
+
+		// Same taskId, same updatedAt, same content, but a distinct object
+		// instance — the kind of duplicate a freshly parsed delta produces.
+		const merged = mergeTaskSessionSummaryMap(current, [createSessionSummary("task-1", 100)]);
+
+		expect(merged).toBe(current);
+		expect(merged["task-1"]).toBe(current["task-1"]);
+	});
+
+	it("returns a new map object, and only replaces the changed entry, when a real change is merged", () => {
+		const current = {
+			"task-1": createSessionSummary("task-1", 100),
+			"task-2": createSessionSummary("task-2", 150),
+		};
+
+		const merged = mergeTaskSessionSummaryMap(current, [createSessionSummary("task-1", 200)]);
+
+		expect(merged).not.toBe(current);
+		expect(merged["task-2"]).toBe(current["task-2"]);
+	});
 });
 
 describe("reconcileAuthoritativeTaskSessionSummaryMap", () => {
@@ -80,5 +118,40 @@ describe("reconcileAuthoritativeTaskSessionSummaryMap", () => {
 		const reconciled = reconcileAuthoritativeTaskSessionSummaryMap({ "task-1": current }, { "task-1": incoming });
 
 		expect(reconciled["task-1"]).toBe(current);
+	});
+
+	it("returns the same map object when the authoritative set reconfirms unchanged tasks", () => {
+		const current = {
+			"task-1": createSessionSummary("task-1", 100),
+			"task-2": createSessionSummary("task-2", 150),
+		};
+		// Distinct object instances with identical content and tied updatedAt —
+		// the shape of a routine authoritative re-sync of unchanged tasks.
+		const incoming = {
+			"task-1": createSessionSummary("task-1", 100),
+			"task-2": createSessionSummary("task-2", 150),
+		};
+
+		const reconciled = reconcileAuthoritativeTaskSessionSummaryMap(current, incoming);
+
+		expect(reconciled).toBe(current);
+	});
+
+	it("only replaces the changed entry when one task in the authoritative set actually changed", () => {
+		const task2Summary = createSessionSummary("task-2", 150);
+		const current = {
+			"task-1": createSessionSummary("task-1", 100),
+			"task-2": task2Summary,
+		};
+		const incoming = {
+			"task-1": createSessionSummary("task-1", 200),
+			"task-2": createSessionSummary("task-2", 150),
+		};
+
+		const reconciled = reconcileAuthoritativeTaskSessionSummaryMap(current, incoming);
+
+		expect(reconciled).not.toBe(current);
+		expect(reconciled["task-1"]?.updatedAt).toBe(200);
+		expect(reconciled["task-2"]).toBe(task2Summary);
 	});
 });

@@ -9,7 +9,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { DropResult } from "@hello-pangea/dnd";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { BoardColumn } from "@/components/board/board-column";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { boardGridCollision } from "@/state/board-grid-collision";
@@ -19,6 +19,14 @@ import { findCardColumnId, type ProgrammaticCardMoveInFlight } from "@/state/dra
 import type { BoardCard, BoardData } from "@/types";
 
 export type RequestProgrammaticCardMove = (move: ProgrammaticCardMoveInFlight) => boolean;
+
+// Module-level (not inline per render): dnd-kit's useSensor memoizes its
+// descriptor on `[sensor, options]`, so a fresh options object on every
+// render produces a new `sensors` array, which cascades into new
+// listeners/attributes for every drag handle on every render — defeating
+// memo(BoardCard) for every card, not just the one that changed.
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 8 } };
+const KEYBOARD_SENSOR_OPTIONS = { coordinateGetter: sortableKeyboardCoordinates };
 
 export function QuarterdeckBoard({
 	data,
@@ -47,11 +55,14 @@ export function QuarterdeckBoard({
 }): React.ReactElement {
 	const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
 	const sensors = useSensors(
-		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+		useSensor(PointerSensor, POINTER_SENSOR_OPTIONS),
+		useSensor(KeyboardSensor, KEYBOARD_SENSOR_OPTIONS),
 	);
 	const sourceColumnId = activeDragTaskId ? findCardColumnId(data.columns, activeDragTaskId) : null;
-	const activeCard = data.columns.flatMap((column) => column.cards).find((card) => card.id === activeDragTaskId);
+	const activeCard = useMemo(
+		() => data.columns.flatMap((column) => column.cards).find((card) => card.id === activeDragTaskId),
+		[data.columns, activeDragTaskId],
+	);
 	const requestProgrammaticCardMove = useCallback<RequestProgrammaticCardMove>(
 		(move) => {
 			if (
@@ -79,6 +90,15 @@ export function QuarterdeckBoard({
 		const result = resolveBoardGridDrop(data, String(active.id), String(over.id));
 		if (result) onDragEnd(result);
 	};
+	// Stable across re-renders that don't touch readOnly/activeDragTaskId/
+	// onCardSelect, so BoardColumn's own click-handler memoization (and in
+	// turn memo(BoardCard)) isn't defeated by a fresh closure on every render.
+	const handleCardClick = useCallback(
+		(card: BoardCard) => {
+			if (!readOnly && !activeDragTaskId) onCardSelect(card.id);
+		},
+		[readOnly, activeDragTaskId, onCardSelect],
+	);
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 			<DndContext
@@ -106,9 +126,7 @@ export function QuarterdeckBoard({
 								activeDragTaskId={activeDragTaskId}
 								activeDragSourceColumnId={sourceColumnId}
 								activeDragTaskUnstarted={activeCard?.unstarted}
-								onCardClick={(card) => {
-									if (!readOnly && !activeDragTaskId) onCardSelect(card.id);
-								}}
+								onCardClick={handleCardClick}
 							/>
 						))}
 					</section>

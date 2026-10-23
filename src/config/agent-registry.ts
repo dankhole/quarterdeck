@@ -1,5 +1,8 @@
 import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
+import { delimiter, join } from "node:path";
 import { CODEX_HOOKS_FEATURE_NAME } from "../codex-hooks";
 import type { RuntimeAgentDefinition, RuntimeAgentId, RuntimeCapabilities, RuntimeConfigResponse } from "../core";
 import {
@@ -9,6 +12,7 @@ import {
 	getRuntimeLaunchSupportedAgentCatalog,
 	isBinaryAvailableOnPath,
 	RUNTIME_AGENT_CATALOG,
+	resolveWindowsBinaryPath,
 	resolveWindowsCompatibleCommand,
 } from "../core";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
@@ -540,11 +544,109 @@ async function resolvePiAvailability(binary: string, timeoutMs?: number): Promis
 	};
 }
 
-const AGENT_AVAILABILITY_TTL_MS = 30_000;
+/**
+ * Display/config reads (Settings agent list, `getConfig`/`saveConfig`) serve a
+ * cached result instantly and only kick a background refresh once it's this
+ * old (see `resolveAgentAvailability`'s stale-while-revalidate branch below).
+ * A cached entry is also invalidated sooner than this, on every read, by
+ * `resolveBinaryIdentity` noticing a PATH or binary-mtime change.
+ *
+ * 10 minutes: the browser runtime stream reconnects on every project switch
+ * (observed 42 times in 2h). At the previous 30s TTL nearly every reconnect
+ * fell outside the window and re-spawned `--version` (and Codex's
+ * `features list`) for every catalog agent — 80 probe completions in 2h for
+ * reconnects alone. Ten minutes keeps that down to a handful of probes per
+ * agent per session while still self-healing promptly on a real PATH edit,
+ * install, or upgrade via the identity check, and without ever serving a
+ * launch a cache entry older than `LAUNCH_AGENT_AVAILABILITY_FRESH_MS` below.
+ */
+export const AGENT_AVAILABILITY_DISPLAY_TTL_MS = 10 * 60 * 1000;
+/**
+ * Task launches (`resolveAgentCommandForLaunch`) must not reuse a cached
+ * result as "fresh" for longer than this, even though display reads above
+ * use a much longer TTL: this preserves the launch freshness window
+ * documented in docs/conventions/session-lifecycle.md unchanged. Launch
+ * calls still benefit from the longer-lived cache indirectly, because a
+ * display read refreshes the shared cache entry that a launch later reuses
+ * if it happens to land inside this window.
+ */
+export const LAUNCH_AGENT_AVAILABILITY_FRESH_MS = 30_000;
+
+interface BinaryIdentity {
+	path: string | null;
+	mtimeMs: number | null;
+}
+
+async function resolvePosixBinaryPath(binary: string): Promise<string | null> {
+	const trimmed = binary.trim();
+	if (!trimmed) {
+		return null;
+	}
+	if (trimmed.includes("/")) {
+		return trimmed;
+	}
+	const pathValue = process.env.PATH ?? "";
+	for (const entry of pathValue.split(delimiter).filter(Boolean)) {
+		const candidate = join(entry, trimmed);
+		try {
+			await access(candidate, constants.X_OK);
+			return candidate;
+		} catch {
+			// Not on this PATH entry; keep scanning the rest of PATH.
+		}
+	}
+	return null;
+}
+
+/**
+ * Resolve the exact file the current PATH would launch for `binary`, plus its
+ * mtime, so the display availability cache can invalidate itself on a PATH
+ * change or an in-place binary replacement (upgrade/downgrade) without
+ * spawning a probe: either changes which file this resolves to, or that
+ * file's mtime, even within the TTL window above. Never throws; an
+ * unresolvable binary reports a null identity, which itself differs from any
+ * previously resolved identity and so also forces a refresh.
+ */
+async function resolveBinaryIdentityFromFileSystem(binary: string): Promise<BinaryIdentity> {
+	try {
+		const resolvedPath =
+			process.platform === "win32"
+				? (resolveWindowsBinaryPath(binary)?.path ?? null)
+				: await resolvePosixBinaryPath(binary);
+		if (!resolvedPath) {
+			return { path: null, mtimeMs: null };
+		}
+		return { path: resolvedPath, mtimeMs: (await stat(resolvedPath)).mtimeMs };
+	} catch {
+		return { path: null, mtimeMs: null };
+	}
+}
+
+let binaryIdentityResolverOverrideForTests: ((binary: string) => BinaryIdentity) | null = null;
+
+/**
+ * Test-only seam so cache-invalidation tests can simulate a PATH or
+ * binary-mtime change deterministically instead of depending on real PATH or
+ * filesystem state. Pass `null` to restore production resolution.
+ */
+export function setBinaryIdentityResolverForTests(resolver: ((binary: string) => BinaryIdentity) | null): void {
+	binaryIdentityResolverOverrideForTests = resolver;
+}
+
+async function resolveBinaryIdentity(binary: string): Promise<BinaryIdentity> {
+	return binaryIdentityResolverOverrideForTests
+		? binaryIdentityResolverOverrideForTests(binary)
+		: await resolveBinaryIdentityFromFileSystem(binary);
+}
+
+function isSameBinaryIdentity(left: BinaryIdentity, right: BinaryIdentity): boolean {
+	return left.path === right.path && left.mtimeMs === right.mtimeMs;
+}
 
 interface AvailabilityCacheEntry {
 	result: AgentAvailability;
 	checkedAt: number;
+	identity: BinaryIdentity;
 }
 
 interface ResolveAgentAvailabilityOptions {
@@ -553,6 +655,12 @@ interface ResolveAgentAvailabilityOptions {
 	reuseCachedFailure?: boolean;
 	/** Omit for the display/config budget; pass `LAUNCH_AGENT_PROBE_TIMEOUT_MS` for a task launch. */
 	probeTimeoutMs?: number;
+	/**
+	 * How old a cache entry may be and still count as "fresh" (served without
+	 * a probe). Omit for the display budget (`AGENT_AVAILABILITY_DISPLAY_TTL_MS`);
+	 * pass `LAUNCH_AGENT_AVAILABILITY_FRESH_MS` for a task launch.
+	 */
+	freshnessMs?: number;
 }
 
 const agentAvailabilityCache = new Map<string, AvailabilityCacheEntry>();
@@ -698,7 +806,8 @@ function startAvailabilityProbe(
 	cacheKey: string,
 	agentId: RuntimeAgentId,
 	binary: string,
-	probeTimeoutMs?: number,
+	probeTimeoutMs: number | undefined,
+	identity: BinaryIdentity,
 ): Promise<AvailabilityCacheEntry> {
 	const existing = inFlightAgentAvailabilityProbes.get(cacheKey);
 	if (existing) {
@@ -707,7 +816,7 @@ function startAvailabilityProbe(
 	const generation = agentAvailabilityCacheGeneration;
 	const probe = computeAgentAvailability(agentId, binary, probeTimeoutMs)
 		.then((result) => {
-			const entry = { result, checkedAt: Date.now() };
+			const entry = { result, checkedAt: Date.now(), identity };
 			// A timeout or launcher failure says nothing durable about whether the
 			// agent is runnable. Keep an older display value if one exists, but never
 			// let a transient negative become launch-authoritative cache state.
@@ -730,19 +839,26 @@ async function resolveAgentAvailability(
 	binary: string,
 	options: ResolveAgentAvailabilityOptions = {},
 ): Promise<AgentAvailability> {
+	// Cheap (no spawn): catches a PATH edit or an in-place binary
+	// replacement even while the cached entry is still inside its TTL.
+	// Resolved before reading the cache so the snapshot below is current.
+	const currentIdentity = await resolveBinaryIdentity(binary);
 	const cacheKey = `${agentId}::${binary}`;
 	const cached = agentAvailabilityCache.get(cacheKey);
 	const now = Date.now();
+	const freshnessMs = options.freshnessMs ?? AGENT_AVAILABILITY_DISPLAY_TTL_MS;
+	const cachedIdentityStillValid = cached ? isSameBinaryIdentity(cached.identity, currentIdentity) : false;
 	if (
 		!options.forceRefresh &&
 		cached &&
-		now - cached.checkedAt < AGENT_AVAILABILITY_TTL_MS &&
+		cachedIdentityStillValid &&
+		now - cached.checkedAt < freshnessMs &&
 		(cached.result.installed || options.reuseCachedFailure !== false)
 	) {
 		return cached.result;
 	}
-	if (!options.forceRefresh && cached && options.allowStale !== false) {
-		void startAvailabilityProbe(cacheKey, agentId, binary, options.probeTimeoutMs).catch((error) => {
+	if (!options.forceRefresh && cached && cachedIdentityStillValid && options.allowStale !== false) {
+		void startAvailabilityProbe(cacheKey, agentId, binary, options.probeTimeoutMs, currentIdentity).catch((error) => {
 			log.debug("Agent availability stale refresh failed", {
 				agentId,
 				binary,
@@ -751,7 +867,7 @@ async function resolveAgentAvailability(
 		});
 		return cached.result;
 	}
-	const entry = await startAvailabilityProbe(cacheKey, agentId, binary, options.probeTimeoutMs);
+	const entry = await startAvailabilityProbe(cacheKey, agentId, binary, options.probeTimeoutMs, currentIdentity);
 	return entry.result;
 }
 
@@ -868,12 +984,14 @@ export async function resolveAgentCommandForLaunch(
 		allowStale: false,
 		reuseCachedFailure: false,
 		probeTimeoutMs: LAUNCH_AGENT_PROBE_TIMEOUT_MS,
+		freshnessMs: LAUNCH_AGENT_AVAILABILITY_FRESH_MS,
 	});
 	if (!availability.installed && availability.transient && options.retryTransient) {
 		availability = await resolveAgentAvailability(selected.id, selected.binary, {
 			allowStale: false,
 			forceRefresh: true,
 			probeTimeoutMs: LAUNCH_AGENT_PROBE_TIMEOUT_MS,
+			freshnessMs: LAUNCH_AGENT_AVAILABILITY_FRESH_MS,
 		});
 	}
 	if (!availability.installed) {

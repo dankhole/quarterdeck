@@ -14,7 +14,7 @@ const summary = { id: "p", path: "/repo", name: "repo" } as RuntimeProjectSummar
 describe("ProjectSummaryCache", () => {
 	it("serves a summary only while every derivation input is unchanged", () => {
 		const cache = new ProjectSummaryCache();
-		cache.set("p", key, summary);
+		cache.set("p", key, summary, cache.epoch("p"));
 		expect(cache.get("p", { ...key })).toBe(summary);
 		expect(cache.get("p", { ...key, boardRevision: 4 })).toBeNull();
 		expect(cache.get("p", { ...key, metadataRevision: 2 })).toBeNull();
@@ -27,7 +27,26 @@ describe("ProjectSummaryCache", () => {
 
 	it("can be disabled", () => {
 		const cache = new ProjectSummaryCache(false);
-		cache.set("p", key, summary);
+		cache.set("p", key, summary, cache.epoch("p"));
 		expect(cache.get("p", key)).toBeNull();
+		expect(cache.getLast("p", "/repo")).toBeNull();
+	});
+
+	it("serves the last summary as a fallback only for the same location", () => {
+		const cache = new ProjectSummaryCache();
+		cache.set("p", key, summary, cache.epoch("p"));
+		expect(cache.getLast("p", "/repo")).toBe(summary);
+		expect(cache.getLast("p", "/moved")).toBeNull();
+	});
+
+	it("drops a build that a purge overtook", () => {
+		const cache = new ProjectSummaryCache();
+		const epoch = cache.epoch("p");
+		cache.purge("p");
+		cache.set("p", key, summary, epoch);
+		expect(cache.get("p", key)).toBeNull();
+		expect(cache.getLast("p", "/repo")).toBeNull();
+		cache.set("p", key, summary, cache.epoch("p"));
+		expect(cache.get("p", key)).toBe(summary);
 	});
 });

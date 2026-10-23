@@ -549,6 +549,7 @@ async function applyProjectBoardMutationFromContext(
 			if (input.persistSessionsOnNoop) {
 				await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), prunedSessions, {
 					lock: null,
+					compact: true,
 				});
 				persistedSessions = prunedSessions;
 			} else {
@@ -622,6 +623,7 @@ export async function saveProjectSessions(
 	return await withProjectStateLock(context.projectId, async () => {
 		await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), parsedPayload.sessions, {
 			lock: null,
+			compact: true,
 		});
 
 		if (clearPendingWarnings) {
@@ -673,6 +675,7 @@ export async function pruneProjectSessionsForBoard(cwd: string): Promise<Project
 		const backupPath = await backUpSessionsBeforePrune(projectState.statePath);
 		await lockedFileSystem.writeJsonFileAtomic(getProjectSessionsPath(context.projectId), prunedSessions, {
 			lock: null,
+			compact: true,
 		});
 		projectStateLog.warn("pruned orphan session summaries from sessions.json", {
 			projectId: context.projectId,

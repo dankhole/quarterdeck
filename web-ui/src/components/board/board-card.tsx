@@ -4,6 +4,7 @@ import { AlertCircle, GitBranch, Info, Pencil, Pin, PinOff, RotateCw } from "luc
 import { type MouseEvent, memo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BoardCardActions } from "@/components/board/board-card-actions";
+import { BoardCardConversation } from "@/components/board/board-card-conversation";
 import { InlineTitleEditor } from "@/components/task/inline-title-editor";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -11,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
 import { useBoardCard } from "@/hooks/board/use-board-card";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { BoardReplyScope } from "@/state/board-reply-drafts";
 import type { BoardCard as BoardCardModel, BoardColumnId } from "@/types";
 import { CARD_TEXT_COLOR } from "@/utils/board-card-display";
 import { statusBadgeColors } from "@/utils/session-status";
@@ -43,14 +45,14 @@ export const BoardCard = memo(function BoardCard({
 	readOnly = false,
 	rich = false,
 	dragHandle,
-	conversation,
+	replyScope,
 }: {
 	card: BoardCardModel;
 	index: number;
 	columnId: BoardColumnId;
 	sessionSummary?: RuntimeTaskSessionSummary;
 	selected?: boolean;
-	onClick?: () => void;
+	onClick?: (taskId: string) => void;
 	onDoubleClick?: () => void;
 	onStart?: (taskId: string) => void;
 	onRestartSession?: (taskId: string) => void;
@@ -67,7 +69,7 @@ export const BoardCard = memo(function BoardCard({
 	readOnly?: boolean;
 	rich?: boolean;
 	dragHandle?: ReactNode;
-	conversation?: (statusBadges: ReactNode) => ReactNode;
+	replyScope?: BoardReplyScope;
 }): React.ReactElement {
 	const {
 		reviewWorktreeSnapshot,
@@ -219,7 +221,7 @@ export const BoardCard = memo(function BoardCard({
 				onKeyDown={(event) => {
 					if (rich && isCardInteractive && event.target === event.currentTarget && event.key === "Enter") {
 						event.preventDefault();
-						onClick?.();
+						onClick?.(card.id);
 					}
 				}}
 				onClick={(event) => {
@@ -230,7 +232,7 @@ export const BoardCard = memo(function BoardCard({
 						return;
 					}
 					if (!isDragging && onClick) {
-						onClick();
+						onClick(card.id);
 					}
 				}}
 				onDoubleClick={(event) => {
@@ -405,7 +407,16 @@ export const BoardCard = memo(function BoardCard({
 					</div>
 					{!rich && statusBadges}
 					{renderBranchStatus()}
-					{conversation?.(statusBadges)}
+					{rich ? (
+						<BoardCardConversation
+							card={card}
+							columnId={columnId}
+							summary={sessionSummary}
+							replyScope={replyScope}
+							statusBadges={statusBadges}
+							readOnly={readOnly}
+						/>
+					) : null}
 				</div>
 			</div>
 		);

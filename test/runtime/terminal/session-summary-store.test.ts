@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemorySessionSummaryStore } from "../../../src/terminal";
+import { hasMeaningfulSessionSummaryChange, InMemorySessionSummaryStore } from "../../../src/terminal";
 import {
 	createTestTaskNativeWorkEvidence,
 	createTestTaskOutstandingInteraction,
@@ -219,6 +219,55 @@ describe("InMemorySessionSummaryStore interaction persistence", () => {
 		expect(summary?.lastHookAt).not.toBe(100);
 	});
 
+	it("compacts completed tool receipts on record and legacy receipts on hydrate", () => {
+		const receipt = (index: number, hookEventName: string, event: "activity" | "to_review" = "activity") => ({
+			event,
+			deliveryId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+			occurredAt: index * 100,
+			source: "claude" as const,
+			sessionInstanceId: "process-1",
+			hookEventName,
+			notificationType: null,
+			turnId: null,
+			promptId: "prompt-1",
+			toolUseId: hookEventName === "Stop" ? null : `tool-${Math.ceil(index / 2)}`,
+			elicitationId: null,
+			toolName: hookEventName === "Stop" ? null : "Bash",
+		});
+		const toolReceipts = Array.from({ length: 300 }, (_, index) =>
+			receipt(index + 1, index % 2 === 0 ? "PreToolUse" : "PostToolUse"),
+		);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			"task-1": createTestTaskSessionSummary({
+				taskId: "task-1",
+				state: "running",
+				agentId: "claude",
+				sessionInstanceId: "process-1",
+				recentProviderHookOrderObservations: toolReceipts,
+			}),
+			"task-2": createTestTaskSessionSummary({
+				taskId: "task-2",
+				state: "awaiting_review",
+				agentId: "claude",
+				sessionInstanceId: "process-1",
+				recentProviderHookOrderObservations: [...toolReceipts, receipt(301, "Stop", "to_review")],
+			}),
+		});
+
+		expect(store.getSummary("task-1")?.recentProviderHookOrderObservations).toEqual(toolReceipts);
+		expect(
+			store.getSummary("task-2")?.recentProviderHookOrderObservations.map((entry) => entry.hookEventName),
+		).toEqual(["Stop"]);
+
+		// A prompt-less Stop keeps one tool receipt so replay still retires prompt-1.
+		store.recordProviderHookReceipt("task-1", { ...receipt(301, "Stop", "to_review"), promptId: null });
+		expect(store.getSummary("task-1")?.recentProviderHookOrderObservations.map((entry) => entry.deliveryId)).toEqual([
+			toolReceipts[0]?.deliveryId,
+			receipt(301, "Stop").deliveryId,
+		]);
+	});
+
 	it("returns deep snapshots so callers cannot mutate persisted interaction identity", () => {
 		const store = new InMemorySessionSummaryStore();
 		store.hydrateFromRecord({
@@ -269,5 +318,62 @@ describe("InMemorySessionSummaryStore interaction persistence", () => {
 		expect(store.getSummary("task-1")?.outstandingInteraction?.status).toBe("waiting");
 		expect(store.getSummary("task-1")?.recentProviderHookDeliveryIds).toEqual([]);
 		expect(store.getSummary("task-1")?.recentProviderHookOrderObservations).toEqual([]);
+	});
+});
+
+describe("hasMeaningfulSessionSummaryChange", () => {
+	const evidence = {
+		provider: "claude" as const,
+		sessionInstanceId: "process-1",
+		providerSessionId: "session-1",
+		turnId: null,
+		promptId: "prompt-1",
+		hookEventName: "PreToolUse",
+		confirmedAt: 100,
+	};
+	const base = createTestTaskSessionSummary({
+		taskId: "task-1",
+		state: "running",
+		agentId: "claude",
+		sessionInstanceId: "process-1",
+		nativeWorkEvidence: evidence,
+	});
+
+	it("ignores hook bookkeeping and native evidence refreshes", () => {
+		expect(
+			hasMeaningfulSessionSummaryChange(base, {
+				...base,
+				updatedAt: base.updatedAt + 1,
+				lastHookAt: 200,
+				lastProviderHookOccurredAt: 200,
+				recentProviderHookDeliveryIds: ["00000000-0000-4000-8000-000000000001"],
+				latestHookActivity: createTestTaskSessionSummary({ taskId: "x" }).latestHookActivity,
+				progressMessage: "working",
+				nativeWorkEvidence: { ...evidence, hookEventName: "PostToolUse", confirmedAt: 200 },
+			}),
+		).toBe(false);
+	});
+
+	it("treats lifecycle, interaction, identity, and response changes as meaningful", () => {
+		expect(hasMeaningfulSessionSummaryChange(base, { ...base, state: "awaiting_review" })).toBe(true);
+		expect(hasMeaningfulSessionSummaryChange(base, { ...base, resumeSessionId: "session-2" })).toBe(true);
+		expect(
+			hasMeaningfulSessionSummaryChange(base, {
+				...base,
+				nativeWorkEvidence: { ...evidence, promptId: "prompt-2" },
+			}),
+		).toBe(true);
+		expect(
+			hasMeaningfulSessionSummaryChange(base, {
+				...base,
+				completedResponses: [{ text: "done", capturedAt: 1, sessionIndex: 0 }],
+			}),
+		).toBe(true);
+		expect(
+			hasMeaningfulSessionSummaryChange(base, {
+				...base,
+				outstandingInteraction: createTestTaskOutstandingInteraction(),
+			}),
+		).toBe(true);
 	});
 });

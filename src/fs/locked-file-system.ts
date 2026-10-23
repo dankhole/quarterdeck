@@ -282,9 +282,17 @@ export class LockedFileSystem {
 	async writeJsonFileAtomic(
 		path: string,
 		payload: unknown,
-		options: Omit<AtomicTextWriteOptions, "executable"> = {},
+		options: Omit<AtomicTextWriteOptions, "executable"> & {
+			/** Skip pretty-printing for large machine-only files rewritten on hot paths. */
+			compact?: boolean;
+		} = {},
 	): Promise<void> {
-		await this.writeTextFileAtomic(path, JSON.stringify(payload, null, 2), options);
+		const { compact, ...writeOptions } = options;
+		await this.writeTextFileAtomic(
+			path,
+			compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2),
+			writeOptions,
+		);
 	}
 
 	async removePath(path: string, options: { lock: LockRequest; recursive?: boolean; force?: boolean }): Promise<void> {

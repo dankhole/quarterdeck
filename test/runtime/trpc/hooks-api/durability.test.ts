@@ -216,24 +216,38 @@ function createGatedHarness() {
 			occurredAt: 200 + index,
 		},
 	});
+	// Running -> Review changes task meaning, so it must be durable before acknowledgement.
+	const reviewRequest = (index: number): RuntimeHookIngestRequest => ({
+		...request(index, "Stop"),
+		event: "to_review",
+	});
 	const holdNextWrite = () => {
 		const gate = createDeferred<void>();
 		writeGates.push(gate);
 		return gate;
 	};
-	return { manager, persistence, api, request, reconcileRuntimeSessions, holdNextWrite, writeFailures };
+	return {
+		manager,
+		persistence,
+		api,
+		request,
+		reviewRequest,
+		reconcileRuntimeSessions,
+		holdNextWrite,
+		writeFailures,
+	};
 }
 
 describe("createHooksApi — durability barrier under load", () => {
 	it("acknowledges a duplicate delivery without another session write", async () => {
-		const { persistence, api, request, reconcileRuntimeSessions } = createGatedHarness();
+		const { persistence, api, reviewRequest, reconcileRuntimeSessions } = createGatedHarness();
 		try {
-			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(reviewRequest(1))).resolves.toEqual({ ok: true });
 			const writesAfterOriginal = reconcileRuntimeSessions.mock.calls.length;
 			expect(writesAfterOriginal).toBeGreaterThan(0);
 
-			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
-			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(reviewRequest(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(reviewRequest(1))).resolves.toEqual({ ok: true });
 			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesAfterOriginal);
 		} finally {
 			await persistence.close();
@@ -241,17 +255,17 @@ describe("createHooksApi — durability barrier under load", () => {
 	});
 
 	it("holds a duplicate acknowledgement until the original delivery is durable", async () => {
-		const { persistence, api, request, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
+		const { persistence, api, reviewRequest, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
 		try {
 			// Let the tracking write triggered by hydration settle first.
 			await persistence.persistRuntimeSessions("project-1");
 			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
 			const gate = holdNextWrite();
-			const original = api.ingest(request(1));
+			const original = api.ingest(reviewRequest(1));
 			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
 
 			let duplicateSettled = false;
-			const duplicate = api.ingest(request(1)).then((response) => {
+			const duplicate = api.ingest(reviewRequest(1)).then((response) => {
 				duplicateSettled = true;
 				return response;
 			});
@@ -268,30 +282,49 @@ describe("createHooksApi — durability barrier under load", () => {
 	});
 
 	it("does not acknowledge a duplicate while the original delivery's write has failed", async () => {
-		const { persistence, api, request, reconcileRuntimeSessions, writeFailures } = createGatedHarness();
+		const { persistence, api, reviewRequest, reconcileRuntimeSessions, writeFailures } = createGatedHarness();
 		try {
 			await persistence.persistRuntimeSessions("project-1");
 			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
 			// The original is processed in memory (its delivery ID is now known) but
 			// neither the barrier write nor its bounded retry becomes durable.
 			writeFailures.remaining = 4;
-			const original = await api.ingest(request(1));
+			const original = await api.ingest(reviewRequest(1));
 			expect(original).toMatchObject({ ok: false });
 
-			const failedDuplicate = await api.ingest(request(1));
+			const failedDuplicate = await api.ingest(reviewRequest(1));
 			expect(failedDuplicate).toMatchObject({ ok: false });
 			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBe(4);
 
-			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(reviewRequest(1))).resolves.toEqual({ ok: true });
 			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBe(5);
-			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(reviewRequest(1))).resolves.toEqual({ ok: true });
 			expect(reconcileRuntimeSessions.mock.calls.length - writesBefore).toBe(5);
 		} finally {
 			await persistence.close();
 		}
 	});
 
-	it("waits for its own write when an ordering-rejected delivery still records a receipt", async () => {
+	it("acknowledges PreToolUse receipts without forcing a write and persists them on the automatic writer", async () => {
+		const { manager, persistence, api, request, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
+			const gate = holdNextWrite();
+			// Same-summary PreToolUse receipts change only bookkeeping.
+			await expect(api.ingest(request(1))).resolves.toEqual({ ok: true });
+			await expect(api.ingest(request(2))).resolves.toEqual({ ok: true });
+			expect(manager.store.getSummary(TASK_ID)?.recentProviderHookDeliveryIds).toHaveLength(2);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore);
+
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
+			gate.resolve();
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("waits for its own write when a retained completion receipt can reject a delayed request", async () => {
 		const { manager, persistence, api, request, reconcileRuntimeSessions, holdNextWrite } = createGatedHarness();
 		try {
 			await persistence.persistRuntimeSessions("project-1");
@@ -307,7 +340,30 @@ describe("createHooksApi — durability barrier under load", () => {
 				return result;
 			});
 			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
-			expect(manager.store.getSummary(TASK_ID)?.recentProviderHookDeliveryIds).toHaveLength(1);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			expect(settled).toBe(false);
+
+			gate.resolve();
+			await expect(response).resolves.toEqual({ ok: true });
+		} finally {
+			await persistence.close();
+		}
+	});
+
+	it("still waits for its own write when a hook changes task meaning", async () => {
+		const { manager, persistence, api, reviewRequest, reconcileRuntimeSessions, holdNextWrite } =
+			createGatedHarness();
+		try {
+			await persistence.persistRuntimeSessions("project-1");
+			const writesBefore = reconcileRuntimeSessions.mock.calls.length;
+			const gate = holdNextWrite();
+			let settled = false;
+			const response = api.ingest(reviewRequest(1)).then((result) => {
+				settled = true;
+				return result;
+			});
+			await vi.waitFor(() => expect(reconcileRuntimeSessions).toHaveBeenCalledTimes(writesBefore + 1));
+			expect(manager.store.getSummary(TASK_ID)?.state).toBe("awaiting_review");
 			await new Promise((resolve) => setTimeout(resolve, 5));
 			expect(settled).toBe(false);
 

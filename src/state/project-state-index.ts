@@ -230,6 +230,7 @@ async function writeRepairedSessionsFile(
 	try {
 		await lockedFileSystem.writeJsonFileAtomic(sessionsPath, sessions, {
 			lock: null,
+			compact: true,
 		});
 		return true;
 	} catch (error) {
@@ -461,11 +462,6 @@ export async function readProjectMetaUnderLock(projectId: string): Promise<Proje
 		updatedAt: 0,
 		recentBoardCommands: [],
 	});
-}
-
-/** Reads only the board revision; cheap validation for derived projections such as project summaries. */
-export async function loadProjectBoardRevisionById(projectId: string): Promise<number> {
-	return await withProjectStateLock(projectId, async () => (await readProjectMetaUnderLock(projectId)).revision);
 }
 
 // --- Index CRUD ---

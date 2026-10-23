@@ -5,6 +5,7 @@ import { runtimeTaskProviderHookOrderObservationSchema } from "../../../src/core
 import {
 	canApplyClaudeRenderedInterruption,
 	commitHookEventOrder,
+	compactProviderHookOrderObservations,
 	correlateClaudePermissionToolUseId,
 	correlateCodexPermissionToolUseId,
 	createHookEventOrderState,
@@ -2041,5 +2042,356 @@ describe("Claude rendered interruption ordering", () => {
 				}),
 			),
 		).toEqual({ accepted: true });
+	});
+});
+
+describe("durable ordering compaction", () => {
+	function observationsOf(inputs: readonly RuntimeHookIngestRequest[]) {
+		return inputs.flatMap((input) => {
+			const observation = createProviderHookOrderObservation(input);
+			return observation ? [observation] : [];
+		});
+	}
+
+	function restoreFrom(observations: ReturnType<typeof observationsOf>) {
+		return restoreHookEventOrderState({
+			sessionInstanceId: SESSION_INSTANCE_ID,
+			observations,
+			// Delivery dedupe is a separate window; probes use fresh delivery ids.
+			recentDeliveryIds: [],
+			outstandingInteraction: null,
+		});
+	}
+
+	function expectEquivalentReplay(
+		inputs: readonly RuntimeHookIngestRequest[],
+		probes: readonly RuntimeHookIngestRequest[],
+	): ReturnType<typeof observationsOf> {
+		const full = observationsOf(inputs);
+		const compacted = compactProviderHookOrderObservations(full, 512);
+		const fullState = restoreFrom(full);
+		const compactedState = restoreFrom(compacted);
+		for (const probe of probes) {
+			expect(evaluateHookEventOrder(compactedState, probe)).toEqual(evaluateHookEventOrder(fullState, probe));
+		}
+		return compacted;
+	}
+
+	it("drops Claude tool pairs behind a completed Stop without changing replay decisions", () => {
+		const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
+		const inputs = [
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "p1", deliveryIndex: 1 }),
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p1",
+				toolUseId: "t1",
+				toolName: "Bash",
+				deliveryIndex: 2,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				promptId: "p1",
+				toolUseId: "t1",
+				toolName: "Bash",
+				deliveryIndex: 3,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p1",
+				toolUseId: "t2",
+				toolName: "Read",
+				deliveryIndex: 4,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				promptId: "p1",
+				toolUseId: "t2",
+				toolName: "Read",
+				deliveryIndex: 5,
+			}),
+			claude({ event: "to_review", hookEventName: "Stop", promptId: "p1", deliveryIndex: 6 }),
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "p2", deliveryIndex: 7 }),
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p2",
+				toolUseId: "t3",
+				toolName: "Edit",
+				deliveryIndex: 8,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				promptId: "p2",
+				toolUseId: "t3",
+				toolName: "Edit",
+				deliveryIndex: 9,
+			}),
+		];
+		const compacted = expectEquivalentReplay(inputs, [
+			claude({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				promptId: "p1",
+				toolUseId: "t1",
+				deliveryIndex: 20,
+				occurredAt: 350,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p1",
+				toolUseId: "t9",
+				deliveryIndex: 21,
+				occurredAt: 1_000,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				promptId: "p2",
+				toolUseId: "t3",
+				deliveryIndex: 22,
+				occurredAt: 1_000,
+			}),
+			claude({
+				event: "to_review",
+				hookEventName: "PermissionRequest",
+				promptId: "p2",
+				toolName: "Edit",
+				deliveryIndex: 23,
+				occurredAt: 850,
+			}),
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p2",
+				toolUseId: "t4",
+				deliveryIndex: 24,
+				occurredAt: 1_000,
+			}),
+			claude({ event: "to_review", hookEventName: "Stop", deliveryIndex: 25, occurredAt: 1_000 }),
+		]);
+		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
+			[1, 6, 7, 8, 9].map((index) => delivery(index, 0).id),
+		);
+	});
+
+	it("keeps Claude tool history when the Stop left unbounded background work", () => {
+		const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
+		const observations = observationsOf([
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "p1", deliveryIndex: 1 }),
+			claude({ event: "activity", hookEventName: "PreToolUse", promptId: "p1", toolUseId: "t1", deliveryIndex: 2 }),
+			claude({ event: "activity", hookEventName: "PostToolUse", promptId: "p1", toolUseId: "t1", deliveryIndex: 3 }),
+			claude({
+				event: "to_review",
+				hookEventName: "Stop",
+				promptId: "p1",
+				unboundedBackgroundWorkPending: true,
+				deliveryIndex: 4,
+			}),
+		]);
+		expect(compactProviderHookOrderObservations(observations, 512)).toHaveLength(4);
+	});
+
+	it("keeps one tool observation for a prompt identity no other observation carries", () => {
+		const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
+		const inputs = [
+			claude({ event: "activity", hookEventName: "PreToolUse", promptId: "p1", toolUseId: "t1", deliveryIndex: 1 }),
+			claude({ event: "activity", hookEventName: "PostToolUse", promptId: "p1", toolUseId: "t1", deliveryIndex: 2 }),
+			claude({ event: "to_review", hookEventName: "Stop", deliveryIndex: 3 }),
+		];
+		const compacted = expectEquivalentReplay(inputs, [
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p1",
+				toolUseId: "t5",
+				deliveryIndex: 20,
+				occurredAt: 1_000,
+			}),
+		]);
+		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
+			[1, 3].map((index) => delivery(index, 0).id),
+		);
+	});
+
+	it("keeps a background wake's re-activation so a later prompt-less Stop still retires the prompt", () => {
+		const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
+		const inputs = [
+			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "p1", deliveryIndex: 1 }),
+			claude({ event: "activity", hookEventName: "PreToolUse", promptId: "p1", toolUseId: "t1", deliveryIndex: 2 }),
+			claude({ event: "activity", hookEventName: "PostToolUse", promptId: "p1", toolUseId: "t1", deliveryIndex: 3 }),
+			claude({
+				event: "to_review",
+				hookEventName: "Stop",
+				promptId: "p1",
+				unboundedBackgroundWorkPending: true,
+				deliveryIndex: 4,
+			}),
+			claude({ event: "activity", hookEventName: "PreToolUse", promptId: "p1", toolUseId: "t2", deliveryIndex: 5 }),
+			claude({ event: "activity", hookEventName: "PostToolUse", promptId: "p1", toolUseId: "t2", deliveryIndex: 6 }),
+			claude({ event: "to_review", hookEventName: "Stop", deliveryIndex: 7 }),
+		];
+		const compacted = expectEquivalentReplay(inputs, [
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				promptId: "p1",
+				toolUseId: "t9",
+				deliveryIndex: 20,
+				occurredAt: 1_000,
+			}),
+		]);
+		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
+			[1, 4, 5, 7].map((index) => delivery(index, 0).id),
+		);
+	});
+
+	it("drops Codex tool observations behind a turn end without changing replay decisions", () => {
+		const inputs = [
+			hook({ event: "to_in_progress", hookEventName: "UserPromptSubmit", turnId: "turn-1", deliveryIndex: 1 }),
+			hook({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				turnId: "turn-1",
+				toolUseId: "c1",
+				toolName: "shell",
+				deliveryIndex: 2,
+			}),
+			hook({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				turnId: "turn-1",
+				toolUseId: "c1",
+				toolName: "shell",
+				deliveryIndex: 3,
+			}),
+			hook({ event: "to_review", hookEventName: "Stop", turnId: "turn-1", deliveryIndex: 4 }),
+			hook({ event: "to_in_progress", hookEventName: "UserPromptSubmit", turnId: "turn-2", deliveryIndex: 5 }),
+			hook({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				turnId: "turn-2",
+				toolUseId: "c2",
+				toolName: "shell",
+				deliveryIndex: 6,
+			}),
+		];
+		const compacted = expectEquivalentReplay(inputs, [
+			hook({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				turnId: "turn-1",
+				toolUseId: "c1",
+				toolName: "shell",
+				deliveryIndex: 20,
+				occurredAt: 1_000,
+			}),
+			hook({
+				event: "to_review",
+				hookEventName: "PermissionRequest",
+				turnId: "turn-2",
+				toolName: "shell",
+				deliveryIndex: 21,
+				occurredAt: 700,
+			}),
+			hook({
+				event: "activity",
+				hookEventName: "PostToolUse",
+				turnId: "turn-2",
+				toolUseId: "c2",
+				toolName: "shell",
+				deliveryIndex: 22,
+				occurredAt: 700,
+			}),
+			hook({ event: "to_review", hookEventName: "Stop", turnId: "turn-2", deliveryIndex: 23, occurredAt: 700 }),
+		]);
+		expect(compacted).toHaveLength(4);
+	});
+
+	it("drops tool observations inside a settled Pi run without changing replay decisions", () => {
+		const pi = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "pi", ...input });
+		const inputs = [
+			pi({ event: "to_in_progress", hookEventName: "AgentStart", turnId: "run-1", deliveryIndex: 1 }),
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionStart",
+				turnId: "run-1",
+				toolUseId: "x1",
+				deliveryIndex: 2,
+			}),
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionEnd",
+				turnId: "run-1",
+				toolUseId: "x1",
+				deliveryIndex: 3,
+			}),
+			pi({ event: "to_review", hookEventName: "AgentSettled", turnId: "run-1", deliveryIndex: 4 }),
+			pi({ event: "to_in_progress", hookEventName: "AgentStart", turnId: "run-2", deliveryIndex: 5 }),
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionStart",
+				turnId: "run-2",
+				toolUseId: "x2",
+				deliveryIndex: 6,
+			}),
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionEnd",
+				turnId: "run-2",
+				toolUseId: "x2",
+				deliveryIndex: 7,
+			}),
+		];
+		const compacted = expectEquivalentReplay(inputs, [
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionEnd",
+				turnId: "run-1",
+				toolUseId: "x1",
+				deliveryIndex: 20,
+				occurredAt: 1_000,
+			}),
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionEnd",
+				turnId: "run-2",
+				toolUseId: "x2",
+				deliveryIndex: 21,
+				occurredAt: 1_000,
+			}),
+			pi({
+				event: "activity",
+				hookEventName: "ToolExecutionStart",
+				turnId: "run-2",
+				toolUseId: "x3",
+				deliveryIndex: 22,
+				occurredAt: 1_000,
+			}),
+		]);
+		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
+			[1, 4, 5, 6, 7].map((index) => delivery(index, 0).id),
+		);
+	});
+
+	it("caps open-turn history at the newest entries", () => {
+		const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
+		const observations = observationsOf(
+			Array.from({ length: 10 }, (_, index) =>
+				claude({
+					event: "activity",
+					hookEventName: "PreToolUse",
+					promptId: "p1",
+					toolUseId: `t${index}`,
+					deliveryIndex: index + 1,
+				}),
+			),
+		);
+		expect(compactProviderHookOrderObservations(observations, 4)).toEqual(observations.slice(-4));
 	});
 });

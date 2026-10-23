@@ -7,7 +7,7 @@
 
 import { createTaggedLogger } from "../core";
 import type { ProjectBoardCommandService } from "../state";
-import type { TerminalSessionManager } from "../terminal";
+import type { SessionSummaryChange, TerminalSessionManager } from "../terminal";
 import type { ProjectRegistry } from "./project-registry";
 
 const persistenceLog = createTaggedLogger("runtime-session-persistence");
@@ -24,6 +24,7 @@ interface RuntimeSessionPersistenceState {
 	retryAttempt: number;
 	lastError: Error | null;
 	timer: ReturnType<typeof setTimeout> | null;
+	timerDueAt: number;
 	inFlight: Promise<void> | null;
 	disposed: boolean;
 }
@@ -57,7 +58,11 @@ export class RuntimeSessionPersistence {
 		// A replacement manager owns the project's authoritative store. Follow it so
 		// automatic writes and dirty generations track that store, not a retired one.
 		if (existing) this.unsubscribeRuntimeSessionPersistence(projectId);
-		const persist = () => this.scheduleRuntimeSessionPersistence(projectId);
+		// Presentation-only changes (progress previews) ride along with the next
+		// durable write instead of scheduling one.
+		const persist = (_summary: unknown, change: SessionSummaryChange) => {
+			if (!change.presentationOnly) this.scheduleRuntimeSessionPersistence(projectId);
+		};
 		this.sessionPersistenceSubscriptions.set(projectId, { manager, unsubscribe: manager.store.onChange(persist) });
 		if (existing || manager.store.listSummaries().length > 0) {
 			this.scheduleRuntimeSessionPersistence(projectId, 0);
@@ -165,6 +170,7 @@ export class RuntimeSessionPersistence {
 				retryAttempt: 0,
 				lastError: null,
 				timer: null,
+				timerDueAt: 0,
 				inFlight: null,
 				disposed: false,
 			};
@@ -181,7 +187,12 @@ export class RuntimeSessionPersistence {
 		delayMs: number,
 	): void {
 		if (state.disposed || state.inFlight) return;
+		// A later change may pull the write earlier but never push it back, so
+		// steady hook traffic cannot postpone persistence indefinitely.
+		const dueAt = Date.now() + delayMs;
+		if (state.timer && state.timerDueAt <= dueAt) return;
 		if (state.timer) clearTimeout(state.timer);
+		state.timerDueAt = dueAt;
 		state.timer = setTimeout(() => {
 			state.timer = null;
 			void this.runRuntimeSessionPersistence(projectId, state);

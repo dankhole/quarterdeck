@@ -273,7 +273,9 @@ describe("TerminalSessionManager", () => {
 		expect(reviewed?.latestHookActivity?.activityText).toBe("Task complete");
 		expect(reviewed?.latestHookActivity?.finalMessage).toBe("Done with the work");
 		expect(onChange).toHaveBeenCalledTimes(1);
-		expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ state: "awaiting_review" }));
+		expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ state: "awaiting_review" }), {
+			presentationOnly: false,
+		});
 	});
 
 	it("marks crash-recovered running sessions as interrupted during hydration", () => {

@@ -12,6 +12,8 @@ import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestReque
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
 import {
+	hasMeaningfulSessionSummaryChange,
+	isDurableCompletionReceipt,
 	type SessionSummaryStore,
 	shouldRetainHookEventOrderObservation,
 	type TerminalSessionManager,
@@ -88,17 +90,31 @@ function isForegroundCompletionMetadata(metadata: RuntimeHookMetadata | undefine
 }
 
 /**
- * Records whether the store changed while a hook was being applied. Hook
+ * Records how the store changed while a hook was being applied. Hook
  * application is synchronous, so every change seen in that window belongs to
- * this hook and must be durable before it is acknowledged.
+ * this hook. Changes to task meaning must be durable before the hook is
+ * acknowledged; ordering receipts, activity, and timing for the same task ride
+ * the debounced writer instead of forcing a write per tool call.
  */
-function observeSessionStoreChanges(store: SessionSummaryStore): { changed: () => boolean; stop: () => void } {
+function observeSessionStoreChanges(
+	store: SessionSummaryStore,
+	taskId: string,
+	baseline: RuntimeTaskSessionSummary,
+): { changed: () => boolean; requiresDurableWrite: () => boolean; stop: () => void } {
 	let changed = false;
-	let unsubscribe: (() => void) | null = store.onChange(() => {
+	let otherTaskChanged = false;
+	let unsubscribe: (() => void) | null = store.onChange((summary) => {
 		changed = true;
+		if (summary.taskId !== taskId) otherTaskChanged = true;
 	});
 	return {
 		changed: () => changed,
+		requiresDurableWrite: () => {
+			if (!changed) return false;
+			if (otherTaskChanged) return true;
+			const current = store.getSummary(taskId);
+			return !current || hasMeaningfulSessionSummaryChange(baseline, current);
+		},
 		stop: () => {
 			unsubscribe?.();
 			unsubscribe = null;
@@ -208,19 +224,27 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					} satisfies RuntimeHookIngestResponse;
 				}
 
-				const observedSessionChanges = observeSessionStoreChanges(store);
+				const observedSessionChanges = observeSessionStoreChanges(store, taskId, previousSummary);
 				sessionChanges = observedSessionChanges;
 				let providerSessionIdentityAccepted = false;
 				const completeHookIngest = async (advanceProviderOrder: boolean): Promise<RuntimeHookIngestResponse> => {
 					manager.commitHookEventOrder(taskId, body, advanceProviderOrder);
 					observedSessionChanges.stop();
-					// A hook that changed nothing (duplicate, rejected, or foreign) still
-					// waits for already-dirty state, which covers an earlier attempt of
-					// the same delivery, but must not force its own write.
-					const awaitDurable = observedSessionChanges.changed()
-						? deps.persistSessionState
-						: (deps.awaitSessionStateDurable ?? deps.persistSessionState);
-					await awaitDurable?.(projectId);
+					// A hook that changed task meaning, or whose receipt closes a tool
+					// or interaction (replay rejects delayed requests with it), forces its
+					// own write. A hook that changed nothing (duplicate, rejected, or
+					// foreign) still waits for already-dirty state, which covers an
+					// earlier attempt of the same delivery, but must not force a write.
+					// Other bookkeeping, such as a Running PreToolUse receipt, is left to
+					// the debounced writer: waiting on it would flush this generation.
+					if (
+						observedSessionChanges.requiresDurableWrite() ||
+						(advanceProviderOrder && observedSessionChanges.changed() && isDurableCompletionReceipt(body))
+					) {
+						await deps.persistSessionState?.(projectId);
+					} else if (!observedSessionChanges.changed()) {
+						await (deps.awaitSessionStateDurable ?? deps.persistSessionState)?.(projectId);
+					}
 					if (providerSessionIdentityAccepted && body.metadata?.sessionId?.trim()) {
 						scheduleBackgroundTask(() => {
 							void deps

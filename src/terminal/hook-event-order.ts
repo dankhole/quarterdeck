@@ -218,6 +218,130 @@ function observationAsHookInput(observation: RuntimeTaskProviderHookOrderObserva
 	};
 }
 
+const TOOL_ORDER_HOOK_EVENTS: ReadonlySet<string> = new Set([
+	"pretooluse",
+	"posttooluse",
+	"posttoolusefailure",
+	"toolexecutionstart",
+	"toolexecutionend",
+	"toolexecutionfailure",
+]);
+
+/**
+ * The occurrence time at or before which every later Claude/Codex hook is
+ * rejected by the root-completion fence. Claude Stops that leave unbounded
+ * background work are skipped so that prompt's tool history stays intact.
+ */
+function rootCompletionFenceOccurredAt(observation: RuntimeTaskProviderHookOrderObservation): number | null {
+	const hookEventName = observation.hookEventName?.toLowerCase() ?? "";
+	if (observation.source === "claude") {
+		return (hookEventName === "stop" || hookEventName === "stopfailure") &&
+			observation.event === "to_review" &&
+			!observation.unboundedBackgroundWorkPending
+			? observation.occurredAt
+			: null;
+	}
+	if (observation.source === "codex") {
+		return isCodexTurnEnd(hookEventName) ? observation.occurredAt : null;
+	}
+	return null;
+}
+
+function isPiRunSettlement(observation: RuntimeTaskProviderHookOrderObservation): boolean {
+	const hookEventName = observation.hookEventName?.toLowerCase() ?? "";
+	return (
+		observation.source === "pi" &&
+		(hookEventName === "agentsettled" || hookEventName === "interrupt" || hookEventName === "stopfailure")
+	);
+}
+
+function observationScopeId(observation: RuntimeTaskProviderHookOrderObservation): string | null {
+	return observation.source === "claude" ? observation.promptId : observation.turnId;
+}
+
+/**
+ * Any root completion ends a prompt/turn activation, including a Claude Stop
+ * that leaves background work: a later wake re-activates the same prompt, and
+ * replay must see that activation again for the next Stop to retire it.
+ */
+function endsScopeActivation(observation: RuntimeTaskProviderHookOrderObservation): boolean {
+	const hookEventName = observation.hookEventName?.toLowerCase() ?? "";
+	if (observation.source === "claude") {
+		return (hookEventName === "stop" || hookEventName === "stopfailure") && observation.event === "to_review";
+	}
+	return observation.source === "codex" ? isCodexTurnEnd(hookEventName) : isPiRunSettlement(observation);
+}
+
+/**
+ * Bounds durable ordering history while preserving replay's accept/reject
+ * decisions. Tool observations behind a root-completion fence (Claude/Codex)
+ * or inside a settled Pi run can no longer change a decision: every later
+ * hook from that span is rejected by the fence, `completed_turn`, or
+ * `stale_turn` before any per-tool check runs. One observation per
+ * prompt/turn identity per activation is still kept so replay activates and
+ * retires that identity exactly as live ingest did. Permission correlation
+ * for already-fenced pending tools is intentionally not preserved.
+ */
+export function compactProviderHookOrderObservations(
+	observations: readonly RuntimeTaskProviderHookOrderObservation[],
+	maxEntries: number,
+): RuntimeTaskProviderHookOrderObservation[] {
+	let fenceOccurredAt: number | null = null;
+	const settledPiRunIds = new Set<string>();
+	const retainedScopeKeys = new Set<string>();
+	const scopeKeys: Array<string | null> = [];
+	let activation = 0;
+	for (const observation of observations) {
+		const fence = rootCompletionFenceOccurredAt(observation);
+		if (fence !== null) fenceOccurredAt = Math.max(fenceOccurredAt ?? fence, fence);
+		if (isPiRunSettlement(observation) && observation.turnId) settledPiRunIds.add(observation.turnId);
+		const scopeId = observationScopeId(observation);
+		const scopeKey = scopeId ? `${activation}:${scopeId}` : null;
+		scopeKeys.push(scopeKey);
+		if (scopeKey && !TOOL_ORDER_HOOK_EVENTS.has(observation.hookEventName?.toLowerCase() ?? "")) {
+			retainedScopeKeys.add(scopeKey);
+		}
+		if (endsScopeActivation(observation)) activation += 1;
+	}
+	const compacted = observations.filter((observation, index) => {
+		if (!TOOL_ORDER_HOOK_EVENTS.has(observation.hookEventName?.toLowerCase() ?? "")) return true;
+		const fenced =
+			observation.source === "pi"
+				? observation.turnId !== null && settledPiRunIds.has(observation.turnId)
+				: fenceOccurredAt !== null && observation.occurredAt <= fenceOccurredAt;
+		if (!fenced) return true;
+		const scopeKey = scopeKeys[index] ?? null;
+		if (!scopeKey || retainedScopeKeys.has(scopeKey)) return false;
+		retainedScopeKeys.add(scopeKey);
+		return true;
+	});
+	return compacted.length > maxEntries ? compacted.slice(-maxEntries) : compacted;
+}
+
+/**
+ * Hooks whose receipts close a tool or interaction. Replay uses them to reject
+ * delayed requests (for example an outbox-replayed PermissionRequest), so they
+ * must be durable before acknowledgement even when task meaning is unchanged.
+ */
+const COMPLETION_RECEIPT_HOOK_EVENTS: ReadonlySet<string> = new Set([
+	"posttooluse",
+	"posttoolusefailure",
+	"permissiondenied",
+	"permissionresolved",
+	"projecttrustresolved",
+	"projecttrustdenied",
+	"toolexecutionend",
+	"toolexecutionfailure",
+	"elicitationresult",
+]);
+
+export function isDurableCompletionReceipt(input: RuntimeHookIngestRequest): boolean {
+	return (
+		COMPLETION_RECEIPT_HOOK_EVENTS.has(normalizedHookEventName(input)) &&
+		createProviderHookOrderObservation(input) !== null
+	);
+}
+
 /** Rebuilds the exact provider-specific ordering guard from durable metadata. */
 export function restoreHookEventOrderState(input: {
 	sessionInstanceId: string;

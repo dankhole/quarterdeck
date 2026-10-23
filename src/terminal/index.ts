@@ -15,7 +15,7 @@ export {
 	hasCodexWorkspaceTrustPrompt,
 	shouldAutoConfirmCodexWorkspaceTrust,
 } from "./codex-workspace-trust";
-export { shouldRetainHookEventOrderObservation } from "./hook-event-order";
+export { isDurableCompletionReceipt, shouldRetainHookEventOrderObservation } from "./hook-event-order";
 export {
 	getActiveHookHttpChannel,
 	HOOK_HTTP_NOTIFY_PATH,
@@ -107,7 +107,9 @@ export {
 } from "./session-state-machine";
 export {
 	cloneSummary,
+	hasMeaningfulSessionSummaryChange,
 	InMemorySessionSummaryStore,
+	type SessionSummaryChange,
 	type SessionSummaryStore,
 } from "./session-summary-store";
 export {

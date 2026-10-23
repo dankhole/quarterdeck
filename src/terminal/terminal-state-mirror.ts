@@ -74,6 +74,17 @@ export class TerminalStateMirror {
 	private batchBuffer: Uint8Array[] = [];
 	private batchAppliedCallbacks: Array<(screen: TerminalScreenSnapshot) => void> = [];
 	private batchTimer: ReturnType<typeof setTimeout> | null = null;
+	/**
+	 * Output queued behind an in-flight operation but not yet written. Later
+	 * chunks join it so a burst costs one headless write (and one completion
+	 * callback) instead of one serialized write per chunk. Every applied
+	 * callback in the group sees the same final screen. Any other enqueued
+	 * operation closes the group so output never jumps ahead of it.
+	 */
+	private pendingWrite: {
+		chunks: Uint8Array[];
+		callbacks: Array<(screen: TerminalScreenSnapshot) => void>;
+	} | null = null;
 
 	constructor(cols: number, rows: number, options: TerminalStateMirrorOptions = {}) {
 		const scrollback = options.scrollback ?? TERMINAL_SCROLLBACK;
@@ -132,21 +143,17 @@ export class TerminalStateMirror {
 		}
 
 		const chunkCopy = new Uint8Array(chunk);
-		this.enqueueOperation(
-			() =>
-				new Promise<void>((resolve) => {
-					this.terminal.write(chunkCopy, () => {
-						try {
-							if (onApplied) {
-								onApplied(this.captureVisibleScreen());
-							}
-						} catch {
-							log.warn("terminal applied-output callback failed");
-						}
-						resolve();
-					});
-				}),
-		);
+		if (this.pendingWrite) {
+			this.pendingWrite.chunks.push(chunkCopy);
+			if (onApplied) this.pendingWrite.callbacks.push(onApplied);
+			return;
+		}
+		const group = { chunks: [chunkCopy], callbacks: onApplied ? [onApplied] : [] };
+		this.enqueueOperation(() => {
+			if (this.pendingWrite === group) this.pendingWrite = null;
+			return this.writeAndNotify(mergeChunks(group.chunks), group.callbacks);
+		});
+		this.pendingWrite = group;
 	}
 
 	resize(cols: number, rows: number): void {
@@ -201,6 +208,7 @@ export class TerminalStateMirror {
 		}
 		this.batchBuffer.length = 0;
 		this.batchAppliedCallbacks.length = 0;
+		this.pendingWrite = null;
 		this.terminal.dispose();
 	}
 
@@ -216,35 +224,29 @@ export class TerminalStateMirror {
 		const appliedCallbacks = this.batchAppliedCallbacks;
 		this.batchAppliedCallbacks = [];
 
-		let totalLength = 0;
-		for (const chunk of chunks) {
-			totalLength += chunk.byteLength;
-		}
-		const merged = new Uint8Array(totalLength);
-		let offset = 0;
-		for (const chunk of chunks) {
-			merged.set(chunk, offset);
-			offset += chunk.byteLength;
-		}
+		const merged = mergeChunks(chunks);
+		this.enqueueOperation(() => this.writeAndNotify(merged, appliedCallbacks));
+	}
 
-		this.enqueueOperation(
-			() =>
-				new Promise<void>((resolve) => {
-					this.terminal.write(merged, () => {
-						if (appliedCallbacks.length > 0) {
-							const screen = this.captureVisibleScreen();
-							for (const callback of appliedCallbacks) {
-								try {
-									callback(screen);
-								} catch {
-									log.warn("terminal applied-output callback failed");
-								}
-							}
+	private writeAndNotify(
+		data: Uint8Array,
+		appliedCallbacks: ReadonlyArray<(screen: TerminalScreenSnapshot) => void>,
+	): Promise<void> {
+		return new Promise<void>((resolve) => {
+			this.terminal.write(data, () => {
+				if (appliedCallbacks.length > 0) {
+					const screen = this.captureVisibleScreen();
+					for (const callback of appliedCallbacks) {
+						try {
+							callback(screen);
+						} catch {
+							log.warn("terminal applied-output callback failed");
 						}
-						resolve();
-					});
-				}),
-		);
+					}
+				}
+				resolve();
+			});
+		});
 	}
 
 	private captureVisibleScreen(): TerminalScreenSnapshot {
@@ -262,10 +264,26 @@ export class TerminalStateMirror {
 	}
 
 	private enqueueOperation(operation: () => void | Promise<void>): void {
+		this.pendingWrite = null;
 		this.operationQueue = this.operationQueue
 			.catch(() => undefined)
 			.then(async () => {
 				await operation();
 			});
 	}
+}
+
+function mergeChunks(chunks: readonly Uint8Array[]): Uint8Array {
+	if (chunks.length === 1 && chunks[0]) return chunks[0];
+	let totalLength = 0;
+	for (const chunk of chunks) {
+		totalLength += chunk.byteLength;
+	}
+	const merged = new Uint8Array(totalLength);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return merged;
 }

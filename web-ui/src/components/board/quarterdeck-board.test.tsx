@@ -3,14 +3,27 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuarterdeckBoard, type RequestProgrammaticCardMove } from "@/components/board/quarterdeck-board";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useBoardCard } from "@/hooks/board/use-board-card";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { BoardReplyDrafts } from "@/state/board-reply-drafts";
 import { CardActionsProvider, type ReactiveCardState } from "@/state/card-actions-context";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { BoardData } from "@/types";
+
+// Spy on the per-card hook (wrapping, not replacing, its real implementation)
+// so render-isolation tests can tell which cards actually re-rendered without
+// building new render-count infrastructure. useBoardCard runs unconditionally
+// at the top of BoardCard, so a bailed memo(BoardCard) never invokes it.
+vi.mock("@/hooks/board/use-board-card", async () => {
+	const actual = await vi.importActual<typeof import("@/hooks/board/use-board-card")>("@/hooks/board/use-board-card");
+	return { ...actual, useBoardCard: vi.fn(actual.useBoardCard) };
+});
 
 const reactive: ReactiveCardState = {
 	moveToTrashLoadingById: {},
 	isLlmGenerationDisabled: false,
 };
+const noop = () => {};
 const card = (id: string, unstarted = false) => ({
 	id,
 	unstarted,
@@ -143,5 +156,44 @@ describe("QuarterdeckBoard grid", () => {
 		expect(container.querySelector('[role="link"]')).toBeNull();
 		expect(container.querySelector("textarea")).toBeNull();
 		expect(onAction).not.toHaveBeenCalled();
+	});
+
+	it("does not re-render an unrelated card when only one task's session summary changes", async () => {
+		// Stable (module-scope) no-ops: a fresh inline closure passed as
+		// onCardSelect/onDragEnd on every render would itself defeat the very
+		// memoization this test verifies, the same way an unmemoized caller in
+		// the real app would.
+		function Harness({ taskSessions }: { taskSessions: Record<string, RuntimeTaskSessionSummary> }) {
+			return (
+				<TooltipProvider>
+					<CardActionsProvider stable={{}} reactive={reactive}>
+						<QuarterdeckBoard data={data} taskSessions={taskSessions} onCardSelect={noop} onDragEnd={noop} />
+					</CardActionsProvider>
+				</TooltipProvider>
+			);
+		}
+		const sessionSummary = createTestTaskSessionSummary({
+			taskId: "working",
+			state: "running",
+			agentId: "codex",
+			sessionLaunchPath: "/tmp/project",
+			startedAt: 1,
+			updatedAt: 1,
+			lastOutputAt: 1,
+			lastHookAt: 1,
+		});
+		await act(async () => root.render(<Harness taskSessions={{ working: sessionSummary }} />));
+
+		vi.mocked(useBoardCard).mockClear();
+		const updatedSummary: RuntimeTaskSessionSummary = {
+			...sessionSummary,
+			updatedAt: 2,
+			progressMessage: "halfway there",
+		};
+		await act(async () => root.render(<Harness taskSessions={{ working: updatedSummary }} />));
+
+		const rerenderedTaskIds = vi.mocked(useBoardCard).mock.calls.map(([input]) => input.card.id);
+		expect(rerenderedTaskIds).toContain("working");
+		expect(rerenderedTaskIds).not.toContain("draft");
 	});
 });

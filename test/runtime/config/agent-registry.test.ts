@@ -27,8 +27,10 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 import {
+	AGENT_AVAILABILITY_DISPLAY_TTL_MS,
 	buildRuntimeConfigResponse as buildRuntimeConfigResponseWithCapabilities,
 	detectInstalledCommands,
+	LAUNCH_AGENT_AVAILABILITY_FRESH_MS,
 	parseCodexFeaturesListOutput,
 	resetAgentAvailabilityCache,
 	resolveAgentCommand,
@@ -37,6 +39,7 @@ import {
 	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 	setAgentProbeTimeoutMsForTests,
+	setBinaryIdentityResolverForTests,
 	waitForPendingAgentAvailabilityProbes,
 } from "../../../src/config";
 import { getRuntimeAgentCatalogEntry } from "../../../src/core";
@@ -96,6 +99,11 @@ beforeEach(() => {
 	// timeout; pin that timeout to match instead of the production default so
 	// those advances don't depend on (and don't have to track) that default.
 	setAgentProbeTimeoutMsForTests(3_000);
+	// Stub out real PATH/filesystem identity resolution with a stable value so
+	// every test's cache behavior depends only on the mocked probe/TTL, not on
+	// whatever claude/codex/pi binaries happen to exist on the host machine.
+	// Tests proving identity-change invalidation override this per-call.
+	setBinaryIdentityResolverForTests((binary) => ({ path: `/fake/${binary}`, mtimeMs: 0 }));
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReset();
 	commandDiscoveryMocks.isBinaryAvailableOnPath.mockReturnValue(false);
 	commandDiscoveryMocks.resolveWindowsBinaryPath.mockReset();
@@ -112,6 +120,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	setAgentProbeTimeoutMsForTests(null);
+	setBinaryIdentityResolverForTests(null);
 });
 
 describe("agent-registry", () => {
@@ -308,7 +317,8 @@ describe("agent-registry", () => {
 		const initial = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
 		expect(initial.agents.find((agent) => agent.id === "codex")?.installed).toBe(true);
 
-		vi.setSystemTime(Date.now() + 31_000);
+		// Past the display TTL (not the much shorter launch freshness window).
+		vi.setSystemTime(Date.now() + AGENT_AVAILABILITY_DISPLAY_TTL_MS + 1_000);
 		// The background refresh's probe is intentionally left in flight (callback
 		// never invoked); give it a real `kill` so the real, unref'd probe timeout
 		// armed for it can safely no-op later instead of touching a bare `{}`.
@@ -327,6 +337,76 @@ describe("agent-registry", () => {
 		// both even though its hung version probe's result is what's ultimately
 		// used; the first (successful) pass already issued one of each.
 		expect(featuresCalls).toHaveLength(2);
+	});
+
+	it("serves display reads from cache for minutes, not just seconds, under the lengthened TTL (HP-7)", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+		// Well past the old 30s TTL, but inside the new display TTL: a repeated
+		// display read (e.g. a runtime-stream reconnect on project switch) must
+		// not re-spawn `--version` / `features list`.
+		vi.setSystemTime(Date.now() + 5 * 60 * 1000);
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		const featuresCalls = childProcessMocks.execFile.mock.calls.filter(
+			(call) => call[1]?.[0] === "features" && call[1]?.[1] === "list",
+		);
+		expect(versionCalls).toHaveLength(1);
+		expect(featuresCalls).toHaveLength(1);
+	});
+
+	it("invalidates the display cache immediately when the resolved binary's PATH entry changes", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		setBinaryIdentityResolverForTests(() => ({ path: "/usr/local/bin/codex", mtimeMs: 1 }));
+
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+
+		// A PATH edit resolves the binary to a different file entirely, well
+		// inside the display TTL; this must force a fresh probe rather than
+		// reuse a cache entry describing the previous file.
+		setBinaryIdentityResolverForTests(() => ({ path: "/opt/homebrew/bin/codex", mtimeMs: 1 }));
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		expect(versionCalls).toHaveLength(2);
+	});
+
+	it("invalidates the display cache immediately when the resolved binary's mtime changes (reinstall/upgrade)", async () => {
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+		setBinaryIdentityResolverForTests(() => ({ path: "/usr/local/bin/codex", mtimeMs: 1_000 }));
+
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+
+		// Same resolved path, but the file itself was replaced (upgrade in place):
+		// the mtime differs even though PATH and the file path are unchanged.
+		setBinaryIdentityResolverForTests(() => ({ path: "/usr/local/bin/codex", mtimeMs: 2_000 }));
+		await buildRuntimeConfigResponse(createTestRuntimeConfigState({ selectedAgentId: "codex" }));
+
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		expect(versionCalls).toHaveLength(2);
+	});
+
+	it("keeps task launches on the short freshness window even though display reads now use a long TTL", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "codex");
+
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({ agentId: "codex" });
+
+		// Past the launch freshness window but comfortably inside the much
+		// longer display TTL: a launch must still re-probe instead of reusing
+		// the cache the way a display read now would.
+		vi.setSystemTime(Date.now() + LAUNCH_AGENT_AVAILABILITY_FRESH_MS + 1_000);
+		await expect(
+			resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "codex" })),
+		).resolves.toMatchObject({ agentId: "codex" });
+
+		const versionCalls = childProcessMocks.execFile.mock.calls.filter((call) => call[1]?.[0] === "--version");
+		expect(versionCalls).toHaveLength(2);
 	});
 
 	it("does not cache a transient timeout as agent unavailability", async () => {

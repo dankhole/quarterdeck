@@ -5,6 +5,8 @@
 //
 // Designed as a synchronous, process-agnostic store so it maps 1:1 to a Go interface.
 
+import { isDeepStrictEqual } from "node:util";
+
 import {
 	type CompletedAgentResponse,
 	createTaggedLogger,
@@ -14,6 +16,7 @@ import {
 	type RuntimeTaskProviderHookOrderObservation,
 	type RuntimeTaskSessionSummary,
 } from "../core";
+import { compactProviderHookOrderObservations } from "./hook-event-order";
 import { deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
 import {
 	inferLegacyOutstandingInteraction,
@@ -24,9 +27,62 @@ import {
 
 const storeLog = createTaggedLogger("session-store");
 const MAX_RECENT_PROVIDER_HOOK_DELIVERY_IDS = 128;
+// Compaction keeps only open-turn tool history, so this bounds one long turn.
+// Evicting the previous turn's fence weakens restart replay, so keep it wide.
 const MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS = 512;
 
 export type { SessionTransitionEvent, SessionTransitionResult };
+
+export interface SessionSummaryChange {
+	/** Only presentation fields changed; durable writers skip this change. */
+	presentationOnly: boolean;
+}
+
+type SessionSummaryListener = (summary: RuntimeTaskSessionSummary, change: SessionSummaryChange) => void;
+
+/**
+ * Hook bookkeeping a crash may lose without changing task meaning: delivery
+ * dedupe and ordering receipts (an acknowledged hook is never redelivered),
+ * activity text, timing, and presentation previews.
+ */
+const HOOK_BOOKKEEPING_SUMMARY_FIELDS: ReadonlySet<string> = new Set<keyof RuntimeTaskSessionSummary>([
+	"updatedAt",
+	"lastHookAt",
+	"lastProviderHookOccurredAt",
+	"recentProviderHookDeliveryIds",
+	"recentProviderHookOrderObservations",
+	"latestHookActivity",
+	"progressMessage",
+]);
+
+function nativeWorkIdentity(summary: RuntimeTaskSessionSummary): unknown[] | null {
+	const evidence = summary.nativeWorkEvidence;
+	return evidence
+		? [evidence.provider, evidence.sessionInstanceId, evidence.providerSessionId, evidence.turnId, evidence.promptId]
+		: null;
+}
+
+/**
+ * True when `next` differs from `previous` in anything that carries task
+ * meaning. Unknown fields count as meaningful so new state fails toward
+ * durability. Native work evidence is compared by identity: its refresh time
+ * and hook name change on every tool hook, and cold hydration discards it.
+ */
+export function hasMeaningfulSessionSummaryChange(
+	previous: RuntimeTaskSessionSummary,
+	next: RuntimeTaskSessionSummary,
+): boolean {
+	const fields = new Set([...Object.keys(previous), ...Object.keys(next)]) as Set<keyof RuntimeTaskSessionSummary>;
+	for (const field of fields) {
+		if (HOOK_BOOKKEEPING_SUMMARY_FIELDS.has(field)) continue;
+		if (field === "nativeWorkEvidence") {
+			if (!isDeepStrictEqual(nativeWorkIdentity(previous), nativeWorkIdentity(next))) return true;
+			continue;
+		}
+		if (!isDeepStrictEqual(previous[field], next[field])) return true;
+	}
+	return false;
+}
 
 export interface SessionSummaryStore {
 	// Reads
@@ -39,6 +95,11 @@ export interface SessionSummaryStore {
 
 	// Low-level update (used by session-manager for PTY event patches)
 	update(taskId: string, patch: Partial<RuntimeTaskSessionSummary>): RuntimeTaskSessionSummary | null;
+	/** Presentation-only update; listeners see `presentationOnly` and durable writers skip it. */
+	updatePresentation(
+		taskId: string,
+		patch: Pick<RuntimeTaskSessionSummary, "progressMessage">,
+	): RuntimeTaskSessionSummary | null;
 
 	// State machine transitions
 	applySessionEvent(
@@ -66,7 +127,7 @@ export interface SessionSummaryStore {
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null;
 
 	// Subscription
-	onChange(listener: (summary: RuntimeTaskSessionSummary) => void): () => void;
+	onChange(listener: SessionSummaryListener): () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -246,7 +307,7 @@ function buildHookMetadataPatch(
 
 export class InMemorySessionSummaryStore implements SessionSummaryStore {
 	private readonly entries = new Map<string, RuntimeTaskSessionSummary>();
-	private readonly listeners = new Set<(summary: RuntimeTaskSessionSummary) => void>();
+	private readonly listeners = new Set<SessionSummaryListener>();
 
 	// ── Reads ─────────────────────────────────────────────────────────────
 
@@ -268,6 +329,11 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 			});
 			migrated.outstandingInteraction =
 				migrated.outstandingInteraction ?? inferLegacyOutstandingInteraction(migrated);
+			// Older runtimes kept uncompacted receipts; shrink them on the next write.
+			migrated.recentProviderHookOrderObservations = compactProviderHookOrderObservations(
+				migrated.recentProviderHookOrderObservations,
+				MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS,
+			);
 			this.entries.set(taskId, migrated);
 		}
 	}
@@ -296,6 +362,25 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		});
 		this.entries.set(taskId, updated);
 		this.emit(updated);
+		return cloneSummary(updated);
+	}
+
+	updatePresentation(
+		taskId: string,
+		patch: Pick<RuntimeTaskSessionSummary, "progressMessage">,
+	): RuntimeTaskSessionSummary | null {
+		const entry = this.entries.get(taskId);
+		if (!entry) {
+			return null;
+		}
+		const updated = normalizeRuntimeTaskSessionSummary({
+			...entry,
+			...patch,
+			updatedAt: now(),
+		});
+		this.entries.set(taskId, updated);
+		// Normalization could change more than the patch; never let that skip a write.
+		this.emit(updated, { presentationOnly: !hasMeaningfulSessionSummaryChange(entry, updated) });
 		return cloneSummary(updated);
 	}
 
@@ -368,8 +453,9 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 					),
 			recentProviderHookOrderObservations: hasObservation
 				? entry.recentProviderHookOrderObservations
-				: [...entry.recentProviderHookOrderObservations, observation].slice(
-						-MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS,
+				: compactProviderHookOrderObservations(
+						[...entry.recentProviderHookOrderObservations, observation],
+						MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS,
 					),
 			updatedAt: now(),
 		};
@@ -517,7 +603,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 
 	// ── Subscription ──────────────────────────────────────────────────────
 
-	onChange(listener: (summary: RuntimeTaskSessionSummary) => void): () => void {
+	onChange(listener: SessionSummaryListener): () => void {
 		this.listeners.add(listener);
 		return () => {
 			this.listeners.delete(listener);
@@ -526,10 +612,10 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 
 	// ── Internal ──────────────────────────────────────────────────────────
 
-	private emit(summary: RuntimeTaskSessionSummary): void {
+	private emit(summary: RuntimeTaskSessionSummary, change: SessionSummaryChange = { presentationOnly: false }): void {
 		const snapshot = cloneSummary(summary);
 		for (const listener of this.listeners) {
-			listener(snapshot);
+			listener(snapshot, change);
 		}
 	}
 }

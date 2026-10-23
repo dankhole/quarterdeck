@@ -176,6 +176,9 @@ async function createRuntimeBootstrapState(
 		onProjectAvailabilityChanged: () => {
 			void runtimeStateHub?.broadcastRuntimeProjectsUpdated(registryForCallbacks?.getActiveProjectId() ?? null);
 		},
+		onDeferredProjectSummaryReady: () => {
+			void runtimeStateHub?.broadcastRuntimeProjectsUpdated(registryForCallbacks?.getActiveProjectId() ?? null);
+		},
 		pathIsDirectory,
 		diagnostics,
 		waitForStartupAgentCleanup: async () => await startupAgentCleanup,

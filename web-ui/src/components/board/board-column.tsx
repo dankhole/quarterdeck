@@ -1,9 +1,8 @@
 import { useDroppable } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useState } from "react";
 import { BoardCard } from "@/components/board/board-card";
-import { BoardCardConversation } from "@/components/board/board-card-conversation";
 import { SortableBoardCard } from "@/components/board/sortable-board-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -69,6 +68,23 @@ export function BoardColumn({
 	const open = !isTrash || trashOpen;
 	const { setNodeRef, isOver } = useDroppable({ id: column.id, disabled: isDropDisabled });
 	const cards = sortColumnCards(column.cards, column.id);
+
+	// One stable callback per column, not one per card: the id-taking signature
+	// lets every card in the column share the same function reference across
+	// renders (looked up by id on click), instead of each card receiving a
+	// fresh inline closure that would defeat memo(BoardCard) on every render.
+	const handleCardClick = useCallback(
+		(taskId: string) => {
+			const card = column.cards.find((candidate) => candidate.id === taskId);
+			if (!card) return;
+			if (column.id === "review" && card.unstarted) {
+				onEditTask?.(card);
+				return;
+			}
+			onCardClick?.(card);
+		},
+		[column.cards, column.id, onEditTask, onCardClick],
+	);
 
 	return (
 		<section
@@ -155,20 +171,7 @@ export function BoardColumn({
 												readOnly={readOnly}
 												rich={column.id !== "trash"}
 												dragHandle={handle}
-												conversation={
-													column.id !== "trash"
-														? (statusBadges) => (
-																<BoardCardConversation
-																	card={card}
-																	columnId={column.id}
-																	summary={taskSessions[card.id]}
-																	replyScope={replyScope}
-																	statusBadges={statusBadges}
-																	readOnly={readOnly}
-																/>
-															)
-														: undefined
-												}
+												replyScope={replyScope}
 												card={card}
 												index={index}
 												columnId={column.id}
@@ -182,13 +185,7 @@ export function BoardColumn({
 												onUpdateTitle={onUpdateTaskTitle}
 												onTogglePin={onTogglePinTask}
 												isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
-												onClick={() => {
-													if (column.id === "review" && card.unstarted) {
-														onEditTask?.(card);
-														return;
-													}
-													onCardClick?.(card);
-												}}
+												onClick={handleCardClick}
 											/>
 										)}
 									</SortableBoardCard>

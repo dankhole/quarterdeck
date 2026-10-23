@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BoardCard } from "@/components/board/board-card";
-import { BoardCardConversation } from "@/components/board/board-card-conversation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { BoardReplyDrafts } from "@/state/board-reply-drafts";
@@ -157,15 +156,7 @@ describe("BoardCard", () => {
 						onClick={onClick}
 						onDoubleClick={onDoubleClick}
 						sessionSummary={summary}
-						conversation={(statusBadges) => (
-							<BoardCardConversation
-								card={card}
-								columnId="review"
-								summary={summary}
-								statusBadges={statusBadges}
-								replyScope={{ projectId: "project", drafts, sendInput: vi.fn() }}
-							/>
-						)}
+						replyScope={{ projectId: "project", drafts, sendInput: vi.fn() }}
 					/>
 				</Providers>,
 			);

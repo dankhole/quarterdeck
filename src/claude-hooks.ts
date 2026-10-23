@@ -42,7 +42,8 @@ function buildClaudeHookHandler(
 // The same best-effort delivery as `hooks notify --event <event> --source claude`
 // without spawning a process. The URL carries no credential: Claude interpolates
 // the task-session identity and its launch-scoped credential into headers from
-// allowlisted environment variables. Reliable events never use this transport.
+// allowlisted environment variables. Reliable events never use this transport;
+// ordinary PreToolUse is deliberately best-effort here (see the settings builder).
 function buildClaudeHttpNotifyHook(event: RuntimeHookEvent, transport: HookHttpTransport): ClaudeHttpHook {
 	const url = new URL(transport.url);
 	url.searchParams.set("event", event);
@@ -112,13 +113,25 @@ export function buildClaudeHooksSettings(): ClaudeHooksSettings {
 export function buildClaudeHttpHooksSettings(options: {
 	httpNotify: HookHttpTransport;
 }): ClaudeHooksSettings<ClaudeHookHandler> {
-	return buildSettings((event, hookOptions) =>
-		buildClaudeHookHandler(event, { ...hookOptions, httpNotify: options.httpNotify }),
+	return buildSettings(
+		(event, hookOptions) => buildClaudeHookHandler(event, { ...hookOptions, httpNotify: options.httpNotify }),
+		// Ordinary tool starts are ~a third of all hooks and Claude blocks the tool
+		// on them. Losing one only drops activity and an ordering receipt (permission
+		// correlation then fails closed); the next reliable hook restores Running.
+		// The reducer treats a PreToolUse `activity` like `to_in_progress`, so it may
+		// still refresh or restore Running. A failed HTTP hook never blocks the tool.
+		() => buildClaudeHttpNotifyHook("activity", options.httpNotify),
 	);
 }
 
+/** Tools whose PreToolUse opens a user interaction and so must stay reliable. */
+export const CLAUDE_INTERACTION_TOOL_MATCHER = "AskUserQuestion|ExitPlanMode";
+// Claude evaluates matchers with regex syntax as unanchored JavaScript RegExps.
+export const CLAUDE_NON_INTERACTION_TOOL_MATCHER = "^(?!(?:AskUserQuestion|ExitPlanMode)$)";
+
 function buildSettings<THook extends ClaudeHookHandler>(
 	hook: (event: RuntimeHookEvent, options?: { reliable?: boolean }) => THook,
+	bestEffortToolStart?: () => THook,
 ): ClaudeHooksSettings<THook> {
 	return {
 		hooks: {
@@ -133,12 +146,23 @@ function buildSettings<THook extends ClaudeHookHandler>(
 					hooks: [hook("to_in_progress")],
 				},
 			],
-			PreToolUse: [
-				{
-					matcher: "*",
-					hooks: [hook("to_in_progress")],
-				},
-			],
+			PreToolUse: bestEffortToolStart
+				? [
+						{
+							matcher: CLAUDE_INTERACTION_TOOL_MATCHER,
+							hooks: [hook("to_in_progress")],
+						},
+						{
+							matcher: CLAUDE_NON_INTERACTION_TOOL_MATCHER,
+							hooks: [bestEffortToolStart()],
+						},
+					]
+				: [
+						{
+							matcher: "*",
+							hooks: [hook("to_in_progress")],
+						},
+					],
 			PermissionRequest: [
 				{
 					matcher: "*",

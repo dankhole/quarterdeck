@@ -67,7 +67,7 @@ describe("incremental task progress preview delivery", () => {
 	it("polls active sources without another hook and avoids unchanged store updates", async () => {
 		vi.useFakeTimers();
 		const { store, service, observe, read } = setup();
-		const update = vi.spyOn(store, "update");
+		const update = vi.spyOn(store, "updatePresentation");
 		try {
 			observe();
 			await service.refresh();

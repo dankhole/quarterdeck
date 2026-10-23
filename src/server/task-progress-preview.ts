@@ -112,7 +112,7 @@ export function createTaskProgressPreview(deps: {
 					hasMore ||= result.hasMore;
 					const { summary } = latest;
 					if ((summary.progressMessage ?? null) !== result.text) {
-						observed.store.update(target.taskId, { progressMessage: result.text });
+						observed.store.updatePresentation(target.taskId, { progressMessage: result.text });
 					}
 				} catch {
 					// Optional previews fail closed without content logging or lifecycle effects.
@@ -153,7 +153,7 @@ export function createTaskProgressPreview(deps: {
 			epoch = { identity, since: now() };
 			taskEpochs.set(taskId, epoch);
 			if (target) retire(target);
-			if (summary.progressMessage) store.update(taskId, { progressMessage: null });
+			if (summary.progressMessage) store.updatePresentation(taskId, { progressMessage: null });
 		}
 		while (taskEpochs.size > MAX_RETAINED_CURSORS) {
 			const oldest = taskEpochs.keys().next().value;

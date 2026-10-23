@@ -91,6 +91,32 @@ describe("RuntimeSessionPersistence", () => {
 		}
 	});
 
+	it("does not schedule a write for presentation-only progress updates", async () => {
+		vi.useFakeTimers();
+		const dependencies = createDependencies();
+		const reconcileRuntimeSessions = vi.mocked(dependencies.boardCommands.reconcileRuntimeSessions);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1", state: "running" }) });
+		persistence.trackTerminalManager("project-1", new TerminalSessionManager(store));
+		try {
+			await vi.advanceTimersByTimeAsync(1_000);
+			reconcileRuntimeSessions.mockClear();
+			for (let tick = 0; tick < 5; tick += 1) {
+				store.updatePresentation("task-1", { progressMessage: `step ${tick}` });
+				await vi.advanceTimersByTimeAsync(1_000);
+			}
+			expect(reconcileRuntimeSessions).not.toHaveBeenCalled();
+
+			store.update("task-1", { warningMessage: "durable change" });
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+		} finally {
+			await persistence.close({ skipPersistence: true });
+			vi.useRealTimers();
+		}
+	});
+
 	it("persists terminal-store changes through the runtime board authority without a browser client", async () => {
 		vi.useFakeTimers();
 		const dependencies = createDependencies();

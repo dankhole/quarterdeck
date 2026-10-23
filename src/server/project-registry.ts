@@ -39,9 +39,10 @@ import {
 	type RuntimeProjectIndexEntry,
 	updateProjectIndexMetadata,
 } from "../state";
+import { projectBoardReadCache } from "../state/project-board-read-cache.js";
 import { upgradeProjectDirectoryIdentities } from "../state/project-directory-identity-upgrade";
 import { ProjectExecutionOwnershipStore } from "../state/project-execution-ownership-store";
-import { loadProjectBoardRevisionById, readProjectNavigationIndex } from "../state/project-state-index.js";
+import { readProjectNavigationIndex } from "../state/project-state-index.js";
 import { detectGitRepositoryInfo, invalidateGitRepositoryInfoCache } from "../state/project-state-utils";
 import {
 	deriveStartupRecoveryPolicy,
@@ -59,6 +60,8 @@ import { launchPreparedTaskSession, prepareTaskSessionStart } from "./task-sessi
 const registryLog = createTaggedLogger("project-registry");
 const STARTUP_RESUME_SKIP_SAMPLE_LIMIT = 5;
 export const PROJECT_STREAM_VALIDATION_CONCURRENCY = 4;
+/** A project-list build serves a project's previous summary once its rebuild exceeds this. */
+export const PROJECT_SUMMARY_TIME_BOX_MS = 1_000;
 
 // Startup resume selection is still small enough to live near the registry
 // entry point. If it gains more agent-specific rules or scan outcomes, extract
@@ -141,6 +144,10 @@ export interface CreateProjectRegistryDependencies {
 	pathIsDirectory: (path: string) => Promise<boolean>;
 	waitForStartupAgentCleanup?: () => Promise<void>;
 	onTerminalManagerReady?: (projectId: string, manager: TerminalSessionManager) => void;
+	/** Override for {@link PROJECT_SUMMARY_TIME_BOX_MS}. */
+	projectSummaryTimeBoxMs?: number;
+	/** A time-boxed summary finished differently from the previous one a list served; republish the list. */
+	onDeferredProjectSummaryReady?: (projectId: string) => void;
 	diagnostics?: RuntimeDiagnostics;
 }
 
@@ -342,6 +349,10 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	const terminalManagersByProjectId = new Map<string, TerminalSessionManager>();
 	const terminalManagerLoadPromises = new Map<string, Promise<TerminalSessionManager>>();
 	const summaryCache = new ProjectSummaryCache();
+	const projectSummaryRefreshes = new Map<string, CoalescedRefresh<RuntimeProjectSummary>>();
+	const projectSummaryTimeBoxMs = deps.projectSummaryTimeBoxMs ?? PROJECT_SUMMARY_TIME_BOX_MS;
+	// Log a time-boxed project once per slow episode, not on every list publication.
+	const timeBoxedProjectIds = new Set<string>();
 	const projectsPayloadRefresh = new CoalescedRefresh<ProjectsPayloadBase>();
 	const availabilityObserver = new ProjectAvailabilityObserver({
 		loadScope: loadProjectScopeById,
@@ -602,6 +613,9 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 		projectPathsById.delete(projectId);
 		availabilityObserver.forget(projectId);
 		summaryCache.purge(projectId);
+		projectSummaryRefreshes.delete(projectId);
+		timeBoxedProjectIds.delete(projectId);
+		projectBoardReadCache.forget(projectId);
 		if (projectPath) invalidateGitRepositoryInfoCache(projectPath);
 		for (const [key, deferred] of deferredStartupRecoveries) {
 			if (deferred.projectId === projectId) deferredStartupRecoveries.delete(key);
@@ -657,6 +671,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 	};
 
 	const buildProjectSummary = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
+		const cacheEpoch = summaryCache.epoch(projectId);
 		// List rebuilds never spawn Git for a project already observed: they reuse its
 		// last Git answer, while directory, identity, and journal checks still run.
 		const availability = await checkProjectAvailability(projectId, "lastKnown");
@@ -669,10 +684,12 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			metadataRevision: scope?.metadataRevision,
 			availability,
 		};
-		// Validate cheaply by board revision before reading and parsing the board.
+		// Validate by board revision before reading and parsing the board. The
+		// revision read is lock-free while meta.json is unchanged, so publications
+		// do not queue behind (or ahead of) every project's hook ingest.
 		const cached = summaryCache.get(projectId, {
 			...summaryInput,
-			boardRevision: await loadProjectBoardRevisionById(projectId),
+			boardRevision: await projectBoardReadCache.loadBoardRevision(projectId),
 		});
 		if (cached) return cached;
 		const snapshot = await loadProjectBoardSnapshotById(projectId);
@@ -681,8 +698,53 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 			board: snapshot.board,
 			boardRevision: snapshot.revision,
 		});
-		summaryCache.set(projectId, { ...summaryInput, boardRevision: snapshot.revision }, summary);
+		summaryCache.set(projectId, { ...summaryInput, boardRevision: snapshot.revision }, summary, cacheEpoch);
 		return summary;
+	};
+
+	/**
+	 * One slow project (a long-held state lock, a stalled disk) must not hold the
+	 * whole list. Rebuilds per project are coalesced, so a stuck one never piles
+	 * up waiters; past the time box the list serves that project's previous
+	 * summary, and a later different result requests a fresh list publication.
+	 */
+	const buildProjectSummaryTimeBoxed = async (projectId: string, repoPath: string): Promise<RuntimeProjectSummary> => {
+		let refresh = projectSummaryRefreshes.get(projectId);
+		if (!refresh) {
+			refresh = new CoalescedRefresh<RuntimeProjectSummary>();
+			projectSummaryRefreshes.set(projectId, refresh);
+		}
+		const build = refresh.run(async () => await buildProjectSummary(projectId, repoPath));
+		const previous = summaryCache.getLast(projectId, repoPath);
+		if (!previous) return await build;
+		let timer: NodeJS.Timeout | undefined;
+		const timedOut = new Promise<null>((resolve) => {
+			timer = setTimeout(() => resolve(null), projectSummaryTimeBoxMs);
+			timer.unref();
+		});
+		try {
+			const summary = await Promise.race([build, timedOut]);
+			if (summary) {
+				timeBoxedProjectIds.delete(projectId);
+				return summary;
+			}
+		} finally {
+			clearTimeout(timer);
+		}
+		if (!timeBoxedProjectIds.has(projectId)) {
+			timeBoxedProjectIds.add(projectId);
+			registryLog.warn("project summary exceeded its time box; serving the previous summary", {
+				projectId,
+				timeBoxMs: projectSummaryTimeBoxMs,
+			});
+		}
+		void build.then(
+			(summary) => {
+				if (summary !== previous) deps.onDeferredProjectSummaryReady?.(projectId);
+			},
+			() => {},
+		);
+		return previous;
 	};
 
 	const buildProjectStateSnapshot = async (projectId: string): Promise<RuntimeProjectStateResponse> =>
@@ -761,7 +823,7 @@ export async function createProjectRegistry(deps: CreateProjectRegistryDependenc
 				projects: entries,
 				organization,
 				summaries: await Promise.all(
-					entries.map((project) => limit(() => buildProjectSummary(project.projectId, project.repoPath))),
+					entries.map((project) => limit(() => buildProjectSummaryTimeBoxed(project.projectId, project.repoPath))),
 				),
 			};
 		});

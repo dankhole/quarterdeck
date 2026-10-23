@@ -5,6 +5,7 @@ import {
 	buildClaudeHttpHooksSettings,
 	CLAUDE_HTTP_HOOK_TIMEOUT_SECONDS,
 	CLAUDE_INGEST_HOOK_TIMEOUT_SECONDS,
+	CLAUDE_INTERACTION_TOOL_MATCHER,
 	CLAUDE_NOTIFY_HOOK_TIMEOUT_SECONDS,
 	type ClaudeHooksSettings,
 } from "../../src/claude-hooks";
@@ -162,6 +163,8 @@ describe("buildClaudeHttpHooksSettings", () => {
 		expect(notifyEvents).toEqual(BEST_EFFORT_EVENTS);
 
 		for (const [name, groups] of Object.entries(httpSettings.hooks)) {
+			// PreToolUse splits by tool; covered by its own test below.
+			if (name === "PreToolUse") continue;
 			const commandGroups = commandSettings.hooks[name as keyof ClaudeHooksSettings["hooks"]];
 			expect(groups.map((group) => group.matcher)).toEqual(commandGroups.map((group) => group.matcher));
 			if (BEST_EFFORT_EVENTS.includes(name)) {
@@ -186,6 +189,41 @@ describe("buildClaudeHttpHooksSettings", () => {
 			command: hookCommand("activity", { reliable: true }),
 			timeout: CLAUDE_INGEST_HOOK_TIMEOUT_SECONDS,
 		});
+	});
+
+	it("sends ordinary tool starts over HTTP and keeps interaction-opening tools on reliable ingest", () => {
+		const transport = publishedTransport();
+		const [interactionGroup, toolGroup, ...rest] = buildClaudeHttpHooksSettings({ httpNotify: transport }).hooks
+			.PreToolUse;
+		expect(rest).toEqual([]);
+		expect(interactionGroup).toEqual({
+			matcher: CLAUDE_INTERACTION_TOOL_MATCHER,
+			hooks: [
+				{ type: "command", command: hookCommand("to_in_progress"), timeout: CLAUDE_INGEST_HOOK_TIMEOUT_SECONDS },
+			],
+		});
+		expect(toolGroup?.hooks).toEqual([
+			{
+				type: "http",
+				url: `${transport.url}?event=activity&source=claude`,
+				timeout: CLAUDE_HTTP_HOOK_TIMEOUT_SECONDS,
+				headers: transport.headers,
+				allowedEnvVars: transport.allowedEnvVars,
+			},
+		]);
+
+		// Mirrors Claude's matcher rules: an exact `|` list, and an unanchored
+		// JavaScript RegExp for anything with other characters.
+		const exact = new Set(CLAUDE_INTERACTION_TOOL_MATCHER.split("|"));
+		const toolPattern = new RegExp(toolGroup?.matcher ?? "");
+		for (const tool of ["AskUserQuestion", "ExitPlanMode"]) {
+			expect(exact.has(tool)).toBe(true);
+			expect(toolPattern.test(tool)).toBe(false);
+		}
+		for (const tool of ["Bash", "Read", "Edit", "mcp__github__create_issue", "AskUserQuestionTool", "Task"]) {
+			expect(exact.has(tool)).toBe(false);
+			expect(toolPattern.test(tool)).toBe(true);
+		}
 	});
 
 	it("keeps credentials and identity out of the URL and interpolates them only from allowlisted env vars", () => {

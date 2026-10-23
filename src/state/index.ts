@@ -10,6 +10,11 @@ export {
 	type ProjectBoardUntitledTaskCreatedEffect,
 } from "./project-board-command-service";
 export {
+	PROJECT_BOARD_READ_CACHE_ENABLED,
+	ProjectBoardReadCache,
+	projectBoardReadCache,
+} from "./project-board-read-cache";
+export {
 	ExecutionOperationIdentityConflictError,
 	ExecutionOwnershipBusyError,
 	ExecutionOwnershipGenerationConflictError,
