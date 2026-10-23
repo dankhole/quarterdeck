@@ -23,7 +23,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 import { installRuntimeProcessLaunchAdmission } from "../../src/core/runtime-process-launch-admission";
 import { ProjectMetadataRemoteFetchPolicy } from "../../src/server/project-metadata-remote-fetch";
 import { runGitSyncAction } from "../../src/workdir/git-sync";
-import { runGit } from "../../src/workdir/git-utils";
+import {
+	GIT_FOREGROUND_RESERVED_SLOTS,
+	GIT_PROCESS_CONCURRENCY_LIMIT,
+	getGitProcessLimiterSnapshot,
+	runGit,
+} from "../../src/workdir/git-utils";
 import { createGitTestEnv, runGit as fixtureGit, initGitRepository } from "../utilities/git-env";
 import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
@@ -34,6 +39,7 @@ interface RemoteProcess {
 	args: string[];
 	cwd: string;
 	complete: (error?: nodeChildProcess.ExecFileException) => void;
+	kill: ReturnType<typeof vi.fn>;
 }
 
 describe("Git remote command coordination", () => {
@@ -71,12 +77,14 @@ describe("Git remote command coordination", () => {
 					callback: (error: nodeChildProcess.ExecFileException | null, stdout: string, stderr: string) => void,
 				) => {
 					if (args.some((arg) => arg === "fetch" || arg === "pull" || arg === "push")) {
+						const kill = vi.fn(() => true);
 						remoteProcesses.push({
+							kill,
 							args,
 							cwd: options.cwd,
 							complete: (error) => callback(error ?? null, "", error ? "fatal: synthetic remote failure" : ""),
 						});
-						return { pid: 12_345, kill: vi.fn(() => true) };
+						return { pid: 12_345, kill };
 					}
 					return processMocks.realExecFile(binary, args, options, callback);
 				},
@@ -153,6 +161,112 @@ describe("Git remote command coordination", () => {
 		await expect(pull).resolves.toMatchObject({ ok: true, action: "pull" });
 		await policy.waitForIdle();
 		expect(onFetchSucceeded).toHaveBeenCalledOnce();
+	});
+
+	it("disposes a policy fetch waiting for background Git capacity without spawning its identity probe or fetch", async () => {
+		const releases: Array<() => void> = [];
+		const held: Array<ReturnType<typeof runGit>> = [];
+		const capacity = GIT_PROCESS_CONCURRENCY_LIMIT - GIT_FOREGROUND_RESERVED_SLOTS;
+		const onFetchSucceeded = vi.fn(async () => undefined);
+		const onFetchCompleted = vi.fn();
+		try {
+			for (let index = 0; index < capacity; index += 1) {
+				processMocks.execFile.mockImplementationOnce(
+					(
+						_binary: string,
+						_args: string[],
+						_options: unknown,
+						callback: (error: null, stdout: string, stderr: string) => void,
+					) => {
+						releases.push(() => callback(null, "", ""));
+						return { pid: 12_345, kill: vi.fn(() => true) };
+					},
+				);
+			}
+			held.push(...Array.from({ length: capacity }, () => runGit(repo, ["status"], { timeoutClass: "metadata" })));
+			await vi.waitFor(() => expect(releases).toHaveLength(capacity));
+			policy = new ProjectMetadataRemoteFetchPolicy({
+				getProjectPath: () => repo,
+				limitRemoteFetch: async (fetch) => await fetch(),
+				onFetchSucceeded,
+				onFetchCompleted,
+			});
+			policy.requestFetch();
+			await vi.waitFor(() => expect(getGitProcessLimiterSnapshot().queued.background).toBe(1));
+			policy.dispose();
+			await policy.waitForIdle();
+			for (const release of releases.splice(0)) release();
+			await Promise.all(held);
+			expect(processMocks.execFile).toHaveBeenCalledTimes(capacity);
+			expect(fsMocks.realpath).not.toHaveBeenCalled();
+			expect(remoteProcesses).toHaveLength(0);
+			expect(onFetchSucceeded).not.toHaveBeenCalled();
+			expect(onFetchCompleted).not.toHaveBeenCalled();
+			expect(policy.getDiagnosticSnapshot()).toMatchObject({
+				fetchInFlight: false,
+				lastSucceeded: null,
+				lastErrorClass: null,
+			});
+		} finally {
+			policy?.dispose();
+			for (const release of releases) release();
+			await Promise.all(held);
+		}
+	});
+
+	it("disposes a policy fetch waiting behind a shared-repository push without spawning fetch", async () => {
+		const push = runGit(repo, ["push"], { timeoutClass: "userAction" });
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
+		const onFetchSucceeded = vi.fn(async () => undefined);
+		const onFetchCompleted = vi.fn();
+		policy = new ProjectMetadataRemoteFetchPolicy({
+			getProjectPath: () => worktree,
+			limitRemoteFetch: async (fetch) => await fetch(),
+			onFetchSucceeded,
+			onFetchCompleted,
+		});
+		policy.requestFetch();
+		await waitForCanonicalizations(2);
+		policy.dispose();
+		let drained = false;
+		const idle = policy.waitForIdle().then(() => {
+			drained = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(drained).toBe(false);
+		remoteProcesses[0].complete();
+		await expect(push).resolves.toMatchObject({ ok: true });
+		await idle;
+		expect(remoteProcesses).toHaveLength(1);
+		expect(onFetchSucceeded).not.toHaveBeenCalled();
+		expect(onFetchCompleted).not.toHaveBeenCalled();
+		expect(policy.getDiagnosticSnapshot()).toMatchObject({
+			fetchInFlight: false,
+			lastSucceeded: null,
+			lastErrorClass: null,
+		});
+	});
+
+	it("does not kill a policy fetch whose Git process already started on terminal disposal", async () => {
+		const onFetchSucceeded = vi.fn(async () => undefined);
+		const onFetchCompleted = vi.fn();
+		policy = new ProjectMetadataRemoteFetchPolicy({
+			getProjectPath: () => repo,
+			limitRemoteFetch: async (fetch) => await fetch(),
+			onFetchSucceeded,
+			onFetchCompleted,
+		});
+		policy.requestFetch();
+		await vi.waitFor(() => expect(remoteProcesses).toHaveLength(1), { timeout: 10_000 });
+		policy.dispose();
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(remoteProcesses[0].kill).not.toHaveBeenCalled();
+		expect(policy.getDiagnosticSnapshot().fetchInFlight).toBe(true);
+		remoteProcesses[0].complete();
+		await policy.waitForIdle();
+		expect(remoteProcesses[0].kill).not.toHaveBeenCalled();
+		expect(onFetchSucceeded).not.toHaveBeenCalled();
+		expect(onFetchCompleted).toHaveBeenCalledWith(expect.objectContaining({ succeeded: true, errorClass: null }));
 	});
 
 	it("admits the next remote command after a failed command", async () => {

@@ -2,11 +2,11 @@
 // corrective actions. The individual check functions live in session-reconciliation.ts;
 // this module owns the timer lifecycle and action execution.
 
-import { existsSync } from "node:fs";
 import type { RuntimeTaskSessionSummary } from "../core";
 import { createTaggedLogger } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
+import { probeSessionLaunchPaths } from "./session-launch-path-probe";
 import type { ProcessEntry } from "./session-manager-types";
 import { finalizeProcessExit } from "./session-manager-types";
 import { type ReconciliationAction, reconciliationChecks } from "./session-reconciliation";
@@ -28,17 +28,47 @@ export interface ReconciliationSweepContext {
 	recoverMissingLaunchPath: (entry: ProcessEntry, warningMessage: string) => RuntimeTaskSessionSummary | null;
 }
 
-/** Run one reconciliation sweep across all active entries. */
-export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
+/** Run one reconciliation sweep, fencing path results to the captured launch. */
+export async function reconcileSessionStates(
+	ctx: ReconciliationSweepContext,
+	isCurrent: () => boolean = () => true,
+): Promise<void> {
+	const launches = new Map<ProcessEntry, { active: NonNullable<ProcessEntry["active"]>; sessionLaunchPath: string }>();
+	for (const entry of ctx.entries.values()) {
+		try {
+			const summary = ctx.store.getSummary(entry.taskId);
+			if (
+				summary &&
+				(summary.state === "running" || summary.state === "awaiting_review") &&
+				summary.sessionLaunchPath &&
+				entry.active
+			) {
+				launches.set(entry, { active: entry.active, sessionLaunchPath: summary.sessionLaunchPath });
+			}
+		} catch {
+			// The main evaluation loop reports failed summary reads once per entry.
+		}
+	}
+	const pathResults = launches.size
+		? await probeSessionLaunchPaths([...launches.values()].map((launch) => launch.sessionLaunchPath))
+		: new Map<string, boolean | null>();
+	if (!isCurrent()) return;
+
 	const nowMs = Date.now();
 	for (const entry of ctx.entries.values()) {
+		if (!isCurrent()) return;
 		try {
 			const summary = ctx.store.getSummary(entry.taskId);
 			if (!summary || (summary.state !== "running" && summary.state !== "awaiting_review")) {
 				continue;
 			}
 
-			const sessionLaunchPathExists = summary.sessionLaunchPath ? existsSync(summary.sessionLaunchPath) : null;
+			// Keying captured launches by entry object fences replacement entries.
+			const launch = launches.get(entry);
+			const sessionLaunchPathExists =
+				launch && entry.active === launch.active && summary.sessionLaunchPath === launch.sessionLaunchPath
+					? (pathResults.get(launch.sessionLaunchPath) ?? null)
+					: null;
 			for (const check of reconciliationChecks) {
 				const action = check(
 					{
@@ -54,6 +84,8 @@ export function reconcileSessionStates(ctx: ReconciliationSweepContext): void {
 					nowMs,
 				);
 				if (action) {
+					if (!isCurrent()) return;
+					if (ctx.entries.get(entry.taskId) !== entry) break;
 					applyReconciliationAction(entry, action, ctx);
 					break;
 				}
@@ -120,6 +152,8 @@ export interface ReconciliationTimer {
 /** Creates and manages the periodic reconciliation interval timer. */
 export function createReconciliationTimer(ctx: ReconciliationSweepContext): ReconciliationTimer {
 	let timer: NodeJS.Timeout | null = null;
+	let generation = 0;
+	let inFlight = false;
 
 	return {
 		start() {
@@ -127,11 +161,23 @@ export function createReconciliationTimer(ctx: ReconciliationSweepContext): Reco
 				return;
 			}
 			timer = setInterval(() => {
-				reconcileSessionStates(ctx);
+				if (inFlight) return;
+				inFlight = true;
+				const sweepGeneration = generation;
+				void reconcileSessionStates(ctx, () => generation === sweepGeneration)
+					.catch((err: unknown) => {
+						sessionLog.error("Reconciliation sweep failed", {
+							error: err instanceof Error ? err.message : String(err),
+						});
+					})
+					.finally(() => {
+						inFlight = false;
+					});
 			}, SESSION_RECONCILIATION_INTERVAL_MS);
 			timer.unref();
 		},
 		stop() {
+			generation += 1;
 			if (timer) {
 				clearInterval(timer);
 				timer = null;

@@ -30,7 +30,11 @@ const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 export const GIT_PROCESS_CONCURRENCY_LIMIT = 8;
 /** Slots that `userAction` and background commands may never occupy. */
 export const GIT_FOREGROUND_RESERVED_SLOTS = 2;
-const gitProcessLimiter = new GitProcessLimiter(GIT_PROCESS_CONCURRENCY_LIMIT, GIT_FOREGROUND_RESERVED_SLOTS);
+/** Maximum simultaneous explicit long-running user commands. */
+export const GIT_USER_ACTION_CONCURRENCY_LIMIT = 3;
+const gitProcessLimiter = new GitProcessLimiter(GIT_PROCESS_CONCURRENCY_LIMIT, GIT_FOREGROUND_RESERVED_SLOTS, {
+	userActionLimit: GIT_USER_ACTION_CONCURRENCY_LIMIT,
+});
 /**
  * Longest a foreground command waits for a process slot. Exceeding it yields an
  * indeterminate `queue_timed_out` failure instead of an unbounded admission wait.

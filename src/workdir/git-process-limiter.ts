@@ -9,7 +9,9 @@
  *
  * Waiters are admitted in that order. `userAction` and `background` may never
  * occupy the slots reserved for `foreground`, so long commands cannot starve
- * admission checks.
+ * admission checks. While `userAction` is capped, background may use shared
+ * slots left free by user actions and foreground; sustained foreground load
+ * can still exhaust that shared capacity.
  */
 export type GitProcessPriority = "foreground" | "userAction" | "background";
 
@@ -36,10 +38,16 @@ export interface GitProcessAdmissionOptions {
 	maxWaitMs?: number;
 }
 
+export interface GitProcessLimiterOptions {
+	userActionLimit?: number;
+}
+
 export interface GitProcessLimiterSnapshot {
 	limit: number;
 	reservedForegroundSlots: number;
+	userActionLimit: number | null;
 	active: number;
+	activeByPriority: Record<GitProcessPriority, number>;
 	queued: Record<GitProcessPriority, number>;
 }
 
@@ -49,14 +57,25 @@ interface Waiter {
 
 export class GitProcessLimiter {
 	private active = 0;
+	private readonly activeByPriority: Record<GitProcessPriority, number> = {
+		foreground: 0,
+		userAction: 0,
+		background: 0,
+	};
+	private readonly userActionLimit: number | null;
 	private readonly queues: Record<GitProcessPriority, Waiter[]> = { foreground: [], userAction: [], background: [] };
 	private readonly reservedForegroundSlots: number;
 
 	constructor(
 		private readonly limit: number,
 		reservedForegroundSlots = 0,
+		options: GitProcessLimiterOptions = {},
 	) {
 		this.reservedForegroundSlots = Math.max(0, Math.min(reservedForegroundSlots, Math.max(0, limit - 1)));
+		this.userActionLimit =
+			options.userActionLimit !== undefined && Number.isFinite(options.userActionLimit)
+				? Math.max(1, Math.min(Math.floor(options.userActionLimit), limit - this.reservedForegroundSlots))
+				: null;
 	}
 
 	async run<T>(
@@ -68,9 +87,11 @@ export class GitProcessLimiter {
 		if (!this.isEnabled()) return await operation();
 		await this.acquire(priority, options);
 		try {
+			if (options.signal?.aborted) throw new GitProcessAdmissionAbortedError();
 			return await operation();
 		} finally {
 			this.active -= 1;
+			this.activeByPriority[priority] -= 1;
 			this.drain();
 		}
 	}
@@ -79,7 +100,9 @@ export class GitProcessLimiter {
 		return {
 			limit: this.limit,
 			reservedForegroundSlots: this.reservedForegroundSlots,
+			userActionLimit: this.userActionLimit,
 			active: this.active,
+			activeByPriority: { ...this.activeByPriority },
 			queued: {
 				foreground: this.queues.foreground.length,
 				userAction: this.queues.userAction.length,
@@ -94,12 +117,21 @@ export class GitProcessLimiter {
 
 	private canStart(priority: GitProcessPriority): boolean {
 		const capacity = priority === "foreground" ? this.limit : this.limit - this.reservedForegroundSlots;
-		return this.active < capacity;
+		return this.active < capacity && !this.isClassCapped(priority);
+	}
+
+	private isClassCapped(priority: GitProcessPriority): boolean {
+		return (
+			priority === "userAction" &&
+			this.userActionLimit !== null &&
+			this.activeByPriority.userAction >= this.userActionLimit
+		);
 	}
 
 	private acquire(priority: GitProcessPriority, options: GitProcessAdmissionOptions): Promise<void> {
 		if (this.queues[priority].length === 0 && this.canStart(priority) && !this.hasHigherPriorityWaiter(priority)) {
 			this.active += 1;
+			this.activeByPriority[priority] += 1;
 			return Promise.resolve();
 		}
 		const { signal, maxWaitMs } = options;
@@ -134,16 +166,18 @@ export class GitProcessLimiter {
 	private hasHigherPriorityWaiter(priority: GitProcessPriority): boolean {
 		for (const candidate of PRIORITY_ORDER) {
 			if (candidate === priority) return false;
-			if (this.queues[candidate].length > 0) return true;
+			if (this.queues[candidate].length > 0 && !this.isClassCapped(candidate)) return true;
 		}
 		return false;
 	}
 
 	private drain(): void {
 		for (;;) {
-			// Lower classes have no more capacity than the first waiting class, so
-			// strict priority order never leaves an admissible waiter queued.
-			const priority = PRIORITY_ORDER.find((candidate) => this.queues[candidate].length > 0);
+			// A class held at its own cap must not hold up lower-priority work.
+			// Otherwise strict priority on the shared process budget is unchanged.
+			const priority = PRIORITY_ORDER.find(
+				(candidate) => this.queues[candidate].length > 0 && !this.isClassCapped(candidate),
+			);
 			if (!priority || !this.canStart(priority)) return;
 			this.startNext(priority);
 		}
@@ -153,6 +187,7 @@ export class GitProcessLimiter {
 		const waiter = this.queues[priority].shift();
 		if (!waiter) return;
 		this.active += 1;
+		this.activeByPriority[priority] += 1;
 		waiter.start();
 	}
 }

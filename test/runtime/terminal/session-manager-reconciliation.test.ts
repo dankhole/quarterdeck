@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
+const probeSessionLaunchPathsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../../../src/terminal/session-launch-path-probe.js", () => ({
+	probeSessionLaunchPaths: probeSessionLaunchPathsMock,
+}));
 
 vi.mock("../../../src/terminal/agent-session-adapters.js", () => ({
 	prepareAgentLaunch: prepareAgentLaunchMock,
@@ -152,11 +157,24 @@ function applyCurrentProviderHook(
 function setupDefaultMocks(): void {
 	prepareAgentLaunchMock.mockReset();
 	ptySessionSpawnMock.mockReset();
+	probeSessionLaunchPathsMock.mockReset();
+	probeSessionLaunchPathsMock.mockImplementation(
+		async (paths: string[]) => new Map(paths.map((path) => [path, true])),
+	);
 	prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
 		binary: input.binary,
 		args: [...input.args],
 		env: {},
 	}));
+}
+
+function createPendingPathProbe() {
+	let resolve!: (results: Map<string, boolean | null>) => void;
+	const promise = new Promise<Map<string, boolean | null>>((complete) => {
+		resolve = complete;
+	});
+	probeSessionLaunchPathsMock.mockReturnValueOnce(promise);
+	return resolve;
 }
 
 // ── Reconciliation Sweep Lifecycle ────────────────────────────────────────
@@ -271,6 +289,9 @@ describe("reconciliation sweep lifecycle", () => {
 	});
 
 	it("stops a live session and moves it to error review when its launch directory disappears", async () => {
+		probeSessionLaunchPathsMock.mockResolvedValue(
+			new Map([["/tmp/quarterdeck-reconciliation-missing-launch-path", false]]),
+		);
 		const spawnedSessions = setupMockPtySpawn(process.pid);
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
@@ -291,6 +312,143 @@ describe("reconciliation sweep lifecycle", () => {
 			warningMessage: MISSING_SESSION_LAUNCH_PATH_WARNING,
 		});
 
+		manager.stopReconciliation();
+	});
+
+	it("does not overlap a pending sweep across interval ticks", async () => {
+		setupMockPtySpawn(process.pid);
+		const resolveProbe = createPendingPathProbe();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession(defaultTaskRequest);
+		manager.startReconciliation();
+
+		await vi.advanceTimersByTimeAsync(40_000);
+		expect(probeSessionLaunchPathsMock).toHaveBeenCalledTimes(1);
+		resolveProbe(new Map([[defaultTaskRequest.cwd, true]]));
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(probeSessionLaunchPathsMock).toHaveBeenCalledTimes(2);
+		manager.stopReconciliation();
+	});
+
+	it.each([defaultTaskRequest.cwd, "/tmp/quarterdeck-nonexistent-replacement"])(
+		"ignores a stale missing-path result after replacing the PTY at %s",
+		async (replacementPath) => {
+			const spawnedSessions = setupMockPtySpawn(process.pid);
+			const resolveProbe = createPendingPathProbe();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			await manager.startTaskSession(defaultTaskRequest);
+			manager.startReconciliation();
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			manager.stopTaskSession("task-1");
+			spawnedSessions[0]?.triggerExit(0);
+			await manager.startTaskSession({ ...defaultTaskRequest, cwd: replacementPath });
+			applyCurrentProviderHook(manager, "to_in_progress");
+			resolveProbe(new Map([[defaultTaskRequest.cwd, false]]));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(spawnedSessions[1]?.stop).not.toHaveBeenCalled();
+			expect(manager.store.getSummary("task-1")).toMatchObject({ state: "running", warningMessage: null });
+
+			probeSessionLaunchPathsMock.mockResolvedValueOnce(new Map([[replacementPath, false]]));
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(probeSessionLaunchPathsMock).toHaveBeenLastCalledWith([replacementPath]);
+			expect(spawnedSessions[1]?.stop).toHaveBeenCalledWith({ interrupted: true });
+			expect(manager.store.getSummary("task-1")?.warningMessage).toBe(MISSING_SESSION_LAUNCH_PATH_WARNING);
+			manager.stopReconciliation();
+		},
+	);
+
+	it("stop invalidates a pending probe without checking a nonexistent replacement path", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+		const resolveProbe = createPendingPathProbe();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession(defaultTaskRequest);
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+		manager.store.update("task-1", { sessionLaunchPath: "/tmp/quarterdeck-missing-after-stop" });
+		manager.stopReconciliation();
+		const stoppedSummary = manager.store.getSummary("task-1");
+
+		resolveProbe(new Map([[defaultTaskRequest.cwd, false]]));
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(probeSessionLaunchPathsMock).toHaveBeenCalledTimes(1);
+		expect(spawnedSessions[0]?.stop).not.toHaveBeenCalled();
+		expect(manager.store.getSummary("task-1")).toEqual(stoppedSummary);
+	});
+
+	it("explicit task stop during a pending probe preserves its stopped meaning", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+		const resolveProbe = createPendingPathProbe();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession(defaultTaskRequest);
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+		manager.stopTaskSession("task-1");
+		const stoppedSummary = manager.store.getSummary("task-1");
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledTimes(1);
+
+		resolveProbe(new Map([[defaultTaskRequest.cwd, false]]));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledTimes(1);
+		expect(manager.store.getSummary("task-1")).toEqual(stoppedSummary);
+		expect(manager.store.getSummary("task-1")?.warningMessage).not.toBe(MISSING_SESSION_LAUNCH_PATH_WARNING);
+		manager.stopReconciliation();
+	});
+
+	it("shutdown prevents a pending result from stopping or warning again", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+		const resolveProbe = createPendingPathProbe();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession(defaultTaskRequest);
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+		manager.stopReconciliation();
+		manager.markInterruptedAndStopAll();
+		const stoppedSummary = manager.store.getSummary("task-1");
+		const stopCount = spawnedSessions[0]?.stop.mock.calls.length;
+
+		resolveProbe(new Map([[defaultTaskRequest.cwd, false]]));
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(spawnedSessions[0]?.stop).toHaveBeenCalledTimes(stopCount ?? 0);
+		expect(manager.store.getSummary("task-1")).toEqual(stoppedSummary);
+		expect(probeSessionLaunchPathsMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("stop then start still invalidates the previous generation", async () => {
+		const spawnedSessions = setupMockPtySpawn(process.pid);
+		const resolveProbe = createPendingPathProbe();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession(defaultTaskRequest);
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+		manager.stopReconciliation();
+		manager.startReconciliation();
+
+		resolveProbe(new Map([[defaultTaskRequest.cwd, false]]));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(spawnedSessions[0]?.stop).not.toHaveBeenCalled();
+		expect(manager.store.getSummary("task-1")?.warningMessage).toBeNull();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(probeSessionLaunchPathsMock).toHaveBeenCalledTimes(2);
+		manager.stopReconciliation();
+	});
+
+	it("an unknown path result still recovers a dead process", async () => {
+		setupMockPtySpawn(DEAD_PID);
+		probeSessionLaunchPathsMock.mockResolvedValueOnce(new Map([[defaultTaskRequest.cwd, null]]));
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession(defaultTaskRequest);
+		applyCurrentProviderHook(manager, "to_in_progress");
+		manager.startReconciliation();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "error",
+			pid: null,
+			warningMessage: null,
+		});
 		manager.stopReconciliation();
 	});
 

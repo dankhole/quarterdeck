@@ -234,6 +234,96 @@ describe("ProjectMetadataMonitor", () => {
 		vi.useRealTimers();
 	});
 
+	it("caps automatic fetches globally without consuming local probe capacity", async () => {
+		const fetch = createDeferred<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>();
+		workdirMocks.runGit.mockReturnValue(fetch.promise);
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+		const tasks = createDeferred<void>();
+		const projects = ["a", "b", "c"].map((id) => ({
+			projectId: id,
+			projectPath: `/repo-${id}`,
+			board: createBoard([
+				{ taskId: `${id}-1`, columnId: "in_progress" },
+				{ taskId: `${id}-2`, columnId: "in_progress" },
+			]),
+		}));
+		try {
+			const metadata = await Promise.all(projects.map((project) => monitor.connectProject(project)));
+			expect(workdirMocks.runGit).toHaveBeenCalledTimes(2);
+			expect(metadata.map((snapshot) => snapshot.taskWorktrees.length)).toEqual([2, 2, 2]);
+			expect(loaderMocks.loadHomeGitMetadata).toHaveBeenCalledTimes(3);
+			expect(monitor.getDiagnosticSnapshot()).toMatchObject({
+				globalProbeLimit: { activeCount: 0, pendingCount: 0, concurrency: 4 },
+				remoteFetchLimit: { scope: "global", activeCount: 2, pendingCount: 1, concurrency: 2 },
+			});
+			for (const scope of [{ projectId: "c" }, { projectId: "c", taskId: "c-1" }]) {
+				expect(monitor.getDiagnosticSnapshot(scope)).toMatchObject({
+					remoteFetchLimit: { scope: "global", activeCount: 2, pendingCount: 1, concurrency: 2 },
+					projects: [{ projectId: "c", remoteFetch: { fetchInFlight: true } }],
+				});
+			}
+
+			loaderMocks.loadTaskWorktreeMetadata.mockImplementation(async (_path: string, task: TrackedTaskWorktree) => {
+				await tasks.promise;
+				return createTaskMetadata(task);
+			});
+			loaderMocks.loadTaskWorktreeMetadata.mockClear();
+			monitor.requestTaskRefresh("a", "a-1");
+			monitor.requestTaskRefresh("a", "a-2");
+			await vi.waitFor(() => expect(loaderMocks.loadTaskWorktreeMetadata).toHaveBeenCalledTimes(2));
+			expect(monitor.getDiagnosticSnapshot({ projectId: "a" }).projects[0]?.probeLimit.activeCount).toBe(2);
+		} finally {
+			tasks.resolve();
+			monitor.close();
+			fetch.resolve({ ok: true, stdout: "", stderr: "", exitCode: 0 });
+			await Promise.all(projects.map((project) => monitor.suspendProject(project.projectId)));
+		}
+	});
+
+	it("reports global fetch slots as free while scoped post-fetch refreshes are still running", async () => {
+		const home = createDeferred<CachedHomeGitMetadata>();
+		loaderMocks.loadHomeGitMetadata.mockReturnValue(home.promise);
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn() });
+		const connecting = monitor.connectProject({ projectId: "a", projectPath: "/repo-a", board: createBoard([]) });
+		try {
+			await vi.waitFor(() => expect(workdirMocks.runGit).toHaveBeenCalledOnce());
+			await vi.waitFor(() =>
+				expect(monitor.getDiagnosticSnapshot({ projectId: "a" })).toMatchObject({
+					remoteFetchLimit: { scope: "global", activeCount: 0, pendingCount: 0, concurrency: 2 },
+					projects: [{ remoteFetch: { fetchInFlight: true }, refresher: { homeRefreshInFlight: true } }],
+				}),
+			);
+		} finally {
+			home.resolve(createHomeMetadata("/repo-a", "main"));
+			await connecting;
+			await monitor.suspendProject("a");
+			monitor.close();
+		}
+	});
+
+	it("does not launch a queued fetch after its controller is purged", async () => {
+		const fetch = createDeferred<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>();
+		workdirMocks.runGit.mockReturnValue(fetch.promise);
+		const onRemoteFetchCompleted = vi.fn();
+		const monitor = createProjectMetadataMonitor({ onMetadataUpdated: vi.fn(), onRemoteFetchCompleted });
+		try {
+			for (const id of ["a", "b", "c"]) {
+				await monitor.connectProject({ projectId: id, projectPath: `/repo-${id}`, board: createBoard([]) });
+			}
+			expect(monitor.getDiagnosticSnapshot().remoteFetchLimit.pendingCount).toBe(1);
+			monitor.purgeProject("c");
+			const drained = monitor.suspendProject("c");
+			fetch.resolve({ ok: true, stdout: "", stderr: "", exitCode: 0 });
+			await drained;
+			expect(workdirMocks.runGit).toHaveBeenCalledTimes(2);
+			expect(onRemoteFetchCompleted.mock.calls.some(([projectId]) => projectId === "c")).toBe(false);
+		} finally {
+			monitor.close();
+			fetch.resolve({ ok: true, stdout: "", stderr: "", exitCode: 0 });
+			await Promise.all(["a", "b", "c"].map((id) => monitor.suspendProject(id)));
+		}
+	});
+
 	it("retains unavailable client visibility without attaching Git monitoring, then resumes at the current location", async () => {
 		const onMetadataUpdated = vi.fn();
 		const monitor = createProjectMetadataMonitor({ onMetadataUpdated });

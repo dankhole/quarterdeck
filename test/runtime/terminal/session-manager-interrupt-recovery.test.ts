@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
 const ptySessionSpawnMock = vi.hoisted(() => vi.fn());
+const probeSessionLaunchPathsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../../../src/terminal/session-launch-path-probe.js", () => ({
+	probeSessionLaunchPaths: probeSessionLaunchPathsMock,
+}));
 
 vi.mock("../../../src/terminal/agent-session-adapters.js", () => ({
 	prepareAgentLaunch: prepareAgentLaunchMock,
@@ -95,6 +100,10 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		vi.useFakeTimers();
 		prepareAgentLaunchMock.mockReset();
 		ptySessionSpawnMock.mockReset();
+		probeSessionLaunchPathsMock.mockReset();
+		probeSessionLaunchPathsMock.mockImplementation(
+			async (paths: string[]) => new Map(paths.map((path) => [path, true])),
+		);
 		prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
 			binary: input.binary,
 			args: [...input.args],
@@ -768,6 +777,10 @@ describe("recoverStaleSession with launched sessions", () => {
 		vi.useFakeTimers();
 		prepareAgentLaunchMock.mockReset();
 		ptySessionSpawnMock.mockReset();
+		probeSessionLaunchPathsMock.mockReset();
+		probeSessionLaunchPathsMock.mockImplementation(
+			async (paths: string[]) => new Map(paths.map((path) => [path, true])),
+		);
 		prepareAgentLaunchMock.mockImplementation(async (input: { args: string[]; binary?: string }) => ({
 			binary: input.binary,
 			args: [...input.args],

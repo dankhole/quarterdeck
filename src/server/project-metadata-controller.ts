@@ -32,6 +32,7 @@ export interface CreateProjectMetadataControllerDependencies {
 	projectPath: string;
 	limitMetadataProbe: <T>(probe: () => Promise<T>) => Promise<T>;
 	limitTaskProbe: <T>(probe: () => Promise<T>) => Promise<T>;
+	limitRemoteFetch: <T>(fetch: () => Promise<T>) => Promise<T>;
 	onMetadataUpdated: (projectId: string, metadata: RuntimeProjectMetadata) => void;
 	onTaskBaseRefChanged?: (projectId: string, taskId: string, newBaseRef: string) => void;
 	onRemoteFetchCompleted?: (projectId: string, result: ProjectMetadataRemoteFetchResult) => void;
@@ -105,7 +106,7 @@ export class ProjectMetadataController {
 		});
 		this.remoteFetchPolicy = new ProjectMetadataRemoteFetchPolicy({
 			getProjectPath: () => this.entry.projectPath,
-			limitRemoteFetch: deps.limitMetadataProbe,
+			limitRemoteFetch: deps.limitRemoteFetch,
 			onFetchSucceeded: async () => {
 				await this.refresher.refreshHome({ invalidate: true });
 				void this.refresher.refreshFocusedTask();
@@ -233,6 +234,7 @@ export class ProjectMetadataController {
 
 	dispose(): void {
 		this.stopPolicies();
+		this.remoteFetchPolicy.dispose();
 		this.refresher.dispose();
 	}
 

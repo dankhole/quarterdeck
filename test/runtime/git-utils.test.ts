@@ -29,6 +29,7 @@ import { GIT_COMMAND_TIMEOUTS_MS, runGit } from "../../src/workdir";
 import {
 	GIT_FOREGROUND_RESERVED_SLOTS,
 	GIT_PROCESS_CONCURRENCY_LIMIT,
+	GIT_USER_ACTION_CONCURRENCY_LIMIT,
 	getGitProcessLimiterSnapshot,
 	isGitCommandIndeterminate,
 	resolveGitProcessPriority,
@@ -425,6 +426,44 @@ describe("workdir git exports", () => {
 		expect(resolveGitProcessPriority({ timeoutClass: "inspection" })).toBe("background");
 		expect(resolveGitProcessPriority({ timeoutClass: "remoteFetch" })).toBe("background");
 		expect(resolveGitProcessPriority({ timeoutClass: "metadata", priority: "foreground" })).toBe("foreground");
+	});
+
+	it("keeps metadata commands runnable while the user-action cap is saturated", async () => {
+		vi.useFakeTimers();
+		const releases: Array<() => void> = [];
+		const held: Array<ReturnType<typeof runGit>> = [];
+		try {
+			childProcessMocks.execFile.mockImplementation(
+				(_command: string, args: string[], _options: unknown, callback: (...values: unknown[]) => void) => {
+					if (args.includes("hold")) releases.push(() => callback(null, "held", ""));
+					else callback(null, "metadata", "");
+					return { pid: 12_345, kill: vi.fn(() => true) };
+				},
+			);
+			held.push(
+				...Array.from({ length: GIT_USER_ACTION_CONCURRENCY_LIMIT + 1 }, () =>
+					runGit("/repo", ["hold"], { timeoutClass: "userAction" }),
+				),
+			);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(releases).toHaveLength(3);
+			expect(getGitProcessLimiterSnapshot()).toMatchObject({
+				userActionLimit: 3,
+				activeByPriority: { userAction: 3 },
+				queued: { userAction: 1 },
+			});
+			await expect(runGit("/repo", ["status"], { timeoutClass: "metadata" })).resolves.toMatchObject({
+				ok: true,
+				stdout: "metadata",
+			});
+		} finally {
+			while (getGitProcessLimiterSnapshot().active > 0) {
+				for (const release of releases.splice(0)) release();
+				await vi.advanceTimersByTimeAsync(0);
+			}
+			await Promise.all(held);
+			vi.useRealTimers();
+		}
 	});
 
 	it("starts a queued command's timeout only after it is admitted, and cancels queued commands", async () => {

@@ -15,6 +15,7 @@ import {
 
 const GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT = 4;
 const PROJECT_METADATA_PROBE_CONCURRENCY_LIMIT = 2;
+const REMOTE_FETCH_CONCURRENCY_LIMIT = 2;
 /**
  * How long a project's controller (and its cached home/task Git metadata) is
  * retained after the last client disconnects, with polling stopped. A
@@ -39,6 +40,7 @@ interface MetadataProbeLimitDiagnosticSnapshot {
 
 export interface ProjectMetadataMonitorDiagnosticSnapshot {
 	globalProbeLimit: MetadataProbeLimitDiagnosticSnapshot;
+	remoteFetchLimit: MetadataProbeLimitDiagnosticSnapshot & { scope: "global" };
 	projects: Array<ProjectMetadataControllerDiagnosticSnapshot & { probeLimit: MetadataProbeLimitDiagnosticSnapshot }>;
 }
 
@@ -88,6 +90,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 	const retiringControllers = new Map<string, Set<Promise<void>>>();
 	const clients = new Map<string, ProjectMetadataVisibilityReports>();
 	const globalMetadataProbeLimit = pLimit(GLOBAL_METADATA_PROBE_CONCURRENCY_LIMIT);
+	const remoteFetchLimit = pLimit(REMOTE_FETCH_CONCURRENCY_LIMIT);
 	const projectMetadataProbeLimits = new Map<string, ReturnType<typeof pLimit>>();
 	const idleRetirementTimers = new Map<string, NodeJS.Timeout>();
 
@@ -195,6 +198,7 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 			limitTaskProbe: async <T>(probe: () => Promise<T>) => {
 				return await limitProjectMetadataProbe(projectId, probe);
 			},
+			limitRemoteFetch: async <T>(fetch: () => Promise<T>) => await remoteFetchLimit(fetch),
 			onMetadataUpdated: (id, metadata) => {
 				if (projects.get(id) === controller) deps.onMetadataUpdated(id, { ...metadata, metadataRevision });
 			},
@@ -353,6 +357,12 @@ export function createProjectMetadataMonitor(deps: CreateProjectMetadataMonitorD
 				{ activeCount: 0, pendingCount: 0 },
 			);
 			return {
+				remoteFetchLimit: {
+					scope: "global",
+					activeCount: remoteFetchLimit.activeCount,
+					pendingCount: remoteFetchLimit.pendingCount,
+					concurrency: REMOTE_FETCH_CONCURRENCY_LIMIT,
+				},
 				globalProbeLimit: {
 					activeCount:
 						scope.projectId || scope.taskId

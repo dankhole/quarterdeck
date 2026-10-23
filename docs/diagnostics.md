@@ -37,8 +37,10 @@ Start bundle analysis at `manifest.json`, then correlate:
 
 - `records.jsonl` for ordered runtime, browser, and lab events;
 - `doctor.json` for scoped findings;
-- provider snapshots for bounded current state (for example, `git_processes` reports the Git process limiter's limit, reserved foreground slots, active count, and queued counts per class, which shows whether slow Git work is queueing behind saturation); and
+- provider snapshots for bounded current state: `git_processes` reports the total budget, foreground reservation, user-action cap, active counts by priority, and queued counts by priority. `project_metadata.remoteFetchLimit` reports actual global automatic-fetch admission counts and labels them `scope: "global"`, even in a project/task-scoped capture; project-specific cycle flags remain separately filtered. A fetch cycle can still be in flight after releasing its fetch slot while its home refresh finishes; and
 - indexed evidence for synthetic lab screenshots, traces, Git state, and terminal viewport text.
+
+Provider occupancy snapshots describe the capture instant, not historical queue pressure, subprocess rates, or badge freshness. Automatic-fetch pending counts can include retired callbacks still awaiting admission; those callbacks skip Git when admitted. Remote-fetch cycle durations include waiting for admission and the awaited post-fetch home refresh, not just network execution. Slow-success fetch events are nonessential and require matching deep recording; their absence from flight-tier records does not establish that no slow cycle occurred. Preserve these distinctions before using a capture to justify polling changes.
 
 Diagnostics can report layout bounds and terminal metrics, but it cannot reconstruct historical pixels. Use Agent Lab screenshots or Playwright traces when visual truth matters.
 

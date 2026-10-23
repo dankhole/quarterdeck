@@ -32,6 +32,8 @@ export interface ProjectMetadataRemoteFetchDiagnosticSnapshot {
 }
 
 export class ProjectMetadataRemoteFetchPolicy {
+	private disposed = false;
+	private readonly admissionAbortController = new AbortController();
 	private fetchTimer: NodeJS.Timeout | null = null;
 	/** Cadence anchor: only a successful fetch defers the next one. */
 	private lastSucceededAt: number | null = null;
@@ -55,7 +57,7 @@ export class ProjectMetadataRemoteFetchPolicy {
 	}
 
 	start(): void {
-		if (this.fetchTimer) {
+		if (this.disposed || this.fetchTimer) {
 			return;
 		}
 		// Keep the cadence anchored to the last successful fetch: restarting the
@@ -82,7 +84,14 @@ export class ProjectMetadataRemoteFetchPolicy {
 		this.fetchTimer = null;
 	}
 
+	dispose(): void {
+		this.disposed = true;
+		this.admissionAbortController.abort();
+		this.stop();
+	}
+
 	requestFetch(): void {
+		if (this.disposed) return;
 		// Respect the normal cadence instead of fetching on every call: visibility
 		// transitions and reconnects both route here, and a reconnect within the
 		// idle grace period must not force a redundant `git fetch`.
@@ -97,24 +106,33 @@ export class ProjectMetadataRemoteFetchPolicy {
 	}
 
 	private async performFetch(): Promise<void> {
+		if (this.disposed) return;
 		if (this.fetchPromise) {
 			await this.fetchPromise;
 			return;
 		}
 
+		let skipped = false;
 		this.fetchPromise = (async () => {
 			this.lastStartedAt = Date.now();
 			this.lastErrorClass = null;
 			try {
 				const result = await this.deps.limitRemoteFetch(async () => {
+					// A retired controller may still have a fetch waiting for admission.
+					if (this.disposed) return null;
 					return await runGit(this.deps.getProjectPath(), ["fetch", "--all", "--prune"], {
 						env: createGitProcessEnv({ GIT_TERMINAL_PROMPT: "0" }),
 						timeoutClass: "remoteFetch",
+						signal: this.admissionAbortController.signal,
 					});
 				});
+				if (result === null || (this.disposed && result.failureKind === "aborted")) {
+					skipped = true;
+					return;
+				}
 				if (result.ok) {
 					this.lastSucceededAt = Date.now();
-					await this.deps.onFetchSucceeded();
+					if (!this.disposed) await this.deps.onFetchSucceeded();
 				} else {
 					this.lastErrorClass = "GitCommandFailed";
 				}
@@ -125,6 +143,10 @@ export class ProjectMetadataRemoteFetchPolicy {
 				// Network/auth failures are non-fatal; the next cadence retries.
 			}
 		})().finally(() => {
+			if (skipped) {
+				this.fetchPromise = null;
+				return;
+			}
 			this.lastCompletedAt = Date.now();
 			try {
 				this.deps.onFetchCompleted?.({
