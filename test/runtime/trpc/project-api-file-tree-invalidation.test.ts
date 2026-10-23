@@ -9,11 +9,12 @@ import { createGitOps } from "../../../src/trpc/project-api-git-ops";
 import type * as ProjectApiShared from "../../../src/trpc/project-api-shared";
 import type { ProjectApiContext } from "../../../src/trpc/project-api-shared";
 import { createStagingOps } from "../../../src/trpc/project-api-staging";
-import { invalidateWorkdirFileListCache, listAllWorkdirFiles } from "../../../src/workdir/search-workdir-files";
+import { invalidateWorkdirFileListCache } from "../../../src/workdir/search-workdir-files";
 import type * as TaskWorktree from "../../../src/workdir/task-worktree";
 import { commitAll, initGitRepository, runGit } from "../../utilities/git-env";
 import { useProcessTestBudget } from "../../utilities/process-test-budget";
 import { createTempDir } from "../../utilities/temp-dir";
+import { listPagedWorkdirFiles } from "../../utilities/workdir-listing";
 
 const mocks = vi.hoisted(() => ({ resolveTaskWorkingDirectory: vi.fn() }));
 vi.mock("../../../src/workdir/task-worktree", async (importOriginal) => ({
@@ -89,8 +90,8 @@ describe("project Git operations invalidate warm file listings", () => {
 	it.each(["home", "task"] as const)("refreshes only the affected %s checkout", async (target) => {
 		const cwd = target === "home" ? home : task;
 		const other = target === "home" ? task : home;
-		expect(await listAllWorkdirFiles(cwd)).not.toContain("feature.txt");
-		await listAllWorkdirFiles(other);
+		expect(await listPagedWorkdirFiles(cwd)).not.toContain("feature.txt");
+		await listPagedWorkdirFiles(other);
 		writeFileSync(join(other, "external.txt"), "external\n", "utf8");
 
 		const result = await git.checkoutGitBranch(scope, {
@@ -99,14 +100,14 @@ describe("project Git operations invalidate warm file listings", () => {
 		});
 
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(cwd)).toContain("feature.txt");
-		expect(await listAllWorkdirFiles(other)).not.toContain("external.txt");
+		expect(await listPagedWorkdirFiles(cwd)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(other)).not.toContain("external.txt");
 	});
 
 	it.each(["push", "apply", "pop"] as const)("refreshes the task listing after stash %s", async (action) => {
 		writeFileSync(join(task, "draft.txt"), "draft\n", "utf8");
 		if (action !== "push") runGit(task, ["stash", "push", "--include-untracked"]);
-		expect((await listAllWorkdirFiles(task)).includes("draft.txt")).toBe(action === "push");
+		expect((await listPagedWorkdirFiles(task)).includes("draft.txt")).toBe(action === "push");
 
 		const result =
 			action === "push"
@@ -116,7 +117,7 @@ describe("project Git operations invalidate warm file listings", () => {
 					: await staging.stashPop(scope, { taskScope, index: 0 });
 
 		expect(result.ok).toBe(true);
-		expect((await listAllWorkdirFiles(task)).includes("draft.txt")).toBe(action !== "push");
+		expect((await listPagedWorkdirFiles(task)).includes("draft.txt")).toBe(action !== "push");
 	});
 
 	it("refreshes the task listing after a partially applied conflicted stash", async () => {
@@ -125,19 +126,19 @@ describe("project Git operations invalidate warm file listings", () => {
 		runGit(task, ["stash", "push", "--include-untracked"]);
 		writeFileSync(join(task, "base.txt"), "committed version\n", "utf8");
 		commitAll(task, "conflicting task change");
-		expect(await listAllWorkdirFiles(task)).not.toContain("draft.txt");
+		expect(await listPagedWorkdirFiles(task)).not.toContain("draft.txt");
 
 		const result = await staging.stashApply(scope, { taskScope, index: 0 });
 
 		expect(result.ok).toBe(false);
 		expect(result.conflicted).toBe(true);
-		expect(await listAllWorkdirFiles(task)).toContain("draft.txt");
+		expect(await listPagedWorkdirFiles(task)).toContain("draft.txt");
 	});
 
 	it.each(["file", "all"] as const)("refreshes a listing after discarding %s changes", async (kind) => {
 		const cwd = kind === "file" ? home : task;
 		writeFileSync(join(cwd, "draft.txt"), "draft\n", "utf8");
-		expect(await listAllWorkdirFiles(cwd)).toContain("draft.txt");
+		expect(await listPagedWorkdirFiles(cwd)).toContain("draft.txt");
 
 		const result =
 			kind === "file"
@@ -145,39 +146,39 @@ describe("project Git operations invalidate warm file listings", () => {
 				: await staging.discardGitChanges(scope, taskScope);
 
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(cwd)).not.toContain("draft.txt");
+		expect(await listPagedWorkdirFiles(cwd)).not.toContain("draft.txt");
 	});
 
 	it("refreshes the task listing after a hard reset", async () => {
 		runGit(task, ["switch", "feature"]);
-		expect(await listAllWorkdirFiles(task)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(task)).toContain("feature.txt");
 		const result = await git.resetToRef(scope, { ...taskScope, ref: "main" });
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(task)).not.toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(task)).not.toContain("feature.txt");
 	});
 
 	it("refreshes the task listing after a rebase", async () => {
-		expect(await listAllWorkdirFiles(task)).not.toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(task)).not.toContain("feature.txt");
 		const result = await git.rebaseBranch(scope, { ...taskScope, onto: "feature" });
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(task)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(task)).toContain("feature.txt");
 	});
 
 	it("refreshes the target worktree rather than the source cwd after cherry-pick", async () => {
-		await listAllWorkdirFiles(home);
-		expect(await listAllWorkdirFiles(task)).not.toContain("feature.txt");
+		await listPagedWorkdirFiles(home);
+		expect(await listPagedWorkdirFiles(task)).not.toContain("feature.txt");
 		writeFileSync(join(home, "external.txt"), "external\n", "utf8");
 
 		const result = await git.cherryPickCommit(scope, { commitHash: featureCommit, targetBranch: "task" });
 
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(task)).toContain("feature.txt");
-		expect(await listAllWorkdirFiles(home)).not.toContain("external.txt");
+		expect(await listPagedWorkdirFiles(task)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).not.toContain("external.txt");
 	});
 
 	it("refreshes the home listing after revert", async () => {
 		runGit(home, ["switch", "feature"]);
-		expect(await listAllWorkdirFiles(home)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).toContain("feature.txt");
 
 		const result = await git.revertCommit(scope, {
 			commitHash: featureCommit,
@@ -186,7 +187,7 @@ describe("project Git operations invalidate warm file listings", () => {
 		});
 
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(home)).not.toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).not.toContain("feature.txt");
 	});
 
 	it.each(["abort", "continue"] as const)("refreshes after a conflicted merge and its %s", async (action) => {
@@ -196,25 +197,25 @@ describe("project Git operations invalidate warm file listings", () => {
 		runGit(home, ["switch", "main"]);
 		writeFileSync(join(home, "base.txt"), "main version\n", "utf8");
 		commitAll(home, "conflicting main change");
-		expect(await listAllWorkdirFiles(home)).not.toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).not.toContain("feature.txt");
 
 		const merged = await git.mergeBranch(scope, { branch: "feature" });
 
 		expect(merged.ok).toBe(false);
 		expect(merged.conflictState).toBeDefined();
-		expect(await listAllWorkdirFiles(home)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).toContain("feature.txt");
 		if (action === "abort") {
 			const result = await conflict.abortConflictResolution(scope, {});
 			expect(result.ok).toBe(true);
-			expect(await listAllWorkdirFiles(home)).not.toContain("feature.txt");
+			expect(await listPagedWorkdirFiles(home)).not.toContain("feature.txt");
 		} else {
 			const resolved = await conflict.resolveConflictFile(scope, { path: "base.txt", resolution: "ours" });
 			expect(resolved.ok).toBe(true);
-			await listAllWorkdirFiles(home);
+			await listPagedWorkdirFiles(home);
 			writeFileSync(join(home, "external.txt"), "external\n", "utf8");
 			const result = await conflict.continueConflictResolution(scope, {});
 			expect(result.ok).toBe(true);
-			expect(await listAllWorkdirFiles(home)).toContain("external.txt");
+			expect(await listPagedWorkdirFiles(home)).toContain("external.txt");
 		}
 	});
 
@@ -224,18 +225,18 @@ describe("project Git operations invalidate warm file listings", () => {
 		runGit(home, ["remote", "add", "origin", remote]);
 		runGit(home, ["push", "-u", "origin", "main", "feature"]);
 		runGit(remote, ["update-ref", "refs/heads/main", featureCommit]);
-		expect(await listAllWorkdirFiles(home)).not.toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).not.toContain("feature.txt");
 
 		const result = await git.runGitSyncAction(scope, { action: "pull" });
 
 		expect(result.ok).toBe(true);
-		expect(await listAllWorkdirFiles(home)).toContain("feature.txt");
+		expect(await listPagedWorkdirFiles(home)).toContain("feature.txt");
 	});
 
 	it("preserves warm snapshots for read-only, fetch, push-only, and stash-metadata operations", async () => {
 		writeFileSync(join(home, "draft.txt"), "draft\n", "utf8");
 		runGit(home, ["stash", "push", "--include-untracked"]);
-		await listAllWorkdirFiles(home);
+		await listPagedWorkdirFiles(home);
 		writeFileSync(join(home, "external.txt"), "external\n", "utf8");
 
 		await staging.stashList(scope, { taskScope: null });
@@ -245,6 +246,6 @@ describe("project Git operations invalidate warm file listings", () => {
 		await git.runGitSyncAction(scope, { action: "push" });
 		await git.runGitSyncAction(scope, { action: "pull", branch: "feature" });
 
-		expect(await listAllWorkdirFiles(home)).not.toContain("external.txt");
+		expect(await listPagedWorkdirFiles(home)).not.toContain("external.txt");
 	});
 });

@@ -32,11 +32,12 @@ function FileFinderOverlayContent({
 	onSelect,
 	onDismiss,
 }: FileFinderOverlayProps): ReactElement {
-	const { query, setQuery, results, isLoading, selectedIndex, setSelectedIndex, handleKeyDown } = useFileFinder({
-		projectId,
-		searchScope,
-		onSelect,
-	});
+	const { query, setQuery, results, isLoading, truncated, error, selectedIndex, setSelectedIndex, handleKeyDown } =
+		useFileFinder({
+			projectId,
+			searchScope,
+			onSelect,
+		});
 
 	const inputRef = useRef<HTMLInputElement>(null);
 	const selectedRowRef = useRef<HTMLDivElement>(null);
@@ -49,7 +50,7 @@ function FileFinderOverlayContent({
 		selectedRowRef.current?.scrollIntoView({ block: "nearest" });
 	}, [selectedIndex]);
 
-	const showEmptyState = query.trim().length > 0 && results.length === 0 && !isLoading;
+	const showEmptyState = query.trim().length > 0 && results.length === 0 && !isLoading && !error;
 
 	return (
 		<SearchOverlayShell onDismiss={onDismiss}>
@@ -64,6 +65,17 @@ function FileFinderOverlayContent({
 				className="w-full bg-zinc-800 border-b border-zinc-700 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none"
 			/>
 
+			{truncated ? (
+				<div role="status" className="px-4 py-2 text-xs text-status-orange">
+					Partial results: search reached its scan or result limit. Refine your query. Generated worktrees are
+					excluded.
+				</div>
+			) : null}
+			{error ? (
+				<div role="alert" className="px-4 py-2 text-sm text-status-red">
+					Unable to search files: {error}
+				</div>
+			) : null}
 			<div className="flex min-h-0 flex-col md:flex-row">
 				<div className="min-w-0 overflow-y-auto max-h-[30vh] md:max-h-[65vh] md:w-2/5 shrink-0">
 					{results.map((file, index) => (
@@ -88,7 +100,9 @@ function FileFinderOverlayContent({
 					))}
 
 					{showEmptyState ? (
-						<div className="px-4 py-6 text-sm text-zinc-500 text-center">No files found</div>
+						<div className="px-4 py-6 text-sm text-zinc-500 text-center">
+							{truncated ? "No matches in the scanned files" : "No files found"}
+						</div>
 					) : null}
 
 					{isLoading ? <div className="px-4 py-6 text-sm text-zinc-500 text-center">Searching...</div> : null}

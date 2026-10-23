@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeWorkdirChangesResponse } from "../../../src/core";
+import type * as DirectoryListing from "../../../src/workdir/workdir-directory-listing";
 
 const worktreeMocks = vi.hoisted(() => ({
 	resolveTaskCwd: vi.fn(),
@@ -19,7 +20,12 @@ const workdirChangesMocks = vi.hoisted(() => ({
 	getWorkdirChangesFromRef: vi.fn(),
 }));
 
-const listingMocks = vi.hoisted(() => ({ entries: vi.fn(), searchFilePaths: vi.fn() }));
+const listingMocks = vi.hoisted(() => ({
+	listPage: vi.fn(),
+	searchFolder: vi.fn(),
+	searchFilePaths: vi.fn(),
+	searchWorkdirFiles: vi.fn(),
+}));
 
 const fileMutationMocks = vi.hoisted(() => ({
 	createWorkdirEntry: vi.fn(),
@@ -110,10 +116,18 @@ vi.mock("../../../src/workdir/git-history.js", () => ({
 }));
 
 vi.mock("../../../src/workdir/search-workdir-files.js", () => ({
-	searchWorkdirFiles: vi.fn(),
+	invalidateWorkdirFileListCache: vi.fn(),
+	searchWorkdirFiles: listingMocks.searchWorkdirFiles,
 	searchFilePaths: listingMocks.searchFilePaths,
-	listAllWorkdirFiles: vi.fn(),
-	listAllWorkdirFileEntries: listingMocks.entries,
+}));
+
+vi.mock("../../../src/workdir/search-workdir-folder-files.js", () => ({
+	searchFolderWorkdirFiles: listingMocks.searchFolder,
+}));
+
+vi.mock("../../../src/workdir/workdir-directory-listing.js", async (importOriginal) => ({
+	...(await importOriginal<typeof DirectoryListing>()),
+	listWorkdirDirectoryPage: listingMocks.listPage,
 }));
 
 vi.mock("../../../src/title/title-generator.js", () => ({
@@ -147,6 +161,7 @@ vi.mock("../../../src/workdir/mutate-workdir-entry.js", () => ({
 
 import { TaskResourceOperationCoordinator } from "../../../src/core";
 import { createProjectApi } from "../../../src/trpc";
+import { WorkdirDirectoryListingError } from "../../../src/workdir/workdir-directory-listing";
 
 function createChangesResponse(): RuntimeWorkdirChangesResponse {
 	return {
@@ -437,26 +452,105 @@ describe("createProjectApi loadChanges", () => {
 	});
 });
 
-describe("createProjectApi folder listing mode", () => {
+describe("createProjectApi paged file listing", () => {
+	const projectScope = { projectId: "project-1", projectPath: "/tmp/repo" };
+	const page = {
+		directory: "src",
+		files: ["src/a.ts"],
+		directories: ["src/lib"],
+		hiddenCount: 1,
+		snapshotId: "snapshot",
+		nextCursor: "cursor",
+	};
+
 	beforeEach(() => {
 		projectStateMocks.loadProjectScopeById.mockReset();
-		listingMocks.entries.mockReset().mockResolvedValue({ files: ["dist/file.txt"], directories: ["dist"] });
+		listingMocks.listPage.mockReset().mockResolvedValue(page);
+		listingMocks.searchFolder.mockReset().mockResolvedValue({ files: [], truncated: true });
 		listingMocks.searchFilePaths.mockReset().mockReturnValue([]);
+		listingMocks.searchWorkdirFiles.mockReset().mockResolvedValue([]);
 	});
 
-	it.each([true, false])("passes folderOnly=%s to the listing without full project hydration", async (folderOnly) => {
+	it.each([true, false])("lists one directory page with folderOnly=%s and scope mutability", async (folderOnly) => {
 		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly });
 		const api = createProjectApi(createProjectDeps());
-		await api.listFiles({ projectId: "project-1", projectPath: "/tmp/repo" }, { taskId: null });
-		expect(listingMocks.entries).toHaveBeenCalledWith("/tmp/repo", { useGitIgnores: !folderOnly });
+		const response = await api.listFiles(projectScope, {
+			taskId: null,
+			directory: "src",
+			cursor: "cursor-in",
+			showExcluded: true,
+		});
+		expect(listingMocks.listPage).toHaveBeenCalledWith({
+			cwd: "/tmp/repo",
+			directory: "src",
+			cursor: "cursor-in",
+			showExcluded: true,
+			useGitIgnores: !folderOnly,
+			ref: null,
+		});
+		expect(response).toEqual({ ...page, mutable: true });
 		expect(projectStateMocks.loadProjectScopeById).toHaveBeenCalledWith("project-1");
 	});
 
-	it("bypasses Git ignores in folder quick-open search", async () => {
+	it("defaults to hiding generated worktrees", async () => {
+		const api = createProjectApi(createProjectDeps());
+		await api.listFiles(projectScope, { taskId: null });
+		expect(listingMocks.listPage).toHaveBeenCalledWith(
+			expect.objectContaining({ directory: undefined, cursor: undefined, showExcluded: false }),
+		);
+	});
+
+	it.each([
+		["invalid_directory", "BAD_REQUEST"],
+		["invalid_cursor", "BAD_REQUEST"],
+		["blocked_directory", "FORBIDDEN"],
+		["excluded_directory", "FORBIDDEN"],
+		["not_found", "NOT_FOUND"],
+		["busy", "TOO_MANY_REQUESTS"],
+	] as const)("maps %s listing errors to %s", async (code, trpcCode) => {
+		listingMocks.listPage.mockRejectedValue(new WorkdirDirectoryListingError(code, `listing ${code}`));
+		const api = createProjectApi(createProjectDeps());
+		await expect(api.listFiles(projectScope, { taskId: null })).rejects.toMatchObject({
+			code: trpcCode,
+			message: `listing ${code}`,
+		});
+	});
+
+	it("returns the unavailable page shape when the task worktree is missing", async () => {
+		worktreeMocks.resolveTaskWorkingDirectory.mockRejectedValueOnce(
+			new Error("Task worktree not found for task task-1"),
+		);
+		const api = createProjectApi(createProjectDeps());
+		expect(await api.listFiles(projectScope, { taskId: "task-1", directory: "src" })).toEqual({
+			directory: "src",
+			files: [],
+			directories: [],
+			mutable: false,
+			mutationBlockedReason: "Worktree is unavailable.",
+			snapshotId: null,
+			nextCursor: null,
+			hiddenCount: 0,
+		});
+		expect(listingMocks.listPage).not.toHaveBeenCalled();
+	});
+
+	it("uses the bounded folder scan for folder quick-open and reports truncation", async () => {
 		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly: true });
 		const api = createProjectApi(createProjectDeps());
-		await api.searchFiles({ projectId: "project-1", projectPath: "/tmp/repo" }, { query: "file" });
-		expect(listingMocks.entries).toHaveBeenCalledWith("/tmp/repo", { useGitIgnores: false });
-		expect(listingMocks.searchFilePaths).toHaveBeenCalledWith(["dist/file.txt"], "file", undefined);
+		expect(await api.searchFiles(projectScope, { query: " file " })).toEqual({
+			query: "file",
+			files: [],
+			truncated: true,
+		});
+		expect(listingMocks.searchFolder).toHaveBeenCalledWith("/tmp/repo", "file", undefined);
+		expect(listingMocks.searchWorkdirFiles).not.toHaveBeenCalled();
+	});
+
+	it("keeps Git quick-open on the dedicated index without a truncation claim", async () => {
+		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly: false });
+		const api = createProjectApi(createProjectDeps());
+		expect(await api.searchFiles(projectScope, { query: "file", limit: 5 })).toEqual({ query: "file", files: [] });
+		expect(listingMocks.searchWorkdirFiles).toHaveBeenCalledWith("/tmp/repo", "file", 5);
+		expect(listingMocks.searchFolder).not.toHaveBeenCalled();
 	});
 });

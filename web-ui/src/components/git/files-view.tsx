@@ -1,5 +1,5 @@
-import { FolderOpen, PanelLeft } from "lucide-react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { PanelLeft } from "lucide-react";
+import type { MouseEvent as ReactMouseEvent, ReactNode, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CodeNavigationResults } from "@/components/git/panels/code-navigation-results";
 import { FileBrowserTreePanel } from "@/components/git/panels/file-browser-tree-panel";
@@ -40,8 +40,6 @@ const FILES_VIEW_FILE_TREE_RATIO_PREFERENCE: ResizeNumberPreference = {
 
 /** Module-level cache of expanded directory sets per scope key. */
 const expandedDirsByScope = new Map<string, Set<string>>();
-/** Track which scopes have already run their initial expansion. */
-const initializedExpansionByScope = new Set<string>();
 
 export interface FilesViewProps {
 	projectId?: string | null;
@@ -81,11 +79,26 @@ export function FilesView({
 	usePreferenceStorageEffect(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE.key, () =>
 		setFileTreeRatioState(loadResizePreference(FILES_VIEW_FILE_TREE_RATIO_PREFERENCE)),
 	);
-	const [expandedDirs, setExpandedDirs] = useState<Set<string>>(
-		() => (scopeKey ? expandedDirsByScope.get(scopeKey) : undefined) ?? new Set(),
+	const [expansion, setExpansion] = useState<{ key: string | undefined; directories: Set<string> }>(() => ({
+		key: scopeKey,
+		directories: (scopeKey ? expandedDirsByScope.get(scopeKey) : undefined) ?? new Set(),
+	}));
+	const restoredExpansion = useMemo(
+		() => (scopeKey ? expandedDirsByScope.get(scopeKey) : undefined) ?? new Set<string>(),
+		[scopeKey],
 	);
-	const [hasInitializedExpansion, setHasInitializedExpansion] = useState(() =>
-		scopeKey ? initializedExpansionByScope.has(scopeKey) : false,
+	const expandedDirs = expansion.key === scopeKey ? expansion.directories : restoredExpansion;
+	const setExpandedDirs = useCallback(
+		(value: SetStateAction<Set<string>>) => {
+			setExpansion((current) => ({
+				key: scopeKey,
+				directories:
+					typeof value === "function"
+						? value(current.key === scopeKey ? current.directories : restoredExpansion)
+						: value,
+			}));
+		},
+		[scopeKey, restoredExpansion],
 	);
 
 	const [pendingCodeLocation, setPendingCodeLocation] = useState<{
@@ -157,12 +170,10 @@ export function FilesView({
 		}
 	}, [scopeKey, expandedDirs]);
 
-	const handleInitializedExpansion = useCallback(() => {
-		setHasInitializedExpansion(true);
-		if (scopeKey) {
-			initializedExpansionByScope.add(scopeKey);
-		}
-	}, [scopeKey]);
+	useEffect(() => {
+		fileBrowserData.setExpandedDirectories(fileTreeVisible ? expandedDirs : new Set());
+		return () => fileBrowserData.setExpandedDirectories(new Set());
+	}, [expandedDirs, fileTreeVisible, fileBrowserData.setExpandedDirectories]);
 
 	// Navigate to a specific file when external file navigation arrives (from commit panel or search)
 	useEffect(() => {
@@ -204,6 +215,8 @@ export function FilesView({
 			if (!path) return;
 			setExpandedDirs((current) => {
 				const next = new Set(current);
+				for (let index = path.indexOf("/"); index >= 0; index = path.indexOf("/", index + 1))
+					next.add(path.slice(0, index));
 				next.add(path);
 				return next;
 			});
@@ -294,10 +307,9 @@ export function FilesView({
 
 	// --- Render ---
 
-	const hasEntries = (fileBrowserData.files?.length ?? 0) > 0 || (fileBrowserData.directories?.length ?? 0) > 0;
 	const canMutateEntries = fileBrowserData.canMutateEntries;
 	const fileListError = fileBrowserData.fileListError;
-	const showFileTree = fileTreeVisible && !fileListError;
+	const showFileTree = fileTreeVisible;
 
 	return (
 		<div className="flex flex-col flex-1 min-h-0 min-w-0">
@@ -331,98 +343,91 @@ export function FilesView({
 
 			{/* Content area: file tree + file viewer */}
 			<div ref={contentRowRef} className="flex flex-1 min-h-0">
-				{!fileListError && !hasEntries && !fileBrowserData.selectedPath && !canMutateEntries ? (
-					<div className="flex flex-1 items-center justify-center">
-						<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
-							<FolderOpen size={40} />
-							<span className="text-sm">No files</span>
-						</div>
-					</div>
-				) : (
-					<>
-						{showFileTree && (
-							<>
-								<div
-									style={{
-										display: "flex",
-										flex: `0 0 ${fileTreePercent}`,
-										minWidth: 0,
-										minHeight: 0,
-									}}
-								>
-									<FileBrowserTreePanel
-										files={fileBrowserData.files}
-										directories={fileBrowserData.directories}
-										selectedPath={fileBrowserData.selectedPath}
-										onSelectPath={fileBrowserData.onSelectPath}
-										panelFlex="1 1 0"
-										expandedDirs={expandedDirs}
-										onExpandedDirsChange={setExpandedDirs}
-										hasInitializedExpansion={hasInitializedExpansion}
-										onInitializedExpansion={handleInitializedExpansion}
-										rootPath={rootPath}
-										getFileContent={fileBrowserData.getFileContent}
-										onCreateEntry={canMutateEntries ? handleCreateEntry : undefined}
-										onRenameEntry={canMutateEntries ? handleRenameEntry : undefined}
-										onDeleteEntry={canMutateEntries ? handleDeleteEntry : undefined}
-										scopeKey={scopeKey}
-									/>
-								</div>
-								<ResizeHandle
-									orientation="vertical"
-									ariaLabel="Resize file browser tree"
-									onMouseDown={handleFileTreeSeparatorMouseDown}
-									className="z-10"
+				<>
+					{showFileTree && (
+						<>
+							<div
+								style={{
+									display: "flex",
+									flex: `0 0 ${fileTreePercent}`,
+									minWidth: 0,
+									minHeight: 0,
+								}}
+							>
+								<FileBrowserTreePanel
+									directoryPages={fileBrowserData.directoryPages}
+									showExcluded={fileBrowserData.showExcluded}
+									onShowExcludedChange={fileBrowserData.setShowExcluded}
+									onLoadDirectory={fileBrowserData.loadDirectory}
+									files={fileBrowserData.files}
+									directories={fileBrowserData.directories}
+									selectedPath={fileBrowserData.selectedPath}
+									onSelectPath={fileBrowserData.onSelectPath}
+									panelFlex="1 1 0"
+									expandedDirs={expandedDirs}
+									onExpandedDirsChange={setExpandedDirs}
+									rootPath={rootPath}
+									getFileContent={fileBrowserData.getFileContent}
+									onCreateEntry={canMutateEntries ? handleCreateEntry : undefined}
+									onRenameEntry={canMutateEntries ? handleRenameEntry : undefined}
+									onDeleteEntry={canMutateEntries ? handleDeleteEntry : undefined}
+									scopeKey={scopeKey}
 								/>
-							</>
-						)}
-						<div
-							style={{
-								display: "flex",
-								flexDirection: "column",
-								flex: showFileTree ? `0 0 ${contentPercent}` : "1 1 0",
-								minWidth: 0,
-								minHeight: 0,
-							}}
-						>
-							<FileEditorPanel
-								tabs={editorWorkspace.tabs}
-								activeTab={editorWorkspace.activeTab}
-								activePath={editorWorkspace.activePath}
-								isLoading={fileBrowserData.isContentLoading}
-								isError={fileBrowserData.isContentError}
-								isReadOnly={fileBrowserData.isReadOnly}
-								canEditActiveTab={editorWorkspace.canEditActiveTab}
-								isActiveTabDirty={editorWorkspace.isActiveTabDirty}
-								hasDirtyTabs={editorWorkspace.hasDirtyTabs}
-								discardPrompt={editorWorkspace.discardPrompt}
-								autosaveMode={fileEditorAutosaveMode}
-								editorActions={editorActions}
-								scrollToRange={pendingCodeRange}
-								onScrollToRangeConsumed={() => setPendingCodeLocation(null)}
-								scrollToLine={pendingScrollLine}
-								onScrollToLineConsumed={() => setPendingScrollLine(null)}
-								onSelectTab={editorWorkspace.handleSelectTab}
-								onCloseTab={editorWorkspace.handleCloseTab}
-								onChangeActiveContent={editorWorkspace.handleChangeActiveContent}
-								onSaveActiveTab={editorWorkspace.handleSaveActiveTab}
-								onSaveAllTabs={editorWorkspace.handleSaveAllTabs}
-								onCloseAllTabs={editorWorkspace.handleCloseAllTabs}
-								onAutosaveFocusChange={editorWorkspace.handleAutosaveFocusChange}
-								onReloadActiveTab={editorWorkspace.handleReloadActiveTab}
-								onCancelDiscardPrompt={editorWorkspace.handleCancelDiscardPrompt}
-								onConfirmDiscardPrompt={editorWorkspace.handleConfirmDiscardPrompt}
+							</div>
+							<ResizeHandle
+								orientation="vertical"
+								ariaLabel="Resize file browser tree"
+								onMouseDown={handleFileTreeSeparatorMouseDown}
+								className="z-10"
 							/>
-							{codeNavigation.result ? (
-								<CodeNavigationResults
-									result={codeNavigation.result}
-									onDismiss={codeNavigation.dismiss}
-									onNavigate={handleCodeNavigate}
-								/>
-							) : null}
-						</div>
-					</>
-				)}
+						</>
+					)}
+					<div
+						style={{
+							display: "flex",
+							flexDirection: "column",
+							flex: showFileTree ? `0 0 ${contentPercent}` : "1 1 0",
+							minWidth: 0,
+							minHeight: 0,
+						}}
+					>
+						<FileEditorPanel
+							tabs={editorWorkspace.tabs}
+							activeTab={editorWorkspace.activeTab}
+							activePath={editorWorkspace.activePath}
+							isLoading={fileBrowserData.isContentLoading}
+							isError={fileBrowserData.isContentError}
+							isReadOnly={fileBrowserData.isReadOnly}
+							canEditActiveTab={editorWorkspace.canEditActiveTab}
+							isActiveTabDirty={editorWorkspace.isActiveTabDirty}
+							hasDirtyTabs={editorWorkspace.hasDirtyTabs}
+							discardPrompt={editorWorkspace.discardPrompt}
+							autosaveMode={fileEditorAutosaveMode}
+							editorActions={editorActions}
+							scrollToRange={pendingCodeRange}
+							onScrollToRangeConsumed={() => setPendingCodeLocation(null)}
+							scrollToLine={pendingScrollLine}
+							onScrollToLineConsumed={() => setPendingScrollLine(null)}
+							onSelectTab={editorWorkspace.handleSelectTab}
+							onCloseTab={editorWorkspace.handleCloseTab}
+							onChangeActiveContent={editorWorkspace.handleChangeActiveContent}
+							onSaveActiveTab={editorWorkspace.handleSaveActiveTab}
+							onSaveAllTabs={editorWorkspace.handleSaveAllTabs}
+							onCloseAllTabs={editorWorkspace.handleCloseAllTabs}
+							onAutosaveFocusChange={editorWorkspace.handleAutosaveFocusChange}
+							onReloadActiveTab={editorWorkspace.handleReloadActiveTab}
+							onCancelDiscardPrompt={editorWorkspace.handleCancelDiscardPrompt}
+							onConfirmDiscardPrompt={editorWorkspace.handleConfirmDiscardPrompt}
+						/>
+						{codeNavigation.result ? (
+							<CodeNavigationResults
+								result={codeNavigation.result}
+								onDismiss={codeNavigation.dismiss}
+								onNavigate={handleCodeNavigate}
+							/>
+						) : null}
+					</div>
+				</>
 			</div>
 		</div>
 	);

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-	listAllWorkdirFiles,
 	MAX_WORKDIR_FILE_EDIT_SIZE,
 	readWorkdirFile,
 	saveWorkdirFile,
@@ -14,6 +13,7 @@ import {
 import { initGitRepository } from "../utilities/git-env";
 import { useProcessTestBudget } from "../utilities/process-test-budget";
 import { createTempDir } from "../utilities/temp-dir";
+import { listPagedWorkdirFiles } from "../utilities/workdir-listing";
 
 useProcessTestBudget();
 
@@ -110,12 +110,12 @@ describe("workdir file editing", () => {
 			mkdirSync(join(repoPath, prefix, "dist"), { recursive: true });
 			writeFileSync(join(repoPath, ignorePath), "", "utf8");
 			writeFileSync(join(repoPath, prefix, "dist", "output.txt"), "output\n", "utf8");
-			expect(await listAllWorkdirFiles(repoPath)).toContain(`${prefix}dist/output.txt`);
+			expect(await listPagedWorkdirFiles(repoPath)).toContain(`${prefix}dist/output.txt`);
 			const loaded = await readWorkdirFile(repoPath, ignorePath);
 
 			await saveWorkdirFile(repoPath, ignorePath, "dist/\n", requireContentHash(loaded.contentHash));
 
-			expect(await listAllWorkdirFiles(repoPath)).not.toContain(`${prefix}dist/output.txt`);
+			expect(await listPagedWorkdirFiles(repoPath)).not.toContain(`${prefix}dist/output.txt`);
 		} finally {
 			cleanup();
 		}
@@ -125,13 +125,13 @@ describe("workdir file editing", () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-save-autosave-listing-");
 		try {
 			writeFileSync(join(repoPath, "note.txt"), "before\n", "utf8");
-			expect(await listAllWorkdirFiles(repoPath)).toEqual(["note.txt"]);
+			expect(await listPagedWorkdirFiles(repoPath)).toEqual(["note.txt"]);
 			const loaded = await readWorkdirFile(repoPath, "note.txt");
 			writeFileSync(join(repoPath, "external.txt"), "external\n", "utf8");
 
 			await saveWorkdirFile(repoPath, "note.txt", "after\n", requireContentHash(loaded.contentHash));
 
-			expect(await listAllWorkdirFiles(repoPath)).toEqual(["note.txt"]);
+			expect(await listPagedWorkdirFiles(repoPath)).toEqual(["note.txt"]);
 		} finally {
 			cleanup();
 		}

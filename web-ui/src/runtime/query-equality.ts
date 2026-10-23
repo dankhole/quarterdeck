@@ -1,4 +1,4 @@
-import type { RuntimeGitRefsResponse, RuntimeListFilesResponse, RuntimeWorkdirChangesResponse } from "@/runtime/types";
+import type { RuntimeGitRefsResponse, RuntimeWorkdirChangesResponse } from "@/runtime/types";
 import { arePathIdentitiesEqual } from "@/utils/path-identity";
 
 function haveWorkdirContentRevisions(data: RuntimeWorkdirChangesResponse): boolean {
@@ -40,30 +40,6 @@ export function areWorkdirChangesRevisionsEqual(
 		}
 	}
 	return true;
-}
-
-function areStringArraysEqual(previousValues: readonly string[], nextValues: readonly string[]): boolean {
-	if (previousValues.length !== nextValues.length) {
-		return false;
-	}
-	for (let index = 0; index < previousValues.length; index += 1) {
-		if (previousValues[index] !== nextValues[index]) {
-			return false;
-		}
-	}
-	return true;
-}
-
-export function areListFilesResponsesEqual(
-	previousData: RuntimeListFilesResponse,
-	nextData: RuntimeListFilesResponse,
-): boolean {
-	return (
-		previousData.mutable === nextData.mutable &&
-		previousData.mutationBlockedReason === nextData.mutationBlockedReason &&
-		areStringArraysEqual(previousData.files, nextData.files) &&
-		areStringArraysEqual(previousData.directories ?? [], nextData.directories ?? [])
-	);
 }
 
 export function areGitRefsResponsesEqual(

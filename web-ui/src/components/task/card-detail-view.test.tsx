@@ -308,6 +308,11 @@ const noopGitContext: GitContextValue = {
 	topbarDetachedWorktree: null,
 	homeFileBrowserData: {
 		files: null,
+		directoryPages: {},
+		showExcluded: false,
+		setShowExcluded: () => {},
+		setExpandedDirectories: () => {},
+		loadDirectory: async () => null,
 		directories: null,
 		fileListError: null,
 		contentScopeKey: "test-home",

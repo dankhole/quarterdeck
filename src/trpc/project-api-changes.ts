@@ -25,16 +25,19 @@ import {
 	getWorkdirChangesForPaths,
 	getWorkdirChangesFromRef,
 	getWorkdirFileDiff,
-	listAllWorkdirFileEntries,
 	listFilesAtRef,
+	listWorkdirDirectoryPage,
 	readWorkdirFile,
 	readWorkdirFileExcerpt,
 	renameWorkdirEntry,
 	saveWorkdirFile,
 	searchFilePaths,
+	searchFolderWorkdirFiles,
 	searchWorkdirFiles,
 	searchWorkdirText,
 	validateGitPath,
+	WorkdirDirectoryListingError,
+	type WorkdirDirectoryListingErrorCode,
 	WorkdirFileConflictError,
 } from "../workdir";
 import type { RuntimeTrpcContext } from "./app-router-context";
@@ -54,6 +57,15 @@ import {
 	tryResolveTaskCwd,
 } from "./project-api-shared";
 import { createGitMetadataRefreshEffects } from "./runtime-mutation-effects";
+
+const DIRECTORY_LISTING_ERROR_CODES = {
+	invalid_directory: "BAD_REQUEST",
+	invalid_cursor: "BAD_REQUEST",
+	blocked_directory: "FORBIDDEN",
+	excluded_directory: "FORBIDDEN",
+	not_found: "NOT_FOUND",
+	busy: "TOO_MANY_REQUESTS",
+} as const satisfies Record<WorkdirDirectoryListingErrorCode, TRPCError["code"]>;
 
 type ChangesOps = Pick<
 	RuntimeTrpcContext["projectApi"],
@@ -305,15 +317,15 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			if (!cwd) {
 				return { query, files: [] } satisfies RuntimeWorkdirFileSearchResponse;
 			}
-			const files = input.ref
-				? searchFilePaths(await listFilesAtRef(cwd, input.ref), query, input.limit)
-				: folderOnly
-					? searchFilePaths(
-							(await listAllWorkdirFileEntries(cwd, { useGitIgnores: false })).files,
-							query,
-							input.limit,
-						)
-					: await searchWorkdirFiles(cwd, query, input.limit);
+			if (input.ref) {
+				const files = searchFilePaths(await listFilesAtRef(cwd, input.ref), query, input.limit);
+				return { query, files } satisfies RuntimeWorkdirFileSearchResponse;
+			}
+			if (folderOnly) {
+				const { files, truncated } = await searchFolderWorkdirFiles(cwd, query, input.limit);
+				return { query, files, truncated } satisfies RuntimeWorkdirFileSearchResponse;
+			}
+			const files = await searchWorkdirFiles(cwd, query, input.limit);
 			return { query, files } satisfies RuntimeWorkdirFileSearchResponse;
 		},
 
@@ -343,19 +355,31 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 			if (folderOnly && input.ref) throw new Error("Git ref browsing is disabled for folder projects.");
 			const scope = await resolveProjectFileScope(projectScope.projectPath, input);
 			if (!scope.cwd) {
-				return createUnavailableFileListResponse(scope.mutationBlockedReason ?? "Worktree is unavailable.");
+				return createUnavailableFileListResponse(
+					scope.mutationBlockedReason ?? "Worktree is unavailable.",
+					input.directory ?? "",
+				);
 			}
-			if (scope.ref) {
-				const files = await listFilesAtRef(scope.cwd, scope.ref);
+			try {
+				const page = await listWorkdirDirectoryPage({
+					cwd: scope.cwd,
+					directory: input.directory,
+					cursor: input.cursor,
+					showExcluded: input.showExcluded === true,
+					useGitIgnores: !folderOnly,
+					ref: scope.ref,
+				});
 				return {
-					files,
-					mutable: false,
-					mutationBlockedReason: scope.mutationBlockedReason ?? "Branch/ref browsing is read-only.",
+					...page,
+					mutable: scope.mutable,
+					...(scope.mutationBlockedReason ? { mutationBlockedReason: scope.mutationBlockedReason } : {}),
 				} satisfies RuntimeListFilesResponse;
+			} catch (error) {
+				if (error instanceof WorkdirDirectoryListingError) {
+					throw new TRPCError({ code: DIRECTORY_LISTING_ERROR_CODES[error.code], message: error.message });
+				}
+				throw error;
 			}
-
-			const entries = await listAllWorkdirFileEntries(scope.cwd, { useGitIgnores: !folderOnly });
-			return { ...entries, mutable: scope.mutable } satisfies RuntimeListFilesResponse;
 		},
 
 		getFileContent: async (projectScope, input) => {

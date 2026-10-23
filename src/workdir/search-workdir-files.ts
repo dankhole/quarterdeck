@@ -1,76 +1,10 @@
 import { normalizeFileSystemPathForComparison, type RuntimeWorkdirFileSearchMatch } from "../core";
 import { runGit, splitNullSeparatedGitOutput } from "./git-utils";
-import {
-	type WorkdirFileTree,
-	WorkdirFileTreeLimitError,
-	type WorkdirFileTreeOptions,
-	walkWorkdirFileTree,
-} from "./workdir-file-tree";
+import { invalidateWorkdirDirectoryListings } from "./workdir-directory-listing";
 
 const CACHE_TTL_MS = 5_000;
-const FILE_LIST_CACHE_TTL_MS = 30_000;
-const FILE_LIST_CACHE_MAX_ROOTS = 100;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-
-// ── Filesystem-based file listing (used by file browser) ────────────────────
-
-interface CachedFileList {
-	expiresAt: number;
-	result: WorkdirFileTree | WorkdirFileTreeLimitError;
-}
-
-const fsFileListCache = new Map<string, CachedFileList>();
-const fsFileListLoads = new Map<string, Promise<WorkdirFileTree>>();
-
-function cacheFileListResult(cacheKey: string, result: CachedFileList["result"]): void {
-	const now = Date.now();
-	for (const [key, cached] of fsFileListCache) {
-		if (cached.expiresAt <= now) fsFileListCache.delete(key);
-	}
-	fsFileListCache.set(cacheKey, { expiresAt: now + FILE_LIST_CACHE_TTL_MS, result });
-	if (fsFileListCache.size > FILE_LIST_CACHE_MAX_ROOTS) {
-		const oldest = fsFileListCache.keys().next().value;
-		if (oldest !== undefined) fsFileListCache.delete(oldest);
-	}
-}
-
-function fileListCacheKey(cwd: string, useGitIgnores: boolean): string {
-	return `${useGitIgnores ? "git" : "folder"}:${normalizeFileSystemPathForComparison(cwd)}`;
-}
-
-async function loadFileList(cwd: string, options: WorkdirFileTreeOptions): Promise<WorkdirFileTree> {
-	const useGitIgnores = options.useGitIgnores !== false;
-	const cacheKey = fileListCacheKey(cwd, useGitIgnores);
-	const cached = fsFileListCache.get(cacheKey);
-	if (cached && cached.expiresAt > Date.now()) {
-		if (cached.result instanceof WorkdirFileTreeLimitError) throw cached.result;
-		return cached.result;
-	}
-	fsFileListCache.delete(cacheKey);
-
-	const inFlight = fsFileListLoads.get(cacheKey);
-	if (inFlight) return inFlight;
-
-	const load = walkWorkdirFileTree(cwd, { useGitIgnores });
-	fsFileListLoads.set(cacheKey, load);
-	try {
-		const entries = await load;
-		// Invalidations detach the old load. It may finish for existing callers,
-		// but must not populate the cache or interfere with its replacement.
-		if (fsFileListLoads.get(cacheKey) === load) cacheFileListResult(cacheKey, entries);
-		return entries;
-	} catch (error) {
-		// Do not rebuild an over-limit tree on every poll. Transient failures
-		// remain immediately retryable, and invalidation detaches this failure too.
-		if (error instanceof WorkdirFileTreeLimitError && fsFileListLoads.get(cacheKey) === load) {
-			cacheFileListResult(cacheKey, error);
-		}
-		throw error;
-	} finally {
-		if (fsFileListLoads.get(cacheKey) === load) fsFileListLoads.delete(cacheKey);
-	}
-}
 
 // ── Git-based file index (used by search for change-status metadata) ────────
 
@@ -218,26 +152,10 @@ function normalizeLimit(limit: number | undefined): number {
 	return Math.max(1, Math.min(MAX_LIMIT, rounded));
 }
 
-export async function listAllWorkdirFiles(cwd: string, options: WorkdirFileTreeOptions = {}): Promise<string[]> {
-	return [...(await loadFileList(cwd, options)).files];
-}
-
-export async function listAllWorkdirFileEntries(
-	cwd: string,
-	options: WorkdirFileTreeOptions = {},
-): Promise<{ files: string[]; directories: string[] }> {
-	const entries = await loadFileList(cwd, options);
-	return { files: [...entries.files], directories: [...entries.directories] };
-}
-
+/** Invalidates file-browser listings and the quick-open index after file-tree mutations. */
 export function invalidateWorkdirFileListCache(cwd: string): void {
-	const cacheKey = normalizeFileSystemPathForComparison(cwd);
-	for (const useGitIgnores of [true, false]) {
-		const listingKey = fileListCacheKey(cwd, useGitIgnores);
-		fsFileListCache.delete(listingKey);
-		fsFileListLoads.delete(listingKey);
-	}
-	fileIndexCache.delete(cacheKey);
+	invalidateWorkdirDirectoryListings(cwd);
+	fileIndexCache.delete(normalizeFileSystemPathForComparison(cwd));
 }
 
 export function searchFilePaths(

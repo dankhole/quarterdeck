@@ -79,21 +79,51 @@ export type RuntimeWorkdirFileSearchMatch = z.infer<typeof runtimeWorkdirFileSea
 export const runtimeWorkdirFileSearchResponseSchema = z.object({
 	query: z.string(),
 	files: z.array(runtimeWorkdirFileSearchMatchSchema),
+	/** True when a bounded scan stopped before examining every searchable path; results are partial. */
+	truncated: z.boolean().optional(),
 });
 export type RuntimeWorkdirFileSearchResponse = z.infer<typeof runtimeWorkdirFileSearchResponseSchema>;
 
+export const RUNTIME_LIST_FILES_DIRECTORY_MAX_LENGTH = 4_096;
+export const RUNTIME_LIST_FILES_CURSOR_MAX_LENGTH = 128;
+
+/**
+ * Lists one page of a directory's immediate children. Page size is runtime policy.
+ * `cursor` is the opaque `nextCursor` of an earlier page for the same scope and directory.
+ * `showExcluded` reveals generated agent worktrees (`.claude/worktrees`) only; it never
+ * reveals Git-ignored, VCS, or dependency directories and grants no mutation authority.
+ */
 export const runtimeListFilesRequestSchema = z.object({
 	taskId: z.string().nullable(),
 	baseRef: z.string().optional(),
 	ref: z.string().optional(),
+	/** Root-relative directory; `""` (default) is the scope root. */
+	directory: z.string().max(RUNTIME_LIST_FILES_DIRECTORY_MAX_LENGTH).optional(),
+	cursor: z.string().min(1).max(RUNTIME_LIST_FILES_CURSOR_MAX_LENGTH).optional(),
+	showExcluded: z.boolean().optional(),
 });
 export type RuntimeListFilesRequest = z.infer<typeof runtimeListFilesRequestSchema>;
 
+/**
+ * One page of a directory enumeration. `files`/`directories` are root-relative paths of
+ * immediate children only, in enumeration order (not guaranteed sorted across pages).
+ * `snapshotId` is a replay generation, not a frozen filesystem copy: concurrently added
+ * or removed entries may or may not appear, and absence is not proof of deletion.
+ * A page may be empty while `nextCursor` is non-null when filtering consumed its budget.
+ * A response whose `snapshotId` differs from the cursor's snapshot is a fresh first page:
+ * replace that directory's loaded pages instead of appending. Unavailable scopes return
+ * empty arrays, null `snapshotId`/`nextCursor`, and `mutationBlockedReason`.
+ */
 export const runtimeListFilesResponseSchema = z.object({
+	directory: z.string(),
 	files: z.array(z.string()),
 	directories: z.array(z.string()).optional(),
 	mutable: z.boolean().optional(),
 	mutationBlockedReason: z.string().optional(),
+	snapshotId: z.string().nullable(),
+	nextCursor: z.string().nullable(),
+	/** Entries excluded by view policy within this page's examined chunk, not a directory total. */
+	hiddenCount: z.number().int().nonnegative(),
 });
 export type RuntimeListFilesResponse = z.infer<typeof runtimeListFilesResponseSchema>;
 

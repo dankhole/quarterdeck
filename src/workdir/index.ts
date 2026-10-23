@@ -81,12 +81,8 @@ export {
 	type WorkdirFileExcerpt,
 } from "./read-workdir-file";
 export { saveWorkdirFile, WorkdirFileConflictError } from "./save-workdir-file";
-export {
-	listAllWorkdirFileEntries,
-	listAllWorkdirFiles,
-	searchFilePaths,
-	searchWorkdirFiles,
-} from "./search-workdir-files";
+export { searchFilePaths, searchWorkdirFiles } from "./search-workdir-files";
+export { searchFolderWorkdirFiles } from "./search-workdir-folder-files";
 export { searchWorkdirText } from "./search-workdir-text";
 export {
 	archiveTaskWorktreeForTrash,
@@ -105,3 +101,9 @@ export {
 	resolveTaskWorkingDirectory,
 } from "./task-worktree";
 export { assertTaskWorktreeRegistration } from "./task-worktree-identity";
+export {
+	listWorkdirDirectoryPage,
+	WorkdirDirectoryListingError,
+	type WorkdirDirectoryListingErrorCode,
+	type WorkdirDirectoryListingPage,
+} from "./workdir-directory-listing";

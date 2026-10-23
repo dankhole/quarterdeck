@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
+import { fileTreePage } from "@/test-utils/file-tree";
 
 import {
 	createFileContentRequest,
@@ -50,7 +51,7 @@ describe("file browser scope policy", () => {
 		expect(
 			resolveFileBrowserMutationBlockedReason({
 				scope,
-				fileListData: { files: [], mutable: false },
+				fileListData: fileTreePage({ mutable: false }),
 				fileListError: null,
 			}),
 		).toBe("Branch/ref browsing is read-only.");

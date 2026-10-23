@@ -8,6 +8,7 @@ import { setLastSelectedFileBrowserPath } from "@/hooks/git/file-browser-selecti
 import { clearCachedFileEditorTabs } from "@/hooks/git/file-editor-cache";
 import { useFileBrowserData } from "@/hooks/git/use-file-browser-data";
 import type { RuntimeFileContentRequest, RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
+import { fileTreePage } from "@/test-utils/file-tree";
 import { FilesView } from "./files-view";
 
 const rpc = vi.hoisted(() => ({
@@ -38,6 +39,7 @@ vi.mock("@/components/git/panels/file-browser-tree-panel", () => ({
 		onSelectPath: (path: string) => void;
 	}) => (
 		<nav aria-label="File tree">
+			{files?.length === 0 ? "No files" : null}
 			{files?.map((path) => (
 				<button type="button" key={path} onClick={() => onSelectPath(path)}>
 					{path}
@@ -145,7 +147,7 @@ describe("FilesView", () => {
 		clearCachedFileEditorTabs();
 		setLastSelectedFileBrowserPath(scopeKey, null);
 		vi.clearAllMocks();
-		rpc.listFiles.mockResolvedValue({ files: ["src/app.ts"], directories: ["src"], mutable: true });
+		rpc.listFiles.mockResolvedValue(fileTreePage({ files: ["src/app.ts"], directories: ["src"], mutable: true }));
 		rpc.getFileContent.mockImplementation(async ({ path }: RuntimeFileContentRequest) =>
 			path === target.path
 				? contentResponse("export declare const value: number;\n", false)
@@ -206,7 +208,7 @@ describe("FilesView", () => {
 		);
 		expect(container.querySelector('[role="alert"]')).toBeNull();
 		expect(container.textContent).not.toContain(message);
-		await act(async () => resolveListing({ files: [], directories: [], mutable: false }));
+		await act(async () => resolveListing(fileTreePage({ files: [], directories: [], mutable: false })));
 		expect(container.querySelector('[role="alert"]')).toBeNull();
 		expect(container.textContent).toContain("No files");
 	});
@@ -247,9 +249,9 @@ describe("FilesView", () => {
 			await vi.advanceTimersByTimeAsync(5_000);
 		});
 		expect(container.querySelector('[role="alert"]')?.textContent).toContain(message);
-		expect(container.querySelector('[aria-label="File tree"]')).toBeNull();
+		expect(container.querySelector('[aria-label="File tree"]')).not.toBeNull();
 		expect(container.querySelector("[data-editor-path]")).toBe(editor);
-		await act(async () => resolveRetry({ files: ["src/app.ts"], directories: ["src"], mutable: true }));
+		await act(async () => resolveRetry(fileTreePage({ files: ["src/app.ts"], directories: ["src"], mutable: true })));
 		expect(container.querySelector('[role="alert"]')).toBeNull();
 		expect(container.querySelector('[aria-label="File tree"]')?.textContent).toContain("src/app.ts");
 		expect(container.querySelector("[data-editor-path]")).toBe(editor);

@@ -152,6 +152,11 @@ function createBranchActions(): UseBranchActionsResult {
 function createFileBrowserData(): UseFileBrowserDataResult {
 	return {
 		files: null,
+		directoryPages: {},
+		showExcluded: false,
+		setShowExcluded: () => {},
+		setExpandedDirectories: () => {},
+		loadDirectory: async () => null,
 		directories: null,
 		fileListError: null,
 		contentScopeKey: "test-task",

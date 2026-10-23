@@ -3,6 +3,7 @@ import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type {
 	RuntimeFileContentResponse,
+	RuntimeListFilesResponse,
 	RuntimeWorkdirEntryKind,
 	RuntimeWorkdirEntryMutationResponse,
 } from "@/runtime/types";
@@ -15,11 +16,17 @@ import {
 } from "./file-browser-scope";
 import { getLastSelectedFileBrowserPath, setLastSelectedFileBrowserPath } from "./file-browser-selection-cache";
 import { type FileEditorScopeIdentity, getFileEditorScopeGeneration } from "./file-editor-cache";
+import type { FileTreeDirectoryPages } from "./file-tree-pages";
 import { useFileContentData } from "./use-file-content-data";
 import { useFileTreeData } from "./use-file-tree-data";
 
 export interface UseFileBrowserDataResult {
 	files: string[] | null;
+	directoryPages: FileTreeDirectoryPages;
+	showExcluded: boolean;
+	setShowExcluded: (show: boolean) => void;
+	setExpandedDirectories: (directories: ReadonlySet<string>) => void;
+	loadDirectory: (directory: string, append?: boolean) => Promise<RuntimeListFilesResponse | null>;
 	directories: string[] | null;
 	fileListError: Error | null;
 	contentScopeKey: string;
@@ -49,18 +56,6 @@ export interface UseFileBrowserDataResult {
 		kind: RuntimeWorkdirEntryKind,
 	) => Promise<RuntimeWorkdirEntryMutationResponse>;
 	deleteEntry: (path: string, kind: RuntimeWorkdirEntryKind) => Promise<RuntimeWorkdirEntryMutationResponse>;
-}
-
-const NAVIGATION_TARGET_READ_ONLY_REASON = "Files outside the file tree are read-only.";
-
-function readOnlyNavigationContent(content: RuntimeFileContentResponse | null): RuntimeFileContentResponse | null {
-	return content
-		? {
-				...content,
-				editable: false,
-				editBlockedReason: content.editBlockedReason ?? NAVIGATION_TARGET_READ_ONLY_REASON,
-			}
-		: null;
 }
 
 /**
@@ -120,15 +115,6 @@ export function useFileBrowserData(options: {
 		setSelectedPathPersisted(restored);
 	}, [contentScopeKey, setSelectedPathPersisted]);
 
-	const files = treeData.fileListData?.files;
-	const isUnlistedNavigationTarget = useCallback(
-		(path: string) =>
-			navigationTargets?.scopeKey === contentScopeKey &&
-			navigationTargets.generation === scopeGeneration &&
-			navigationTargets.paths.has(path) &&
-			!files?.includes(path),
-		[contentScopeKey, files, navigationTargets, scopeGeneration],
-	);
 	const selectNavigationTarget = useCallback(
 		(path: string) => {
 			if (
@@ -138,49 +124,29 @@ export function useFileBrowserData(options: {
 				scopeGeneration !== getFileEditorScopeGeneration(contentScopeKey)
 			)
 				return;
-			if (!files?.includes(path)) {
-				setNavigationTargets((current) => ({
-					scopeKey: contentScopeKey,
-					generation: scopeGeneration,
-					paths: new Set([
-						...(current?.scopeKey === contentScopeKey && current.generation === scopeGeneration
-							? current.paths
-							: []),
-						path,
-					]),
-				}));
-			}
+			setNavigationTargets({ scopeKey: contentScopeKey, generation: scopeGeneration, paths: new Set([path]) });
 			setSelectedPathPersisted(path);
 		},
-		[contentScopeKey, files, scope.canQueryRuntime, scope.isReadOnly, scopeGeneration, setSelectedPathPersisted],
+		[contentScopeKey, scope.canQueryRuntime, scope.isReadOnly, scopeGeneration, setSelectedPathPersisted],
 	);
 
-	// The tree is not an exhaustive readable-file list: LSP results can include dependency declarations.
-	// Ordinary selections still clear when removed; only explicitly admitted navigation targets bypass it.
+	// Loaded pages are never evidence of deletion; explicit retirement still expires navigation admission.
 	useEffect(() => {
-		if (selectedPath && files && !files.includes(selectedPath) && !isUnlistedNavigationTarget(selectedPath)) {
+		if (
+			selectedPath &&
+			navigationTargets?.scopeKey === contentScopeKey &&
+			navigationTargets.generation !== scopeGeneration &&
+			navigationTargets.paths.has(selectedPath)
+		)
 			setSelectedPathPersisted(null);
-		}
-	}, [selectedPath, files, isUnlistedNavigationTarget, setSelectedPathPersisted]);
+	}, [contentScopeKey, navigationTargets, scopeGeneration, selectedPath, setSelectedPathPersisted]);
 
-	const navigationTargetReadOnly = selectedPath !== null && isUnlistedNavigationTarget(selectedPath);
-	const fileContent = useMemo(
-		() => (navigationTargetReadOnly ? readOnlyNavigationContent(contentData.fileContent) : contentData.fileContent),
-		[contentData.fileContent, navigationTargetReadOnly],
-	);
-	const reloadFileContent = useCallback(
-		async (path: string) => {
-			const content = await contentData.reloadFileContent(path);
-			return isUnlistedNavigationTarget(path) ? readOnlyNavigationContent(content) : content;
+	const selectPath = useCallback(
+		(path: string | null) => {
+			setNavigationTargets(null);
+			setSelectedPathPersisted(path);
 		},
-		[contentData.reloadFileContent, isUnlistedNavigationTarget],
-	);
-	const saveFileContent = useCallback(
-		async (path: string, content: string, expectedContentHash: string) => {
-			if (isUnlistedNavigationTarget(path)) throw new Error(NAVIGATION_TARGET_READ_ONLY_REASON);
-			return await contentData.saveFileContent(path, content, expectedContentHash);
-		},
-		[contentData.saveFileContent, isUnlistedNavigationTarget],
+		[setSelectedPathPersisted],
 	);
 
 	const mutationBlockedReason = resolveFileBrowserMutationBlockedReason({
@@ -203,13 +169,21 @@ export function useFileBrowserData(options: {
 			const result = await trpcClient.project.createWorkdirEntry.mutate(
 				createWorkdirEntryCreateRequest(scope, path, kind),
 			);
-			await treeData.reloadFileListForScope(requestScopeKey);
-			if (requestScopeKey === contentScopeKeyRef.current && kind === "file") {
-				setSelectedPathPersisted(result.path);
+			if (requestScopeKey === contentScopeKeyRef.current) {
+				treeData.revealEntry(result.path, kind);
+				if (kind === "file") setSelectedPathPersisted(result.path);
 			}
+			await treeData.reloadFileListForScope(requestScopeKey, [path]);
 			return result;
 		},
-		[contentScopeKey, mutationBlockedReason, scope, setSelectedPathPersisted, treeData.reloadFileListForScope],
+		[
+			contentScopeKey,
+			mutationBlockedReason,
+			scope,
+			setSelectedPathPersisted,
+			treeData.reloadFileListForScope,
+			treeData.revealEntry,
+		],
 	);
 
 	const renameEntry = useCallback(
@@ -225,10 +199,10 @@ export function useFileBrowserData(options: {
 			const result = await trpcClient.project.renameWorkdirEntry.mutate(
 				createWorkdirEntryRenameRequest(scope, path, nextPath, kind),
 			);
-			await treeData.reloadFileListForScope(requestScopeKey);
 			if (requestScopeKey !== contentScopeKeyRef.current) {
 				return result;
 			}
+			treeData.revealEntry(result.path, kind, path);
 			const currentPath = selectedPathRef.current;
 			if (currentPath === path || (kind === "directory" && currentPath?.startsWith(`${path}/`))) {
 				const renamedPath =
@@ -236,6 +210,7 @@ export function useFileBrowserData(options: {
 				setSelectedPathPersisted(renamedPath);
 				contentData.clearFileContent();
 			}
+			await treeData.reloadFileListForScope(requestScopeKey, [path, result.path]);
 			return result;
 		},
 		[
@@ -245,6 +220,7 @@ export function useFileBrowserData(options: {
 			scope,
 			setSelectedPathPersisted,
 			treeData.reloadFileListForScope,
+			treeData.revealEntry,
 		],
 	);
 
@@ -257,10 +233,10 @@ export function useFileBrowserData(options: {
 			const result = await trpcClient.project.deleteWorkdirEntry.mutate(
 				createWorkdirEntryDeleteRequest(scope, path, kind),
 			);
-			await treeData.reloadFileListForScope(requestScopeKey);
 			if (requestScopeKey !== contentScopeKeyRef.current) {
 				return result;
 			}
+			treeData.revealEntry("", kind, path);
 			if (
 				selectedPathRef.current === path ||
 				(kind === "directory" && selectedPathRef.current?.startsWith(`${path}/`))
@@ -268,6 +244,7 @@ export function useFileBrowserData(options: {
 				setSelectedPathPersisted(null);
 				contentData.clearFileContent();
 			}
+			await treeData.reloadFileListForScope(requestScopeKey, [path]);
 			return result;
 		},
 		[
@@ -277,12 +254,18 @@ export function useFileBrowserData(options: {
 			scope,
 			setSelectedPathPersisted,
 			treeData.reloadFileListForScope,
+			treeData.revealEntry,
 		],
 	);
 
 	return {
 		editorScope,
 		files: treeData.files,
+		directoryPages: treeData.directoryPages,
+		showExcluded: treeData.showExcluded,
+		setShowExcluded: treeData.setShowExcluded,
+		setExpandedDirectories: treeData.setExpandedDirectories,
+		loadDirectory: treeData.loadDirectory,
 		directories: treeData.directories,
 		fileListError: treeData.fileListError,
 		contentScopeKey,
@@ -290,16 +273,16 @@ export function useFileBrowserData(options: {
 		canMutateEntries,
 		mutationBlockedReason,
 		selectedPath,
-		onSelectPath: setSelectedPathPersisted,
+		onSelectPath: selectPath,
 		onSelectNavigationTarget: selectNavigationTarget,
-		fileContent,
+		fileContent: contentData.fileContent,
 		isContentLoading: contentData.isContentLoading,
 		isContentError: contentData.isContentError,
 		onCloseFile: handleCloseFile,
 		isReadOnly: scope.isReadOnly,
 		getFileContent: contentData.getFileContent,
-		reloadFileContent,
-		saveFileContent,
+		reloadFileContent: contentData.reloadFileContent,
+		saveFileContent: contentData.saveFileContent,
 		createEntry,
 		renameEntry,
 		deleteEntry,

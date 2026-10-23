@@ -27,17 +27,27 @@ import { cn } from "@/components/ui/cn";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { AlertDialogDescription, Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { FileTreeDirectoryPages } from "@/hooks/git/file-tree-pages";
 import type {
 	RuntimeFileContentResponse,
+	RuntimeListFilesResponse,
 	RuntimeWorkdirEntryKind,
 	RuntimeWorkdirEntryMutationResponse,
 } from "@/runtime/types";
 import { buildFileTree, type FileTreeNode } from "@/utils/file-tree";
 import { useDebouncedEffect } from "@/utils/react-use";
 
-interface FlatTreeItem {
-	node: FileTreeNode;
-	depth: number;
+type FlatTreeItem =
+	| { kind: "entry"; node: FileTreeNode; depth: number }
+	| { kind: "status"; directory: string; depth: number };
+
+function needsDirectoryControl(directory: string, pages: FileTreeDirectoryPages): boolean {
+	const page = pages[directory];
+	return (
+		!page ||
+		(page.loading && (!page.data || page.loadingVisible)) ||
+		Boolean(page.error || page.data?.nextCursor || page.data?.hiddenCount)
+	);
 }
 
 type EntryFormDialogState =
@@ -59,16 +69,22 @@ interface DeleteEntryPrompt {
 }
 
 /** Single-pass traversal that produces both the visible item list and the file-only path list. */
-function flattenVisible(nodes: FileTreeNode[], expandedDirs: Set<string>, depth: number, items: FlatTreeItem[]): void {
+function flattenVisible(
+	nodes: FileTreeNode[],
+	expandedDirs: Set<string>,
+	depth: number,
+	items: FlatTreeItem[],
+	pages: FileTreeDirectoryPages,
+): void {
 	for (const node of nodes) {
-		items.push({ node, depth });
-		if (node.type === "directory" && expandedDirs.has(node.path) && node.children.length > 0) {
-			flattenVisible(node.children, expandedDirs, depth + 1, items);
+		items.push({ kind: "entry", node, depth });
+		if (node.type === "directory" && expandedDirs.has(node.path)) {
+			flattenVisible(node.children, expandedDirs, depth + 1, items, pages);
+			if (pages[node.path] && needsDirectoryControl(node.path, pages))
+				items.push({ kind: "status", directory: node.path, depth: depth + 1 });
 		}
 	}
 }
-
-const INITIAL_EXPANSION_DEPTH = 0;
 
 function collectDirectoryPaths(nodes: FileTreeNode[], maxDepth = Number.POSITIVE_INFINITY, depth = 0): string[] {
 	if (depth >= maxDepth) {
@@ -106,8 +122,10 @@ export function FileBrowserTreePanel({
 	panelFlex,
 	expandedDirs,
 	onExpandedDirsChange,
-	hasInitializedExpansion,
-	onInitializedExpansion,
+	directoryPages,
+	showExcluded,
+	onShowExcludedChange,
+	onLoadDirectory,
 	rootPath,
 	getFileContent,
 	onCreateEntry,
@@ -122,8 +140,10 @@ export function FileBrowserTreePanel({
 	panelFlex?: string;
 	expandedDirs: Set<string>;
 	onExpandedDirsChange: (value: SetStateAction<Set<string>>) => void;
-	hasInitializedExpansion: boolean;
-	onInitializedExpansion: () => void;
+	directoryPages: FileTreeDirectoryPages;
+	showExcluded: boolean;
+	onShowExcludedChange: (show: boolean) => void;
+	onLoadDirectory: (directory: string, append?: boolean) => Promise<RuntimeListFilesResponse | null>;
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
 	/** Fetch file content for a given path (used by "Copy file contents" context menu action). */
@@ -208,25 +228,22 @@ export function FileBrowserTreePanel({
 
 	const tree = useMemo(() => buildFileTree(filteredFiles, filteredDirectories), [filteredFiles, filteredDirectories]);
 
-	// Auto-expand directories on first load (limited depth) or fully when searching
-	useEffect(() => {
-		if (debouncedQuery.trim()) {
-			onExpandedDirsChange(new Set(collectDirectoryPaths(tree)));
-		} else if (!hasInitializedExpansion && tree.length > 0) {
-			onExpandedDirsChange(new Set(collectDirectoryPaths(tree, INITIAL_EXPANSION_DEPTH)));
-			onInitializedExpansion();
-		}
-	}, [tree, debouncedQuery, hasInitializedExpansion, onExpandedDirsChange, onInitializedExpansion]);
+	// Filtering only projects already loaded entries; it never requests more directories.
+	const displayExpandedDirs = useMemo(
+		() => (debouncedQuery.trim() ? new Set(collectDirectoryPaths(tree)) : expandedDirs),
+		[debouncedQuery, tree, expandedDirs],
+	);
 
 	const visibleItems = useMemo(() => {
 		const items: FlatTreeItem[] = [];
-		flattenVisible(tree, expandedDirs, 0, items);
+		flattenVisible(tree, displayExpandedDirs, 0, items, directoryPages);
+		if (needsDirectoryControl("", directoryPages)) items.push({ kind: "status", directory: "", depth: 0 });
 		return items;
-	}, [tree, expandedDirs]);
+	}, [tree, displayExpandedDirs, directoryPages]);
 
 	const focusedItem =
 		focusedIndex >= 0 && focusedIndex < visibleItems.length ? (visibleItems[focusedIndex] ?? null) : null;
-	const focusedPath = focusedItem?.node.path ?? null;
+	const focusedPath = focusedItem?.kind === "entry" ? focusedItem.node.path : null;
 
 	const allDirectoryPaths = useMemo(() => collectDirectoryPaths(tree), [tree]);
 	const hasDirectories = allDirectoryPaths.length > 0;
@@ -276,7 +293,7 @@ export function FileBrowserTreePanel({
 			} else if (event.key === "ArrowUp") {
 				event.preventDefault();
 				setFocusedIndex((prev) => (prev > 0 ? prev - 1 : visibleItems.length - 1));
-			} else if (event.key === "Enter" && focusedItem) {
+			} else if (event.key === "Enter" && focusedItem?.kind === "entry") {
 				event.preventDefault();
 				if (focusedItem.node.type === "directory") {
 					toggleDirectory(focusedItem.node.path);
@@ -424,6 +441,14 @@ export function FileBrowserTreePanel({
 					)}
 				</AlertDialogDescription>
 			</ConfirmationDialog>
+			<label className="flex items-center gap-2 px-2 py-1.5 border-b border-border text-xs text-text-secondary">
+				<input
+					type="checkbox"
+					checked={showExcluded}
+					onChange={(event) => onShowExcludedChange(event.target.checked)}
+				/>
+				Show generated worktrees
+			</label>
 			{(files?.length ?? 0) > 0 || (directories?.length ?? 0) > 0 || canMutateEntries ? (
 				<div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border">
 					<Search size={12} className="text-text-tertiary shrink-0" />
@@ -434,7 +459,8 @@ export function FileBrowserTreePanel({
 						value={searchQuery}
 						onChange={handleSearchChange}
 						onKeyDown={handleKeyDown}
-						placeholder="Filter files..."
+						placeholder="Filter loaded files..."
+						aria-label="Filter loaded files"
 						className="flex-1 min-w-0 bg-transparent text-xs text-text-primary placeholder-text-tertiary outline-none border-0 p-0"
 					/>
 					{canMutateEntries ? (
@@ -471,9 +497,10 @@ export function FileBrowserTreePanel({
 					) : null}
 					{hasDirectories ? (
 						<>
-							<Tooltip content="Expand all">
+							<Tooltip content="Expand loaded folders">
 								<button
 									type="button"
+									aria-label="Expand loaded folders"
 									onClick={handleExpandAll}
 									className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
 								>
@@ -483,6 +510,7 @@ export function FileBrowserTreePanel({
 							<Tooltip content="Collapse all">
 								<button
 									type="button"
+									aria-label="Collapse all folders"
 									onClick={handleCollapseAll}
 									className="shrink-0 p-0.5 rounded text-text-tertiary hover:text-text-secondary"
 								>
@@ -498,16 +526,65 @@ export function FileBrowserTreePanel({
 					<div className="kb-empty-state-center">
 						<div className="flex flex-col items-center justify-center gap-3 py-12 text-text-tertiary">
 							<FolderOpen size={40} />
-							<span className="text-sm">{searchQuery ? "No matching files" : "No files"}</span>
+							<span className="text-sm">{searchQuery ? "No matching loaded files" : "No files"}</span>
 						</div>
 					</div>
 				) : (
 					<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
 						{virtualizer.getVirtualItems().map((virtualItem) => {
 							const item = visibleItems[virtualItem.index]!;
+							if (item.kind === "status") {
+								const page = directoryPages[item.directory];
+								const name = item.directory || "root";
+								return (
+									<div
+										key={`status:${item.directory}`}
+										className="absolute top-0 left-0 w-full flex items-center gap-2 text-xs text-text-secondary"
+										style={{
+											height: ROW_HEIGHT,
+											transform: `translateY(${virtualItem.start}px)`,
+											paddingLeft: item.depth * 12 + 8,
+										}}
+									>
+										{page?.error ? (
+											<>
+												<span className="truncate text-status-red" title={page.error.message}>
+													Unable to load {name}: {page.error.message}
+												</span>
+												<button
+													type="button"
+													className="shrink-0 text-accent"
+													onClick={() =>
+														void onLoadDirectory(item.directory, Boolean(page.data?.nextCursor))
+													}
+													disabled={page.loading}
+													aria-label={`Retry ${name}`}
+												>
+													{page.loading ? "Retrying…" : "Retry"}
+												</button>
+											</>
+										) : !page || (page.loading && (!page.data || page.loadingVisible)) ? (
+											<span role="status">Loading {name}…</span>
+										) : page.data?.nextCursor ? (
+											<button
+												type="button"
+												className="text-accent"
+												onClick={() => void onLoadDirectory(item.directory, true)}
+												aria-label={`Load more ${name}`}
+											>
+												Load more
+											</button>
+										) : (
+											<span className="truncate">
+												Hidden entries ({page.data?.hiddenCount} in loaded pages)
+											</span>
+										)}
+									</div>
+								);
+							}
 							const { node, depth } = item;
 							const isDirectory = node.type === "directory";
-							const isExpanded = expandedDirs.has(node.path);
+							const isExpanded = displayExpandedDirs.has(node.path);
 							const isSelected = !isDirectory && node.path === selectedPath;
 							const isFocused = node.path === focusedPath;
 

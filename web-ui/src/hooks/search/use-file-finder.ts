@@ -13,6 +13,8 @@ export interface UseFileFinderResult {
 	setQuery: (q: string) => void;
 	results: RuntimeWorkdirFileSearchMatch[];
 	isLoading: boolean;
+	truncated: boolean;
+	error: string | null;
 	selectedIndex: number;
 	setSelectedIndex: (i: number) => void;
 	handleKeyDown: (e: KeyboardEvent) => void;
@@ -26,6 +28,8 @@ export function useFileFinder(options: {
 }): UseFileFinderResult {
 	const { projectId, searchScope, onSelect } = options;
 
+	const [truncated, setTruncated] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [results, setResults] = useState<RuntimeWorkdirFileSearchMatch[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -36,6 +40,8 @@ export function useFileFinder(options: {
 	useEffect(() => {
 		requestIdRef.current += 1;
 		setResults([]);
+		setTruncated(false);
+		setError(null);
 		setIsLoading(Boolean(trimmedQuery && projectId));
 		return () => {
 			requestIdRef.current += 1;
@@ -65,10 +71,12 @@ export function useFileFinder(options: {
 					}
 					const files = Array.isArray(payload.files) ? payload.files : [];
 					setResults(files);
+					setTruncated(payload.truncated ?? false);
 					setSelectedIndex(0);
-				} catch {
+				} catch (error) {
 					if (requestId === requestIdRef.current) {
 						setResults([]);
+						setError(error instanceof Error ? error.message : "Unable to search files.");
 					}
 				} finally {
 					if (requestId === requestIdRef.current) {
@@ -114,6 +122,8 @@ export function useFileFinder(options: {
 		setQuery,
 		results,
 		isLoading,
+		truncated,
+		error,
 		selectedIndex,
 		setSelectedIndex,
 		handleKeyDown,

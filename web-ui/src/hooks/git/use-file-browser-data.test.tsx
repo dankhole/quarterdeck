@@ -1,7 +1,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fileTreePage } from "@/test-utils/file-tree";
 
+const createEntryMock = vi.hoisted(() => vi.fn());
+const renameEntryMock = vi.hoisted(() => vi.fn());
+const deleteEntryMock = vi.hoisted(() => vi.fn());
 const listFilesQueryMock = vi.hoisted(() => vi.fn());
 const getFileContentQueryMock = vi.hoisted(() => vi.fn());
 const saveFileContentMutateMock = vi.hoisted(() => vi.fn());
@@ -79,6 +83,9 @@ describe("useFileBrowserData", () => {
 			);
 		}
 		listFilesQueryMock.mockReset();
+		createEntryMock.mockReset();
+		renameEntryMock.mockReset();
+		deleteEntryMock.mockReset();
 		getFileContentQueryMock.mockReset();
 		saveFileContentMutateMock.mockReset();
 		getRuntimeTrpcClientMock.mockReset();
@@ -87,9 +94,9 @@ describe("useFileBrowserData", () => {
 				listFiles: { query: listFilesQueryMock },
 				getFileContent: { query: getFileContentQueryMock },
 				saveFileContent: { mutate: saveFileContentMutateMock },
-				createWorkdirEntry: { mutate: vi.fn() },
-				renameWorkdirEntry: { mutate: vi.fn() },
-				deleteWorkdirEntry: { mutate: vi.fn() },
+				createWorkdirEntry: { mutate: createEntryMock },
+				renameWorkdirEntry: { mutate: renameEntryMock },
+				deleteWorkdirEntry: { mutate: deleteEntryMock },
 			},
 		});
 	});
@@ -119,11 +126,13 @@ describe("useFileBrowserData", () => {
 			return latest;
 		};
 
-		listFilesQueryMock.mockResolvedValueOnce({
-			files: ["src/home.ts"],
-			directories: ["src"],
-			mutable: true,
-		} satisfies RuntimeListFilesResponse);
+		listFilesQueryMock.mockResolvedValueOnce(
+			fileTreePage({
+				files: ["src/home.ts"],
+				directories: ["src"],
+				mutable: true,
+			}) satisfies RuntimeListFilesResponse,
+		);
 
 		await act(async () => {
 			root.render(
@@ -166,7 +175,7 @@ describe("useFileBrowserData", () => {
 			if (!latest) throw new Error("No browser result");
 			return latest;
 		};
-		const listing = { files: ["src/home.ts"], directories: ["src"], mutable: true };
+		const listing = fileTreePage({ files: ["src/home.ts"], directories: ["src"], mutable: true });
 		const content = contentResponse("source", "hash");
 		const error = new Error("File tree exceeds the 20,000-entry limit.");
 		listFilesQueryMock.mockResolvedValue(listing);
@@ -188,7 +197,7 @@ describe("useFileBrowserData", () => {
 			await vi.advanceTimersByTimeAsync(5_000);
 		});
 		expect(current().fileListError).toBe(error);
-		expect(current().files).toBeNull();
+		expect(current().files).toEqual(["src/home.ts"]);
 		expect(current().canMutateEntries).toBe(false);
 		expect(current().mutationBlockedReason).toBe(error.message);
 		await expect(current().createEntry("new.ts", "file")).rejects.toThrow(error.message);
@@ -242,7 +251,7 @@ describe("useFileBrowserData", () => {
 		);
 		expect(newScopeResults.every((result) => result.fileListError === null)).toBe(true);
 		expect(current().files).toBeNull();
-		await act(async () => resolveTask({ files: ["task.ts"], directories: [], mutable: true }));
+		await act(async () => resolveTask(fileTreePage({ files: ["task.ts"], directories: [], mutable: true })));
 		expect(current().fileListError).toBeNull();
 		expect(current().files).toEqual(["task.ts"]);
 
@@ -255,7 +264,7 @@ describe("useFileBrowserData", () => {
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(5_000);
 		});
-		listFilesQueryMock.mockResolvedValue({ files: ["home.ts"], directories: [], mutable: true });
+		listFilesQueryMock.mockResolvedValue(fileTreePage({ files: ["home.ts"], directories: [], mutable: true }));
 		await act(async () => root.render(<HookHarness taskId={null} onResult={capture} />));
 		await act(async () => rejectTask(new Error("Retired task tree failed.")));
 		expect(current().fileListError).toBeNull();
@@ -272,11 +281,13 @@ describe("useFileBrowserData", () => {
 			return latest;
 		};
 
-		listFilesQueryMock.mockResolvedValue({
-			files: ["src/home.ts"],
-			directories: ["src"],
-			mutable: true,
-		} satisfies RuntimeListFilesResponse);
+		listFilesQueryMock.mockResolvedValue(
+			fileTreePage({
+				files: ["src/home.ts"],
+				directories: ["src"],
+				mutable: true,
+			}) satisfies RuntimeListFilesResponse,
+		);
 		getFileContentQueryMock.mockResolvedValue(contentResponse("const value = 1;\n", "hash-1"));
 		saveFileContentMutateMock.mockResolvedValue(contentResponse("const value = 2;\n", "hash-2"));
 
@@ -328,13 +339,15 @@ describe("useFileBrowserData", () => {
 		expect(listFilesQueryMock).toHaveBeenCalledTimes(1);
 	});
 
-	it("admits unlisted runtime navigation targets as read-only while clearing ordinary missing selections", async () => {
+	it("uses authoritative dependency editability without applying a tree-membership mask", async () => {
 		let latest: UseFileBrowserDataResult | undefined;
 		const current = () => {
 			if (!latest) throw new Error("No browser result");
 			return latest;
 		};
-		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		listFilesQueryMock.mockResolvedValue(
+			fileTreePage({ files: ["src/home.ts"], directories: ["src"], mutable: true }),
+		);
 		getFileContentQueryMock.mockResolvedValue({ ...contentResponse("declaration", "hash"), editable: true });
 		await act(async () =>
 			root.render(
@@ -348,9 +361,16 @@ describe("useFileBrowserData", () => {
 		);
 
 		await act(async () => current().onSelectPath("missing.ts"));
-		expect(current().selectedPath).toBeNull();
+		expect(current().selectedPath).toBe("missing.ts");
+		expect(current().fileContent?.editable).toBe(true);
 
 		const target = "node_modules/dependency/index.d.ts";
+		getFileContentQueryMock.mockImplementation(async ({ path }: { path: string }) => ({
+			...contentResponse("declaration", "hash"),
+			editable: path !== target,
+			...(path === target ? { editBlockedReason: "Dependency files are read-only." } : {}),
+		}));
+		saveFileContentMutateMock.mockRejectedValue(new Error("Dependency files are read-only."));
 		await act(async () => current().onSelectNavigationTarget(target));
 		expect(current().selectedPath).toBe(target);
 		expect(current().fileContent).toMatchObject({ content: "declaration", editable: false });
@@ -358,7 +378,7 @@ describe("useFileBrowserData", () => {
 			await expect(current().reloadFileContent(target)).resolves.toMatchObject({ editable: false });
 		});
 		await expect(current().saveFileContent(target, "edited", "hash")).rejects.toThrow("read-only");
-		expect(saveFileContentMutateMock).not.toHaveBeenCalled();
+		expect(saveFileContentMutateMock).toHaveBeenCalledOnce();
 
 		await act(async () => current().onSelectPath("src/home.ts"));
 		expect(current().fileContent?.editable).toBe(true);
@@ -376,7 +396,9 @@ describe("useFileBrowserData", () => {
 		const identity = { projectId: "project-1", taskId: null };
 		const scopeKey = createFileBrowserContentScopeKey(identity);
 		registerFileEditorScope(scopeKey, identity);
-		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		listFilesQueryMock.mockResolvedValue(
+			fileTreePage({ files: ["src/home.ts"], directories: ["src"], mutable: true }),
+		);
 		getFileContentQueryMock.mockResolvedValue(contentResponse("declaration", "hash"));
 		await act(async () =>
 			root.render(
@@ -402,14 +424,16 @@ describe("useFileBrowserData", () => {
 		expect(current().selectedPath).toBe("node_modules/dependency/index.d.ts");
 	});
 
-	it("clears an ordinary selected file when the next file listing removes it", async () => {
+	it("preserves an ordinary selected file when a reset page does not contain it", async () => {
 		vi.useFakeTimers();
 		let latest: UseFileBrowserDataResult | undefined;
 		const current = () => {
 			if (!latest) throw new Error("No browser result");
 			return latest;
 		};
-		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		listFilesQueryMock.mockResolvedValue(
+			fileTreePage({ files: ["src/home.ts"], directories: ["src"], mutable: true }),
+		);
 		getFileContentQueryMock.mockResolvedValue(contentResponse("source", "hash"));
 		await act(async () =>
 			root.render(
@@ -423,11 +447,11 @@ describe("useFileBrowserData", () => {
 		);
 		await act(async () => current().onSelectPath("src/home.ts"));
 		expect(current().selectedPath).toBe("src/home.ts");
-		listFilesQueryMock.mockResolvedValue({ files: [], directories: [], mutable: true });
+		listFilesQueryMock.mockResolvedValue(fileTreePage({ files: [], directories: [], mutable: true }));
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(5_000);
 		});
-		expect(current().selectedPath).toBeNull();
+		expect(current().selectedPath).toBe("src/home.ts");
 	});
 
 	it("does not admit live navigation targets into another scope or a read-only ref", async () => {
@@ -439,7 +463,9 @@ describe("useFileBrowserData", () => {
 		const capture = (result: UseFileBrowserDataResult) => {
 			latest = result;
 		};
-		listFilesQueryMock.mockResolvedValue({ files: ["src/home.ts"], directories: ["src"], mutable: true });
+		listFilesQueryMock.mockResolvedValue(
+			fileTreePage({ files: ["src/home.ts"], directories: ["src"], mutable: true }),
+		);
 		getFileContentQueryMock.mockResolvedValue(contentResponse("declaration", "hash"));
 		await act(async () => root.render(<HookHarness taskId={null} onResult={capture} />));
 		const staleSelect = current().onSelectNavigationTarget;
@@ -451,8 +477,133 @@ describe("useFileBrowserData", () => {
 		});
 		expect(current().selectedPath).toBeNull();
 		expect(current().isReadOnly).toBe(true);
-		await act(async () => current().onSelectPath("src/home.ts"));
-		expect(current().selectedPath).toBe("src/home.ts");
-		await expect(current().saveFileContent("src/home.ts", "edited", "hash")).rejects.toThrow("read-only");
+		await act(async () => current().onSelectPath("unopened/snapshot.ts"));
+		expect(current().selectedPath).toBe("unopened/snapshot.ts");
+		await expect(current().saveFileContent("unopened/snapshot.ts", "edited", "hash")).rejects.toThrow("read-only");
+	});
+	it.each(["create", "rename", "delete"])(
+		"applies successful %s receipts even when parent refresh fails",
+		async (operation) => {
+			let latest!: UseFileBrowserDataResult;
+			listFilesQueryMock.mockResolvedValue(fileTreePage({ files: ["old.ts"] }));
+			getFileContentQueryMock.mockResolvedValue({ ...contentResponse("source", "hash"), editable: true });
+			await act(async () =>
+				root.render(
+					<HookHarness
+						taskId={null}
+						onResult={(result) => {
+							latest = result;
+						}}
+					/>,
+				),
+			);
+			await act(async () => latest.onSelectPath("old.ts"));
+			const response = { path: operation === "delete" ? "old.ts" : "unopened/new.ts", kind: "file" as const };
+			createEntryMock.mockResolvedValue(response);
+			renameEntryMock.mockResolvedValue(response);
+			deleteEntryMock.mockResolvedValue(response);
+			listFilesQueryMock.mockRejectedValue(new Error("refresh offline"));
+			await act(async () => {
+				const result =
+					operation === "create"
+						? await latest.createEntry(response.path, "file")
+						: operation === "rename"
+							? await latest.renameEntry("old.ts", response.path, "file")
+							: await latest.deleteEntry("old.ts", "file");
+				expect(result).toEqual(response);
+			});
+			expect(latest.selectedPath).toBe(operation === "delete" ? null : response.path);
+			if (operation !== "create") expect(latest.files).not.toContain("old.ts");
+			if (operation !== "delete") {
+				expect(latest.files).toContain(response.path);
+				expect(latest.directories).toContain("unopened");
+			}
+			expect(latest.fileListError?.message).toBe("refresh offline");
+		},
+	);
+
+	it("restores an unlisted path and keeps server-admitted search selections editable through toggle changes", async () => {
+		let latest!: UseFileBrowserDataResult;
+		setLastSelectedFileBrowserPath(
+			createFileBrowserContentScopeKey({ projectId: "project-1", taskId: null }),
+			"unopened/restored.ts",
+		);
+		listFilesQueryMock.mockResolvedValue(fileTreePage({ files: ["first.ts"] }));
+		getFileContentQueryMock.mockResolvedValue({ ...contentResponse("source", "hash"), editable: true });
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+		expect(latest.selectedPath).toBe("unopened/restored.ts");
+		expect(latest.fileContent?.editable).toBe(true);
+		await act(async () => latest.onSelectPath("unopened/search.ts"));
+		await act(async () => latest.setShowExcluded(true));
+		expect(latest.selectedPath).toBe("unopened/search.ts");
+		expect(latest.fileContent?.editable).toBe(true);
+	});
+	it("keeps unexpanded workspace navigation editable across toggle and enumeration reset", async () => {
+		vi.useFakeTimers();
+		let latest!: UseFileBrowserDataResult;
+		listFilesQueryMock.mockResolvedValue(fileTreePage({ files: ["first.ts"] }));
+		getFileContentQueryMock.mockResolvedValue({ ...contentResponse("workspace", "hash"), editable: true });
+		saveFileContentMutateMock.mockResolvedValue({ ...contentResponse("edited", "next"), editable: true });
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+		await act(async () => latest.onSelectNavigationTarget("unexpanded/target.ts"));
+		expect(latest.fileContent?.editable).toBe(true);
+		await act(async () => latest.setShowExcluded(true));
+		listFilesQueryMock.mockResolvedValue(fileTreePage({ snapshotId: "reset", files: [] }));
+		await act(async () => vi.advanceTimersByTimeAsync(35_000));
+		expect(latest.selectedPath).toBe("unexpanded/target.ts");
+		expect(latest.fileContent?.editable).toBe(true);
+		await act(async () => {
+			await latest.saveFileContent("unexpanded/target.ts", "edited", "hash");
+		});
+		expect(saveFileContentMutateMock).toHaveBeenCalledOnce();
+		await act(async () => latest.onSelectPath("unexpanded/target.ts"));
+		expect(latest.fileContent?.editable).toBe(true);
+	});
+
+	it("ordinary selection clears obsolete navigation retirement admission", async () => {
+		let latest!: UseFileBrowserDataResult;
+		const identity = { projectId: "project-1", taskId: null };
+		const key = createFileBrowserContentScopeKey(identity);
+		registerFileEditorScope(key, identity);
+		listFilesQueryMock.mockResolvedValue(fileTreePage());
+		getFileContentQueryMock.mockResolvedValue({ ...contentResponse("workspace", "hash"), editable: true });
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
+		await act(async () => latest.onSelectNavigationTarget("unexpanded/target.ts"));
+		const staleSave = latest.saveFileContent;
+		await act(async () => latest.onSelectPath("unexpanded/target.ts"));
+		await act(async () => {
+			retireFileEditorScopes({ projectId: "project-1" });
+			registerFileEditorScope(key, identity);
+		});
+		expect(latest.selectedPath).toBe("unexpanded/target.ts");
+		await expect(staleSave("unexpanded/target.ts", "edited", "hash")).rejects.toThrow("workspace changed");
+		expect(saveFileContentMutateMock).not.toHaveBeenCalled();
 	});
 });

@@ -23,12 +23,16 @@ export const EMPTY_FILE_CONTENT_RESPONSE = {
 	truncated: false,
 } satisfies RuntimeFileContentResponse;
 
-export function createUnavailableFileListResponse(reason: string): RuntimeListFilesResponse {
+export function createUnavailableFileListResponse(reason: string, directory = ""): RuntimeListFilesResponse {
 	return {
+		directory,
 		files: [],
 		directories: [],
 		mutable: false,
 		mutationBlockedReason: reason,
+		snapshotId: null,
+		nextCursor: null,
+		hiddenCount: 0,
 	};
 }
 

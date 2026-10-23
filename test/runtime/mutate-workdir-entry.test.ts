@@ -3,21 +3,16 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-	createWorkdirEntry,
-	deleteWorkdirEntry,
-	listAllWorkdirFileEntries,
-	listAllWorkdirFiles,
-	renameWorkdirEntry,
-} from "../../src/workdir";
+import { createWorkdirEntry, deleteWorkdirEntry, renameWorkdirEntry } from "../../src/workdir";
 import { stageAndCommitAll as commitAll, initGitRepository as initRepository } from "../utilities/git-env";
 import { createTempDir } from "../utilities/temp-dir";
+import { listPagedWorkdirFiles, listPagedWorkdirTree } from "../utilities/workdir-listing";
 
 describe("workdir entry mutations", () => {
 	it("creates files and empty folders and refreshes the file list cache", async () => {
 		const { path: repoPath, cleanup } = createTempDir("quarterdeck-workdir-entry-create-");
 		try {
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({ files: [], directories: [] });
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({ files: [], directories: [] });
 
 			const directoryResult = await createWorkdirEntry(repoPath, "src/", "directory");
 			const nestedDirectoryResult = await createWorkdirEntry(repoPath, "src/foo/", "directory");
@@ -26,7 +21,7 @@ describe("workdir entry mutations", () => {
 			expect(directoryResult.path).toBe("src");
 			expect(nestedDirectoryResult.path).toBe("src/foo");
 			expect(readFileSync(join(repoPath, "src", "app.ts"), "utf8")).toBe("");
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({
 				files: ["src/app.ts"],
 				directories: ["src", "src/foo"],
 			});
@@ -43,24 +38,24 @@ describe("workdir entry mutations", () => {
 			writeFileSync(join(repoPath, "tracked.ts"), "tracked\n", "utf8");
 			commitAll(repoPath, "add tracked file and ignore rule");
 			const visible = [".gitignore", "tracked.ts"];
-			expect(await listAllWorkdirFiles(repoPath)).toEqual(visible);
+			expect(await listPagedWorkdirFiles(repoPath)).toEqual(visible);
 
 			await createWorkdirEntry(repoPath, "dist", "directory");
 			await createWorkdirEntry(repoPath, "dist/generated.js", "file");
 			expect(existsSync(join(repoPath, "dist/generated.js"))).toBe(true);
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({ files: visible, directories: [] });
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({ files: visible, directories: [] });
 
 			await renameWorkdirEntry(repoPath, "tracked.ts", "dist/moved.ts", "file");
-			expect(await listAllWorkdirFiles(repoPath)).toEqual([".gitignore"]);
+			expect(await listPagedWorkdirFiles(repoPath)).toEqual([".gitignore"]);
 			await renameWorkdirEntry(repoPath, "dist/moved.ts", "restored.ts", "file");
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({
 				files: [".gitignore", "restored.ts"],
 				directories: [],
 			});
 
 			await deleteWorkdirEntry(repoPath, "restored.ts", "file");
 			await deleteWorkdirEntry(repoPath, "dist", "directory");
-			expect(await listAllWorkdirFiles(repoPath)).toEqual([".gitignore"]);
+			expect(await listPagedWorkdirFiles(repoPath)).toEqual([".gitignore"]);
 			expect(existsSync(join(repoPath, "dist"))).toBe(false);
 		} finally {
 			cleanup();
@@ -75,17 +70,17 @@ describe("workdir entry mutations", () => {
 			mkdirSync(join(repoPath, "generated"));
 			writeFileSync(join(repoPath, "generated/item.js"), "local\n", "utf8");
 			commitAll(repoPath, "add ignore rule");
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({ files: [".gitignore"], directories: [] });
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({ files: [".gitignore"], directories: [] });
 
 			await renameWorkdirEntry(repoPath, ".gitignore", "ignore.saved", "file");
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({
 				files: ["generated/item.js", "ignore.saved"],
 				directories: ["generated"],
 			});
 			await renameWorkdirEntry(repoPath, "ignore.saved", ".gitignore", "file");
-			expect(await listAllWorkdirFiles(repoPath)).toEqual([".gitignore"]);
+			expect(await listPagedWorkdirFiles(repoPath)).toEqual([".gitignore"]);
 			await deleteWorkdirEntry(repoPath, ".gitignore", "file");
-			expect(await listAllWorkdirFileEntries(repoPath)).toEqual({
+			expect(await listPagedWorkdirTree(repoPath)).toEqual({
 				files: ["generated/item.js"],
 				directories: ["generated"],
 			});
