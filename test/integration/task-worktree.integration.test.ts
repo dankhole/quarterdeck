@@ -280,6 +280,9 @@ describe("task-worktree integration", { concurrent: false }, () => {
 				const nodeModulesPath = join(ensured.path, "node_modules");
 				expect(existsSync(nodeModulesPath)).toBe(false);
 
+				// Model a legacy worktree that has not yet received its one-time cleanup.
+				const gitDirectory = runGit(ensured.path, ["rev-parse", "--absolute-git-dir"]).trim();
+				unlinkSync(join(gitDirectory, "quarterdeck-legacy-dependency-cleanup-v1.done"));
 				symlinkSync(
 					join(repoPath, "node_modules"),
 					nodeModulesPath,

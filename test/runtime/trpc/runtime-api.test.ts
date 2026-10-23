@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBoardCard, RuntimeTaskSessionSummary } from "../../../src/core";
 import {
@@ -1323,6 +1324,10 @@ describe("createRuntimeApi Pi model catalog", () => {
 			deps.config.getActiveRuntimeConfig(),
 			expect.stringMatching(/repo$/),
 		);
-		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(2, deps.config.getActiveRuntimeConfig(), "/tmp/other");
+		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(
+			2,
+			deps.config.getActiveRuntimeConfig(),
+			resolve("/tmp/other"),
+		);
 	});
 });
