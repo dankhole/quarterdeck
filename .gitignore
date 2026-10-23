@@ -20,6 +20,7 @@ web-ui/.env.*
 docs/archive
 .kanban
 .quarterdeck
+.pi/
 
 # Keep one local Chit backlog in the primary checkout.
 /docs/qDeck.yaml
