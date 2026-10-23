@@ -96,6 +96,28 @@ describe("ProjectNavigationPanel", () => {
 		expect(projectRow?.textContent).toContain("Quarterdeck");
 	});
 
+	it("preserves the drag handle and row structure while organization is disabled", () => {
+		const onSelectProject = vi.fn();
+		renderPanel({ onSelectProject });
+		const handle = container.querySelector<HTMLButtonElement>('[aria-label="Drag Quarterdeck"]')!;
+		const select = container.querySelector<HTMLButtonElement>('[aria-label="Open Quarterdeck"]')!;
+		const rowChildren = Array.from(handle.parentElement!.children);
+		expect(handle.disabled).toBe(false);
+
+		for (const overrides of [
+			{ organizationDisabled: true },
+			{ removingProjectId: "project-1" },
+			{ organizationDisabled: false },
+		]) {
+			renderPanel({ onSelectProject, ...overrides });
+			expect(container.querySelector('[aria-label="Drag Quarterdeck"]')).toBe(handle);
+			expect(Array.from(handle.parentElement!.children)).toEqual(rowChildren);
+			expect(handle.disabled).toBe(Boolean(overrides.organizationDisabled || overrides.removingProjectId));
+			act(() => select.click());
+		}
+		expect(onSelectProject).toHaveBeenCalledTimes(3);
+	});
+
 	it("retains selectable unavailable projects and counts while disabling task creation", () => {
 		const onCreateTask = vi.fn();
 		const onSelectProject = vi.fn();

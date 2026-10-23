@@ -25,7 +25,7 @@ export function ProjectNavigationItem({
 		>
 			<ProjectRow
 				{...props}
-				showDragHandle={!disabled}
+				dragDisabled={disabled}
 				dragHandleProps={{ ...drag.attributes, ...drag.listeners }}
 				isDragging={drag.isDragging}
 			/>
