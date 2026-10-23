@@ -177,7 +177,7 @@ The `src/terminal/` area owns everything process-oriented:
 - handling project shell terminals
 - reconciling stale/dead/processless sessions
 
-This is the supported path for Claude Code, Codex, and the exact validated Pi release. All three use the same maintained task-agent ownership boundaries, while their adapters and provider-specific lifecycle evidence remain separate. Only exact Claude Code and Codex sessions currently support transfer from the native PTY to an internal structured owner; Pi remains native-TUI-owned.
+This is the supported path for Claude Code, Codex, the exact validated Pi release, and the exact validated opencode release. All four use the same maintained task-agent ownership boundaries, while their adapters and provider-specific lifecycle evidence remain separate. Only exact Claude Code and Codex sessions currently support transfer from the native PTY to an internal structured owner; Pi and opencode remain native-TUI-owned.
 
 `session-manager.ts` is the public terminal-service facade, but much of the behavior is split into focused modules:
 

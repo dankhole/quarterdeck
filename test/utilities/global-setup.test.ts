@@ -50,6 +50,7 @@ describe("root test home", { concurrent: false }, () => {
 				}),
 			);
 			expect(existsSync(join(directory, "terminal/pi-lifecycle-extension.runtime.js"))).toBe(true);
+			expect(existsSync(join(directory, "terminal/opencode-lifecycle-plugin.runtime.js"))).toBe(true);
 		} finally {
 			await teardown();
 		}

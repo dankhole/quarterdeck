@@ -35,11 +35,7 @@ import {
 	type HookEventOrderDecision,
 	restoreHookEventOrderState,
 } from "./hook-event-order";
-import {
-	STORED_CLAUDE_RESUME_FAILED_WARNING,
-	STORED_CODEX_RESUME_FAILED_WARNING,
-	STORED_PI_RESUME_FAILED_WARNING,
-} from "./resume-failure";
+import { getStoredResumeFailedWarning, STORED_CODEX_RESUME_FAILED_WARNING } from "./resume-failure";
 import {
 	isExplicitUserSubmission,
 	isImmediateInteractionSubmission,
@@ -488,12 +484,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 			!entry.pendingStartupRecoveryToken
 		) {
 			const summary = this.store.getSummary(taskId);
-			const warningMessage =
-				summary?.agentId === "claude"
-					? STORED_CLAUDE_RESUME_FAILED_WARNING
-					: summary?.agentId === "pi"
-						? STORED_PI_RESUME_FAILED_WARNING
-						: STORED_CODEX_RESUME_FAILED_WARNING;
+			// Lookup rather than a per-agent ternary chain, so a fifth native agent is
+			// a single addition to the map in resume-failure.ts.
+			const warningMessage = getStoredResumeFailedWarning(summary?.agentId) ?? STORED_CODEX_RESUME_FAILED_WARNING;
 			const failedSummary = this.lifecycle.failTargetedResumeIdentity(
 				taskId,
 				mismatch.sessionInstanceId,

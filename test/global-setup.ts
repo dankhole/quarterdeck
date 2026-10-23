@@ -75,6 +75,10 @@ export default function setup(project?: SetupProject): Teardown | Promise<Teardo
 				resolve("src/terminal/pi-lifecycle-extension.runtime.js"),
 				join(directory, "terminal/pi-lifecycle-extension.runtime.js"),
 			);
+			await copyFile(
+				resolve("src/terminal/opencode-lifecycle-plugin.runtime.js"),
+				join(directory, "terminal/opencode-lifecycle-plugin.runtime.js"),
+			);
 			project.provide(
 				"compiledIntegrationEntrypoints",
 				Object.fromEntries(

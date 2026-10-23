@@ -1,3 +1,4 @@
+import { isNativeLifecycleAgentId } from "../agent-capabilities.js";
 import {
 	getWaitingSubagentInteraction,
 	hasPendingInitialWorkConfirmation,
@@ -170,7 +171,7 @@ export function deriveTaskIndicatorState(summary: RuntimeTaskSessionSummary): Ru
 	if (summary.state === "running") {
 		const evidence = summary.nativeWorkEvidence;
 		if (
-			(summary.agentId === "codex" || summary.agentId === "claude" || summary.agentId === "pi") &&
+			isNativeLifecycleAgentId(summary.agentId) &&
 			!hasPendingInitialWorkConfirmation(summary) &&
 			(!evidence ||
 				evidence.provider !== summary.agentId ||

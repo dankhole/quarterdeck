@@ -57,6 +57,7 @@ export function HarnessSection({
 	const [claudeSettingsExpanded, setClaudeSettingsExpanded] = useState(false);
 	const [codexSettingsExpanded, setCodexSettingsExpanded] = useState(false);
 	const [piSettingsExpanded, setPiSettingsExpanded] = useState(false);
+	const [opencodeSettingsExpanded, setOpencodeSettingsExpanded] = useState(false);
 	const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
 
 	const defaultTemplate = config?.worktreeSystemPromptTemplateDefault ?? "";
@@ -69,19 +70,23 @@ export function HarnessSection({
 	const ClaudeChevron = claudeSettingsExpanded ? ChevronDown : ChevronRight;
 	const CodexChevron = codexSettingsExpanded ? ChevronDown : ChevronRight;
 	const PiChevron = piSettingsExpanded ? ChevronDown : ChevronRight;
+	const OpencodeChevron = opencodeSettingsExpanded ? ChevronDown : ChevronRight;
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
 	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
 	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "1.4.0";
 	const piSettingsSummary = `Exactly ${piSupportedVersion} · Native Pi execution`;
+	const opencodeSupportedVersion =
+		config?.agents.find((agent) => agent.id === "opencode")?.requiredVersion ?? "1.19.4";
+	const opencodeSettingsSummary = `Exactly ${opencodeSupportedVersion} · Native opencode execution`;
 
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-1">Harnesses</h6>
 			<p className="text-text-secondary text-[13px] mt-0 mb-3">
 				Quarterdeck checks the <code className="text-[12px] bg-surface-3 px-1 rounded">PATH</code> inherited from
-				the shell that launched it to detect Claude, Codex, and Pi. Choose a harness in the new task dialog;
-				unavailable harnesses are shown there with install or upgrade status.
+				the shell that launched it to detect Claude, Codex, Pi, and opencode. Choose a harness in the new task
+				dialog; unavailable harnesses are shown there with install or upgrade status.
 			</p>
 
 			<RadixCollapsible.Root open={claudeSettingsExpanded} onOpenChange={setClaudeSettingsExpanded} className="mt-2">
@@ -218,6 +223,38 @@ export function HarnessSection({
 						<p className="m-0">
 							Pi runs with its native tool and extension behavior. Quarterdeck adds no approval prompts or
 							sandbox.
+						</p>
+					</div>
+				</RadixCollapsible.Content>
+			</RadixCollapsible.Root>
+
+			<RadixCollapsible.Root
+				open={opencodeSettingsExpanded}
+				onOpenChange={setOpencodeSettingsExpanded}
+				className="mt-2"
+			>
+				<RadixCollapsible.Trigger asChild>
+					<button
+						type="button"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+					>
+						<span className="min-w-0">
+							<span className="block font-medium">opencode</span>
+							<span className="block truncate text-[12px] text-text-secondary">{opencodeSettingsSummary}</span>
+						</span>
+						<OpencodeChevron size={16} className="shrink-0 text-text-secondary" />
+					</button>
+				</RadixCollapsible.Trigger>
+				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
+					<div className="space-y-3 px-3 py-3 text-[13px] text-text-secondary">
+						<p className="m-0">
+							Quarterdeck supports exactly opencode {opencodeSupportedVersion}. Newer opencode releases remain
+							unavailable until the lifecycle and resume contract is validated and Quarterdeck moves this version
+							deliberately.
+						</p>
+						<p className="m-0">
+							opencode runs with its native tool and permission behavior. Quarterdeck adds no approval prompts or
+							sandbox; choose the starting model and agent in the new task dialog.
 						</p>
 					</div>
 				</RadixCollapsible.Content>

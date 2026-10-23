@@ -108,6 +108,7 @@ import type {
 import type { ProjectOrganizationRequest, ProjectOrganizationResponse } from "../core/api/project-organization.js";
 import type { RuntimeUiPreferences, RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 import type { RuntimeCodexModelsResponse } from "../core/codex-model-contracts";
+import type { RuntimeOpencodeCatalogResponse } from "../core/opencode-catalog-contracts";
 import type { RuntimeCommitMessageGenerationContext } from "../title";
 import type { CodeNavigationApi } from "./code-navigation-api";
 
@@ -134,6 +135,7 @@ export interface RuntimeTrpcContext {
 			input: RuntimeTaskConversationRequest,
 		) => Promise<RuntimeTaskConversationResponse>;
 		codexModels: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeCodexModelsResponse>;
+		opencodeCatalog: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeOpencodeCatalogResponse>;
 		loadConfig: (scope: RuntimeTrpcProjectScope | null) => Promise<RuntimeConfigResponse>;
 		saveConfig: (
 			scope: RuntimeTrpcProjectScope | null,

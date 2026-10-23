@@ -134,6 +134,7 @@ export async function spawnTaskSession(
 			codexApprovalsReviewer: request.codexApprovalsReviewer,
 			codexOptions: request.codexOptions,
 			claudeOptions: request.claudeOptions,
+			opencodeOptions: request.opencodeOptions,
 			worktreeSystemPromptTemplate: request.worktreeSystemPromptTemplate,
 		});
 

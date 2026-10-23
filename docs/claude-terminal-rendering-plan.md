@@ -24,7 +24,7 @@ The separate `--ax-screen-reader` mode is not the primary presentation fix. It d
 
 ## Launch and geometry contract
 
-1. Every Claude launch receives `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`, overriding inherited classic preferences. `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving explicit user values. Codex, Pi, and shell environments remain unchanged.
+1. Every Claude launch receives `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`, overriding inherited classic preferences. `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving explicit user values. Codex, Pi, opencode, and shell environments remain unchanged.
 2. `--ax-screen-reader` or an enabled `CLAUDE_AX_SCREEN_READER` is rejected before spawning because Claude requires the classic renderer for that mode. `CLAUDE_CODE_ACCESSIBILITY` is only a screen-magnifier cursor aid and remains supported.
 3. All terminals use their actual viewport rows. There is no renderer-mode state, detached row multiplier, or attach/detach-triggered geometry change. Explicit browser resize and pre-restore forced redraw remain.
 4. The retired `claudeFullscreenEnabled` config field is ignored on load and omitted on the next save. No persisted session-state migration is needed. Do not switch managed Claude sessions to `/tui default`; Quarterdeck supports fullscreen only.
@@ -36,7 +36,7 @@ The separate `--ax-screen-reader` mode is not the primary presentation fix. It d
 - Trackpad and mouse-wheel scrolling, Page Up/Down, Ctrl+Home/End, and Claude's transcript search work through xterm mouse reporting.
 - Text selection, copy/paste, links, and permission prompts work in both short and tall terminals.
 - Resizing while output is active, switching task terminals, detaching and reattaching, and restoring while the alternate screen is active do not lose visible output.
-- Codex, Pi, home shell, and detail shell terminal behavior remains unchanged.
+- Codex, Pi, opencode, home shell, and detail shell terminal behavior remains unchanged.
 - Linux/macOS are dogfooded separately; Windows ConPTY keeps its existing same-size-resize caveat until native validation is available.
 
 ## Historical evidence

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { buildClaudeHooksSettings, buildClaudeHttpHooksSettings } from "../claude-hooks";
 import { buildCodexHookConfigOverrides, CODEX_HOOKS_FEATURE_NAME, serializeCodexTomlValue } from "../codex-hooks";
@@ -8,6 +9,7 @@ import type {
 	ManagedClaudePermissionMode,
 	RuntimeAgentId,
 	RuntimeCodexOptions,
+	RuntimeOpencodeOptions,
 	RuntimePersistedClaudeOptions,
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
@@ -26,6 +28,7 @@ import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
 import { getActiveHookHttpChannel } from "./hook-http-channel";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
+import { buildOpencodeLifecyclePluginSource, QUARTERDECK_OPENCODE_HOOK_COMMAND_ENV } from "./opencode-lifecycle-plugin";
 import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
@@ -49,6 +52,7 @@ export interface AgentAdapterLaunchInput {
 	claudeLaunchPermissionMode?: ClaudeLaunchPermissionMode;
 	codexApprovalsReviewer?: CodexApprovalsReviewer;
 	codexOptions?: RuntimeCodexOptions;
+	opencodeOptions?: RuntimeOpencodeOptions;
 	claudeOptions?: RuntimePersistedClaudeOptions;
 	worktreeSystemPromptTemplate?: string;
 }
@@ -188,6 +192,10 @@ function getHookAgentDirectory(agentId: RuntimeAgentId): string {
 
 function getPiLifecycleExtensionPath(): string {
 	return join(getHookAgentDirectory("pi"), "quarterdeck-lifecycle.js");
+}
+
+function getOpencodeLifecyclePluginPath(): string {
+	return join(getHookAgentDirectory("opencode"), "quarterdeck-lifecycle.js");
 }
 
 async function ensureTextFile(filePath: string, content: string, executable = false): Promise<void> {
@@ -596,10 +604,162 @@ const piAdapter: AgentSessionAdapter = {
 	},
 };
 
+/**
+ * Replaces `--model`/`-m` and `--agent` with the task's persisted choices. Unlike Codex, opencode
+ * has no "don't reapply on resume" carve-out in the plan: a resumed session still accepts a new
+ * `--model`/`--agent` for its next turn, so these always apply.
+ */
+function applyOpencodeTaskOptions(args: string[], options: RuntimeOpencodeOptions | undefined): void {
+	if (options?.model) {
+		removeCliOptionWithValue(args, "--model");
+		removeCliOptionWithValue(args, "-m");
+		args.push("--model", options.model);
+	}
+	if (options?.agent) {
+		removeCliOptionWithValue(args, "--agent");
+		args.push("--agent", options.agent);
+	}
+}
+
+/**
+ * Parses an inherited `OPENCODE_CONFIG_CONTENT` value. Returns `undefined` when there is nothing to
+ * merge (absent or blank); throws when the value is present but not a JSON object, so a launch fails
+ * clearly instead of silently dropping the user's configuration.
+ */
+function parseInheritedOpencodeConfigContent(raw: string | undefined): Record<string, unknown> | undefined {
+	const trimmed = raw?.trim();
+	if (!trimmed) {
+		return undefined;
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(trimmed);
+	} catch (error) {
+		throw new Error(
+			`Inherited OPENCODE_CONFIG_CONTENT could not be parsed as JSON: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new Error(
+			"Inherited OPENCODE_CONFIG_CONTENT must be a JSON object to merge the opencode lifecycle plugin into it.",
+		);
+	}
+	return parsed as Record<string, unknown>;
+}
+
+/**
+ * Builds the `OPENCODE_CONFIG_CONTENT` value for the launch: the inherited config (from `input.env`
+ * if it specifies the key, else `process.env`) with the Quarterdeck lifecycle plugin's file URL
+ * appended to its `plugin` array, preserving every other inherited key and plugin entry.
+ */
+function buildOpencodeConfigContentEnv(pluginFileUrl: string, input: AgentAdapterLaunchInput): string {
+	const inheritedRaw =
+		input.env && Object.hasOwn(input.env, "OPENCODE_CONFIG_CONTENT")
+			? input.env.OPENCODE_CONFIG_CONTENT
+			: process.env.OPENCODE_CONFIG_CONTENT;
+	const inherited = parseInheritedOpencodeConfigContent(inheritedRaw);
+	if (!inherited) {
+		return JSON.stringify({ plugin: [pluginFileUrl] });
+	}
+	const existingPlugins = Array.isArray(inherited.plugin) ? inherited.plugin : [];
+	const alreadyPresent = existingPlugins.some(
+		(entry) => entry === pluginFileUrl || (Array.isArray(entry) && entry.length > 0 && entry[0] === pluginFileUrl),
+	);
+	const plugin = alreadyPresent ? existingPlugins : [...existingPlugins, pluginFileUrl];
+	return JSON.stringify({ ...inherited, plugin });
+}
+
+const opencodeAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		applyOpencodeTaskOptions(args, input.opencodeOptions);
+		if (input.resumeConversation) {
+			const resumeSessionId = input.resumeSessionId?.trim();
+			if (resumeSessionId) {
+				// Exact recovery identity takes precedence over saved custom CLI arguments.
+				removeCliOptionWithValue(args, "--session");
+				removeCliOptionWithValue(args, "-s");
+				removeCliOption(args, "--continue");
+				removeCliOption(args, "-c");
+				removeCliOption(args, "--fork");
+				args.push("--session", resumeSessionId);
+				log.debug("opencode resume using stored session id", {
+					taskId: input.taskId,
+					hasStoredResumeSessionId: true,
+				});
+			} else if (
+				!hasCliOption(args, "--continue") &&
+				!hasCliOption(args, "-c") &&
+				!hasCliOption(args, "--session") &&
+				!hasCliOption(args, "-s")
+			) {
+				args.push("--continue");
+				log.warn("opencode resume falling back to --continue (no stored resumeSessionId)", {
+					taskId: input.taskId,
+				});
+			}
+		}
+
+		const env: Record<string, string | undefined> = {
+			// Never self-install; Quarterdeck pins and manages the opencode version.
+			OPENCODE_DISABLE_AUTOUPDATE: "1",
+		};
+		const hooks = resolveHookContext(input);
+		if (hooks) {
+			const pluginPath = getOpencodeLifecyclePluginPath();
+			await ensureTextFile(pluginPath, buildOpencodeLifecyclePluginSource());
+			const pluginFileUrl = pathToFileURL(pluginPath).href;
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					projectId: hooks.projectId,
+					sessionInstanceId: hooks.sessionInstanceId,
+				}),
+				{
+					[QUARTERDECK_OPENCODE_HOOK_COMMAND_ENV]: JSON.stringify(
+						buildQuarterdeckHookCommandParts(["hooks", "notify"]),
+					),
+					OPENCODE_CONFIG_CONTENT: buildOpencodeConfigContentEnv(pluginFileUrl, input),
+					// `OPENCODE_PURE` disables every plugin, including this one. Node's spawn
+					// (and node-pty's env serialization) do not drop an `undefined`-valued key the
+					// way `mergeProcessEnvironment`'s Windows branch does, so an inherited truthy
+					// value must be overwritten with an explicit falsy token rather than `undefined`.
+					OPENCODE_PURE: "false",
+				},
+			);
+			if (process.env.OPENCODE_PURE !== undefined || input.env?.OPENCODE_PURE !== undefined) {
+				log.debug("opencode launch disabling inherited OPENCODE_PURE so the lifecycle plugin can load", {
+					taskId: input.taskId,
+				});
+			}
+		}
+
+		const launch = withPrompt(args, input.prompt, "flag", "--prompt");
+		log.debug("opencode adapter prepared launch", {
+			taskId: input.taskId,
+			argCount: launch.args.length,
+			promptLength: input.prompt.trim().length,
+			hookBridge: Boolean(hooks),
+			resumeConversation: input.resumeConversation ?? false,
+			hasResumeSessionId: Boolean(input.resumeSessionId?.trim()),
+		});
+		return {
+			...launch,
+			binary: input.binary,
+			env: {
+				...launch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
 	pi: piAdapter,
+	opencode: opencodeAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {

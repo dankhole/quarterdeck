@@ -16,6 +16,7 @@ export interface TaskDraft {
 	agentId?: RuntimeAgentId;
 	codexOptions?: BoardCard["codexOptions"];
 	claudeOptions?: BoardCard["claudeOptions"];
+	opencodeOptions?: BoardCard["opencodeOptions"];
 	useWorktree?: boolean;
 	branchName?: string;
 }
@@ -156,6 +157,7 @@ export function addTaskToColumnWithResult(
 			agentId: draft.agentId,
 			codexOptions: draft.codexOptions,
 			claudeOptions: draft.claudeOptions,
+			opencodeOptions: draft.opencodeOptions,
 			useWorktree: draft.useWorktree,
 			branch: draft.branchName,
 		},

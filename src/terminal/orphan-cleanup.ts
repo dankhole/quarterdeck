@@ -15,7 +15,7 @@ import {
 import { isProcessAlive } from "./process-liveness";
 
 const log = createTaggedLogger("orphan-cleanup");
-const AGENT_PROCESS_NAMES = ["claude", "codex", "pi"];
+const AGENT_PROCESS_NAMES = ["claude", "codex", "pi", "opencode"];
 
 /** Grace period after SIGTERM before escalating to SIGKILL. */
 const SIGTERM_GRACE_MS = 3_000;

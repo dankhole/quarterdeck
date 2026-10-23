@@ -7,6 +7,7 @@ const TEST_AGENT_LABELS: Record<string, { label: string; binary: string }> = {
 	claude: { label: "Claude Code", binary: "claude" },
 	codex: { label: "OpenAI Codex", binary: "codex" },
 	pi: { label: "Pi", binary: "pi" },
+	opencode: { label: "opencode", binary: "opencode" },
 };
 
 export function createTestAgentDef(

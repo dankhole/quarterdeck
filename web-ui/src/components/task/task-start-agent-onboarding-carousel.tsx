@@ -41,7 +41,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 	},
 ];
 
-const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
+const ONBOARDING_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "pi", "opencode"];
 const FALLBACK_ONBOARDING_SLIDE: OnboardingSlide = {
 	kind: "agent-selection",
 	title: "",
@@ -97,7 +97,7 @@ const SAFE_DEFAULTS = [
 		icon: LockKeyhole,
 		title: "Provider-native permissions",
 		description:
-			"Claude and Codex inherit their configured permission policy. Pi uses its native execution behavior without a Quarterdeck sandbox.",
+			"Claude and Codex inherit their configured permission policy. Pi and opencode use their native execution behavior without a Quarterdeck sandbox.",
 	},
 	{
 		icon: Sparkles,

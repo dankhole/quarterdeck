@@ -11,7 +11,7 @@ export interface TaskAgentDisplayOption {
 	installed?: boolean | null;
 }
 
-export const TASK_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
+export const TASK_AGENT_ORDER: readonly RuntimeAgentId[] = ["claude", "codex", "pi", "opencode"];
 
 const TASK_AGENT_ORDER_INDEX = new Map(TASK_AGENT_ORDER.map((agentId, index) => [agentId, index] as const));
 
@@ -38,6 +38,9 @@ export function getTaskAgentShortLabel(agentId: RuntimeAgentId): string {
 	}
 	if (agentId === "pi") {
 		return "Pi";
+	}
+	if (agentId === "opencode") {
+		return "opencode";
 	}
 	return agentId;
 }

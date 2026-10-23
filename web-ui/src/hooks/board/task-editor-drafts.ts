@@ -98,6 +98,7 @@ export function createTaskOnBoard({
 	agentId,
 	codexOptions,
 	claudeOptions,
+	opencodeOptions,
 }: {
 	board: BoardData;
 	prompt: string;
@@ -110,6 +111,7 @@ export function createTaskOnBoard({
 	agentId: RuntimeAgentId;
 	codexOptions?: BoardCard["codexOptions"];
 	claudeOptions?: BoardCard["claudeOptions"];
+	opencodeOptions?: BoardCard["opencodeOptions"];
 }): { board: BoardData; createdTaskId: string | null; createdTask: BoardCard | null; baseRef: string } {
 	if (!isTaskSaveValid(prompt, branchRef, defaultBranchRef, useWorktree)) {
 		return {
@@ -129,6 +131,7 @@ export function createTaskOnBoard({
 		agentId,
 		...(agentId === "codex" && codexOptions ? { codexOptions } : {}),
 		...(agentId === "claude" && claudeOptions ? { claudeOptions } : {}),
+		...(agentId === "opencode" && opencodeOptions ? { opencodeOptions } : {}),
 		useWorktree,
 		branchName: createFeatureBranch && branchName ? branchName : undefined,
 	});
@@ -151,6 +154,7 @@ export function createTasksOnBoard({
 	agentId,
 	codexOptions,
 	claudeOptions,
+	opencodeOptions,
 }: {
 	board: BoardData;
 	prompts: string[];
@@ -161,6 +165,7 @@ export function createTasksOnBoard({
 	agentId: RuntimeAgentId;
 	codexOptions?: BoardCard["codexOptions"];
 	claudeOptions?: BoardCard["claudeOptions"];
+	opencodeOptions?: BoardCard["opencodeOptions"];
 }): { board: BoardData; createdTaskIds: string[]; createdTasks: BoardCard[]; baseRef: string } {
 	const validPrompts = prompts.map((prompt) => prompt.trim()).filter(Boolean);
 	const baseRef = resolveEffectiveBaseRef(branchRef, defaultBranchRef);
@@ -179,6 +184,7 @@ export function createTasksOnBoard({
 			agentId,
 			...(agentId === "codex" && codexOptions ? { codexOptions } : {}),
 			...(agentId === "claude" && claudeOptions ? { claudeOptions } : {}),
+			...(agentId === "opencode" && opencodeOptions ? { opencodeOptions } : {}),
 			useWorktree,
 		});
 		updatedBoard = created.board;

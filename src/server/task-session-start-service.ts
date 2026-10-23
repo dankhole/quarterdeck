@@ -4,6 +4,7 @@ import {
 	createTaggedLogger,
 	findCardInBoard,
 	type IRuntimeConfigProvider,
+	isNativeLifecycleAgentId,
 	isRuntimeTaskBaseRefResolved,
 	type RuntimeTaskSessionStartRequest,
 	type RuntimeTaskSessionSummary,
@@ -128,6 +129,9 @@ function getResumeSessionWarning(options: {
 	if (options.agentId === "pi" && !options.resumeSessionId) {
 		return "Pi resume did not have a stored session id, so Quarterdeck will use Pi's most recent session for this checkout. Verify the conversation before continuing.";
 	}
+	if (options.agentId === "opencode" && !options.resumeSessionId) {
+		return "opencode resume did not have a stored session id, so Quarterdeck will use opencode's most recent session for this checkout. Verify the conversation before continuing.";
+	}
 	if (options.agentId === "claude" && !options.useWorktree && !options.resumeSessionId) {
 		return "Claude resume did not have a stored session id, so Quarterdeck fell back to the most recent Claude session for this checkout. If this opens the wrong conversation, start a fresh task.";
 	}
@@ -251,7 +255,7 @@ export async function prepareTaskSessionStart(
 	if (
 		options.startupRecoveryToken &&
 		body.resumeConversation &&
-		(effectiveAgentId === "codex" || effectiveAgentId === "claude" || effectiveAgentId === "pi") &&
+		isNativeLifecycleAgentId(effectiveAgentId) &&
 		!resumeSessionIdForStart?.trim()
 	) {
 		throw new Error(`Automatic ${effectiveAgentId} recovery requires the exact stored provider session ID.`);
@@ -283,11 +287,7 @@ export async function prepareTaskSessionStart(
 			previousReviewReason: previousSummary?.reviewReason ?? null,
 			hasPreviousLaunchPath: Boolean(previousSummary?.sessionLaunchPath),
 		});
-	} else if (
-		body.resumeConversation &&
-		(effectiveAgentId === "codex" || effectiveAgentId === "claude" || effectiveAgentId === "pi") &&
-		!resumeSessionIdForStart
-	) {
+	} else if (body.resumeConversation && isNativeLifecycleAgentId(effectiveAgentId) && !resumeSessionIdForStart) {
 		log.warn("resume requested without stored resumeSessionId", {
 			taskId: body.taskId,
 			agentId: effectiveAgentId,
@@ -361,6 +361,7 @@ export async function prepareTaskSessionStart(
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
 		codexOptions: resolved.agentId === "codex" ? existingCard?.codexOptions : undefined,
 		claudeOptions: resolved.agentId === "claude" ? existingCard?.claudeOptions : undefined,
+		opencodeOptions: resolved.agentId === "opencode" ? existingCard?.opencodeOptions : undefined,
 		worktreeSystemPromptTemplate: scopedRuntimeConfig.worktreeSystemPromptTemplate,
 		env: body.baseRef ? { QUARTERDECK_BASE_REF: body.baseRef } : undefined,
 		startupRecoveryToken: options.startupRecoveryToken,

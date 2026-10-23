@@ -20,6 +20,10 @@ const runtimeAssets = [
 		source: "src/terminal/pi-lifecycle-extension.runtime.js",
 		output: "dist/terminal/pi-lifecycle-extension.runtime.js",
 	},
+	{
+		source: "src/terminal/opencode-lifecycle-plugin.runtime.js",
+		output: "dist/terminal/opencode-lifecycle-plugin.runtime.js",
+	},
 ];
 const webUiDistSource = "web-ui/dist";
 const webUiDistOutput = "dist/web-ui";

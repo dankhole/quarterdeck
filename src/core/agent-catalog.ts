@@ -56,9 +56,22 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		signInCommand: "pi",
 		signInDescription: "Start Pi, enter /login, and choose a provider.",
 	},
+	{
+		id: "opencode",
+		label: "opencode",
+		binary: "opencode",
+		baseArgs: [],
+		// Unlike Pi's install, this intentionally omits --ignore-scripts: the
+		// opencode-ai npm package needs its postinstall step to fetch the
+		// platform-specific binary.
+		installCommand: "npm install -g opencode-ai@1.19.4",
+		installUrl: "https://www.npmjs.com/package/opencode-ai/v/1.19.4",
+		signInCommand: "opencode auth login",
+		signInDescription: "Run opencode auth login and choose a provider.",
+	},
 ];
 
-export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
+export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = ["claude", "codex", "pi", "opencode"];
 
 const RUNTIME_LAUNCH_SUPPORTED_AGENT_ID_SET = new Set<RuntimeAgentId>(RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS);
 

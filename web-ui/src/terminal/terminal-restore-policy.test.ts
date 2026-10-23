@@ -9,6 +9,7 @@ describe("shouldForceResizeBeforeRestore", () => {
 		expect(shouldForceResizeBeforeRestore("claude")).toBe(true);
 		expect(shouldForceResizeBeforeRestore("codex")).toBe(true);
 		expect(shouldForceResizeBeforeRestore("pi")).toBe(true);
+		expect(shouldForceResizeBeforeRestore("opencode")).toBe(true);
 	});
 
 	it("leaves unknown terminal types on normal restore behavior", () => {

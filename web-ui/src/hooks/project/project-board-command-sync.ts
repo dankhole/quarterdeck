@@ -72,6 +72,7 @@ export function deriveProjectBoardCommands(before: BoardData, after: BoardData):
 				agentId: card.agentId,
 				codexOptions: card.codexOptions,
 				claudeOptions: toRuntimeClaudeOptions(card.claudeOptions),
+				opencodeOptions: card.opencodeOptions,
 				useWorktree: card.useWorktree,
 				branch: card.branch ?? undefined,
 				pinned: card.pinned,

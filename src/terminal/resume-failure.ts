@@ -15,10 +15,14 @@ export const STORED_CLAUDE_RESUME_FAILED_WARNING =
 export const STORED_PI_RESUME_FAILED_WARNING =
 	"Could not resume the stored Pi session. Quarterdeck will fall back to the most recent Pi session for this checkout on the next explicit restart.";
 
+export const STORED_OPENCODE_RESUME_FAILED_WARNING =
+	"Could not resume the stored opencode session. Quarterdeck will fall back to the most recent opencode session for this checkout on the next explicit restart.";
+
 const STORED_RESUME_FAILED_WARNINGS: ReadonlyMap<string, string> = new Map<RuntimeAgentId, string>([
 	["codex", STORED_CODEX_RESUME_FAILED_WARNING],
 	["claude", STORED_CLAUDE_RESUME_FAILED_WARNING],
 	["pi", STORED_PI_RESUME_FAILED_WARNING],
+	["opencode", STORED_OPENCODE_RESUME_FAILED_WARNING],
 ]);
 const STORED_RESUME_FAILED_WARNING_MESSAGES: ReadonlySet<string> = new Set(STORED_RESUME_FAILED_WARNINGS.values());
 

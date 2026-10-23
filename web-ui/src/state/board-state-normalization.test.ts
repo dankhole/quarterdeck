@@ -87,6 +87,22 @@ describe("normalizeBoardData", () => {
 		).toBeUndefined();
 	});
 
+	it("retains opencode starting options only for opencode cards through authoritative hydration", () => {
+		const opencodeOptions = { model: "anthropic/claude-sonnet", agent: "build" };
+		const card = parsePersistedBoardCard(
+			{ id: "task-1", prompt: "Task", baseRef: "main", agentId: "opencode", opencodeOptions },
+			{ createTaskId: () => "unused" },
+		);
+		expect(card?.opencodeOptions).toEqual(opencodeOptions);
+		expect(
+			parsePersistedBoardCard({ ...card, opencodeOptions: { model: "bad model" } }, { createTaskId: () => "unused" })
+				?.opencodeOptions,
+		).toBeUndefined();
+		expect(
+			parsePersistedBoardCard({ ...card, agentId: "codex" }, { createTaskId: () => "unused" })?.opencodeOptions,
+		).toBeUndefined();
+	});
+
 	it("retains title ownership during authoritative board hydration without inventing legacy ownership", () => {
 		const board = normalizeBoardData({
 			columns: [

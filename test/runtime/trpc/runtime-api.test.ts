@@ -11,6 +11,9 @@ import { createTestTaskSessionSummary } from "../../utilities/task-session-facto
 const modelCatalogMocks = vi.hoisted(() => ({ load: vi.fn() }));
 vi.mock("../../../src/config/codex-model-catalog", () => ({ loadCodexModelCatalog: modelCatalogMocks.load }));
 
+const opencodeCatalogMocks = vi.hoisted(() => ({ load: vi.fn() }));
+vi.mock("../../../src/config/opencode-catalog", () => ({ loadOpencodeCatalog: opencodeCatalogMocks.load }));
+
 const agentRegistryMocks = vi.hoisted(() => ({
 	resolveAgentCommand: vi.fn(),
 	buildRuntimeConfigResponse: vi.fn(),
@@ -1264,5 +1267,23 @@ describe("createRuntimeApi Codex model catalog", () => {
 		await api.codexModels({ projectId: "other", projectPath: "/tmp/other" });
 		await createRuntimeApi(deps).codexModels(defaultScope);
 		expect(modelCatalogMocks.load).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe("createRuntimeApi opencode catalog", () => {
+	it("reuses catalogs across picker calls within one runtime while isolating projects and runtimes", async () => {
+		opencodeCatalogMocks.load.mockReset().mockResolvedValue({ models: [], agents: [] });
+		const deps = createDeps();
+		const api = createRuntimeApi(deps);
+		await Promise.all([api.opencodeCatalog(defaultScope), api.opencodeCatalog(defaultScope)]);
+		await api.opencodeCatalog(defaultScope);
+		expect(opencodeCatalogMocks.load).toHaveBeenCalledOnce();
+		expect(opencodeCatalogMocks.load).toHaveBeenCalledWith(
+			deps.config.getActiveRuntimeConfig(),
+			expect.stringMatching(/repo$/),
+		);
+		await api.opencodeCatalog({ projectId: "other", projectPath: "/tmp/other" });
+		await createRuntimeApi(deps).opencodeCatalog(defaultScope);
+		expect(opencodeCatalogMocks.load).toHaveBeenCalledTimes(3);
 	});
 });

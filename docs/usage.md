@@ -11,6 +11,7 @@ The commands below are the shortest macOS/Linux setup path. Follow the linked of
 | [Claude Code](https://code.claude.com/docs/en/getting-started) | `curl -fsSL https://claude.ai/install.sh \| bash` | Run `claude` and follow the browser prompt | `claude auth status` | 2.1.198+ |
 | [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.157.0+ with native hooks and auto-review support |
 | [Pi 1.4.0](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/1.4.0) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.4.0` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 1.4.0 |
+| [opencode 1.19.4](https://www.npmjs.com/package/opencode-ai/v/1.19.4) | `npm install -g opencode-ai@1.19.4` (needs its postinstall step; do not pass `--ignore-scripts`) | Run `opencode auth login` and choose a provider | Start `opencode` successfully | Exactly 1.19.4 |
 
 On native Windows, run the installer from PowerShell:
 
@@ -19,22 +20,29 @@ On native Windows, run the installer from PowerShell:
 | Claude Code | `irm https://claude.ai/install.ps1 \| iex` |
 | OpenAI Codex | `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` |
 | Pi 1.4.0 | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.4.0` |
+| opencode 1.19.4 | `npm install -g opencode-ai@1.19.4` |
 
-Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`.
+Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`. opencode lets you choose a provider during `opencode auth login`.
 
 Claude launch permissions are configurable under Settings → Harnesses → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
 
 When creating a Claude Code task, you can choose a starting model alias (Fable, Opus, Sonnet, or Haiku) and an effort level (low, medium, high, extra high, or max); Claude default inherits your configured Claude settings. Codex new-task choices apply only to a fresh conversation, because a Codex thread keeps its model on resume. Claude task choices also apply on resume, restart, and startup recovery, because `claude --resume` otherwise reverts to the configured default. Task choices replace any `--model` or `--effort` in the configured Claude arguments.
 
+When creating an opencode task, you can choose a model (`provider/model`) and an agent from a runtime-queried catalog (`opencode models`, `opencode agent list`); free-text model entry is accepted as a fallback when the catalog can't be reached. Selections persist on the task card and are passed as `--model`/`--agent` on every launch, including resume.
+
 Pi users need exactly Pi 1.4.0. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
 
 Pi runs with its native tools, extensions, and project-trust settings. Quarterdeck adds no tool approval dialogs or project-trust override. Existing Pi tasks must be restarted to pick up this change. The retired `piToolApprovalsEnabled` setting is ignored and removed on the next configuration save. After upgrading Quarterdeck, restart the owning runtime and refresh browser clients to load the matching configuration protocol.
+
+opencode users need exactly opencode 1.19.4. Quarterdeck deliberately rejects older and newer opencode versions until the lifecycle plugin and exact-session recovery suite is validated against a new release.
+
+opencode runs with its native tools and permission settings; opencode has no project-trust prompt, and Quarterdeck adds no tool-approval dialogs or permission override. Quarterdeck disables opencode's background update checks (`OPENCODE_DISABLE_AUTOUPDATE=1`) for managed launches and removes an inherited `OPENCODE_PURE` (which disables all plugins) so the launch-scoped lifecycle plugin can load; your own `OPENCODE_CONFIG_CONTENT` plugins are preserved, not replaced. See [opencode lifecycle plugin](conventions/session-lifecycle.md#opencode-lifecycle-plugin).
 
 ## Environment Variables
 
 Quarterdeck does not require a `.env` file for core usage. Browser runtimes inherit the environment from the launching shell. The desktop app resolves executable folders without starting a shell by default; use **Quarterdeck → Runtime Environment…** to add folders or explicitly enable login-shell environment import. An app attached to an existing CLI runtime uses that runtime's environment. See [desktop environment resolution](./desktop-environment.md) for details.
 
-Your chosen agent CLI (`claude`, `codex`, or `pi`) must be available to the runtime and already authenticated.
+Your chosen agent CLI (`claude`, `codex`, `pi`, or `opencode`) must be available to the runtime and already authenticated.
 
 Optional variables:
 
@@ -144,7 +152,7 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
 If `quarterdeck` is not found after `npm install --global quarterdeck`, make sure your npm global bin directory is on `PATH`. Contributors using a source checkout can run `npm run link` instead.
 
-If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 1.4.0 for supported task-agent launches.
+If no agent is available, install Claude Code, OpenAI Codex, Pi, or opencode and confirm the matching binary (`claude`, `codex`, `pi`, or `opencode`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, exactly Pi 1.4.0, or exactly opencode 1.19.4 for supported task-agent launches.
 
 If terminal symbols look wrong, install [JetBrainsMono Nerd Font](https://www.nerdfonts.com/), which Quarterdeck prefers when available, then reopen the app or browser.
 

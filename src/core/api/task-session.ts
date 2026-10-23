@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isNativeLifecycleAgentId } from "../agent-capabilities.js";
 import { CODEX_SESSION_START_SOURCES } from "../codex-session-start-sources.js";
 import { runtimeAgentIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
@@ -36,7 +37,7 @@ export const runtimeTaskHookActivitySchema = z.object({
 });
 export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
 
-export const runtimeTaskInteractionProviderSchema = z.enum(["codex", "claude", "pi"]);
+export const runtimeTaskInteractionProviderSchema = z.enum(["codex", "claude", "pi", "opencode"]);
 export type RuntimeTaskInteractionProvider = z.infer<typeof runtimeTaskInteractionProviderSchema>;
 
 export const runtimeTaskInteractionKindSchema = z.enum(["permission", "question", "plan_approval", "elicitation"]);
@@ -149,7 +150,7 @@ export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 	event: runtimeHookEventSchema,
 	deliveryId: z.string().uuid(),
 	occurredAt: z.number().int().nonnegative(),
-	source: z.enum(["codex", "claude", "pi"]),
+	source: z.enum(["codex", "claude", "pi", "opencode"]),
 	sessionInstanceId: z.string().min(1),
 	providerSessionId: z.string().min(1).nullish(),
 	sessionStartHasTranscript: z.boolean().optional(),
@@ -333,7 +334,7 @@ export function normalizeRuntimeTaskSessionSummary(
 		};
 	}
 
-	const isSupportedNativeAgent = next.agentId === "codex" || next.agentId === "claude" || next.agentId === "pi";
+	const isSupportedNativeAgent = isNativeLifecycleAgentId(next.agentId);
 	if (next.state === "running" && isSupportedNativeAgent) {
 		const evidence = next.nativeWorkEvidence;
 		const validInitialStart = !options.invalidateNativeWorkEvidence && hasPendingInitialWorkConfirmation(next);

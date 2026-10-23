@@ -4,6 +4,7 @@ import {
 	runtimeBoardColumnIdSchema,
 	runtimeClaudeOptionsSchema,
 	runtimeCodexOptionsSchema,
+	runtimeOpencodeOptionsSchema,
 	runtimeTaskImageReadSchema,
 } from "@runtime-contract";
 import { z } from "zod";
@@ -29,6 +30,7 @@ const rawPersistedBoardCardSchema = z.object({
 	agentId: z.unknown().optional(),
 	codexOptions: z.unknown().optional(),
 	claudeOptions: z.unknown().optional(),
+	opencodeOptions: z.unknown().optional(),
 	useWorktree: z.unknown().optional(),
 	workingDirectory: z.unknown().optional(),
 	branch: z.unknown().optional(),
@@ -91,6 +93,7 @@ export function parsePersistedBoardCard(
 	const agentId = parsePersistedAgentId(result.data.agentId);
 	const codexOptions = runtimeCodexOptionsSchema.safeParse(result.data.codexOptions);
 	const claudeOptions = agentId === "claude" ? parsePersistedClaudeOptions(result.data.claudeOptions) : undefined;
+	const opencodeOptions = runtimeOpencodeOptionsSchema.safeParse(result.data.opencodeOptions);
 
 	return {
 		id: parseNonEmptyString(result.data.id) ?? options.createTaskId(),
@@ -105,6 +108,7 @@ export function parsePersistedBoardCard(
 		...(agentId ? { agentId } : {}),
 		...(agentId === "codex" && codexOptions.success ? { codexOptions: codexOptions.data } : {}),
 		...(claudeOptions ? { claudeOptions } : {}),
+		...(agentId === "opencode" && opencodeOptions.success ? { opencodeOptions: opencodeOptions.data } : {}),
 		useWorktree: typeof result.data.useWorktree === "boolean" ? result.data.useWorktree : undefined,
 		workingDirectory: parseOptionalNullableString(result.data.workingDirectory),
 		branch: parseOptionalNullableString(result.data.branch),

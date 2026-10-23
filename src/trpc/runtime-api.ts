@@ -6,6 +6,7 @@ import type { RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 // dependency bag each handler needs.
 
 import { CodexModelCatalogCache } from "../config/codex-model-catalog-cache";
+import { OpencodeCatalogCache } from "../config/opencode-catalog-cache";
 import type { ConversationSourceHintReader } from "../conversation/types";
 import type {
 	IRuntimeBroadcaster,
@@ -65,6 +66,7 @@ type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
 class RuntimeApiImpl implements RuntimeApi {
 	private readonly uiPreferences = new UiPreferencesStore();
 	private readonly codexModelCatalog = new CodexModelCatalogCache();
+	private readonly opencodeCatalogCache = new OpencodeCatalogCache();
 
 	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
 
@@ -86,6 +88,14 @@ class RuntimeApiImpl implements RuntimeApi {
 			: this.deps.config.getActiveRuntimeConfig();
 		if (!config) throw new Error("No active runtime config provider is available.");
 		return this.codexModelCatalog.get(config, projectScope?.projectPath ?? process.cwd());
+	}
+
+	async opencodeCatalog(projectScope: RuntimeTrpcProjectScope | null) {
+		const config = projectScope
+			? await this.deps.config.loadScopedRuntimeConfig(projectScope)
+			: this.deps.config.getActiveRuntimeConfig();
+		if (!config) throw new Error("No active runtime config provider is available.");
+		return this.opencodeCatalogCache.get(config, projectScope?.projectPath ?? process.cwd());
 	}
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {

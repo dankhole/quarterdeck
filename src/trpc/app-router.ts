@@ -48,6 +48,7 @@ import {
 } from "../core/api/project-organization.js";
 import { runtimeUiPreferencesPatchSchema, runtimeUiPreferencesSchema } from "../core/api/ui-preferences.js";
 import { runtimeCodexModelsResponseSchema } from "../core/codex-model-contracts";
+import { runtimeOpencodeCatalogResponseSchema } from "../core/opencode-catalog-contracts";
 import { checkLanguageServerCommand } from "../language-navigation/command";
 import { toBrowserSessionResponse } from "../server/runtime-state-messages";
 import {
@@ -87,6 +88,9 @@ const runtimeRouter = t.router({
 	codexModels: optionalProjectProcedure
 		.output(runtimeCodexModelsResponseSchema)
 		.query(({ ctx }) => ctx.runtimeApi.codexModels(ctx.projectScope)),
+	opencodeCatalog: optionalProjectProcedure
+		.output(runtimeOpencodeCatalogResponseSchema)
+		.query(({ ctx }) => ctx.runtimeApi.opencodeCatalog(ctx.projectScope)),
 	getConfig: t.procedure.output(runtimeConfigResponseSchema).query(async ({ ctx }) => {
 		return await ctx.runtimeApi.loadConfig(ctx.projectScope);
 	}),

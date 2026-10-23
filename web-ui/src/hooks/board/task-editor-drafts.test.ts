@@ -133,6 +133,31 @@ describe("task-editor-drafts", () => {
 		}
 	});
 
+	it("keeps opencode starting options on single and bulk tasks and drops them for other harnesses", () => {
+		const options = {
+			board: createBoard(),
+			prompt: "Single task",
+			prompts: ["First", "Second"],
+			images: [],
+			branchRef: "main",
+			defaultBranchRef: "main",
+			useWorktree: true,
+			branchName: "",
+			createFeatureBranch: false,
+			opencodeOptions: { model: "anthropic/claude-sonnet", agent: "build" },
+		};
+		expect(createTaskOnBoard({ ...options, agentId: "opencode" }).createdTask?.opencodeOptions).toEqual(
+			options.opencodeOptions,
+		);
+		for (const task of createTasksOnBoard({ ...options, agentId: "opencode" }).createdTasks) {
+			expect(task.opencodeOptions).toEqual(options.opencodeOptions);
+		}
+		expect(createTaskOnBoard({ ...options, agentId: "codex" }).createdTask?.opencodeOptions).toBeUndefined();
+		for (const task of createTasksOnBoard({ ...options, agentId: "pi" }).createdTasks) {
+			expect(task.opencodeOptions).toBeUndefined();
+		}
+	});
+
 	it("returns stable reset drafts for create and edit flows", () => {
 		expect(createResetTaskCreateDraft("main", "claude")).toMatchObject({
 			prompt: "",

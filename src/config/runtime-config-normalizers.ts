@@ -88,7 +88,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 
 // --- Constants ---
 
-export const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "pi"];
+export const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex", "pi", "opencode"];
 
 /** Assembled defaults for test fixtures — not used in production paths. */
 export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {

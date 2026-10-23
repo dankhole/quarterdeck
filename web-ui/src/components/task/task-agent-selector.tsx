@@ -35,6 +35,11 @@ function getFallbackAgentOptions(selectedAgentId: RuntimeAgentId): TaskAgentDisp
 			label: getTaskAgentDisplayLabel("pi"),
 			installed: selectedAgentId === "pi" ? null : false,
 		},
+		{
+			id: "opencode",
+			label: getTaskAgentDisplayLabel("opencode"),
+			installed: selectedAgentId === "opencode" ? null : false,
+		},
 	]);
 }
 

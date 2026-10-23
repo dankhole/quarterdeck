@@ -121,6 +121,10 @@ export interface StartTaskSessionRequest {
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
 	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
 	claudeOptions?: AgentAdapterLaunchInput["claudeOptions"];
+	// NOTE(workstream A): `AgentAdapterLaunchInput["opencodeOptions"]` does not exist until
+	// workstream B adds the field to `src/terminal/agent-session-adapters.ts`. This is an
+	// expected cross-owner typecheck error until that lands.
+	opencodeOptions?: AgentAdapterLaunchInput["opencodeOptions"];
 	worktreeSystemPromptTemplate?: string;
 	startupRecoveryToken?: string;
 	/** Server-derived task meaning to preserve while replacing only the provider process. */

@@ -2,7 +2,7 @@
 
 ![Quarterdeck board screenshot](https://github.com/user-attachments/assets/2aa3dcc7-94e3-4076-bcfe-6d0272007cfe)
 
-Quarterdeck is a local board for running coding agents in parallel. Each task gets a card, a terminal, Git context, and a review surface, with optional isolated worktrees. It supports **Claude Code, OpenAI Codex, and Pi** through their installed CLIs.
+Quarterdeck is a local board for running coding agents in parallel. Each task gets a card, a terminal, Git context, and a review surface, with optional isolated worktrees. It supports **Claude Code, OpenAI Codex, Pi, and opencode** through their installed CLIs.
 
 Use the macOS desktop app or browser mode. Both share the same projects, tasks, settings, and agent integrations.
 
@@ -15,6 +15,7 @@ You need **Node.js 22.22.2+**, **Git**, and at least one supported agent CLI ins
 | Claude Code | 2.1.198+ |
 | OpenAI Codex | 0.157.0+ with native hooks and auto-review support |
 | Pi | Exactly 1.4.0; currently validated on macOS |
+| opencode | Exactly 1.19.4 |
 
 See [agent setup](docs/usage.md#set-up-an-agent) for install and sign-in instructions. Quarterdeck does not require its own account.
 

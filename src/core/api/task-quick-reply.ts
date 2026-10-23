@@ -1,3 +1,4 @@
+import { isNativeLifecycleAgentId } from "../agent-capabilities.js";
 import { deriveTaskIndicatorState } from "./task-indicators.js";
 import type { RuntimeTaskSessionSummary } from "./task-session.js";
 
@@ -5,7 +6,7 @@ import type { RuntimeTaskSessionSummary } from "./task-session.js";
 export function canSendTaskQuickReply(summary: RuntimeTaskSessionSummary | null | undefined): boolean {
 	return Boolean(
 		summary?.pid != null &&
-			(summary.agentId === "codex" || summary.agentId === "claude" || summary.agentId === "pi") &&
+			isNativeLifecycleAgentId(summary.agentId) &&
 			summary.sessionInstanceId &&
 			!summary.outstandingInteraction &&
 			deriveTaskIndicatorState(summary).kind === "review_ready",

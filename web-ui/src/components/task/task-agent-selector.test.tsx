@@ -30,6 +30,13 @@ const AGENTS: TaskAgentDisplayOption[] = [
 		command: "pi",
 		installed: true,
 	},
+	{
+		id: "opencode",
+		label: "opencode",
+		binary: "opencode",
+		command: "opencode",
+		installed: true,
+	},
 ];
 
 function dispatchPointerEvent(element: Element, type: "pointerdown" | "pointerup"): void {
@@ -240,6 +247,24 @@ describe("TaskAgentSelector", () => {
 		await waitForRadixEffects();
 
 		expect(findMenuItemByText("Pi").textContent).not.toContain("Experimental");
+	});
+
+	it("lists opencode as a selectable harness", async () => {
+		await act(async () => {
+			root.render(<TaskAgentSelector agents={AGENTS} value="claude" onValueChange={vi.fn()} />);
+		});
+		await waitForRadixEffects();
+
+		const trigger = requireElement(
+			document.body.querySelector('button[aria-label="Task harness"]'),
+			"the task harness trigger",
+		);
+		await act(async () => {
+			dispatchPointerEvent(trigger, "pointerdown");
+		});
+		await waitForRadixEffects();
+
+		expect(findMenuItemByText("opencode")).toBeDefined();
 	});
 
 	it("keeps the create dialog open when the base ref changes through a dialog-local portal", async () => {

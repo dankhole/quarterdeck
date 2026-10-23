@@ -30,6 +30,21 @@ export const runtimeCodexOptionsSchema = z.object({
 });
 export type RuntimeCodexOptions = z.infer<typeof runtimeCodexOptionsSchema>;
 
+/** opencode `--agent` names: CLI-safe identifiers, matching opencode's own agent-name convention. */
+const runtimeOpencodeAgentNameSchema = z
+	.string()
+	.trim()
+	.min(1)
+	.max(64)
+	.regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/);
+
+/** Per-task opencode launch choices accepted from clients. Omitted fields inherit opencode configuration. */
+export const runtimeOpencodeOptionsSchema = z.object({
+	model: runtimeAgentModelIdSchema.optional(),
+	agent: runtimeOpencodeAgentNameSchema.optional(),
+});
+export type RuntimeOpencodeOptions = z.infer<typeof runtimeOpencodeOptionsSchema>;
+
 /**
  * Effort levels accepted by the Claude Code CLI `--effort` option. All predate the 2.1.198 launch
  * minimum (Claude Code CHANGELOG): `--effort` by 2.1.72, `max` restored by 2.1.98, `xhigh` in 2.1.111.
@@ -99,6 +114,7 @@ export const runtimeBoardCardSchema = z.object({
 	agentId: runtimeAgentIdSchema.optional(),
 	codexOptions: runtimeCodexOptionsSchema.optional(),
 	claudeOptions: runtimePersistedClaudeOptionsSchema.optional(),
+	opencodeOptions: runtimeOpencodeOptionsSchema.optional(),
 	useWorktree: z.boolean().optional(),
 	workingDirectory: z.string().min(1).nullable().optional(),
 	branch: z.string().min(1).nullable().optional(),

@@ -28,7 +28,7 @@ This is the stable contract for the integrated provider-neutral execution owner.
 - The native foreground `outstandingInteraction` lifecycle is intentionally singular.
 - Structured Codex callbacks use exact keyed interaction identity.
 - Concurrent Claude or background-agent structured interaction remains unsupported until it has a durable keyed model. Do not route subagent/global Agent View notifications through the foreground record.
-- Pi structured compatibility is out of scope until its ownership and exact-resume contract is designed and validated explicitly.
+- Pi and opencode structured compatibility are out of scope until their ownership and exact-resume contracts are designed and validated explicitly; both remain native-TUI-owned.
 
 ## Implementation map
 

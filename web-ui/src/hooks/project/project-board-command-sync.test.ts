@@ -42,14 +42,27 @@ describe("project board command sync", () => {
 			claudeOptions: { model: "opus", effort: "high" },
 			useWorktree: false,
 		});
+		const third = addTaskToColumnWithResult(second.board, "review", {
+			prompt: "Third",
+			baseRef: "main",
+			agentId: "opencode",
+			opencodeOptions: { model: "anthropic/claude-sonnet", agent: "build" },
+			useWorktree: false,
+		});
 
-		const result = applyDerived(before, second.board);
+		const result = applyDerived(before, third.board);
 
 		expect(result.commands).toContainEqual(
 			expect.objectContaining({ kind: "create_task", claudeOptions: { model: "opus", effort: "high" } }),
 		);
-		expect(result.commands.filter((command) => command.kind === "create_task")).toHaveLength(2);
-		expect(result.board).toEqual(second.board);
+		expect(result.commands).toContainEqual(
+			expect.objectContaining({
+				kind: "create_task",
+				opencodeOptions: { model: "anthropic/claude-sonnet", agent: "build" },
+			}),
+		);
+		expect(result.commands.filter((command) => command.kind === "create_task")).toHaveLength(3);
+		expect(result.board).toEqual(third.board);
 	});
 
 	it("preserves Pi ownership when creating a durable backlog task", () => {

@@ -1,4 +1,9 @@
 export {
+	isNativeLifecycleAgentId,
+	isRunScopedExtensionProvider,
+	NATIVE_LIFECYCLE_AGENT_IDS,
+} from "./agent-capabilities";
+export {
 	getRuntimeAgentCatalogEntry,
 	getRuntimeLaunchSupportedAgentCatalog,
 	isRuntimeAgentLaunchSupported,

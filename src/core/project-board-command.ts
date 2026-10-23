@@ -35,6 +35,8 @@ function areBoardCardsEqual(first: RuntimeBoardCard, second: RuntimeBoardCard): 
 		first.codexOptions?.reasoningEffort === second.codexOptions?.reasoningEffort &&
 		first.claudeOptions?.model === second.claudeOptions?.model &&
 		first.claudeOptions?.effort === second.claudeOptions?.effort &&
+		first.opencodeOptions?.model === second.opencodeOptions?.model &&
+		first.opencodeOptions?.agent === second.opencodeOptions?.agent &&
 		first.useWorktree === second.useWorktree &&
 		first.workingDirectory === second.workingDirectory &&
 		first.branch === second.branch &&
@@ -54,6 +56,7 @@ function toCreateTaskInput(command: RuntimeCreateTaskCommand): RuntimeCreateTask
 		agentId: command.agentId,
 		codexOptions: command.codexOptions,
 		claudeOptions: command.claudeOptions,
+		opencodeOptions: command.opencodeOptions,
 		useWorktree: command.useWorktree,
 		branch: command.branch,
 		pinned: command.pinned,

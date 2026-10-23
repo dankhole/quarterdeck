@@ -73,6 +73,7 @@ export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosti
 const MINIMUM_CODEX_VERSION = "0.157.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
 export const SUPPORTED_PI_VERSION = "1.4.0";
+export const SUPPORTED_OPENCODE_VERSION = "1.19.4";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 /**
  * Applies to every agent's `--version` probe and Codex's `features list` probe
@@ -493,18 +494,30 @@ async function resolveClaudeAvailability(binary: string, timeoutMs?: number): Pr
 	return resolveMinimumVersionAvailability("claude", "Claude Code", binary, MINIMUM_CLAUDE_VERSION, timeoutMs);
 }
 
-async function resolvePiAvailability(binary: string, timeoutMs?: number): Promise<AgentAvailability> {
-	const versionResult = await detectAgentVersion("pi", "Pi", binary, timeoutMs);
+/**
+ * Shared exact-pin availability policy for agents that, like Pi, must match one
+ * specific supported version rather than a minimum. `installPackageHint` names
+ * the npm package the status message tells the user to install.
+ */
+async function resolveExactPinnedVersionAvailability(
+	agentId: RuntimeAgentId,
+	agentName: string,
+	binary: string,
+	exactVersion: string,
+	installPackageHint: string,
+	timeoutMs?: number,
+): Promise<AgentAvailability> {
+	const versionResult = await detectAgentVersion(agentId, agentName, binary, timeoutMs);
 	if (!versionResult.ok) {
 		if (versionResult.reason === "unsupported_version") {
 			return {
 				installed: false,
 				status: "upgrade_required",
-				statusMessage: `Detected Pi on PATH, but Quarterdeck could not determine its version. Install exactly ${SUPPORTED_PI_VERSION} with @earendil-works/pi-coding-agent.`,
+				statusMessage: `Detected ${agentName} on PATH, but Quarterdeck could not determine its version. Install exactly ${exactVersion} with ${installPackageHint}.`,
 				reason: "unsupported_version",
 				transient: false,
 				detectedVersion: null,
-				requiredVersion: SUPPORTED_PI_VERSION,
+				requiredVersion: exactVersion,
 			};
 		}
 		return {
@@ -512,21 +525,21 @@ async function resolvePiAvailability(binary: string, timeoutMs?: number): Promis
 			status: "missing",
 			statusMessage:
 				versionResult.reason === "probe_timeout"
-					? "Pi availability check timed out. Retry the task."
-					: "Quarterdeck could not run the Pi version check. Retry the task or verify Pi runs from this shell.",
+					? `${agentName} availability check timed out. Retry the task.`
+					: `Quarterdeck could not run the ${agentName} version check. Retry the task or verify ${agentName} runs from this shell.`,
 			reason: versionResult.reason,
 			transient: true,
 		};
 	}
-	if (versionResult.version !== SUPPORTED_PI_VERSION) {
+	if (versionResult.version !== exactVersion) {
 		return {
 			installed: false,
 			status: "upgrade_required",
-			statusMessage: `Detected Pi ${versionResult.version}, but Quarterdeck supports exactly ${SUPPORTED_PI_VERSION}. Install @earendil-works/pi-coding-agent@${SUPPORTED_PI_VERSION}.`,
+			statusMessage: `Detected ${agentName} ${versionResult.version}, but Quarterdeck supports exactly ${exactVersion}. Install ${installPackageHint}@${exactVersion}.`,
 			reason: "unsupported_version",
 			transient: false,
 			detectedVersion: versionResult.version,
-			requiredVersion: SUPPORTED_PI_VERSION,
+			requiredVersion: exactVersion,
 		};
 	}
 	return {
@@ -536,8 +549,30 @@ async function resolvePiAvailability(binary: string, timeoutMs?: number): Promis
 		reason: "installed",
 		transient: false,
 		detectedVersion: versionResult.version,
-		requiredVersion: SUPPORTED_PI_VERSION,
+		requiredVersion: exactVersion,
 	};
+}
+
+async function resolvePiAvailability(binary: string, timeoutMs?: number): Promise<AgentAvailability> {
+	return resolveExactPinnedVersionAvailability(
+		"pi",
+		"Pi",
+		binary,
+		SUPPORTED_PI_VERSION,
+		"@earendil-works/pi-coding-agent",
+		timeoutMs,
+	);
+}
+
+async function resolveOpencodeAvailability(binary: string, timeoutMs?: number): Promise<AgentAvailability> {
+	return resolveExactPinnedVersionAvailability(
+		"opencode",
+		"opencode",
+		binary,
+		SUPPORTED_OPENCODE_VERSION,
+		"opencode-ai",
+		timeoutMs,
+	);
 }
 
 const AGENT_AVAILABILITY_TTL_MS = 30_000;
@@ -618,6 +653,8 @@ async function computeAgentAvailability(
 	let result: AgentAvailability;
 	if (agentId === "pi") {
 		result = await resolvePiAvailability(binary, timeoutMs);
+	} else if (agentId === "opencode") {
+		result = await resolveOpencodeAvailability(binary, timeoutMs);
 	} else if (agentId === "claude") {
 		result = await resolveClaudeAvailability(binary, timeoutMs);
 	} else if (agentId !== "codex") {

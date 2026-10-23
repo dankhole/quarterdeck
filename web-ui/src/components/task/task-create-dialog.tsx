@@ -20,6 +20,7 @@ import { TaskClaudeOptions } from "@/components/task/task-claude-options";
 import { TaskCodexOptions } from "@/components/task/task-codex-options";
 import { ButtonShortcut, DIALOG_STYLE } from "@/components/task/task-create-dialog-utils";
 import { TaskCreateMultiList } from "@/components/task/task-create-multi-list";
+import { TaskOpencodeOptions } from "@/components/task/task-opencode-options";
 import { TaskPromptComposer } from "@/components/task/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
@@ -31,6 +32,7 @@ import type {
 	RuntimeAgentId,
 	RuntimeClaudeOptions,
 	RuntimeCodexOptions,
+	RuntimeOpencodeOptions,
 } from "@/runtime/types";
 import type { TaskImage } from "@/types";
 import { pasteShortcutLabel } from "@/utils/platform";
@@ -49,6 +51,8 @@ export function TaskCreateDialog({
 	onCodexOptionsChange,
 	claudeOptions,
 	onClaudeOptionsChange,
+	opencodeOptions,
+	onOpencodeOptionsChange,
 	onCreate,
 	onCreateAndStart,
 	onCreateMultiple,
@@ -84,6 +88,8 @@ export function TaskCreateDialog({
 	onCodexOptionsChange?: (value: RuntimeCodexOptions | undefined) => void;
 	claudeOptions?: RuntimeClaudeOptions;
 	onClaudeOptionsChange?: (value: RuntimeClaudeOptions | undefined) => void;
+	opencodeOptions?: RuntimeOpencodeOptions;
+	onOpencodeOptionsChange?: (value: RuntimeOpencodeOptions | undefined) => void;
 	onCreate: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateAndStart?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple: (prompts: string[], options?: { keepDialogOpen?: boolean }) => string[];
@@ -224,6 +230,14 @@ export function TaskCreateDialog({
 							<TaskClaudeOptions
 								value={claudeOptions}
 								onValueChange={onClaudeOptionsChange}
+								portalContainer={dropdownPortalContainer}
+							/>
+						) : null}
+						{open && agentId === "opencode" && onOpencodeOptionsChange ? (
+							<TaskOpencodeOptions
+								projectId={projectId}
+								value={opencodeOptions}
+								onValueChange={onOpencodeOptionsChange}
 								portalContainer={dropdownPortalContainer}
 							/>
 						) : null}
