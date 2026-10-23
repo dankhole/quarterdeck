@@ -50,10 +50,14 @@ function resolveGitDefaultBranch(remoteHead: string | null, branches: string[]):
  * (detached HEAD, no origin/HEAD, an empty repository). Only a genuine
  * "not a git repository" root failure throws; everything else is returned as a
  * discriminated outcome for the caller to apply fallback/caching policy to.
+ * Project loads and state publication await these probes, so use foreground
+ * admission (reserved capacity and a bounded queue wait), retaining metadata's
+ * short execution timeout. Background priority could starve those callers.
  */
 async function loadGitRepositoryInfo(repoPath: string): Promise<GitRepositoryInfoLoadOutcome> {
 	const rootResult = await runGit(repoPath, ["--no-optional-locks", "rev-parse", "--show-toplevel"], {
 		timeoutClass: "metadata",
+		priority: "foreground",
 	});
 	if (!rootResult.ok) {
 		if (isGitCommandIndeterminate(rootResult)) {
@@ -69,14 +73,17 @@ async function loadGitRepositoryInfo(repoPath: string): Promise<GitRepositoryInf
 	const [branchResult, branchesResult, remoteHeadResult] = await Promise.all([
 		runGit(gitRoot, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"], {
 			timeoutClass: "metadata",
+			priority: "foreground",
 		}),
 		// TODO: support showing remote branches again once worktree creation can safely
 		// fetch/pull and resolve missing local tracking branches automatically.
 		runGit(gitRoot, ["--no-optional-locks", "for-each-ref", "--format=%(refname:short)", "refs/heads"], {
 			timeoutClass: "metadata",
+			priority: "foreground",
 		}),
 		runGit(gitRoot, ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], {
 			timeoutClass: "metadata",
+			priority: "foreground",
 		}),
 	]);
 	for (const result of [branchResult, branchesResult, remoteHeadResult]) {

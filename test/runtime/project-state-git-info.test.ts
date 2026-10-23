@@ -61,6 +61,18 @@ const degraded = { currentBranch: null, defaultBranch: null, branches: [] };
 const PAST_RETRY_FLOOR_MS = 6_000;
 
 describe("detectGitRepositoryInfo", () => {
+	it("admits all four project-load probes as foreground work with the short metadata timeout", async () => {
+		respondAsRepository();
+		await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(known);
+
+		expect(runGit).toHaveBeenCalledTimes(4);
+		for (const [, , options] of vi.mocked(runGit).mock.calls) {
+			// Foreground admission uses the limiter's bounded queue wait and reserved
+			// slots; the execution timeout must remain metadata's 5s, not inspection's 30s.
+			expect(options).toEqual({ timeoutClass: "metadata", priority: "foreground" });
+		}
+	});
+
 	it("answers with the last known info when Git stops responding after the cache expires", async () => {
 		respondAsRepository();
 		await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(known);
@@ -95,18 +107,34 @@ describe("detectGitRepositoryInfo", () => {
 		await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(degraded);
 	});
 
-	it("treats an overlong process-queue wait as indeterminate, not a missing repository", async () => {
-		respondAsRepository();
-		await detectGitRepositoryInfo("/synthetic/repo");
-		now += 31_000;
-		vi.mocked(runGit).mockResolvedValue({
-			...timedOut,
-			timedOut: false,
-			failureKind: "queue_timed_out",
-			errorCode: null,
-		});
-		await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(known);
-	});
+	it.each(["root", "head", "branches", "originHead"] as const)(
+		"falls back without caching an overlong %s queue wait on cold and warm loads",
+		async (probe) => {
+			const queueTimedOut: GitResult = {
+				...timedOut,
+				timedOut: false,
+				failureKind: "queue_timed_out",
+				errorCode: null,
+			};
+			const stallProbe = () => {
+				if (probe === "root") vi.mocked(runGit).mockResolvedValue(queueTimedOut);
+				else respondAsRepository({ [probe]: queueTimedOut });
+			};
+
+			stallProbe();
+			await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(degraded);
+			now += PAST_RETRY_FLOOR_MS;
+			respondAsRepository();
+			await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(known);
+
+			now += 31_000;
+			stallProbe();
+			await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toEqual(known);
+			now += PAST_RETRY_FLOOR_MS;
+			respondAsRepository({ head: ok("feature") });
+			await expect(detectGitRepositoryInfo("/synthetic/repo")).resolves.toMatchObject({ currentBranch: "feature" });
+		},
+	);
 
 	it("does not remember a load that an invalidation overtook", async () => {
 		let release!: () => void;
