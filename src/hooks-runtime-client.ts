@@ -17,6 +17,7 @@ import {
 	acknowledgeHookTransition,
 	enqueueHookTransition,
 } from "./hook-transition-outbox-core.js";
+import { postHookRuntimeJson } from "./hooks-runtime-http.js";
 import { parseHookRuntimeContextFromEnv } from "./terminal/hook-runtime-context.js";
 
 /**
@@ -24,7 +25,7 @@ import { parseHookRuntimeContextFromEnv } from "./terminal/hook-runtime-context.
  * (bundled into `dist/cli.js` via `commands/hooks.ts`) and the standalone
  * lightweight entry (`dist/hooks.js`, built from `hook-entry.ts`). Deliberately
  * narrow: no commander, no `@trpc/client`, no `./core`/`./terminal` barrel
- * imports. Talks to the runtime with a plain `fetch` POST that matches the
+ * imports. Talks to the runtime with a bounded `node:http` POST that matches the
  * exact non-batched tRPC HTTP RPC wire format `createHTTPHandler` accepts for
  * `POST /api/trpc/hooks.ingest` (see `src/trpc/app-router.ts` and
  * `src/server/runtime-client-access.ts`, which exempts exactly that path):
@@ -188,6 +189,12 @@ function isTrpcResultEnvelope(value: unknown): value is TrpcResultEnvelope {
 	return isRecord(value) && isRecord(value.result) && "data" in value.result;
 }
 
+function isHookIngestResponse(value: unknown): value is RuntimeHookIngestResponse {
+	return (
+		isRecord(value) && typeof value.ok === "boolean" && (value.error === undefined || typeof value.error === "string")
+	);
+}
+
 async function postHookIngest(
 	request: {
 		taskId: string;
@@ -198,25 +205,27 @@ async function postHookIngest(
 	},
 	signal: AbortSignal,
 ): Promise<RuntimeHookIngestResponse> {
-	const response = await fetch(buildQuarterdeckRuntimeUrl("/api/trpc/hooks.ingest"), {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(request),
+	const response = await postHookRuntimeJson(
+		buildQuarterdeckRuntimeUrl("/api/trpc/hooks.ingest"),
+		JSON.stringify(request),
 		signal,
-	});
+	);
 	let payload: unknown;
 	try {
-		payload = await response.json();
+		payload = JSON.parse(response.body);
 	} catch {
 		throw new Error(`Hook ingest returned a non-JSON response (status ${response.status}).`);
 	}
 	if (isTrpcErrorEnvelope(payload)) {
 		throw new Error(payload.error.message || "Hook ingest failed");
 	}
-	if (!isTrpcResultEnvelope(payload)) {
+	if (response.status < 200 || response.status >= 300) {
+		throw new Error(`Hook ingest returned an unsuccessful response (status ${response.status}).`);
+	}
+	if (!isTrpcResultEnvelope(payload) || !isHookIngestResponse(payload.result.data)) {
 		throw new Error(`Unexpected hook ingest response shape (status ${response.status}).`);
 	}
-	return payload.result.data as RuntimeHookIngestResponse;
+	return payload.result.data;
 }
 
 async function ingestHookEvent(

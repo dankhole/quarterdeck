@@ -1,8 +1,8 @@
-import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { RuntimeHookDelivery, RuntimeHookIngestRequest, RuntimeHookMetadata } from "./core/api/task-session.js";
 import { getRuntimeHomePath } from "./core/runtime-state-home.js";
-import { lockedFileSystem } from "./fs/locked-file-system.js";
 import { isNodeError } from "./fs/node-error.js";
 
 /**
@@ -10,8 +10,8 @@ import { isNodeError } from "./fs/node-error.js";
  * (`hooks-runtime-client.ts`, behind both `dist/cli.js` and `dist/hooks.js`) and
  * the server-side replayer (`hook-transition-outbox.ts`).
  * Every type here is used only at the type level (erased at build), so this
- * module pulls in nothing beyond plain fs/path and the file-lock primitive —
- * no zod, no diagnostics, no `./core`/`./fs`/`./state` barrels. The replay
+ * module pulls in only fs/path/crypto primitives and leaf helpers — no locks,
+ * zod, diagnostics, or `./core`/`./fs`/`./state` barrels. The replay
  * scan (schema validation, logging, diagnostics) lives in the sibling
  * `hook-transition-outbox.ts`, which the lightweight hook entry never imports.
  */
@@ -117,15 +117,36 @@ export function createPersistedHookTransition(
 	};
 }
 
+/** Atomic publication for process-restart recovery, not fsync-backed power-loss durability. */
+async function writeRecordAtomic(path: string, record: unknown): Promise<void> {
+	await mkdir(dirname(path), { recursive: true });
+	const tempPath = `${path}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
+	// Acquire ownership before writing so failures never remove someone else's temp.
+	const file = await open(tempPath, "wx", process.platform === "win32" ? undefined : 0o600);
+	try {
+		try {
+			// Creation mode is filtered by umask; normalize before publishing.
+			if (process.platform !== "win32") await file.chmod(0o600);
+			await file.writeFile(JSON.stringify(record, null, 2), "utf8");
+		} catch (error) {
+			await file.close().catch(() => undefined);
+			throw error;
+		}
+		// Close before rename, including on Windows.
+		await file.close();
+		await rename(tempPath, path);
+	} catch (error) {
+		await rm(tempPath, { force: true }).catch(() => undefined);
+		throw error;
+	}
+}
+
 export async function enqueueHookTransition(request: RuntimeHookIngestRequest): Promise<boolean> {
 	const record = createPersistedHookTransition(request);
 	if (!record) {
 		return false;
 	}
-	await lockedFileSystem.writeJsonFileAtomic(getOutboxRecordPath(record.request.delivery.id), record, {
-		mode: 0o600,
-		lock: null,
-	});
+	await writeRecordAtomic(getOutboxRecordPath(record.request.delivery.id), record);
 	return true;
 }
 
@@ -177,5 +198,5 @@ export async function abandonHookTransition(deliveryId: string, now: number = Da
 	if (!isOwnOutboxRecord(record, deliveryId)) {
 		return;
 	}
-	await lockedFileSystem.writeJsonFileAtomic(path, { ...record, abandonedAt: now }, { mode: 0o600, lock: null });
+	await writeRecordAtomic(path, { ...record, abandonedAt: now });
 }
