@@ -175,7 +175,7 @@ export function ShortcutsSection({
 					ref={(node) => {
 						rowRefs.current[shortcutIndex] = node;
 					}}
-					className="grid gap-2 mb-1"
+					className="settings-row grid gap-2 mb-1"
 					style={{ gridTemplateColumns: "max-content 1fr 2fr auto" }}
 				>
 					<ShortcutIconPicker

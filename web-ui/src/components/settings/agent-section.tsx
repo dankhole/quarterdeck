@@ -84,7 +84,11 @@ export function HarnessSection({
 				unavailable harnesses are shown there with install or upgrade status.
 			</p>
 
-			<RadixCollapsible.Root open={claudeSettingsExpanded} onOpenChange={setClaudeSettingsExpanded} className="mt-2">
+			<RadixCollapsible.Root
+				open={claudeSettingsExpanded}
+				onOpenChange={setClaudeSettingsExpanded}
+				className="settings-harness-row mt-2"
+			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
@@ -142,7 +146,11 @@ export function HarnessSection({
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>
 
-			<RadixCollapsible.Root open={codexSettingsExpanded} onOpenChange={setCodexSettingsExpanded} className="mt-2">
+			<RadixCollapsible.Root
+				open={codexSettingsExpanded}
+				onOpenChange={setCodexSettingsExpanded}
+				className="settings-harness-row mt-2"
+			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
@@ -196,7 +204,11 @@ export function HarnessSection({
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>
 
-			<RadixCollapsible.Root open={piSettingsExpanded} onOpenChange={setPiSettingsExpanded} className="mt-2">
+			<RadixCollapsible.Root
+				open={piSettingsExpanded}
+				onOpenChange={setPiSettingsExpanded}
+				className="settings-harness-row mt-2"
+			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
@@ -223,7 +235,11 @@ export function HarnessSection({
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>
 
-			<RadixCollapsible.Root open={systemPromptExpanded} onOpenChange={setSystemPromptExpanded} className="mt-2">
+			<RadixCollapsible.Root
+				open={systemPromptExpanded}
+				onOpenChange={setSystemPromptExpanded}
+				className="settings-harness-row mt-2"
+			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"

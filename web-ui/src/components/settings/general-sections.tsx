@@ -53,10 +53,9 @@ export function GitSection({ fields, setField, disabled }: SettingsSectionProps)
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Git</h6>
 			<p className="text-[13px] font-medium text-text-secondary mt-0 mb-2">Card indicators</p>
-			{GIT_CARD_INDICATOR_TOGGLES.map(({ field, label, description }, i) => (
+			{GIT_CARD_INDICATOR_TOGGLES.map(({ field, label, description }) => (
 				<SettingsSwitch
 					key={field}
-					className={i > 0 ? "mt-3" : undefined}
 					checked={fields[field]}
 					onCheckedChange={(v) => setField(field, v)}
 					disabled={disabled}
@@ -82,30 +81,32 @@ export function EditorSection({ fields, setField, disabled }: SettingsSectionPro
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Editor</h6>
-			<div className="flex items-center justify-between gap-3">
-				<label htmlFor="runtime-settings-file-editor-autosave" className="text-text-primary text-[13px]">
-					File editor autosave
-				</label>
-				<select
-					id="runtime-settings-file-editor-autosave"
-					name="fileEditorAutosaveMode"
-					value={fields.fileEditorAutosaveMode}
-					onChange={(event) => {
-						setField("fileEditorAutosaveMode", normalizeFileEditorAutosaveMode(event.currentTarget.value));
-					}}
-					disabled={disabled}
-					className="h-7 min-w-48 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
-				>
-					{FILE_EDITOR_AUTOSAVE_MODES.map((mode) => (
-						<option key={mode} value={mode}>
-							{FILE_EDITOR_AUTOSAVE_LABELS[mode]}
-						</option>
-					))}
-				</select>
+			<div className="settings-row">
+				<div className="flex items-center justify-between gap-3">
+					<label htmlFor="runtime-settings-file-editor-autosave" className="text-text-primary text-[13px]">
+						File editor autosave
+					</label>
+					<select
+						id="runtime-settings-file-editor-autosave"
+						name="fileEditorAutosaveMode"
+						value={fields.fileEditorAutosaveMode}
+						onChange={(event) => {
+							setField("fileEditorAutosaveMode", normalizeFileEditorAutosaveMode(event.currentTarget.value));
+						}}
+						disabled={disabled}
+						className="h-7 min-w-48 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+					>
+						{FILE_EDITOR_AUTOSAVE_MODES.map((mode) => (
+							<option key={mode} value={mode}>
+								{FILE_EDITOR_AUTOSAVE_LABELS[mode]}
+							</option>
+						))}
+					</select>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Controls saves made by the in-app Files editor. Manual save remains available in every mode.
+				</p>
 			</div>
-			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				Controls saves made by the in-app Files editor. Manual save remains available in every mode.
-			</p>
 		</>
 	);
 }
@@ -128,10 +129,9 @@ export function ConfirmationsSection({ fields, setField, disabled }: SettingsSec
 			<p className="text-text-secondary text-[13px] mt-0 mb-2">
 				Re-enable dialogs and confirmations you've previously dismissed.
 			</p>
-			{CONFIRMATION_TOGGLES.map(({ field, label, inverted }, i) => (
+			{CONFIRMATION_TOGGLES.map(({ field, label, inverted }) => (
 				<SettingsSwitch
 					key={field}
-					className={i > 0 ? "mt-3" : undefined}
 					checked={inverted ? !fields[field] : fields[field]}
 					onCheckedChange={(v) => setField(field, inverted ? !v : v)}
 					disabled={disabled}
@@ -150,12 +150,14 @@ export function TroubleshootingSection({ onResetLayout }: { onResetLayout: () =>
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Troubleshooting</h6>
-			<Button size="sm" onClick={onResetLayout}>
-				Reset layout
-			</Button>
-			<p className="text-text-secondary text-[13px] mt-2 mb-0">
-				Reset sidebar, split pane, and terminal resize customizations back to their defaults.
-			</p>
+			<div className="settings-row">
+				<Button size="sm" onClick={onResetLayout}>
+					Reset layout
+				</Button>
+				<p className="text-text-secondary text-[13px] mt-2 mb-0">
+					Reset sidebar, split pane, and terminal resize customizations back to their defaults.
+				</p>
+			</div>
 		</>
 	);
 }

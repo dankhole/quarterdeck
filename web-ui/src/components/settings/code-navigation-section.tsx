@@ -170,7 +170,7 @@ export function CodeNavigationSection({
 			/>
 			<div className="mt-3 space-y-2">
 				{fields.lspServers.map((server, index) => (
-					<div key={server.id} className="rounded-md border border-border p-3">
+					<div key={server.id} className="settings-row rounded-md border border-border p-3">
 						<div className="flex flex-wrap items-center gap-2">
 							<span className="flex-1 text-[13px] text-text-primary">
 								{server.label}{" "}

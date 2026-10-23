@@ -50,48 +50,52 @@ export function AiFeaturesSection({
 				</p>
 			)}
 
-			<div className="flex items-center justify-between gap-3">
-				<label htmlFor="runtime-settings-summary-display" className="text-text-primary text-[13px]">
-					Conversation summaries
-				</label>
-				<select
-					id="runtime-settings-summary-display"
-					name="summaryDisplayMode"
-					value={summaryDisplayMode}
-					onChange={(event) => {
-						const mode = event.currentTarget.value;
-						setField("showSummaryOnCards", mode === "card");
-						setField("showSummaryOnHover", mode === "hover");
-					}}
-					disabled={disabled}
-					className="h-7 min-w-36 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
-				>
-					<option value="hover">On hover</option>
-					<option value="card">On card</option>
-					<option value="hidden">Hidden</option>
-				</select>
+			<div className="settings-row">
+				<div className="flex items-center justify-between gap-3">
+					<label htmlFor="runtime-settings-summary-display" className="text-text-primary text-[13px]">
+						Conversation summaries
+					</label>
+					<select
+						id="runtime-settings-summary-display"
+						name="summaryDisplayMode"
+						value={summaryDisplayMode}
+						onChange={(event) => {
+							const mode = event.currentTarget.value;
+							setField("showSummaryOnCards", mode === "card");
+							setField("showSummaryOnHover", mode === "hover");
+						}}
+						disabled={disabled}
+						className="h-7 min-w-36 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+					>
+						<option value="hover">On hover</option>
+						<option value="card">On card</option>
+						<option value="hidden">Hidden</option>
+					</select>
+				</div>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					Choose whether the latest task summary appears on hover, directly on the card, or nowhere on task cards.
+				</p>
 			</div>
-			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				Choose whether the latest task summary appears on hover, directly on the card, or nowhere on task cards.
-			</p>
 
-			<label
-				htmlFor="runtime-settings-llm-summary-polish"
-				className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
-			>
-				<SettingsCheckbox
-					id="runtime-settings-llm-summary-polish"
-					checked={fields.llmSummaryPolishEnabled}
-					onCheckedChange={(v) => setField("llmSummaryPolishEnabled", v)}
-					disabled={disabled}
-				/>
-				<span>Polish summaries with AI</span>
-			</label>
-			<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-				When enabled, task state changes can trigger background summary polish using your saved Codex/ChatGPT login,
-				then your saved Claude Code login, with the configured gateway as fallback. Without a usable provider,
-				existing summaries are retained.
-			</p>
+			<div className="settings-row">
+				<label
+					htmlFor="runtime-settings-llm-summary-polish"
+					className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
+				>
+					<SettingsCheckbox
+						id="runtime-settings-llm-summary-polish"
+						checked={fields.llmSummaryPolishEnabled}
+						onCheckedChange={(v) => setField("llmSummaryPolishEnabled", v)}
+						disabled={disabled}
+					/>
+					<span>Polish summaries with AI</span>
+				</label>
+				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+					When enabled, task state changes can trigger background summary polish using your saved Codex/ChatGPT
+					login, then your saved Claude Code login, with the configured gateway as fallback. Without a usable
+					provider, existing summaries are retained.
+				</p>
+			</div>
 		</>
 	);
 }
@@ -118,7 +122,7 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 				disabled={disabled}
 				label="Play sounds when tasks need attention"
 			/>
-			<div className={cn("flex items-center gap-2 mt-2 text-[13px]", masterOff && "opacity-40")}>
+			<div className={cn("settings-row flex items-center gap-2 text-[13px]", masterOff && "opacity-40")}>
 				<SettingsCheckbox
 					id="audible-notification-only-when-hidden"
 					checked={fields.audibleNotificationsOnlyWhenHidden}
@@ -130,7 +134,7 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 					<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
 				</label>
 			</div>
-			<div className="flex items-center gap-3 mt-3">
+			<div className="settings-row flex items-center gap-3">
 				<Volume2 size={14} className={cn("text-text-secondary", masterOff && "opacity-40")} />
 				<input
 					name="audible-notification-volume"
@@ -150,7 +154,7 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 				</span>
 			</div>
 			{/* Per-event grid: Enabled | Mute project viewed | Event label */}
-			<div className={cn("mt-3", masterOff && "opacity-40")}>
+			<div className={cn("settings-row", masterOff && "opacity-40")}>
 				<div className="grid grid-cols-[auto_auto_1fr] gap-x-4 gap-y-2 items-center text-[13px]">
 					{/* Header row */}
 					<span className="text-text-tertiary text-[12px] font-medium">Enabled</span>
@@ -271,36 +275,39 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				label="Auto-restart shell terminals on unexpected exit"
 				description="When enabled, shell terminals that crash or exit unexpectedly will automatically restart."
 			/>
-			<NumericSettingsInput
-				id="terminal-font-weight"
-				label="Font weight"
-				value={fields.terminalFontWeight}
-				onChange={(v) => setField("terminalFontWeight", v)}
-				disabled={disabled}
-				min={100}
-				max={900}
-			/>
-			<p className="text-text-secondary text-[13px] mt-1 mb-0">
-				CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
-			</p>
-			<Button
-				size="sm"
-				className="mt-3"
-				onClick={() => {
-					resetAllTerminalRenderers();
-					showAppToast({
-						intent: "success",
-						message: "Terminal renderers reset",
-						timeout: 3000,
-					});
-				}}
-			>
-				Reset terminal rendering
-			</Button>
-			<p className="text-text-secondary text-[13px] mt-2 mb-0">
-				Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or distorted
-				after moving between monitors.
-			</p>
+			<div className="settings-row">
+				<NumericSettingsInput
+					id="terminal-font-weight"
+					label="Font weight"
+					value={fields.terminalFontWeight}
+					onChange={(v) => setField("terminalFontWeight", v)}
+					disabled={disabled}
+					min={100}
+					max={900}
+				/>
+				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
+				</p>
+			</div>
+			<div className="settings-row">
+				<Button
+					size="sm"
+					onClick={() => {
+						resetAllTerminalRenderers();
+						showAppToast({
+							intent: "success",
+							message: "Terminal renderers reset",
+							timeout: 3000,
+						});
+					}}
+				>
+					Reset terminal rendering
+				</Button>
+				<p className="text-text-secondary text-[13px] mt-2 mb-0">
+					Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
+					distorted after moving between monitors.
+				</p>
+			</div>
 		</>
 	);
 }

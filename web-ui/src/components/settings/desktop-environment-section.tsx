@@ -38,64 +38,69 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 				</p>
 			) : (
 				<>
-					<div className="flex items-center gap-2">
-						<SettingsCheckbox
-							id="desktop-import-login-shell"
-							checked={preferences?.importLoginShellEnvironment ?? false}
-							disabled={disabled}
-							onCheckedChange={(enabled) => void request({ kind: "set-login-shell-import", enabled })}
-						/>
-						<label htmlFor="desktop-import-login-shell">Import login-shell environment</label>
-					</div>
-					<p className="text-text-secondary mt-1 mb-2">
-						Enabled by default so agents receive exported provider settings, including LiteLLM, from your shell.
-						Runs shell startup files, which may request Keychain access. Disable it to troubleshoot startup.
-					</p>
-					<p className="text-text-secondary my-2">
-						Environment changes save immediately, separately from Save below. Refresh Environment or restart
-						Quarterdeck to apply them. Refresh protects unsaved work and confirms live sessions.
-					</p>
-					{snapshot ? (
+					<div className="settings-row">
+						<div className="flex items-center gap-2">
+							<SettingsCheckbox
+								id="desktop-import-login-shell"
+								checked={preferences?.importLoginShellEnvironment ?? false}
+								disabled={disabled}
+								onCheckedChange={(enabled) => void request({ kind: "set-login-shell-import", enabled })}
+							/>
+							<label htmlFor="desktop-import-login-shell">Import login-shell environment</label>
+						</div>
+						<p className="text-text-secondary mt-1 mb-2">
+							Enabled by default so agents receive exported provider settings, including LiteLLM, from your
+							shell. Runs shell startup files, which may request Keychain access. Disable it to troubleshoot
+							startup.
+						</p>
 						<p className="text-text-secondary my-2">
-							Current source: {SOURCE_LABELS[snapshot.source]}.
-							{unapplied ? " Saved changes have not been applied." : ""}
+							Environment changes save immediately, separately from Save below. Refresh Environment or restart
+							Quarterdeck to apply them. Refresh protects unsaved work and confirms live sessions.
 						</p>
-					) : null}
-					{snapshot?.failureReason ? (
-						<p role="status" className="text-status-orange my-2">
-							{FAILURE_GUIDANCE[snapshot.failureReason]}
-						</p>
-					) : null}
-					{preferences ? (
-						<>
-							<p className="font-semibold mb-1">Extra executable folders</p>
-							{preferences.extraExecutableDirectories.length ? (
-								<ul className="list-disc pl-5 text-text-secondary font-mono text-xs break-all">
-									{preferences.extraExecutableDirectories.map((directory) => (
-										<li key={directory}>{directory}</li>
-									))}
-								</ul>
-							) : (
-								<p className="text-text-secondary my-1">
-									None. Installed executable folders are discovered automatically.
-								</p>
-							)}
-						</>
-					) : null}
-					<div className="flex flex-wrap gap-2 mt-2">
-						<Button size="sm" disabled={disabled} onClick={() => void request({ kind: "add-folders" })}>
-							Add folders…
-						</Button>
-						<Button
-							size="sm"
-							disabled={disabled || !preferences?.extraExecutableDirectories.length}
-							onClick={() => void request({ kind: "reset-folders" })}
-						>
-							Reset folders
-						</Button>
-						<Button size="sm" disabled={busy || !snapshot} onClick={() => void request({ kind: "refresh" })}>
-							Refresh Environment
-						</Button>
+						{snapshot ? (
+							<p className="text-text-secondary my-2">
+								Current source: {SOURCE_LABELS[snapshot.source]}.
+								{unapplied ? " Saved changes have not been applied." : ""}
+							</p>
+						) : null}
+						{snapshot?.failureReason ? (
+							<p role="status" className="text-status-orange my-2">
+								{FAILURE_GUIDANCE[snapshot.failureReason]}
+							</p>
+						) : null}
+					</div>
+					<div className="settings-row">
+						{preferences ? (
+							<>
+								<p className="font-semibold mb-1">Extra executable folders</p>
+								{preferences.extraExecutableDirectories.length ? (
+									<ul className="list-disc pl-5 text-text-secondary font-mono text-xs break-all">
+										{preferences.extraExecutableDirectories.map((directory) => (
+											<li key={directory}>{directory}</li>
+										))}
+									</ul>
+								) : (
+									<p className="text-text-secondary my-1">
+										None. Installed executable folders are discovered automatically.
+									</p>
+								)}
+							</>
+						) : null}
+						<div className="flex flex-wrap gap-2 mt-2">
+							<Button size="sm" disabled={disabled} onClick={() => void request({ kind: "add-folders" })}>
+								Add folders…
+							</Button>
+							<Button
+								size="sm"
+								disabled={disabled || !preferences?.extraExecutableDirectories.length}
+								onClick={() => void request({ kind: "reset-folders" })}
+							>
+								Reset folders
+							</Button>
+							<Button size="sm" disabled={busy || !snapshot} onClick={() => void request({ kind: "refresh" })}>
+								Refresh Environment
+							</Button>
+						</div>
 					</div>
 					{snapshot && !preferences ? (
 						<div className="mt-2">

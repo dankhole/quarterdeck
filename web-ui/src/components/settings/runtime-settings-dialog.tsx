@@ -169,7 +169,7 @@ export function RuntimeSettingsDialog({
 		<>
 			<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ maxWidth: "960px" }}>
 				<DialogHeader title="Settings" icon={<Settings size={16} />} />
-				<DialogBody>
+				<DialogBody className="runtime-settings">
 					<h5 className="font-semibold text-text-primary m-0">Global</h5>
 					<p
 						className="text-text-secondary font-mono text-xs m-0 break-all"
@@ -214,7 +214,7 @@ export function RuntimeSettingsDialog({
 						{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
 
-					<div className="mt-4">
+					<div className="settings-row mt-4">
 						<label
 							htmlFor="runtime-settings-worktree-setup"
 							className="block text-[13px] font-semibold text-text-primary mb-2"

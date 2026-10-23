@@ -22,8 +22,8 @@ export function SettingsSwitch({
 	className?: string;
 }): React.ReactElement {
 	return (
-		<>
-			<div className={cn("flex items-center gap-2", className)}>
+		<div className={cn("settings-row", className)}>
+			<div className="flex items-center gap-2">
 				<RadixSwitch.Root
 					checked={checked}
 					disabled={disabled}
@@ -35,7 +35,7 @@ export function SettingsSwitch({
 				<span className="text-[13px] text-text-primary">{label}</span>
 			</div>
 			{description != null ? <p className="text-text-secondary text-[13px] mt-1 mb-0">{description}</p> : null}
-		</>
+		</div>
 	);
 }
 
@@ -107,7 +107,7 @@ export function NumericSettingsInput({
 	};
 
 	return (
-		<div className="flex items-center justify-between gap-3 mt-3">
+		<div className="flex items-center justify-between gap-3">
 			<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
 				{label}
 			</label>

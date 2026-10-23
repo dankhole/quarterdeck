@@ -196,3 +196,17 @@
 	background: transparent;
 	border: none;
 }
+
+/* Count settings only, so headings and conditional help text do not shift stripes. */
+.runtime-settings .settings-row {
+	padding: 10px 12px;
+	border-radius: var(--radius-md);
+}
+
+.runtime-settings .settings-row:nth-child(even of .settings-row) {
+	background-color: color-mix(in srgb, var(--color-surface-2) 60%, transparent);
+}
+
+.runtime-settings .settings-harness-row:nth-child(even of .settings-harness-row) > button:not(:hover) {
+	background-color: var(--color-surface-1);
+}
