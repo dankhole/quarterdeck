@@ -1,14 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { assertRuntimeWriteAdmission, withRuntimeWriteOperation } from "../state/runtime-write-admission.js";
 import { inProcessLockOwners } from "./in-process-lock-owners";
 import { isNodeError } from "./node-error";
 import { removeDirectoryWithRetries } from "./remove-path";
 
 export const DEFAULT_LOCK_STALE_MS = 10_000;
+const log = createTaggedLogger("locked-file-system");
+
+/** The lock was taken over while held, so the operation's exclusivity cannot be confirmed. */
+export class LockCompromisedError extends Error {
+	readonly code = "ECOMPROMISED";
+	constructor(lock: string, cause: Error) {
+		super(`Lock ${lock} was lost while held; the operation could not be confirmed.`, { cause });
+		this.name = "LockCompromisedError";
+	}
+}
 const DEFAULT_LOCK_RETRIES: NonNullable<LockOptions["retries"]> = {
 	retries: 200,
 	factor: 1,
@@ -191,12 +202,27 @@ export class LockedFileSystem {
 			const { request, identity } = entry;
 			const acquire = async (): Promise<T> => {
 				assertRuntimeWriteAdmission(request.path);
-				const release = await lockfile.lock(request.path, request.options);
+				const lease: { compromised: Error | null } = { compromised: null };
+				const release = await lockfile.lock(request.path, {
+					...request.options,
+					// proper-lockfile's default rethrows from a timer, which crashes the
+					// runtime. A starved mtime refresh (busy disk or thread pool) can let
+					// another owner take the lock over, so fail this operation instead.
+					onCompromised: (error) => {
+						lease.compromised = error;
+						log.warn("lock was compromised while held", { lock: basename(request.sortKey) });
+						request.options.onCompromised?.(error);
+					},
+				});
+				let result: T;
 				try {
-					return await acquireFrom(index + 1);
+					result = await acquireFrom(index + 1);
 				} finally {
-					await release();
+					// A compromised lock is already released; releasing again only rejects.
+					if (!lease.compromised) await release();
 				}
+				if (lease.compromised) throw new LockCompromisedError(basename(request.sortKey), lease.compromised);
+				return result;
 			};
 			return request.serializeInProcess
 				? await inProcessLockOwners.run(identity, request.sortKey, acquire)

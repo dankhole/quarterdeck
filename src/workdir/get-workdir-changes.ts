@@ -7,6 +7,7 @@ import {
 	type RuntimeWorkdirFileChange,
 	type RuntimeWorkdirFileStatus,
 } from "../core";
+import { limitBulkFsCall } from "../fs/bulk-fs-limit";
 import type { FileFingerprint } from "./file-fingerprint";
 import { buildFileFingerprints } from "./file-fingerprint";
 import {
@@ -20,6 +21,11 @@ import {
 
 const WORKDIR_CHANGES_CACHE_MAX_ENTRIES = 128;
 const GIT_PATH_OUTPUT_OPTIONS = { trimStdout: false, ...GIT_INSPECTION_OPTIONS } as const;
+
+/** Files at or above this size are not read for line counting; see `countUntrackedLines`. */
+const UNTRACKED_LINE_COUNT_SIZE_CAP_BYTES = 1024 * 1024;
+/** Above this many untracked files, line counting is skipped entirely for the whole request. */
+const UNTRACKED_LINE_COUNT_FILE_CAP = 2_000;
 
 interface WorkdirChangesCacheEntry {
 	stateKey: string;
@@ -228,14 +234,46 @@ function buildFileMetadata(
 	};
 }
 
-/** Count lines in an untracked file (for additions stat). */
-async function countUntrackedFileLines(repoRoot: string, path: string): Promise<number> {
+/**
+ * Counts lines in an untracked file for the additions stat, gated by the
+ * shared bulk fs limiter. `sizeHint` reuses a fingerprint size already
+ * fetched for this path (no extra stat); files at or above the size cap are
+ * skipped and report 0 additions, the same "unknown" value an unreadable
+ * file already reports below.
+ */
+async function countUntrackedFileLines(repoRoot: string, path: string, sizeHint: number | null): Promise<number> {
+	if (sizeHint != null && sizeHint > UNTRACKED_LINE_COUNT_SIZE_CAP_BYTES) {
+		return 0;
+	}
 	try {
-		const content = await readFile(join(repoRoot, path), "utf8");
+		// Only the read itself holds a limiter slot; the fan-out around this call stays unbounded.
+		const content = await limitBulkFsCall(() => readFile(join(repoRoot, path), "utf8"));
 		return countLines(content);
 	} catch {
 		return 0;
 	}
+}
+
+/**
+ * Builds the additions/deletions stats map for untracked files. Skips
+ * counting entirely above `UNTRACKED_LINE_COUNT_FILE_CAP` untracked entries
+ * so a large working tree can't turn a single poll into thousands of reads.
+ */
+async function countUntrackedLines(
+	repoRoot: string,
+	untrackedEntries: NameStatusEntry[],
+	fingerprintByPath: Map<string, FileFingerprint>,
+): Promise<Map<string, DiffStat>> {
+	if (untrackedEntries.length === 0 || untrackedEntries.length > UNTRACKED_LINE_COUNT_FILE_CAP) {
+		return new Map();
+	}
+	const counts = await Promise.all(
+		untrackedEntries.map(async (entry) => ({
+			path: entry.path,
+			lines: await countUntrackedFileLines(repoRoot, entry.path, fingerprintByPath.get(entry.path)?.size ?? null),
+		})),
+	);
+	return new Map(counts.map((count) => [count.path, { additions: count.lines, deletions: 0 }]));
 }
 
 export async function createEmptyWorkdirChangesResponse(cwd: string): Promise<RuntimeWorkdirChangesResponse> {
@@ -287,12 +325,11 @@ export async function getWorkdirChanges(cwd: string): Promise<RuntimeWorkdirChan
 	const numstatMap = await batchReadNumstat(repoRoot, ["HEAD", "--"]);
 	const fingerprintByPath = buildFingerprintMap(fingerprints);
 	const headCommit = headCommitOutput.trim() || null;
-	const untrackedLineCounts = await Promise.all(
-		allChanges
-			.filter((entry) => entry.status === "untracked")
-			.map(async (entry) => ({ path: entry.path, lines: await countUntrackedFileLines(repoRoot, entry.path) })),
+	const untrackedStatsMap = await countUntrackedLines(
+		repoRoot,
+		allChanges.filter((entry) => entry.status === "untracked"),
+		fingerprintByPath,
 	);
-	const untrackedStatsMap = new Map(untrackedLineCounts.map((u) => [u.path, { additions: u.lines, deletions: 0 }]));
 	const files = allChanges.map((entry) =>
 		buildFileMetadata(
 			entry,
@@ -366,18 +403,14 @@ export async function getWorkdirChangesForPaths(
 	const numstatMap = await batchReadNumstat(repoRoot, ["HEAD", "--", ...selectedPaths]);
 	const fingerprintByPath = buildFingerprintMap(fingerprints);
 	const headCommit = headCommitOutput.trim() || null;
-	const untrackedLineCounts =
+	const untrackedStatsMap =
 		options.countUntrackedLines === false
-			? []
-			: await Promise.all(
-					allChanges
-						.filter((entry) => entry.status === "untracked")
-						.map(async (entry) => ({
-							path: entry.path,
-							lines: await countUntrackedFileLines(repoRoot, entry.path),
-						})),
+			? new Map<string, DiffStat>()
+			: await countUntrackedLines(
+					repoRoot,
+					allChanges.filter((entry) => entry.status === "untracked"),
+					fingerprintByPath,
 				);
-	const untrackedStatsMap = new Map(untrackedLineCounts.map((u) => [u.path, { additions: u.lines, deletions: 0 }]));
 	const files = allChanges.map((entry) =>
 		buildFileMetadata(
 			entry,
@@ -538,12 +571,11 @@ export async function getWorkdirChangesFromRef(input: ChangesFromRefInput): Prom
 
 	const numstatMap = await batchReadNumstat(repoRoot, ["--find-renames", effectiveFromRef, "--"]);
 	const fingerprintByPath = buildFingerprintMap(fingerprints);
-	const untrackedLineCounts = await Promise.all(
-		allChanges
-			.filter((entry) => entry.status === "untracked")
-			.map(async (entry) => ({ path: entry.path, lines: await countUntrackedFileLines(repoRoot, entry.path) })),
+	const untrackedStatsMap = await countUntrackedLines(
+		repoRoot,
+		allChanges.filter((entry) => entry.status === "untracked"),
+		fingerprintByPath,
 	);
-	const untrackedStatsMap = new Map(untrackedLineCounts.map((u) => [u.path, { additions: u.lines, deletions: 0 }]));
 	const files = allChanges.map((entry) =>
 		buildFileMetadata(
 			entry,

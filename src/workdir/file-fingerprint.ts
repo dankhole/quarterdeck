@@ -1,6 +1,8 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
+import { limitBulkFsCall } from "../fs/bulk-fs-limit";
+
 export interface FileFingerprint {
 	path: string;
 	size: number | null;
@@ -16,7 +18,8 @@ export async function buildFileFingerprints(repoRoot: string, paths: string[]): 
 	return await Promise.all(
 		uniqueSortedPaths.map(async (path) => {
 			try {
-				const fileStat = await stat(join(repoRoot, path));
+				// Only the stat call itself holds a limiter slot; the fan-out above stays unbounded.
+				const fileStat = await limitBulkFsCall(() => stat(join(repoRoot, path)));
 				return {
 					path,
 					size: fileStat.size,

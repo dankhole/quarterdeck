@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
+import type { LockOptions } from "proper-lockfile";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createTempDir } from "../utilities/temp-dir";
@@ -28,6 +29,7 @@ vi.mock("proper-lockfile", () => ({
 
 import { setRuntimeDiagnosticLogSink } from "../../src/core/runtime-logger";
 import { cleanupStaleLockAndTempFiles, IN_PROCESS_LOCK_SLOW_WAIT_MS, LockedFileSystem } from "../../src/fs";
+import { LockCompromisedError } from "../../src/fs/locked-file-system";
 
 describe("LockedFileSystem", () => {
 	beforeEach(() => {
@@ -38,34 +40,45 @@ describe("LockedFileSystem", () => {
 		fileSystemMocks.writeFile.mockClear();
 	});
 
-	it("omits onCompromised when no handler is provided", async () => {
+	it("fails the held operation instead of crashing when its lock is compromised", async () => {
 		const tempDir = createTempDir("quarterdeck-locked-fs-");
 		try {
 			const filePath = join(tempDir.path, "state.json");
 			const lockedFileSystem = new LockedFileSystem();
 
-			await lockedFileSystem.withLock({ path: filePath, type: "file" }, async () => {});
+			await expect(
+				lockedFileSystem.withLock({ path: filePath, type: "file" }, async () => {
+					const options = lockfileMocks.lock.mock.calls[0]?.[1] as LockOptions;
+					expect(() => options.onCompromised?.(new Error("lock stolen"))).not.toThrow();
+					return "written";
+				}),
+			).rejects.toBeInstanceOf(LockCompromisedError);
+			expect(lockfileMocks.release).not.toHaveBeenCalled();
 
-			expect(lockfileMocks.lock).toHaveBeenCalledTimes(1);
-			const options = lockfileMocks.lock.mock.calls[0]?.[1] as Record<string, unknown>;
-			expect(options).not.toHaveProperty("onCompromised");
+			await expect(lockedFileSystem.withLock({ path: filePath, type: "file" }, async () => "ok")).resolves.toBe(
+				"ok",
+			);
 			expect(lockfileMocks.release).toHaveBeenCalledTimes(1);
 		} finally {
 			tempDir.cleanup();
 		}
 	});
 
-	it("forwards onCompromised when a handler is provided", async () => {
+	it("notifies a provided onCompromised handler", async () => {
 		const tempDir = createTempDir("quarterdeck-locked-fs-");
 		try {
 			const filePath = join(tempDir.path, "state.json");
 			const lockedFileSystem = new LockedFileSystem();
 			const onCompromised = vi.fn();
+			const stolen = new Error("lock stolen");
 
-			await lockedFileSystem.withLock({ path: filePath, type: "file", onCompromised }, async () => {});
-
-			const options = lockfileMocks.lock.mock.calls[0]?.[1] as Record<string, unknown>;
-			expect(options.onCompromised).toBe(onCompromised);
+			await expect(
+				lockedFileSystem.withLock({ path: filePath, type: "file", onCompromised }, async () => {
+					const options = lockfileMocks.lock.mock.calls[0]?.[1] as LockOptions;
+					options.onCompromised?.(stolen);
+				}),
+			).rejects.toBeInstanceOf(LockCompromisedError);
+			expect(onCompromised).toHaveBeenCalledWith(stolen);
 		} finally {
 			tempDir.cleanup();
 		}

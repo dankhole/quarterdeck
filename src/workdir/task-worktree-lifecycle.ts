@@ -11,6 +11,7 @@ import { removeDirectoryWithRetries } from "../fs/remove-path";
 import { getTaskWorktreesHomePath, loadProjectContext } from "../state/project-state";
 import { GIT_USER_ACTION_OPTIONS, readGitHeadInfo, runGit } from "./git-utils";
 import { resolveTaskWorktreeCleanupPath } from "./task-worktree-cleanup-path";
+import { deferredTaskWorkspaceDeletes, stageTaskWorkspaceForDelete } from "./task-worktree-deferred-delete";
 import { assertTaskWorktreeRegistration, isGitWorktreePathRegistered } from "./task-worktree-identity";
 import { deleteTaskPatchFiles, findTaskPatch } from "./task-worktree-patch";
 import { getWorkdirFolderLabelForWorktreePath, normalizeTaskIdForWorktreePath } from "./task-worktree-path";
@@ -73,17 +74,21 @@ export function getTaskWorktreePath(repoPath: string, taskId: string): string {
 	return join(getWorktreesRootPath(taskId), projectLabel);
 }
 
-async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string): Promise<boolean> {
+async function removeTaskWorktreeInternal(repoPath: string, worktreePath: string, taskId: string): Promise<boolean> {
 	const existed = await pathExists(worktreePath);
 	if (await taskWorktreeEntryExists(join(worktreePath, ".git"))) {
 		await assertTaskWorktreeRegistration(worktreePath);
 	}
+	// Renaming first makes `git worktree remove` only drop the now-missing registration,
+	// so neither Git nor this lock holder spends minutes deleting dependency trees.
+	const stagedPath = existed ? await stageTaskWorkspaceForDelete(worktreePath, taskId) : null;
 	const removeResult = await runGit(
 		repoPath,
 		["worktree", "remove", "--force", worktreePath],
 		GIT_USER_ACTION_OPTIONS,
 	);
-	await removeDirectoryWithRetries(worktreePath);
+	if (stagedPath) deferredTaskWorkspaceDeletes.schedule(stagedPath);
+	else await removeDirectoryWithRetries(worktreePath);
 	if (!removeResult.ok) {
 		// Git only prunes missing worktrees. Remove the directory first so a
 		// failed Git removal cannot leave the task's branch checked out forever.
@@ -383,7 +388,7 @@ export async function purgeTaskWorkspaceForDelete(options: {
 		}
 		return await withTaskWorktreeOperationLock(options.repoPath, worktreePath, async () =>
 			withTaskWorktreeSetupLock(options.repoPath, async () => {
-				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath);
+				const removed = await removeTaskWorktreeInternal(options.repoPath, worktreePath, taskId);
 				await deleteTaskPatchFiles(taskId);
 				if (!options.folderOnly) await deleteTaskPatchRestore({ repoPath: options.repoPath, taskId, worktreePath });
 				await pruneEmptyParents(rootPath, dirname(worktreePath));

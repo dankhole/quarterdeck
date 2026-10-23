@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { RuntimeGitSyncSummary } from "../core";
+import { limitBulkFsCall } from "../fs/bulk-fs-limit";
 import {
 	GIT_INSPECTION_OPTIONS,
 	type RunGitOptions,
@@ -81,7 +82,8 @@ async function buildPathFingerprints(repoRoot: string, paths: string[]): Promise
 	return await Promise.all(
 		uniqueSortedPaths.map(async (path) => {
 			try {
-				const fileStat = await stat(join(repoRoot, path));
+				// Only the stat call itself holds a limiter slot; the fan-out above stays unbounded.
+				const fileStat = await limitBulkFsCall(() => stat(join(repoRoot, path)));
 				return {
 					path,
 					size: fileStat.size,
@@ -242,16 +244,36 @@ export async function probeGitWorkdirState(
 const untrackedLineCountCache = new Map<string, { mtimeMs: number; lineCount: number }>();
 const UNTRACKED_CACHE_MAX_SIZE = 2_000;
 
+/** Files at or above this size are not read for line counting; see `countUntrackedAdditions`. */
+const UNTRACKED_LINE_COUNT_SIZE_CAP_BYTES = 1024 * 1024;
+/** Above this many untracked files, line counting is skipped entirely for the whole poll. */
+const UNTRACKED_LINE_COUNT_FILE_CAP = 2_000;
+
+/**
+ * Counts added lines across untracked files for the sync summary's additions
+ * total. Bounded two ways so a large or unusual working tree can't flood the
+ * shared fs thread pool or block a metadata poll on full-file reads: counting
+ * is skipped outright above `UNTRACKED_LINE_COUNT_FILE_CAP` untracked files,
+ * and per file above `UNTRACKED_LINE_COUNT_SIZE_CAP_BYTES` (checked against
+ * the fingerprint size already fetched, no extra stat). Skipped files report
+ * 0, the same "unknown" value an unreadable file already reports below.
+ */
 async function countUntrackedAdditions(
 	repoRoot: string,
 	untrackedPaths: string[],
 	fingerprints: GitPathFingerprint[],
 ): Promise<number> {
+	if (untrackedPaths.length > UNTRACKED_LINE_COUNT_FILE_CAP) {
+		return 0;
+	}
 	const fingerprintByPath = new Map(fingerprints.map((fp) => [fp.path, fp]));
 	const counts = await Promise.all(
 		untrackedPaths.map(async (relativePath) => {
 			const absolutePath = join(repoRoot, relativePath);
 			const fp = fingerprintByPath.get(relativePath);
+			if (fp?.size != null && fp.size > UNTRACKED_LINE_COUNT_SIZE_CAP_BYTES) {
+				return 0;
+			}
 			if (fp?.mtimeMs != null) {
 				const cached = untrackedLineCountCache.get(absolutePath);
 				if (cached && cached.mtimeMs === fp.mtimeMs) {
@@ -259,7 +281,8 @@ async function countUntrackedAdditions(
 				}
 			}
 			try {
-				const contents = await readFile(absolutePath, "utf8");
+				// Only the read itself holds a limiter slot; the fan-out above stays unbounded.
+				const contents = await limitBulkFsCall(() => readFile(absolutePath, "utf8"));
 				const lineCount = countLines(contents);
 				if (fp?.mtimeMs != null) {
 					if (untrackedLineCountCache.size >= UNTRACKED_CACHE_MAX_SIZE) {

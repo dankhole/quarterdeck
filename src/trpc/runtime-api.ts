@@ -6,7 +6,8 @@ import type { RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 // is a thin dispatcher that delegates to them, providing the shared
 // dependency bag each handler needs.
 
-import { CodexModelCatalogCache } from "../config/codex-model-catalog-cache";
+import { AgentModelCatalogCache } from "../config/agent-model-catalog-cache";
+import { loadCodexModelCatalog } from "../config/codex-model-catalog";
 import { loadPiModelCatalog } from "../config/pi-model-catalog.js";
 import type { ConversationSourceHintReader } from "../conversation/types";
 import type {
@@ -66,7 +67,8 @@ type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
 
 class RuntimeApiImpl implements RuntimeApi {
 	private readonly uiPreferences = new UiPreferencesStore();
-	private readonly codexModelCatalog = new CodexModelCatalogCache();
+	private readonly codexModelCatalog = new AgentModelCatalogCache("codex", loadCodexModelCatalog);
+	private readonly piModelCatalog = new AgentModelCatalogCache("pi", loadPiModelCatalog);
 
 	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
 
@@ -83,16 +85,20 @@ class RuntimeApiImpl implements RuntimeApi {
 	// ── Config ────────────────────────────────────────────────────────────
 
 	async codexModels(projectScope: RuntimeTrpcProjectScope | null) {
-		const config = projectScope
-			? await this.deps.config.loadScopedRuntimeConfig(projectScope)
-			: this.deps.config.getActiveRuntimeConfig();
-		if (!config) throw new Error("No active runtime config provider is available.");
-		return this.codexModelCatalog.get(config, projectScope?.projectPath ?? process.cwd());
+		return this.codexModelCatalog.get(async () => {
+			const config = projectScope
+				? await this.deps.config.loadScopedRuntimeConfig(projectScope)
+				: this.deps.config.getActiveRuntimeConfig();
+			if (!config) throw new Error("No active runtime config provider is available.");
+			return config;
+		}, projectScope?.projectPath ?? process.cwd());
 	}
 
 	async piModels(projectScope: RuntimeTrpcProjectScope) {
-		const config = await this.deps.config.loadScopedRuntimeConfig(projectScope);
-		return loadPiModelCatalog(config, projectScope.projectPath);
+		return this.piModelCatalog.get(
+			() => this.deps.config.loadScopedRuntimeConfig(projectScope),
+			projectScope.projectPath,
+		);
 	}
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {

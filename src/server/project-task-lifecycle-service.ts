@@ -24,6 +24,7 @@ import {
 	runtimeClearTrashRequestSchema,
 	runtimeTaskLifecycleCommandSchema,
 } from "../core";
+import type { RuntimeDiagnostics } from "../diagnostics";
 import {
 	fingerprintTaskLifecycleCommand,
 	loadProjectState,
@@ -102,6 +103,14 @@ export interface ProjectTaskLifecycleServiceDependencies {
 	}) => Promise<RuntimeWorktreeDeleteResponse>;
 	loadState?: (scope: ProjectBoardCommandScope) => Promise<RuntimeProjectStateResponse>;
 	operationStore?: ProjectTaskLifecycleOperationStore;
+	diagnostics?: Pick<RuntimeDiagnostics, "recordEvent">;
+}
+
+/** Per-step timings for permanent deletion, so a slow Clear Trash shows where its time went. */
+interface DeleteStepDurations {
+	stopMs?: number;
+	purgeMs?: number;
+	boardMs?: number;
 }
 
 interface InFlightOperation {
@@ -838,6 +847,40 @@ export class ProjectTaskLifecycleService {
 		command: Extract<RuntimeTaskLifecycleCommand, { kind: "delete" }>,
 		operation: PersistedTaskLifecycleOperation,
 	): Promise<RuntimeTaskLifecycleResult> {
+		const startedAt = Date.now();
+		const stepDurationsMs: DeleteStepDurations = {};
+		let result: RuntimeTaskLifecycleResult | null = null;
+		try {
+			result = await this.executeDeleteSteps(scope, command, operation, stepDurationsMs);
+			return result;
+		} finally {
+			this.dependencies.diagnostics?.recordEvent(
+				"task.delete_finished",
+				{
+					durationMs: Date.now() - startedAt,
+					...stepDurationsMs,
+					outcome: result?.operation.outcomeCode ?? "unexpected_failure",
+				},
+				{ projectId: scope.projectId, taskId: command.taskId, operationId: command.operationId },
+				{ level: result?.ok ? "info" : "warn", essential: true },
+			);
+		}
+	}
+
+	private async executeDeleteSteps(
+		scope: ProjectBoardCommandScope,
+		command: Extract<RuntimeTaskLifecycleCommand, { kind: "delete" }>,
+		operation: PersistedTaskLifecycleOperation,
+		stepDurationsMs: DeleteStepDurations,
+	): Promise<RuntimeTaskLifecycleResult> {
+		const timed = async <T>(step: keyof DeleteStepDurations, run: () => Promise<T>): Promise<T> => {
+			const stepStartedAt = Date.now();
+			try {
+				return await run();
+			} finally {
+				stepDurationsMs[step] = Date.now() - stepStartedAt;
+			}
+		};
 		// The phase write happens before the durable delete command. If the runtime
 		// exits after that command commits but before the journal is finalized, the
 		// card is intentionally gone and cannot satisfy the normal identity check.
@@ -881,11 +924,13 @@ export class ProjectTaskLifecycleService {
 			});
 		}
 		operation = await this.setPhase(scope, operation, "stopping_session");
-		const stopped = await this.stopTaskAndDetailShell(
-			scope,
-			command.taskId,
-			command.operationId,
-			command.sessionInstanceId ?? undefined,
+		const stopped = await timed("stopMs", () =>
+			this.stopTaskAndDetailShell(
+				scope,
+				command.taskId,
+				command.operationId,
+				command.sessionInstanceId ?? undefined,
+			),
 		);
 		if (!this.didStop(stopped)) {
 			return await this.finish(scope, operation, {
@@ -896,13 +941,15 @@ export class ProjectTaskLifecycleService {
 		}
 		operation = await this.setPhase(scope, operation, "purging_workspace");
 		if (precondition.card.useWorktree !== false) {
-			const purged = await (this.dependencies.purgeTaskWorkspace ?? purgeTaskWorkspaceForDelete)({
-				existingPath: precondition.card.workingDirectory ?? undefined,
-				folderOnly: precondition.state.git.folderOnly,
-				repoPath: scope.projectPath,
-				taskId: command.taskId,
-				operationId: command.operationId,
-			});
+			const purged = await timed("purgeMs", () =>
+				(this.dependencies.purgeTaskWorkspace ?? purgeTaskWorkspaceForDelete)({
+					existingPath: precondition.card.workingDirectory ?? undefined,
+					folderOnly: precondition.state.git.folderOnly,
+					repoPath: scope.projectPath,
+					taskId: command.taskId,
+					operationId: command.operationId,
+				}),
+			);
 			if (!purged.ok) {
 				return await this.finish(scope, operation, {
 					status: "failed",
@@ -912,12 +959,14 @@ export class ProjectTaskLifecycleService {
 			}
 		}
 		operation = await this.setPhase(scope, operation, "deleting_card");
-		const deleted = await this.executeBoardWithSemanticRebase(scope, {
-			commandId: getStepCommandId(command.operationId, "delete"),
-			expectedRevision: command.expectedRevision,
-			command: { kind: "delete_tasks", taskIds: [command.taskId] },
-			taskCreatedAt: command.taskCreatedAt,
-		});
+		const deleted = await timed("boardMs", () =>
+			this.executeBoardWithSemanticRebase(scope, {
+				commandId: getStepCommandId(command.operationId, "delete"),
+				expectedRevision: command.expectedRevision,
+				command: { kind: "delete_tasks", taskIds: [command.taskId] },
+				taskCreatedAt: command.taskCreatedAt,
+			}),
+		);
 		if (!deleted.acceptedChange && findCardInBoard(deleted.state.board, command.taskId)) {
 			return await this.finish(scope, operation, {
 				status: "failed",

@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
 		shutdown,
 		clearAccess: vi.fn(),
 		recordEvent: vi.fn(),
+		abortDeferredDeletes: vi.fn(),
 		waitForWrites: vi.fn(async (_stateHome: string): Promise<void> => undefined),
 	};
 });
@@ -56,6 +57,9 @@ vi.mock("../../../src/core/runtime-process-launch-admission.js", () => ({
 vi.mock("../../../src/state/project-state.js", () => ({
 	getRuntimeHomePath: () => "/synthetic/quarterdeck",
 	isUnderWorktreesHome: () => false,
+}));
+vi.mock("../../../src/workdir/task-worktree-deferred-delete.js", () => ({
+	deferredTaskWorkspaceDeletes: { abort: mocks.abortDeferredDeletes },
 }));
 vi.mock("../../../src/server/runtime-ownership.js", () => ({
 	acquireRuntimeOwnership: async (options: AcquireRuntimeOwnershipOptions) => {
@@ -132,6 +136,9 @@ describe("admitted runtime shutdown composition", () => {
 		const runtime = await launch();
 		await expect(runtime.shutdown(true)).resolves.toEqual(mocks.clean);
 		expect(write).not.toHaveBeenCalled();
+		expect(mocks.abortDeferredDeletes.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.waitForWrites.mock.invocationCallOrder[0] ?? 0,
+		);
 		expect(mocks.lease.release).toHaveBeenCalledOnce();
 		await expect(
 			writeAdmission.withRuntimeWriteOperation(["/synthetic/quarterdeck/board.json"], write),

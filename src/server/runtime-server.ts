@@ -593,6 +593,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		startupPreparation.push(disposeAutomaticTitleListener);
 		const taskLifecycle = new ProjectTaskLifecycleService({
 			boardCommands: deps.boardCommands,
+			diagnostics: deps.diagnostics,
 			runStoppedTaskWorktreeOperation: async (scope, taskId, operation) =>
 				await taskResourceOperations.run(scope.projectId, taskId, async () => {
 					const manager = await getScopedTerminalManager(scope);

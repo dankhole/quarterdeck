@@ -1310,16 +1310,18 @@ describe("createRuntimeApi Codex model catalog", () => {
 });
 
 describe("createRuntimeApi Pi model catalog", () => {
-	it("loads metadata with the originating project's scope and no cross-project cache", async () => {
+	it("loads metadata with the originating project's scope and caches it per project", async () => {
 		modelCatalogMocks.loadPi.mockReset().mockResolvedValue({ models: [{ provider: "alpha", id: "chosen" }] });
 		const deps = createDeps();
 		const api = createRuntimeApi(deps);
 		await api.piModels(defaultScope);
+		await api.piModels(defaultScope);
 		await api.piModels({ projectId: "other", projectPath: "/tmp/other" });
+		expect(modelCatalogMocks.loadPi).toHaveBeenCalledTimes(2);
 		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(
 			1,
 			deps.config.getActiveRuntimeConfig(),
-			defaultScope.projectPath,
+			expect.stringMatching(/repo$/),
 		);
 		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(2, deps.config.getActiveRuntimeConfig(), "/tmp/other");
 	});

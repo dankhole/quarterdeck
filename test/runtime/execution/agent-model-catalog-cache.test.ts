@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CodexModelCatalogCache } from "../../../src/config/codex-model-catalog-cache";
+import { AgentModelCatalogCache } from "../../../src/config/agent-model-catalog-cache";
 import type { RuntimeCodexModelsResponse } from "../../../src/core/codex-model-contracts";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
@@ -22,8 +22,9 @@ function catalog(name: string): RuntimeCodexModelsResponse {
 function fixture() {
 	let now = 0;
 	const load = vi.fn(async () => catalog("initial"));
-	const cache = new CodexModelCatalogCache(load, () => now);
-	const config = createTestRuntimeConfigState();
+	const cache = new AgentModelCatalogCache("codex", load, () => now);
+	const runtimeConfig = createTestRuntimeConfigState();
+	const config = vi.fn(async () => runtimeConfig);
 	return {
 		cache,
 		load,
@@ -38,7 +39,7 @@ async function settleRefresh(): Promise<void> {
 	await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-describe("Codex model catalog cache", () => {
+describe("Agent model catalog cache", () => {
 	it("shares concurrent cold requests and reuses fresh model and effort metadata", async () => {
 		const f = fixture();
 		const results = await Promise.all([f.cache.get(f.config, "/project"), f.cache.get(f.config, "/project")]);
@@ -92,7 +93,7 @@ describe("Codex model catalog cache", () => {
 		f.load.mockResolvedValueOnce(catalog("other"));
 		expect(await f.cache.get(f.config, "/other")).toEqual(catalog("other"));
 		expect(await f.cache.get(f.config, "/project")).toEqual(catalog("initial"));
-		await new CodexModelCatalogCache(f.load).get(f.config, "/project");
+		await new AgentModelCatalogCache("codex", f.load).get(f.config, "/project");
 		expect(f.load).toHaveBeenCalledTimes(4);
 	});
 
@@ -115,5 +116,19 @@ describe("Codex model catalog cache", () => {
 		expect(f.load).toHaveBeenCalledTimes(101);
 		await f.cache.get(f.config, "/project-1");
 		expect(f.load).toHaveBeenCalledTimes(102);
+	});
+
+	it("serves a cached catalog without loading config, and loads config only to refresh", async () => {
+		const f = fixture();
+		await f.cache.get(f.config, "/project");
+		expect(f.config).toHaveBeenCalledOnce();
+		f.config.mockImplementation(() => new Promise(() => {}));
+		f.advance(299_999);
+		expect(await f.cache.get(f.config, "/project")).toEqual(catalog("initial"));
+		expect(f.config).toHaveBeenCalledOnce();
+		f.advance(1);
+		expect(await f.cache.get(f.config, "/project")).toEqual(catalog("initial"));
+		expect(f.config).toHaveBeenCalledTimes(2);
+		expect(f.load).toHaveBeenCalledOnce();
 	});
 });

@@ -10,6 +10,7 @@ import {
 import { installRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { getRuntimeHomePath, isUnderWorktreesHome } from "../state/project-state.js";
 import { installRuntimeWriteAdmission, waitForRuntimeWriteQuiescence } from "../state/runtime-write-admission.js";
+import { deferredTaskWorkspaceDeletes } from "../workdir/task-worktree-deferred-delete.js";
 import { createDesktopRuntimeHostEffects, type DesktopHostEffectRequest } from "./desktop-runtime-host-effects.js";
 import { type RuntimeHandle, startRuntime } from "./runtime-bootstrap.js";
 import { RuntimeClientAccess } from "./runtime-client-access.js";
@@ -183,6 +184,8 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 			// Close admission before awaiting the counter: a zero count is not a
 			// fence against a new writer entering on the following microtask.
 			writesAllowed = false;
+			// Staged workspace deletes resume on the next start rather than delay release.
+			deferredTaskWorkspaceDeletes.abort();
 			await waitForRuntimeWriteQuiescence(lease.canonicalStateHome);
 			releasePromise ??= lease.release();
 			await releasePromise;

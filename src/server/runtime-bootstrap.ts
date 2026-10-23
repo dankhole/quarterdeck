@@ -37,6 +37,7 @@ import {
 } from "../terminal/pty-runtime-health";
 import { createHooksApi } from "../trpc/hooks-api";
 import { getGitProcessLimiterSnapshot } from "../workdir/git-utils";
+import { deferredTaskWorkspaceDeletes } from "../workdir/task-worktree-deferred-delete";
 import { stopRuntimeOwnedProcessTrees } from "./owned-process-shutdown";
 import {
 	createCoalescingGitRepositoryProbe,
@@ -110,6 +111,13 @@ interface RuntimeBootstrapResources {
 async function runRuntimeStartupCleanup(warn: (message: string) => void): Promise<void> {
 	// Phase 1: Clean stale lock artifacts from ~/.quarterdeck/ (before registry load).
 	await cleanupGlobalStaleLockArtifacts(warn);
+
+	// Workspaces staged by an earlier permanent delete finish deleting in the background.
+	await deferredTaskWorkspaceDeletes.scheduleLeftovers().catch((error: unknown) => {
+		warn(
+			`Could not resume deleting staged task workspaces: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	});
 
 	// Phase 2: Clean stale lock artifacts from per-project directories.
 	// Read the project index (now safe after phase 1 cleaned its lock files)
