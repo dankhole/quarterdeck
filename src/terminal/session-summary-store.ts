@@ -392,8 +392,14 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		// Truncate hook-provided text to 500 chars as a UI/state safety net.
 		const text = entry.text.length > 500 ? `${entry.text.slice(0, 500)}\u2026` : entry.text;
 
-		// Auto-assign sessionIndex from the highest existing index.
 		const existing = sessionEntry.completedResponses;
+		// A repeated reply (e.g. Pi's deferred Review restating the reply already
+		// recorded while background subagents ran) would only evict real history.
+		if (existing.at(-1)?.text === text) {
+			return this.getSummary(taskId);
+		}
+
+		// Auto-assign sessionIndex from the highest existing index.
 		const maxIndex = existing.reduce((max, e) => Math.max(max, e.sessionIndex), -1);
 		const newEntry: CompletedAgentResponse = {
 			text,

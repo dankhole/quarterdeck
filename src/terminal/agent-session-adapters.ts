@@ -27,7 +27,11 @@ import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
 import { getActiveHookHttpChannel } from "./hook-http-channel";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
-import { buildPiLifecycleExtensionSource, QUARTERDECK_PI_HOOK_COMMAND_ENV } from "./pi-lifecycle-extension";
+import {
+	buildPiLifecycleExtensionSource,
+	QUARTERDECK_PI_HOOK_COMMAND_ENV,
+	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
+} from "./pi-lifecycle-extension";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
@@ -584,6 +588,17 @@ const piAdapter: AgentSessionAdapter = {
 					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckHookCommandParts(["hooks", "notify"])),
 				},
 			);
+			// Best-effort activity hooks POST to this runtime's published loopback
+			// endpoint in-process instead of spawning `hooks notify`, mirroring
+			// Claude's `type: "http"` hooks; without a published channel, the
+			// extension keeps spawning the command above. The inherited env
+			// (process plus request overrides) seeds the proxy bypass.
+			const httpNotify =
+				getActiveHookHttpChannel()?.prepareLaunch(hooks, mergeProcessEnvironment(process.env, input.env ?? {})) ??
+				null;
+			if (httpNotify) {
+				Object.assign(env, httpNotify.env, { [QUARTERDECK_PI_HOOK_HTTP_URL_ENV]: httpNotify.transport.url });
+			}
 		}
 
 		if (separatorIndex >= 0 || input.prompt.trim()) args.push("--", ...positionalArgs);

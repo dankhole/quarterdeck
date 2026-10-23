@@ -485,6 +485,15 @@ export function normalizeHookMetadata(
 	const providerAgentId = payload
 		? (readTrimmedStringField(payload, "agent_id") ?? readTrimmedStringField(payload, "agentId"))
 		: null;
+	// Explicit payload text (e.g. Pi's in-process HTTP POST, which carries no CLI
+	// flags) sits between a flag and inference: it wins over inferring activity
+	// text/tool-input-summary from structured fields, but a flag still wins over it.
+	const explicitActivityText = payload
+		? (readStringField(payload, "activity_text") ?? readStringField(payload, "activityText"))
+		: null;
+	const explicitToolInputSummary = payload
+		? (readStringField(payload, "tool_input_summary") ?? readStringField(payload, "toolInputSummary"))
+		: null;
 
 	const toolInput = payload ? extractToolInput(payload) : null;
 	const toolInputSummary = describeToolOperation(toolName, toolInput);
@@ -511,12 +520,17 @@ export function normalizeHookMetadata(
 		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
 		toolName: flagMetadata.toolName ?? toolName ?? null,
 		toolInputSummary:
-			flagMetadata.toolInputSummary ?? (toolInputSummary ? compactHookMetadataText(toolInputSummary) : null),
+			flagMetadata.toolInputSummary ??
+			(explicitToolInputSummary ? compactHookMetadataText(explicitToolInputSummary) : null) ??
+			(toolInputSummary ? compactHookMetadataText(toolInputSummary) : null),
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage: waitingForBackgroundWork
 			? null
 			: (flagMetadata.finalMessage ?? (finalMessage ? compactHookMetadataText(finalMessage) : null)),
-		activityText: flagMetadata.activityText ?? (activityText ? compactHookMetadataText(activityText) : null),
+		activityText:
+			flagMetadata.activityText ??
+			(explicitActivityText ? compactHookMetadataText(explicitActivityText) : null) ??
+			(activityText ? compactHookMetadataText(activityText) : null),
 		sessionId: flagMetadata.sessionId ?? null,
 		sessionInstanceId: flagMetadata.sessionInstanceId ?? null,
 		turnId: flagMetadata.turnId ?? turnId ?? null,

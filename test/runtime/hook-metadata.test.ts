@@ -120,6 +120,86 @@ describe("hook metadata", () => {
 		);
 	});
 
+	it("accepts explicit activity_text/tool_input_summary payload fields (e.g. Pi's HTTP POST, which carries no CLI flags)", () => {
+		const metadata = normalizeHookMetadata(
+			"activity",
+			{
+				hook_event_name: "ToolExecutionStart",
+				activity_text: "Using Bash: npm test",
+				tool_name: "Bash",
+				tool_input_summary: "npm test",
+			},
+			{},
+		);
+
+		expect(metadata).toEqual(
+			expect.objectContaining({
+				hookEventName: "ToolExecutionStart",
+				activityText: "Using Bash: npm test",
+				toolInputSummary: "npm test",
+			}),
+		);
+	});
+
+	it("accepts explicit activityText/toolInputSummary camelCase payload fields", () => {
+		const metadata = normalizeHookMetadata(
+			"activity",
+			{
+				hookEventName: "ToolExecutionEnd",
+				activityText: "Completed Bash: npm test",
+				toolInputSummary: "npm test",
+			},
+			{},
+		);
+
+		expect(metadata).toEqual(
+			expect.objectContaining({
+				activityText: "Completed Bash: npm test",
+				toolInputSummary: "npm test",
+			}),
+		);
+	});
+
+	it("ranks explicit payload activity_text/tool_input_summary below a flag but above inference", () => {
+		const explicitOnly = normalizeHookMetadata(
+			"activity",
+			{
+				hook_event_name: "PreToolUse",
+				tool_name: "Bash",
+				tool_input: { command: "npm run typecheck" },
+				activity_text: "Explicit activity text",
+				tool_input_summary: "Explicit tool summary",
+			},
+			{},
+		);
+		// An explicit payload field beats the endpoint's own inference from the
+		// structured tool_input (which would otherwise produce "Using Bash: ...").
+		expect(explicitOnly).toEqual(
+			expect.objectContaining({
+				activityText: "Explicit activity text",
+				toolInputSummary: "Explicit tool summary",
+			}),
+		);
+
+		const flagWins = normalizeHookMetadata(
+			"activity",
+			{
+				hook_event_name: "PreToolUse",
+				tool_name: "Bash",
+				activity_text: "Explicit activity text",
+				tool_input_summary: "Explicit tool summary",
+			},
+			{ activityText: "Flag activity text", toolInputSummary: "Flag tool summary" },
+		);
+		// A CLI/HTTP-flag value still wins over the explicit payload field.
+		expect(flagWins).toEqual(
+			expect.objectContaining({
+				activityText: "Flag activity text",
+				toolInputSummary: "Flag tool summary",
+			}),
+		);
+	});
+
 	it("preserves provider prompt, tool, elicitation, and background-agent identities", () => {
 		const metadata = normalizeHookMetadata(
 			"to_in_progress",

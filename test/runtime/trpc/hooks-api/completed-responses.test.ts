@@ -80,6 +80,72 @@ describe("createHooksApi — completed foreground responses", () => {
 		},
 	);
 
+	it("records a Pi reply deferred behind background subagents once, while the task stays Running", async () => {
+		const store = new InMemorySessionSummaryStore();
+		store.ensureEntry("task-1");
+		store.update(
+			"task-1",
+			createSummary({
+				agentId: "pi",
+				sessionInstanceId: "launch-1",
+				state: "running",
+				nativeWorkEvidence: {
+					provider: "pi",
+					sessionInstanceId: "launch-1",
+					providerSessionId: "pi-session-1",
+					turnId: "run-1",
+					promptId: null,
+					hookEventName: "AgentStart",
+					confirmedAt: 1,
+				},
+			}),
+		);
+		const manager = createMockManager({
+			getSummary: store.getSummary.bind(store),
+			appendCompletedResponse: store.appendCompletedResponse.bind(store),
+		});
+		manager.applyProviderHook = vi.fn((taskId, input) =>
+			store.applySessionEvent(taskId, {
+				type: "provider.hook",
+				event: input.event,
+				metadata: input.metadata,
+				sessionEvidence: "live",
+			}),
+		);
+		const api = createTestApi(manager);
+		await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "activity",
+			metadata: {
+				source: "pi",
+				sessionInstanceId: "launch-1",
+				hookEventName: "AgentSettledBackgroundPending",
+				activityText: "1 background subagent running · Final: Which option?",
+				finalMessage: "Which option?",
+			},
+		});
+		expect(store.getSummary("task-1")?.state).toBe("running");
+		expect(store.getSummary("task-1")?.completedResponses.map((entry) => entry.text)).toEqual(["Which option?"]);
+
+		await api.ingest({
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "to_review",
+			metadata: {
+				source: "pi",
+				sessionInstanceId: "launch-1",
+				hookEventName: "AgentSettled",
+				activityText: "Final: Which option?",
+				finalMessage: "Which option?",
+			},
+		});
+		const summary = store.getSummary("task-1");
+		expect(summary?.state).toBe("awaiting_review");
+		expect(summary?.completedResponses.map((entry) => entry.text)).toEqual(["Which option?"]);
+		expect(summary?.latestHookActivity?.finalMessage).toBe("Which option?");
+	});
+
 	it("retains finalMessage without requiring conversationSummaryText", async () => {
 		const appendCompletedResponse = vi.fn();
 		const manager = createMockManager({

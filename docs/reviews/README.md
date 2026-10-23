@@ -241,3 +241,7 @@ All 29 reports and the two M28 supporting audits are complete. The [completion a
 - Root/web dependencies were absent during M01–M03. No Vitest, typecheck, browser, Agent Lab or real-provider lane ran for that batch. Later modules record their own focused checks. No application fixes, external tickets, commits or pushes were made. No measured performance claim is made.
 
 For a later review or fix pass, reconcile the recorded baseline with the working tree first. Reuse existing finding IDs and revalidate their triggers against changed code. Fix selection is a separate step after review.
+
+## Other dated reports
+
+- [Hot-path performance audit (2026-10-23)](./2026-10-23-hot-path-performance.md): hook delivery, session persistence, progress preview, board rendering, and lock contention.

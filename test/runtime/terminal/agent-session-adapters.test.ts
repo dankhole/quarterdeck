@@ -23,6 +23,7 @@ import {
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
+	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -1178,6 +1179,78 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(extensionSource).toContain("detached: !waitForExit");
 		expect(extensionSource).toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
 		expect(extensionSource).not.toContain("\\${");
+		expect(launch.env[QUARTERDECK_PI_HOOK_HTTP_URL_ENV]).toBeUndefined();
+	});
+
+	it("publishes the runtime HTTP hook URL and credential to a Pi launch when a channel is active", async () => {
+		setupTempHome();
+		const channel = new HookHttpChannel();
+		channel.publishEndpoint("http://127.0.0.1:43124");
+		setActiveHookHttpChannel(channel);
+		vi.stubEnv("NO_PROXY", undefined);
+		vi.stubEnv("no_proxy", undefined);
+		try {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-pi-http",
+				agentId: "pi",
+				binary: "pi",
+				args: [],
+				cwd: "/tmp",
+				prompt: "",
+				projectId: "project-1",
+				hookSessionInstanceId: "instance-pi-http",
+				env: { NO_PROXY: "corp.example", HTTPS_PROXY: "http://proxy.example:8080" },
+			});
+
+			const transport = channel.prepareLaunch({ taskId: "task-pi-http", projectId: "project-1" })?.transport;
+			if (!transport) throw new Error("Expected a published hook HTTP channel.");
+			expect(launch.env[QUARTERDECK_PI_HOOK_HTTP_URL_ENV]).toBe(transport.url);
+			expect(launch.env.NO_PROXY).toBe("corp.example,127.0.0.1,localhost,::1");
+			expect(launch.env.no_proxy).toBe("corp.example,127.0.0.1,localhost,::1");
+			expect(launch.env).toMatchObject({
+				QUARTERDECK_HOOK_TASK_ID: "task-pi-http",
+				QUARTERDECK_HOOK_PROJECT_ID: "project-1",
+				QUARTERDECK_HOOK_SESSION_INSTANCE_ID: "instance-pi-http",
+			});
+			const credential = launch.env[QUARTERDECK_HOOK_HTTP_TOKEN_ENV];
+			expect(
+				channel.verifyCredential(
+					{ taskId: "task-pi-http", projectId: "project-1", sessionInstanceId: "instance-pi-http" },
+					credential,
+				),
+			).toBe(true);
+			// The CLI fallback command stays configured even with a published
+			// channel: a session outliving its runtime still needs it.
+			const hookCommand = JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "[]") as string[];
+			expect(hookCommand).toEqual(expect.arrayContaining(["hooks", "notify"]));
+		} finally {
+			setActiveHookHttpChannel(null);
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("omits the Pi HTTP hook URL and credential without a published runtime endpoint", async () => {
+		setupTempHome();
+		const channel = new HookHttpChannel();
+		setActiveHookHttpChannel(channel);
+		try {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-pi-command",
+				agentId: "pi",
+				binary: "pi",
+				args: [],
+				cwd: "/tmp",
+				prompt: "",
+				projectId: "project-1",
+				hookSessionInstanceId: "instance-pi-command",
+			});
+
+			expect(launch.env[QUARTERDECK_PI_HOOK_HTTP_URL_ENV]).toBeUndefined();
+			expect(launch.env[QUARTERDECK_HOOK_HTTP_TOKEN_ENV]).toBeUndefined();
+			expect(launch.env.NO_PROXY).toBeUndefined();
+		} finally {
+			setActiveHookHttpChannel(null);
+		}
 	});
 
 	it("uses a stored Pi session id for resume when available", async () => {

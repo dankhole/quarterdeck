@@ -75,11 +75,15 @@ function applyCompletedResponseFromMetadata(
 
 function isForegroundCompletionMetadata(metadata: RuntimeHookMetadata | undefined): boolean {
 	const source = metadata?.source?.trim().toLowerCase();
+	const hookEventName = metadata?.hookEventName?.trim().toLowerCase();
 	return (
 		(source === "codex" || source === "claude" || source === "pi") &&
-		(metadata?.hookEventName?.trim().toLowerCase() === "stop" ||
-			metadata?.hookEventName?.trim().toLowerCase() === "agentsettled") &&
-		!metadata.providerAgentId?.trim()
+		(hookEventName === "stop" ||
+			hookEventName === "agentsettled" ||
+			// Pi's clean settle deferred behind background subagents still completed
+			// this turn's reply; a superseding wake turn would otherwise drop it.
+			(source === "pi" && hookEventName === "agentsettledbackgroundpending")) &&
+		!metadata?.providerAgentId?.trim()
 	);
 }
 
