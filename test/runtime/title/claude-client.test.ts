@@ -1,11 +1,14 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
+import type * as FsPromises from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetLoggerForTests, type RuntimeDiagnosticLogSink, setRuntimeDiagnosticLogSink } from "../../../src/core";
+import { installRuntimeProcessLaunchAdmission } from "../../../src/core/runtime-process-launch-admission.js";
 import { createTempDir } from "../../utilities/temp-dir";
 
 const childProcessMocks = vi.hoisted(() => ({
@@ -17,6 +20,16 @@ vi.mock("node:child_process", async (importOriginal) => {
 	return {
 		...actual,
 		execFile: childProcessMocks.execFile,
+	};
+});
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof FsPromises>();
+	return {
+		...actual,
+		mkdtemp: vi.fn(actual.mkdtemp),
+		chmod: vi.fn(actual.chmod),
+		rm: vi.fn(actual.rm),
 	};
 });
 
@@ -41,8 +54,12 @@ function jsonResult(result: string, isError = false): string {
 const originalPath = process.env.PATH;
 const originalPathExt = process.env.PATHEXT;
 let cleanupWindowsClaude = (): void => undefined;
+let releaseLaunchAdmission: (() => void) | undefined;
 
 beforeEach(() => {
+	vi.mocked(mkdtemp).mockClear();
+	vi.mocked(chmod).mockClear();
+	vi.mocked(rm).mockClear();
 	_testing.resetClaudeFailureBackoffForTests();
 	if (process.platform !== "win32") return;
 	const temp = createTempDir("quarterdeck-title-claude-");
@@ -102,6 +119,8 @@ function collectRuntimeLogs(): LogCandidate[] {
 }
 
 afterEach(() => {
+	releaseLaunchAdmission?.();
+	releaseLaunchAdmission = undefined;
 	vi.useRealTimers();
 	childProcessMocks.execFile.mockReset();
 	_resetLoggerForTests();
@@ -385,6 +404,7 @@ describe("callClaude", () => {
 		});
 
 		const resultPromise = _testing.runClaudeCommand(["-p"], 20_000, "title context");
+		await vi.waitFor(() => expect(callback).not.toBeNull());
 		requireExecCallback(callback)(null, jsonResult("Reliable Task Titles"), "");
 		await resultPromise;
 
@@ -424,7 +444,7 @@ describe("callClaude", () => {
 		delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
 	});
 
-	it("runs each call from a private per-call directory that is removed again afterward", async () => {
+	it.each([false, true])("removes the private per-call directory after callback failure=%s", async (fails) => {
 		const stdin = new PassThrough();
 		const stdout = new PassThrough();
 		const stderr = new PassThrough();
@@ -441,12 +461,105 @@ describe("callClaude", () => {
 		});
 
 		const resultPromise = _testing.runClaudeCommand(["-p"], 20_000, "title context");
+		await vi.waitFor(() => expect(callback).not.toBeNull());
 		expect(capturedCwd).toBeDefined();
 		expect(capturedCwd).not.toBe(tmpdir());
 		expect(existsSync(capturedCwd as string)).toBe(true);
-		requireExecCallback(callback)(null, jsonResult("Reliable Task Titles"), "");
+		expect(mkdtemp).toHaveBeenCalledWith(join(tmpdir(), "quarterdeck-claude-helper-"));
+		expect(chmod).toHaveBeenCalledWith(capturedCwd, 0o700);
+		if (process.platform !== "win32") {
+			expect((await stat(capturedCwd as string)).mode & 0o777).toBe(0o700);
+		}
+		expect(rm).not.toHaveBeenCalled();
+		requireExecCallback(callback)(
+			fails ? Object.assign(new Error("failed"), { code: 1 }) : null,
+			jsonResult("Reliable Task Titles"),
+			"",
+		);
 		await resultPromise;
 
+		expect(rm).toHaveBeenCalledExactlyOnceWith(capturedCwd, { recursive: true, force: true, maxRetries: 3 });
+		expect(existsSync(capturedCwd as string)).toBe(false);
+	});
+
+	it("checks launch admission before creating a temporary directory", async () => {
+		const refusal = new Error("Lease lost");
+		releaseLaunchAdmission = installRuntimeProcessLaunchAdmission({
+			beforeSpawn: () => {
+				throw refusal;
+			},
+		});
+
+		await expect(_testing.runClaudeCommand(["-p"], 20_000, "title context")).rejects.toBe(refusal);
+		expect(mkdtemp).not.toHaveBeenCalled();
+		expect(childProcessMocks.execFile).not.toHaveBeenCalled();
+	});
+
+	it("rechecks admission after asynchronous directory preparation and cleans up when revoked", async () => {
+		let current = true;
+		const refusal = new Error("Lease lost");
+		const beforeSpawn = vi.fn(() => {
+			if (!current) throw refusal;
+		});
+		releaseLaunchAdmission = installRuntimeProcessLaunchAdmission({ beforeSpawn });
+		let releaseChmod: () => void = () => undefined;
+		const chmodGate = new Promise<void>((resolve) => {
+			releaseChmod = resolve;
+		});
+		vi.mocked(chmod).mockImplementationOnce(async () => await chmodGate);
+
+		const resultPromise = _testing.runClaudeCommand(["-p"], 20_000, "title context");
+		expect(beforeSpawn).toHaveBeenCalledOnce();
+		expect(childProcessMocks.execFile).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(chmod).toHaveBeenCalledOnce());
+		const workDir = String(vi.mocked(chmod).mock.calls[0][0]);
+		expect(existsSync(workDir)).toBe(true);
+		current = false;
+		const rejection = expect(resultPromise).rejects.toBe(refusal);
+		releaseChmod();
+
+		await rejection;
+		expect(beforeSpawn).toHaveBeenCalledTimes(2);
+		expect(childProcessMocks.execFile).not.toHaveBeenCalled();
+		expect(rm).toHaveBeenCalledWith(workDir, { recursive: true, force: true, maxRetries: 3 });
+		expect(existsSync(workDir)).toBe(false);
+	});
+
+	it("awaits best-effort asynchronous cleanup before exposing a spawn error", async () => {
+		const refusal = new Error("Spawn failed");
+		let capturedCwd: string | undefined;
+		childProcessMocks.execFile.mockImplementation((_binary, _args, options: { cwd: string }) => {
+			capturedCwd = options.cwd;
+			throw refusal;
+		});
+		const remove = vi.mocked(rm).getMockImplementation();
+		if (!remove) throw new Error("Expected real asynchronous removal implementation");
+		let releaseRemoval: () => void = () => undefined;
+		const removalGate = new Promise<void>((resolve) => {
+			releaseRemoval = resolve;
+		});
+		vi.mocked(rm).mockImplementationOnce(async (path, options) => {
+			await removalGate;
+			await remove(path, options);
+		});
+		let settled = false;
+		const resultPromise = _testing.runClaudeCommand(["-p"], 20_000, "title context");
+		const rejection = expect(resultPromise).rejects.toBe(refusal);
+		void resultPromise.then(
+			() => {
+				settled = true;
+			},
+			() => {
+				settled = true;
+			},
+		);
+		await vi.waitFor(() => expect(rm).toHaveBeenCalledOnce());
+		expect(capturedCwd).toBeDefined();
+		expect(existsSync(capturedCwd as string)).toBe(true);
+		expect(settled).toBe(false);
+		releaseRemoval();
+
+		await rejection;
 		expect(existsSync(capturedCwd as string)).toBe(false);
 	});
 
@@ -457,6 +570,7 @@ describe("callClaude", () => {
 		const stdout = new PassThrough();
 		const stderr = new PassThrough();
 		let callback: ExecCallback | null = null;
+		let capturedCwd: string | undefined;
 		childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
 			const candidate = args.at(-1);
 			if (typeof candidate !== "function") {
@@ -466,11 +580,13 @@ describe("callClaude", () => {
 				(candidate as ExecCallback)(null, "", "");
 				return {} as ChildProcess;
 			}
+			capturedCwd = (args[2] as { cwd?: string }).cwd;
 			callback = candidate as typeof callback;
 			return { pid: 123, kill, unref, stdout, stderr } as unknown as ChildProcess;
 		});
 
 		const resultPromise = _testing.runClaudeCommand(["-p"], 20_000, "title context");
+		await vi.waitFor(() => expect(callback).not.toBeNull());
 		const partialStdout = "private stdout ".repeat(60);
 		const partialStderr = "private stderr ".repeat(60);
 		stdout.write(partialStdout);
@@ -493,6 +609,9 @@ describe("callClaude", () => {
 			stderrBytes: Buffer.byteLength(partialStderr),
 			errorClass: "TimeoutError",
 		});
+
+		expect(capturedCwd).toBeDefined();
+		expect(existsSync(capturedCwd as string)).toBe(false);
 
 		// A late callback after the bounded result must be harmless.
 		const timeoutError = Object.assign(new Error("timed out"), {
@@ -518,6 +637,7 @@ describe("callClaude", () => {
 		});
 
 		const resultPromise = _testing.runClaudeCommand(["-p"], 20_000, "title context");
+		await vi.waitFor(() => expect(callback).not.toBeNull());
 
 		expect(stdin.writableEnded).toBe(true);
 		expect(stdin.read()?.toString()).toBe("title context");

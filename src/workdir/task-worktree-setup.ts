@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
 import { createGitProcessEnv } from "../core/git-process-env";
 import { terminateProcessTree } from "../core/process-termination";
+import { createTaggedLogger } from "../core/runtime-logger";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { resolveWindowsPowerShellPath } from "../core/windows-system-paths";
 import { lockedFileSystem } from "../fs/locked-file-system";
@@ -22,6 +23,7 @@ const setupStateSchema = z.object({
 	version: z.literal(1),
 	status: z.enum(["pending", "running", "succeeded", "failed", "checkout_failed"]),
 });
+const setupLog = createTaggedLogger("task-worktree-setup");
 const SETUP_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_LOG_BYTES = 64 * 1024;
 export type WorktreeSetupProgress = (phase: "running" | "succeeded" | "failed") => Promise<void>;
@@ -137,7 +139,7 @@ export async function runWorktreeSetupScript(options: {
 	if (failure) throw failure;
 }
 
-/** Existing legacy worktrees have no marker and never acquire a new creation-time script. */
+/** Legacy worktrees without setup state never acquire a new creation-time script. */
 export async function finishTaskWorktreeSetup(options: {
 	repoPath: string;
 	worktreePath: string;
@@ -149,7 +151,18 @@ export async function finishTaskWorktreeSetup(options: {
 	await withTaskWorktreeOperationLock(options.repoPath, options.worktreePath, async () => {
 		// Recheck registration after acquiring ownership: removal may have won the lock.
 		const directory = await setupDirectory(options.worktreePath);
-		await cleanupLegacyDependencySymlinks(options.worktreePath);
+		const cleanupMarker = join(directory, "quarterdeck-legacy-dependency-cleanup-v1.done");
+		try {
+			await access(cleanupMarker);
+		} catch (error) {
+			if (!isNodeError(error, "ENOENT")) throw error;
+			await cleanupLegacyDependencySymlinks(options.worktreePath);
+			try {
+				await lockedFileSystem.writeTextFileAtomic(cleanupMarker, "1\n");
+			} catch {
+				setupLog.warn("legacy dependency cleanup marker write failed; cleanup will retry");
+			}
+		}
 		const state = await readState(directory);
 		if (!state) return;
 		assertCheckoutComplete(state);

@@ -34,7 +34,7 @@ import {
 } from "../core/api/notification-presentation";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandService } from "../state";
-import { loadProjectBoardById } from "../state";
+import { loadProjectBoardById, projectBoardReadCache } from "../state";
 import type { TerminalSessionManager } from "../terminal";
 import { applyRuntimeMutationEffects, createTaskBaseRefUpdatedEffects } from "../trpc/runtime-mutation-effects";
 import { createProjectMetadataMonitor } from "./project-metadata-monitor";
@@ -1037,7 +1037,7 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 			return;
 		}
 		try {
-			const board = await loadProjectBoardById(projectId);
+			const board = await projectBoardReadCache.loadBoard(projectId);
 			const summaryMap = Object.fromEntries(summaries.map((summary) => [summary.taskId, summary]));
 			const pruned = pruneOrphanSessionsForNotificationDelta(summaryMap, board);
 			const prunedSummaries = Object.values(pruned);

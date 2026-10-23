@@ -40,9 +40,12 @@ function deepFreeze<T>(value: T): T {
 }
 
 /**
- * Lock-free reuse of committed board state for periodic, derived readers (the
- * native title poll and project-list summaries). Not an authority: writers,
- * snapshots, and command validation keep the locked read path.
+ * Lock-free reuse of recent committed board state for derived readers: the
+ * native title poll, project-list summaries, and the runtime hub's deliberately
+ * lax live-notification delta pruning only. Not an atomic board/session/meta
+ * snapshot or publication-time freshness guarantee: writers, command validation,
+ * authoritative publication, notification replacements/catch-up, and connect
+ * snapshots keep the locked read path.
  *
  * An entry is served only while no transaction journal is pending, this
  * process has started no install for the project, and the source file has the
@@ -107,5 +110,5 @@ export class ProjectBoardReadCache {
 	}
 }
 
-/** Process-wide instance shared by the runtime's periodic readers. */
+/** Process-wide instance shared by the runtime's approved derived readers. */
 export const projectBoardReadCache = new ProjectBoardReadCache();

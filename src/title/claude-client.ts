@@ -1,6 +1,6 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync } from "node:fs";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -127,101 +127,106 @@ function buildIsolatedEnv(): NodeJS.ProcessEnv {
 /** A private, per-call working directory (0700) so the helper never runs from a directory
  * that could plant project/local Claude settings, CLAUDE.md, or other discoverable files.
  * Removed again once the call settles (success, failure, or timeout). */
-function createPrivateHelperDir(): string {
-	const dir = mkdtempSync(join(tmpdir(), "quarterdeck-claude-helper-"));
+async function createPrivateHelperDir(): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), "quarterdeck-claude-helper-"));
 	try {
-		chmodSync(dir, 0o700);
+		await chmod(dir, 0o700);
 	} catch {
 		// Best effort; mkdtemp already defaults to 0700 on POSIX.
 	}
 	return dir;
 }
 
-function cleanupPrivateHelperDir(dir: string): void {
+async function cleanupPrivateHelperDir(dir: string): Promise<void> {
 	try {
-		rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+		await rm(dir, { recursive: true, force: true, maxRetries: 3 });
 	} catch {
 		// Best effort; a leftover empty temp dir is not a correctness problem.
 	}
 }
 
-function runClaudeCommand(args: string[], timeoutMs: number, input: string): Promise<ClaudeCommandResult> {
-	return new Promise((resolve) => {
-		assertRuntimeProcessLaunchAdmission();
-		const workDir = createPrivateHelperDir();
-		const command = resolveWindowsCompatibleCommand(CLAUDE_BINARY, args);
-		let child: ChildProcess | null = null;
-		let timeoutHandle: NodeJS.Timeout | null = null;
-		let settled = false;
-		let streamedStdoutBytes = 0;
-		let streamedStderrBytes = 0;
-		const finish = (result: ClaudeCommandResult): void => {
-			if (settled) {
-				return;
-			}
-			settled = true;
-			if (timeoutHandle) {
-				clearTimeout(timeoutHandle);
-			}
-			cleanupPrivateHelperDir(workDir);
-			resolve(result);
-		};
-		child = execFile(
-			command.binary,
-			command.args,
-			{
-				cwd: workDir,
-				env: buildIsolatedEnv(),
-				encoding: "utf8",
-				maxBuffer: CLAUDE_MAX_BUFFER_BYTES,
-				windowsHide: true,
-			},
-			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-				finish({
-					stdout: String(stdout ?? ""),
-					stderr: String(stderr ?? ""),
-					stdoutBytes: outputByteLength(stdout ?? ""),
-					stderrBytes: outputByteLength(stderr ?? ""),
-					exitStatus: error ? (typeof error.code === "number" ? error.code : null) : 0,
-					signal: error?.signal ?? null,
-					timedOut: false,
-					errorClass: error ? normalizeDiagnosticErrorClass(error.name) : null,
-				});
-			},
-		);
-		// Large contexts can exceed platform argv limits, and argv is visible to other local
-		// processes. Deliver the system-role instructions and task context over stdin (as the
-		// print-mode prompt, since no positional prompt argument is passed) and close it so
-		// Claude does not wait for more input. Early process exits can close the pipe;
-		// execFile's callback owns reporting that process failure.
-		child.stdin?.on("error", () => undefined);
-		child.stdin?.end(input);
-		child.stdout?.on("data", (chunk: string | Buffer) => {
-			streamedStdoutBytes += outputByteLength(chunk);
-		});
-		child.stderr?.on("data", (chunk: string | Buffer) => {
-			streamedStderrBytes += outputByteLength(chunk);
-		});
-		timeoutHandle = setTimeout(() => {
-			if (child) {
-				terminateProcessForTimeout(child);
-				child.stdin?.destroy();
-				child.stdout?.destroy();
-				child.stderr?.destroy();
-				child.unref();
-			}
-			finish({
-				stdout: "",
-				stderr: "",
-				stdoutBytes: streamedStdoutBytes,
-				stderrBytes: streamedStderrBytes,
-				exitStatus: null,
-				signal: null,
-				timedOut: true,
-				errorClass: "TimeoutError",
+async function runClaudeCommand(args: string[], timeoutMs: number, input: string): Promise<ClaudeCommandResult> {
+	assertRuntimeProcessLaunchAdmission();
+	const workDir = await createPrivateHelperDir();
+	try {
+		return await new Promise<ClaudeCommandResult>((resolve) => {
+			const command = resolveWindowsCompatibleCommand(CLAUDE_BINARY, args);
+			let child: ChildProcess | null = null;
+			let timeoutHandle: NodeJS.Timeout | null = null;
+			let settled = false;
+			let streamedStdoutBytes = 0;
+			let streamedStderrBytes = 0;
+			const finish = (result: ClaudeCommandResult): void => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				if (timeoutHandle) {
+					clearTimeout(timeoutHandle);
+				}
+				resolve(result);
+			};
+			const env = buildIsolatedEnv();
+			assertRuntimeProcessLaunchAdmission();
+			child = execFile(
+				command.binary,
+				command.args,
+				{
+					cwd: workDir,
+					env,
+					encoding: "utf8",
+					maxBuffer: CLAUDE_MAX_BUFFER_BYTES,
+					windowsHide: true,
+				},
+				(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
+					finish({
+						stdout: String(stdout ?? ""),
+						stderr: String(stderr ?? ""),
+						stdoutBytes: outputByteLength(stdout ?? ""),
+						stderrBytes: outputByteLength(stderr ?? ""),
+						exitStatus: error ? (typeof error.code === "number" ? error.code : null) : 0,
+						signal: error?.signal ?? null,
+						timedOut: false,
+						errorClass: error ? normalizeDiagnosticErrorClass(error.name) : null,
+					});
+				},
+			);
+			// Large contexts can exceed platform argv limits, and argv is visible to other local
+			// processes. Deliver the system-role instructions and task context over stdin (as the
+			// print-mode prompt, since no positional prompt argument is passed) and close it so
+			// Claude does not wait for more input. Early process exits can close the pipe;
+			// execFile's callback owns reporting that process failure.
+			child.stdin?.on("error", () => undefined);
+			child.stdin?.end(input);
+			child.stdout?.on("data", (chunk: string | Buffer) => {
+				streamedStdoutBytes += outputByteLength(chunk);
 			});
-		}, timeoutMs);
-	});
+			child.stderr?.on("data", (chunk: string | Buffer) => {
+				streamedStderrBytes += outputByteLength(chunk);
+			});
+			timeoutHandle = setTimeout(() => {
+				if (child) {
+					terminateProcessForTimeout(child);
+					child.stdin?.destroy();
+					child.stdout?.destroy();
+					child.stderr?.destroy();
+					child.unref();
+				}
+				finish({
+					stdout: "",
+					stderr: "",
+					stdoutBytes: streamedStdoutBytes,
+					stderrBytes: streamedStderrBytes,
+					exitStatus: null,
+					signal: null,
+					timedOut: true,
+					errorClass: "TimeoutError",
+				});
+			}, timeoutMs);
+		});
+	} finally {
+		await cleanupPrivateHelperDir(workDir);
+	}
 }
 
 const defaultExecutor: ClaudeCommandExecutor = {

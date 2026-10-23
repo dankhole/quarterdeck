@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { LockOptions } from "proper-lockfile";
 import * as lockfile from "proper-lockfile";
@@ -293,17 +293,6 @@ export class LockedFileSystem {
 			compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2),
 			writeOptions,
 		);
-	}
-
-	async removePath(path: string, options: { lock: LockRequest; recursive?: boolean; force?: boolean }): Promise<void> {
-		await this.withLock(options.lock, async () => {
-			assertRuntimeWriteAdmission(path);
-			await rm(path, {
-				recursive: options.recursive,
-				force: options.force,
-				...(options.recursive ? { maxRetries: 10, retryDelay: 100 } : {}),
-			});
-		});
 	}
 }
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { mkdir, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_RUNTIME_CONFIG_STATE } from "../../../src/config";
 import type {
@@ -11,9 +12,11 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../../../src/core";
 import type { RuntimeDiagnostics } from "../../../src/diagnostics";
+import { lockedFileSystem } from "../../../src/fs/locked-file-system";
 import type { CreateRuntimeStateHubDependencies } from "../../../src/server";
 import { RuntimeStateHubImpl } from "../../../src/server";
 import * as state from "../../../src/state";
+import { getProjectBoardPath, getProjectDirectoryPath } from "../../../src/state/project-state-utils";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
 import { createBoard } from "../../utilities/board-factory";
 import {
@@ -22,6 +25,7 @@ import {
 	createTestTaskOutstandingInteraction,
 	createTestTaskSessionSummary,
 } from "../../utilities/task-session-factory";
+import { withTemporaryHome } from "../../utilities/temp-dir";
 
 interface Deferred<T> {
 	promise: Promise<T>;
@@ -61,6 +65,7 @@ interface RuntimeStateHubInternals {
 		client: TestRuntimeClient,
 		input: { projectId: string | null; projectIds: readonly string[] },
 	) => void;
+	enqueueNotificationCatchupForClient: (client: TestRuntimeClient, projectIds: readonly string[]) => void;
 }
 
 interface TestRuntimeClient {
@@ -182,6 +187,7 @@ function createBoardCommandResult() {
 }
 
 describe("RuntimeStateHub", () => {
+	afterEach(() => vi.restoreAllMocks());
 	it("streams notification-only baselines without project viewers and grants one renewable socket", async () => {
 		const deps = createDependencies({
 			buildProjectsPayload: async () => ({ currentProjectId: null, projects: [] }),
@@ -537,7 +543,8 @@ describe("RuntimeStateHub", () => {
 	it("keeps activity local while fanning semantic review changes and project counts across clients", async () => {
 		vi.useFakeTimers();
 		const board = createBoard("Tracked task");
-		const loadProjectBoard = vi.spyOn(state, "loadProjectBoardById").mockResolvedValue(board);
+		const cachedBoardRead = vi.spyOn(state.projectBoardReadCache, "loadBoard").mockResolvedValue(board);
+		const lockedBoardRead = vi.spyOn(state, "loadProjectBoardById");
 		let isProjectedReview = true;
 		const buildProjectsPayload = vi.fn(async (preferredCurrentProjectId: string | null) => ({
 			currentProjectId: preferredCurrentProjectId,
@@ -605,7 +612,7 @@ describe("RuntimeStateHub", () => {
 
 			expect(project1Client.messages.map((message) => message.type)).toEqual(["task_sessions_updated"]);
 			expect(project2Client.messages).toEqual([]);
-			expect(loadProjectBoard).not.toHaveBeenCalled();
+			expect(cachedBoardRead).not.toHaveBeenCalled();
 			expect(buildProjectsPayload).not.toHaveBeenCalled();
 
 			project1Client.messages.length = 0;
@@ -664,7 +671,8 @@ describe("RuntimeStateHub", () => {
 					],
 				});
 			}
-			expect(loadProjectBoard).toHaveBeenCalledWith("project-1");
+			expect(cachedBoardRead).toHaveBeenCalledWith("project-1");
+			expect(lockedBoardRead).not.toHaveBeenCalled();
 			expect(buildProjectsPayload).toHaveBeenCalledOnce();
 			expect(buildProjectsPayload).toHaveBeenCalledWith("project-1");
 
@@ -746,9 +754,116 @@ describe("RuntimeStateHub", () => {
 			await vi.advanceTimersByTimeAsync(150);
 			expect(project1Client.messages.filter((message) => message.type === "task_ready_for_review")).toHaveLength(2);
 		} finally {
-			loadProjectBoard.mockRestore();
+			cachedBoardRead.mockRestore();
 			await hub.close();
 			vi.useRealTimers();
+		}
+	});
+
+	it("reuses a warm committed board for deltas and keeps notifications flowing after a read failure", async () => {
+		await withTemporaryHome(async () => {
+			const projectId = "project-1";
+			await mkdir(getProjectDirectoryPath(projectId), { recursive: true });
+			await writeFile(getProjectBoardPath(projectId), JSON.stringify(createBoard("Tracked task")));
+			state.projectBoardReadCache.forget(projectId);
+			const warmBoard = await state.projectBoardReadCache.loadBoard(projectId);
+			const cachedBoardRead = vi.spyOn(state.projectBoardReadCache, "loadBoard");
+			const lockedBoardRead = vi.spyOn(state, "loadProjectBoardById");
+			const projectLocks = vi.spyOn(lockedFileSystem, "withLock");
+			const hub = new RuntimeStateHubImpl(
+				createDependencies({
+					buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+					buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+					listManagedProjects: vi.fn(() => []),
+				}),
+			);
+			const client = createRuntimeClient();
+			(hub as unknown as RuntimeStateHubInternals).clients.registerGlobalClient(client.client);
+			const store = new InMemorySessionSummaryStore();
+			store.ensureEntry("task-1");
+			store.update(
+				"task-1",
+				createTestTaskSessionSummary({
+					taskId: "task-1",
+					state: "running",
+					nativeWorkEvidence: createTestTaskNativeWorkEvidence(),
+				}),
+			);
+			hub.trackTerminalManager(projectId, new TerminalSessionManager(store));
+			try {
+				for (const [index, nextState] of (["awaiting_review", "running"] as const).entries()) {
+					store.update("task-1", {
+						state: nextState,
+						reviewReason: nextState === "awaiting_review" ? "hook" : null,
+					});
+					await vi.waitFor(() =>
+						expect(client.messages.filter((message) => message.type === "task_notification")).toHaveLength(
+							index + 1,
+						),
+					);
+					expect(await cachedBoardRead.mock.results[index]?.value).toBe(warmBoard);
+				}
+				expect(cachedBoardRead).toHaveBeenCalledTimes(2);
+				expect(lockedBoardRead).not.toHaveBeenCalled();
+				expect(projectLocks).not.toHaveBeenCalled();
+
+				cachedBoardRead.mockRejectedValueOnce(new Error("synthetic board read failure"));
+				store.update("task-1", { state: "awaiting_review", reviewReason: "hook" });
+				await vi.waitFor(() =>
+					expect(client.messages.filter((message) => message.type === "task_notification")).toHaveLength(3),
+				);
+				const notifications = client.messages.filter((message) => message.type === "task_notification");
+				expect(notifications.map((message) => message.notificationRevision)).toEqual([1, 2, 3]);
+				expect(notifications[2]).toMatchObject({
+					projectId,
+					summaries: [expect.objectContaining({ taskId: "task-1", state: "awaiting_review" })],
+				});
+				expect(lockedBoardRead).not.toHaveBeenCalled();
+			} finally {
+				await hub.close();
+				state.projectBoardReadCache.forget(projectId);
+			}
+		});
+	});
+
+	it("keeps notification connect snapshots, replacements, and catch-up on the locked reader", async () => {
+		const board = createBoard("Unstarted task");
+		const lockedBoardRead = vi.spyOn(state, "loadProjectBoardById").mockResolvedValue(board);
+		const cachedBoardRead = vi.spyOn(state.projectBoardReadCache, "loadBoard").mockResolvedValue(board);
+		const store = new InMemorySessionSummaryStore();
+		store.ensureEntry("task-1");
+		store.update(
+			"task-1",
+			createTestTaskSessionSummary({ taskId: "task-1", state: "awaiting_review", reviewReason: "hook" }),
+		);
+		const terminalManager = new TerminalSessionManager(store);
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+				buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+				listManagedProjects: () => [{ projectId: "project-1", projectPath: "/repo", terminalManager }],
+			}),
+		);
+		const internals = hub as unknown as RuntimeStateHubInternals;
+		const client = createRuntimeClient();
+		try {
+			const snapshot = await internals.loadInitialSnapshot({ projectId: null, projectPath: null });
+			expect(snapshot.notificationSummariesByProject).toEqual({});
+			expect(lockedBoardRead).toHaveBeenCalledExactlyOnceWith("project-1");
+			internals.clients.registerGlobalClient(client.client);
+			await hub.broadcastRuntimeProjectNotificationsUpdated("project-1");
+			expect(lockedBoardRead).toHaveBeenCalledTimes(2);
+			internals.enqueueNotificationCatchupForClient(client.client, ["project-1"]);
+			await vi.waitFor(() =>
+				expect(client.messages.filter((message) => message.type === "task_notification")).toHaveLength(2),
+			);
+			expect(lockedBoardRead).toHaveBeenCalledTimes(3);
+			expect(cachedBoardRead).not.toHaveBeenCalled();
+			for (const notification of client.messages.filter((message) => message.type === "task_notification")) {
+				expect(notification).toMatchObject({ replace: true, summaries: [] });
+			}
+		} finally {
+			await hub.close();
 		}
 	});
 
@@ -756,10 +871,11 @@ describe("RuntimeStateHub", () => {
 		vi.useFakeTimers();
 		const firstBoardRead = createDeferred<ReturnType<typeof createBoard>>();
 		const board = createBoard("Tracked task");
-		const loadProjectBoard = vi
-			.spyOn(state, "loadProjectBoardById")
+		const cachedBoardRead = vi
+			.spyOn(state.projectBoardReadCache, "loadBoard")
 			.mockImplementationOnce(async () => await firstBoardRead.promise)
 			.mockResolvedValue(board);
+		const lockedBoardRead = vi.spyOn(state, "loadProjectBoardById");
 		const hub = new RuntimeStateHubImpl(
 			createDependencies({
 				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
@@ -792,7 +908,7 @@ describe("RuntimeStateHub", () => {
 				latestHookActivity: createTestTaskHookActivity({ hookEventName: "Stop" }),
 			});
 			await vi.advanceTimersByTimeAsync(150);
-			expect(loadProjectBoard).toHaveBeenCalledTimes(1);
+			expect(cachedBoardRead).toHaveBeenCalledTimes(1);
 
 			store.update("task-1", {
 				state: "running",
@@ -804,16 +920,17 @@ describe("RuntimeStateHub", () => {
 			// The second async board read is deliberately held behind the first;
 			// otherwise revision 2 could arrive before revision 1 and make revision
 			// 1's task delta permanently disappear in the browser.
-			expect(loadProjectBoard).toHaveBeenCalledTimes(1);
+			expect(cachedBoardRead).toHaveBeenCalledTimes(1);
 
 			firstBoardRead.resolve(board);
-			await vi.waitFor(() => expect(loadProjectBoard).toHaveBeenCalledTimes(2));
+			await vi.waitFor(() => expect(cachedBoardRead).toHaveBeenCalledTimes(2));
 			await vi.waitFor(() => {
 				const notifications = client.messages.filter((message) => message.type === "task_notification");
 				expect(notifications).toHaveLength(2);
 				expect(notifications.map((message) => message.notificationRevision)).toEqual([1, 2]);
 				expect(notifications.map((message) => message.summaries[0]?.state)).toEqual(["awaiting_review", "running"]);
 			});
+			expect(lockedBoardRead).not.toHaveBeenCalled();
 		} finally {
 			await hub.close();
 			vi.useRealTimers();
