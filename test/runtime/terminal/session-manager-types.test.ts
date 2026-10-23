@@ -5,7 +5,7 @@ import {
 } from "../../../src/terminal/session-manager-types.js";
 
 describe("Pi session launch request", () => {
-	it("freezes the selected model independently for later launch/restart", () => {
+	it("freezes the selected model and thinking independently for later launch/restart", () => {
 		const request: StartTaskSessionRequest = {
 			taskId: "pi-task",
 			agentId: "pi",
@@ -13,11 +13,12 @@ describe("Pi session launch request", () => {
 			args: [],
 			cwd: "/project",
 			prompt: "Task",
-			piOptions: { model: { provider: "alpha", id: "chosen" } },
+			piOptions: { model: { provider: "alpha", id: "chosen" }, thinkingLevel: "off" },
 		};
 		const frozen = cloneStartTaskSessionRequest(request);
 		if (!request.piOptions?.model) throw new Error("Missing fixture model");
 		request.piOptions.model.id = "mutated";
-		expect(frozen.piOptions).toEqual({ model: { provider: "alpha", id: "chosen" } });
+		request.piOptions.thinkingLevel = "high";
+		expect(frozen.piOptions).toEqual({ model: { provider: "alpha", id: "chosen" }, thinkingLevel: "off" });
 	});
 });

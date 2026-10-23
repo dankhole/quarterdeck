@@ -25,6 +25,7 @@ export function SearchSelectDropdown({
 	selectedValue,
 	onSelect,
 	id,
+	ariaLabel,
 	icon,
 	disabled = false,
 	fill = false,
@@ -54,6 +55,7 @@ export function SearchSelectDropdown({
 	selectedValue?: string | null;
 	onSelect: (value: string) => void;
 	id?: string;
+	ariaLabel?: string;
 	icon?: ReactNode;
 	disabled?: boolean;
 	fill?: boolean;
@@ -310,6 +312,7 @@ export function SearchSelectDropdown({
 			<RadixPopover.Trigger asChild>
 				<Button
 					id={id}
+					aria-label={ariaLabel}
 					size={size}
 					variant={ghostUntilOpen && !isOpen ? "ghost" : "default"}
 					fill={fill}

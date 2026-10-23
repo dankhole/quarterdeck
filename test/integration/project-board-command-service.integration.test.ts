@@ -197,7 +197,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 		});
 	});
 
-	it("persists Pi model identity and replay receipts across a service restart", async () => {
+	it("persists Pi model/thinking and fences changed thinking in replay receipts across a service restart", async () => {
 		await withTemporaryHome(async () => {
 			const { path: projectPath, cleanup } = createTempDir("quarterdeck-pi-model-");
 			try {
@@ -212,7 +212,7 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 						columnId: "review" as const,
 						taskId: "pi-task",
 						agentId: "pi" as const,
-						piOptions: { model: { provider: "alpha", id: "chosen-model" } },
+						piOptions: { model: { provider: "alpha", id: "chosen-model" }, thinkingLevel: "off" as const },
 						prompt: "Pi task",
 						baseRef: "main",
 						createdAt: 100,
@@ -229,6 +229,17 @@ describe("ProjectBoardCommandService integration", { concurrent: false }, () => 
 				expect(findCardInBoard(persisted, "pi-task")?.piOptions).toEqual(envelope.command.piOptions);
 				const restarted = new ProjectBoardCommandService({ getAuthoritativeSessions: () => ({}) });
 				expect(await restarted.execute(scope, envelope)).toMatchObject({ replayed: true, changed: false });
+				for (const thinkingLevel of [undefined, "high"] as const) {
+					await expect(
+						restarted.execute(scope, {
+							...envelope,
+							command: {
+								...envelope.command,
+								piOptions: { ...envelope.command.piOptions, thinkingLevel },
+							},
+						}),
+					).rejects.toBeInstanceOf(ProjectBoardCommandIdentityConflictError);
+				}
 			} finally {
 				cleanup();
 			}

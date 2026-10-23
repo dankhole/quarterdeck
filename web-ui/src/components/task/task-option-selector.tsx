@@ -1,6 +1,8 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown } from "lucide-react";
-import type { ReactElement } from "react";
+import { type ReactElement, useId } from "react";
+
+import { SearchSelectDropdown } from "@/components/search-select-dropdown";
 
 export interface TaskOptionChoice {
 	value: string;
@@ -14,6 +16,7 @@ export function TaskOptionSelector({
 	value,
 	options,
 	disabled,
+	searchable = false,
 	onSelect,
 	portalContainer,
 }: {
@@ -21,9 +24,33 @@ export function TaskOptionSelector({
 	value: string;
 	options: TaskOptionChoice[];
 	disabled?: boolean;
+	searchable?: boolean;
 	onSelect: (value: string) => void;
 	portalContainer: HTMLElement | null;
 }): ReactElement {
+	const id = useId();
+	if (searchable) {
+		return (
+			<div className="min-w-0">
+				<label htmlFor={id} className="mb-1 block text-[11px] text-text-secondary">
+					{label}
+				</label>
+				<SearchSelectDropdown
+					id={id}
+					ariaLabel={label}
+					options={options}
+					selectedValue={value}
+					onSelect={onSelect}
+					disabled={disabled}
+					portalContainer={portalContainer}
+					placeholder="Search models…"
+					showSelectedIndicator
+					fill
+					size="sm"
+				/>
+			</div>
+		);
+	}
 	return (
 		<div className="min-w-0">
 			<span className="mb-1 block text-[11px] text-text-secondary">{label}</span>

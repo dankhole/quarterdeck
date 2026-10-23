@@ -1290,7 +1290,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeConversation: true,
 			resumeSessionId: "stored-session",
 		});
-		expect(launch.args).toEqual(["--model", "sonnet", "--session", "stored-session"]);
+		expect(launch.args).toEqual(["--session", "stored-session"]);
 	});
 
 	it("falls back to Pi --continue when no stored session id is available", async () => {
@@ -1323,8 +1323,6 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeSessionId: "stored-session",
 		});
 		expect(launch.args).toEqual([
-			"--model",
-			"sonnet",
 			"--session",
 			"stored-session",
 			"--extension",
@@ -1642,7 +1640,7 @@ describe("Claude rendered interruption launch hooks", () => {
 	});
 });
 
-describe("Pi starting model options", () => {
+describe("Pi starting options", () => {
 	it("replaces conflicting model/provider/scope args only on fresh launches before the separator", async () => {
 		const launch = await prepareAgentLaunch({
 			taskId: "pi-task",
@@ -1678,6 +1676,67 @@ describe("Pi starting model options", () => {
 			"-task prompt",
 		]);
 	});
+	it.each(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const)(
+		"applies independent starting thinking %s before positionals, replacing conflicting custom values",
+		async (thinkingLevel) => {
+			const launch = await prepareAgentLaunch({
+				taskId: "pi-task",
+				agentId: "pi",
+				binary: "pi",
+				cwd: process.cwd(),
+				prompt: "-task prompt",
+				args: ["--model", "configured:high", "--thinking", "high", "--thinking=low", "--", "--thinking"],
+				piOptions: { thinkingLevel },
+			});
+			expect(launch.args).toEqual([
+				"--model",
+				"configured:high",
+				"--thinking",
+				thinkingLevel,
+				"--",
+				"--thinking",
+				"-task prompt",
+			]);
+		},
+	);
+	it("applies combined starting model and thinking choices", async () => {
+		const launch = await prepareAgentLaunch({
+			taskId: "pi-task",
+			agentId: "pi",
+			binary: "pi",
+			cwd: process.cwd(),
+			prompt: "",
+			args: ["--models", "scope*", "--thinking", "low"],
+			piOptions: { model: { provider: "alpha", id: "chosen" }, thinkingLevel: "xhigh" },
+		});
+		expect(launch.args).toEqual(["--provider", "alpha", "--model", "chosen", "--thinking", "xhigh"]);
+	});
+	it("restores exact-session model and thinking instead of custom defaults, preserving positionals", async () => {
+		const launch = await prepareAgentLaunch({
+			taskId: "pi-task",
+			agentId: "pi",
+			binary: "pi",
+			cwd: process.cwd(),
+			prompt: "",
+			args: [
+				"--provider=alpha",
+				"--model",
+				"configured:high",
+				"--models",
+				"scope*:low",
+				"--thinking",
+				"high",
+				"--thinking=low",
+				"--verbose",
+				"--",
+				"--thinking",
+			],
+			resumeConversation: true,
+			resumeSessionId: "exact-session-id",
+			piOptions: { model: { provider: "alpha", id: "original" }, thinkingLevel: "off" },
+		});
+		expect(launch.args).toEqual(["--verbose", "--session", "exact-session-id", "--", "--thinking"]);
+	});
 	it.each([undefined, {}])("inherits custom arguments when starting options are %j", async (piOptions) => {
 		const launch = await prepareAgentLaunch({
 			taskId: "pi-task",
@@ -1685,10 +1744,10 @@ describe("Pi starting model options", () => {
 			binary: "pi",
 			cwd: process.cwd(),
 			prompt: "",
-			args: ["--provider", "configured", "--model", "configured-model"],
+			args: ["--provider", "configured", "--model", "configured-model", "--thinking", "medium"],
 			piOptions,
 		});
-		expect(launch.args).toEqual(["--provider", "configured", "--model", "configured-model"]);
+		expect(launch.args).toEqual(["--provider", "configured", "--model", "configured-model", "--thinking", "medium"]);
 	});
 	it.each([undefined, "exact-session-id"])(
 		"does not reapply starting choices on resume (id=%s)",
@@ -1702,7 +1761,7 @@ describe("Pi starting model options", () => {
 				args: [],
 				resumeConversation: true,
 				resumeSessionId,
-				piOptions: { model: { provider: "alpha", id: "original-starting-model" } },
+				piOptions: { model: { provider: "alpha", id: "original-starting-model" }, thinkingLevel: "xhigh" },
 			});
 			expect(launch.args).toEqual(resumeSessionId ? ["--session", resumeSessionId] : ["--continue"]);
 		},

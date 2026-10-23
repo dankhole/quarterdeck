@@ -31,8 +31,16 @@ export const runtimeCodexOptionsSchema = z.object({
 });
 export type RuntimeCodexOptions = z.infer<typeof runtimeCodexOptionsSchema>;
 
-/** Omission inherits Pi configuration; explicit choices retain provider identity. */
-export const runtimePiOptionsSchema = z.object({ model: runtimePiModelSchema.optional() });
+/** Native Pi 1.4.0 `--thinking` levels; Pi clamps unsupported levels for the selected model. */
+export const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const runtimePiThinkingLevelSchema = z.enum(PI_THINKING_LEVELS);
+export type RuntimePiThinkingLevel = z.infer<typeof runtimePiThinkingLevelSchema>;
+
+/** Omission inherits Pi configuration; explicit choices apply only to new sessions. */
+export const runtimePiOptionsSchema = z.object({
+	model: runtimePiModelSchema.optional(),
+	thinkingLevel: runtimePiThinkingLevelSchema.optional(),
+});
 export type RuntimePiOptions = z.infer<typeof runtimePiOptionsSchema>;
 
 /**

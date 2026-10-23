@@ -307,7 +307,7 @@ describe("createRuntimeApi startTaskSession", () => {
 		const card = createCard({
 			agentId: "pi",
 			workingDirectory: "/tmp/pi-worktree",
-			piOptions: { model: { provider: "alpha", id: "test-model" } },
+			piOptions: { model: { provider: "alpha", id: "test-model" }, thinkingLevel: "off" },
 		});
 		taskBoardMutationMocks.findCardInBoard.mockReturnValue(card);
 		taskWorktreeMocks.pathExists.mockResolvedValue(true);
@@ -339,7 +339,7 @@ describe("createRuntimeApi startTaskSession", () => {
 			expect.objectContaining({
 				agentId: "pi",
 				binary: "pi",
-				piOptions: { model: { provider: "alpha", id: "test-model" } },
+				piOptions: { model: { provider: "alpha", id: "test-model" }, thinkingLevel: "off" },
 				claudeOptions: undefined,
 			}),
 		);

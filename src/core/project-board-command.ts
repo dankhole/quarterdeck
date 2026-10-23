@@ -34,6 +34,7 @@ function areBoardCardsEqual(first: RuntimeBoardCard, second: RuntimeBoardCard): 
 		first.codexOptions?.model === second.codexOptions?.model &&
 		first.piOptions?.model?.provider === second.piOptions?.model?.provider &&
 		first.piOptions?.model?.id === second.piOptions?.model?.id &&
+		first.piOptions?.thinkingLevel === second.piOptions?.thinkingLevel &&
 		first.codexOptions?.reasoningEffort === second.codexOptions?.reasoningEffort &&
 		first.claudeOptions?.model === second.claudeOptions?.model &&
 		first.claudeOptions?.effort === second.claudeOptions?.effort &&

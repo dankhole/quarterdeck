@@ -542,16 +542,24 @@ const piAdapter: AgentSessionAdapter = {
 		const separatorIndex = args.indexOf("--");
 		const positionalArgs = separatorIndex < 0 ? [] : args.splice(separatorIndex + 1);
 		if (separatorIndex >= 0) args.pop();
-		// Starting choices must not override model changes recorded in a resumed Pi session.
+		// Starting choices must not override model/thinking changes recorded in a resumed Pi session.
 		if (!input.resumeConversation && input.piOptions?.model) {
 			removeCliOptionWithValue(args, "--provider");
 			removeCliOptionWithValue(args, "--model");
 			removeCliOptionWithValue(args, "--models");
 			args.push("--provider", input.piOptions.model.provider, "--model", input.piOptions.model.id);
 		}
+		if (!input.resumeConversation && input.piOptions?.thinkingLevel !== undefined) {
+			removeCliOptionWithValue(args, "--thinking");
+			args.push("--thinking", input.piOptions.thinkingLevel);
+		}
 		if (input.resumeConversation) {
 			const resumeSessionId = input.resumeSessionId?.trim();
 			if (resumeSessionId) {
+				// Exact recovery restores the session's own model and thinking, even with custom CLI defaults.
+				for (const option of ["--provider", "--model", "--models", "--thinking"]) {
+					removeCliOptionWithValue(args, option);
+				}
 				// Exact recovery identity takes precedence over saved custom CLI arguments.
 				removeCliOptionWithValue(args, "--session");
 				removeCliOption(args, "--continue");

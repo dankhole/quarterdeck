@@ -422,8 +422,18 @@ describe("starting Claude options", () => {
 		});
 	});
 
+	it.each(["off", "minimal", "low", "medium", "high", "xhigh", "max"])(
+		"accepts independent Pi thinking level %s and rejects unsupported values",
+		(thinkingLevel) => {
+			expect(runtimePiOptionsSchema.parse({ thinkingLevel })).toEqual({ thinkingLevel });
+			for (const invalid of ["", "ultra", "none", "High", " high ", null, 1]) {
+				expect(runtimePiOptionsSchema.safeParse({ thinkingLevel: invalid }).success).toBe(false);
+			}
+		},
+	);
+
 	it("validates Pi choices, retains them through create/start schemas, and detects changed provider identity", () => {
-		const piOptions = { model: { provider: "alpha", id: "same-model:7b" } };
+		const piOptions = { model: { provider: "alpha", id: "same-model:7b" }, thinkingLevel: "high" as const };
 		expect(runtimePiOptionsSchema.parse({})).toEqual({});
 		for (const model of [
 			{ id: "missing-provider" },
@@ -448,6 +458,11 @@ describe("starting Claude options", () => {
 				piOptions: { model: { provider: "beta", id: "same-model:7b" } },
 			}),
 		).toThrow("different data");
+		for (const thinkingLevel of [undefined, "low"] as const) {
+			expect(() =>
+				applyProjectBoardCommand(created.board, { ...command, piOptions: { ...piOptions, thinkingLevel } }),
+			).toThrow("different data");
+		}
 		const parsed = runtimeTaskLifecycleCommandSchema.parse({
 			kind: "create_and_start",
 			operationId: "pi-op",
