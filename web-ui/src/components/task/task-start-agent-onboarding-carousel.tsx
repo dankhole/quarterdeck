@@ -403,7 +403,7 @@ export function TaskStartAgentOnboardingCarousel({
 					))}
 					<p className="m-0 text-[12px] text-text-secondary">
 						Press <kbd className="rounded bg-surface-3 px-1.5 py-0.5 text-text-primary">C</kbd> to create your
-						first task. Worktrees and confirmations can be changed later in Settings.
+						first task. Worktree settings can be changed later in Settings.
 					</p>
 				</div>
 			) : (

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveBoardCardViewModel } from "@/hooks/board/board-card";
 import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
-import type { BoardCard } from "@/types";
+import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
 
 const card: BoardCard = {
 	id: "task-1",
@@ -27,7 +27,6 @@ function resolveSummaryDisplay(showSummaryOnCards: boolean, showSummaryOnHover: 
 		workspacePath: "/tmp/project",
 		showSummaryOnCards,
 		showSummaryOnHover,
-		uncommittedChangesOnCardsEnabled: false,
 		isRestartDelayElapsed: false,
 		hasRestartSessionHandler: false,
 	});
@@ -48,7 +47,6 @@ describe("resolveBoardCardViewModel summary display", () => {
 			workspacePath: "/tmp/project",
 			showSummaryOnCards: true,
 			showSummaryOnHover: true,
-			uncommittedChangesOnCardsEnabled: true,
 			isRestartDelayElapsed: true,
 			hasRestartSessionHandler: true,
 		});
@@ -82,5 +80,62 @@ describe("resolveBoardCardViewModel summary display", () => {
 
 		expect(result.isSummaryVisibleOnCard).toBe(false);
 		expect(result.effectiveTooltip).toBeNull();
+	});
+});
+
+describe("resolveBoardCardViewModel uncommitted changes indicator", () => {
+	const dirtyWorktree: ReviewTaskWorktreeSnapshot = {
+		taskId: card.id,
+		path: "/tmp/project/task-1",
+		branch: "task-1",
+		isDetached: false,
+		headCommit: null,
+		changedFiles: 2,
+		additions: 3,
+		deletions: 1,
+		hasUnmergedChanges: false,
+		behindBaseCount: 0,
+		behindRemoteBaseCount: 0,
+		conflictState: null,
+	};
+
+	function resolveIndicator(
+		columnId: BoardColumnId,
+		reviewWorktreeSnapshot: ReviewTaskWorktreeSnapshot | null = dirtyWorktree,
+		unstarted = false,
+	) {
+		return resolveBoardCardViewModel({
+			card: { ...card, unstarted },
+			columnId,
+			reviewWorktreeSnapshot,
+			workspacePath: "/tmp/project",
+			showSummaryOnCards: false,
+			showSummaryOnHover: true,
+			isRestartDelayElapsed: false,
+			hasRestartSessionHandler: false,
+		}).showUncommittedChangesIndicator;
+	}
+
+	it.each<BoardColumnId>(["in_progress", "review"])("shows uncommitted changes on a started %s card", (columnId) => {
+		expect(resolveIndicator(columnId)).toBe(true);
+	});
+
+	it.each<BoardColumnId>(["in_progress", "review"])(
+		"hides uncommitted changes on an unstarted %s card",
+		(columnId) => {
+			expect(resolveIndicator(columnId, dirtyWorktree, true)).toBe(false);
+		},
+	);
+
+	it("hides uncommitted changes on a Trash card", () => {
+		expect(resolveIndicator("trash")).toBe(false);
+	});
+
+	it("hides uncommitted changes until the worktree snapshot is available", () => {
+		expect(resolveIndicator("review", null)).toBe(false);
+	});
+
+	it.each([0, null])("hides uncommitted changes when changedFiles is %s", (changedFiles) => {
+		expect(resolveIndicator("review", { ...dirtyWorktree, changedFiles })).toBe(false);
 	});
 });

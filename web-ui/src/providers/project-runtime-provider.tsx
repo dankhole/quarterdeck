@@ -29,13 +29,7 @@ export interface ProjectRuntimeContextValue {
 	isLlmGenerationDisabled: boolean;
 	shortcuts: RuntimeProjectShortcut[];
 	selectedShortcutLabel: string | null;
-	skipTaskCheckoutConfirmation: boolean;
-	skipHomeCheckoutConfirmation: boolean;
-	skipCherryPickConfirmation: boolean;
 	pinnedBranches: string[];
-	showTrashWorktreeNotice: boolean;
-	unmergedChangesIndicatorEnabled: boolean;
-	behindBaseIndicatorEnabled: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: { permission: boolean; review: boolean; failure: boolean };
@@ -45,9 +39,7 @@ export interface ProjectRuntimeContextValue {
 	agentCommand: string | null;
 	configDefaultBaseRef: string;
 	handleTogglePinBranch: (branchName: string) => void;
-	handleSkipTaskCheckoutConfirmationChange: (skip: boolean) => void;
 	handleSetDefaultBaseRef: (value: string | null) => Promise<void>;
-	saveTrashWorktreeNoticeDismissed: () => void;
 }
 
 export const ProjectRuntimeContext = createContext<ProjectRuntimeContextValue | null>(null);
@@ -103,12 +95,6 @@ export function ProjectRuntimeProvider({
 
 	const llmConfigured = runtimeProjectConfig?.llmConfigured ?? false;
 	const isLlmGenerationDisabled = !(runtimeProjectConfig?.textGenerationAvailable ?? false);
-	const showTrashWorktreeNotice =
-		runtimeProjectConfig?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice;
-	const unmergedChangesIndicatorEnabled =
-		runtimeProjectConfig?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled;
-	const behindBaseIndicatorEnabled =
-		runtimeProjectConfig?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled;
 	const shortcuts = runtimeProjectConfig?.shortcuts ?? [];
 	const selectedShortcutLabel = useMemo(() => {
 		if (shortcuts.length === 0) {
@@ -120,9 +106,6 @@ export function ProjectRuntimeProvider({
 		}
 		return shortcuts[0]?.label ?? null;
 	}, [runtimeProjectConfig?.selectedShortcutLabel, shortcuts]);
-	const skipTaskCheckoutConfirmation = runtimeProjectConfig?.skipTaskCheckoutConfirmation ?? false;
-	const skipHomeCheckoutConfirmation = runtimeProjectConfig?.skipHomeCheckoutConfirmation ?? false;
-	const skipCherryPickConfirmation = runtimeProjectConfig?.skipCherryPickConfirmation ?? false;
 	const pinnedBranches = runtimeProjectConfig?.pinnedBranches ?? [];
 	const audibleNotificationsEnabled =
 		runtimeProjectConfig?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled;
@@ -155,16 +138,6 @@ export function ProjectRuntimeProvider({
 		[currentProjectId, runtimeProjectConfig?.pinnedBranches, refreshRuntimeProjectConfig],
 	);
 
-	const handleSkipTaskCheckoutConfirmationChange = useCallback(
-		(skip: boolean) => {
-			if (!currentProjectId) return;
-			void saveRuntimeConfig(currentProjectId, { skipTaskCheckoutConfirmation: skip }).then(() => {
-				refreshRuntimeProjectConfig();
-			});
-		},
-		[currentProjectId, refreshRuntimeProjectConfig],
-	);
-
 	const handleSetDefaultBaseRef = useCallback(
 		async (value: string | null) => {
 			if (!currentProjectId) return;
@@ -184,17 +157,6 @@ export function ProjectRuntimeProvider({
 		[currentProjectId, refreshRuntimeProjectConfig],
 	);
 
-	const saveTrashWorktreeNoticeDismissed = useCallback(() => {
-		if (!currentProjectId) return;
-		void saveRuntimeConfig(currentProjectId, { showTrashWorktreeNotice: false })
-			.then(() => {
-				refreshRuntimeProjectConfig();
-			})
-			.catch(() => {
-				showAppToast({ intent: "danger", message: "Failed to dismiss trash worktree notice" });
-			});
-	}, [currentProjectId, refreshRuntimeProjectConfig]);
-
 	const value = useMemo<ProjectRuntimeContextValue>(
 		() => ({
 			runtimeProjectConfig,
@@ -213,13 +175,7 @@ export function ProjectRuntimeProvider({
 			isLlmGenerationDisabled,
 			shortcuts,
 			selectedShortcutLabel,
-			skipTaskCheckoutConfirmation,
-			skipHomeCheckoutConfirmation,
-			skipCherryPickConfirmation,
 			pinnedBranches,
-			showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled,
-			behindBaseIndicatorEnabled,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -229,9 +185,7 @@ export function ProjectRuntimeProvider({
 			agentCommand,
 			configDefaultBaseRef,
 			handleTogglePinBranch,
-			handleSkipTaskCheckoutConfirmationChange,
 			handleSetDefaultBaseRef,
-			saveTrashWorktreeNoticeDismissed,
 		}),
 		[
 			runtimeProjectConfig,
@@ -250,13 +204,7 @@ export function ProjectRuntimeProvider({
 			isLlmGenerationDisabled,
 			shortcuts,
 			selectedShortcutLabel,
-			skipTaskCheckoutConfirmation,
-			skipHomeCheckoutConfirmation,
-			skipCherryPickConfirmation,
 			pinnedBranches,
-			showTrashWorktreeNotice,
-			unmergedChangesIndicatorEnabled,
-			behindBaseIndicatorEnabled,
 			audibleNotificationsEnabled,
 			audibleNotificationVolume,
 			audibleNotificationEvents,
@@ -266,9 +214,7 @@ export function ProjectRuntimeProvider({
 			agentCommand,
 			configDefaultBaseRef,
 			handleTogglePinBranch,
-			handleSkipTaskCheckoutConfirmationChange,
 			handleSetDefaultBaseRef,
-			saveTrashWorktreeNoticeDismissed,
 		],
 	);
 

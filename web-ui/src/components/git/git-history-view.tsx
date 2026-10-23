@@ -116,8 +116,6 @@ interface GitHistoryViewProps {
 	onResetToRef?: (ref: string) => void;
 	/** Task scope for cherry-pick operations (null = home repo context). */
 	taskScope?: { taskId: string; baseRef: string } | null;
-	/** When true, skip the cherry-pick confirmation dialog and execute immediately. */
-	skipCherryPickConfirmation?: boolean;
 }
 
 export function GitHistoryView({
@@ -130,7 +128,6 @@ export function GitHistoryView({
 	onRenameBranch,
 	onResetToRef,
 	taskScope,
-	skipCherryPickConfirmation = false,
 }: GitHistoryViewProps): React.ReactElement {
 	const [historyLayoutWidth, setHistoryLayoutWidth] = useState<number | null>(null);
 	const historyLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -197,22 +194,15 @@ export function GitHistoryView({
 		[projectId, taskScope, gitHistory.refresh],
 	);
 
-	const handleLandOnBranch = useCallback(
-		(commit: RuntimeGitCommit, targetBranch: string) => {
-			if (skipCherryPickConfirmation) {
-				void handleConfirmCherryPick(commit.hash, targetBranch);
-				return;
-			}
-			setCherryPickDialog({
-				type: "confirm",
-				commitHash: commit.hash,
-				shortHash: commit.shortHash,
-				commitMessage: commit.message,
-				targetBranch,
-			});
-		},
-		[skipCherryPickConfirmation, handleConfirmCherryPick],
-	);
+	const handleLandOnBranch = useCallback((commit: RuntimeGitCommit, targetBranch: string) => {
+		setCherryPickDialog({
+			type: "confirm",
+			commitHash: commit.hash,
+			shortHash: commit.shortHash,
+			commitMessage: commit.message,
+			targetBranch,
+		});
+	}, []);
 
 	const closeCherryPickDialog = useCallback(() => {
 		setCherryPickDialog({ type: "closed" });
@@ -306,7 +296,7 @@ export function GitHistoryView({
 	});
 
 	const enrichedDiffSource = useMemo(() => {
-		if (!gitHistory.diffSource || gitHistory.diffSource.type !== "working-copy" || !gitHistory.selectedDiffPath) {
+		if (gitHistory.diffSource?.type !== "working-copy" || !gitHistory.selectedDiffPath) {
 			return gitHistory.diffSource;
 		}
 		if (wcFileDiff.oldText == null && wcFileDiff.newText == null) return gitHistory.diffSource;

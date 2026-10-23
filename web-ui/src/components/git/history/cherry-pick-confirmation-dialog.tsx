@@ -1,6 +1,6 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
 import { GitCommitHorizontal } from "lucide-react";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -32,6 +32,9 @@ export function CherryPickConfirmationDialog({
 	// after onClick, before React re-renders with isLoading=true. The ref guards the cancel
 	// path so the dialog stays open during the async operation. See AGENTS.md.
 	const confirmFiredRef = useRef(false);
+	useEffect(() => {
+		if (state.type === "closed") confirmFiredRef.current = false;
+	}, [state.type]);
 
 	const handleConfirm = useCallback(() => {
 		if (state.type !== "confirm") {

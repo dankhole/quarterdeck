@@ -156,7 +156,6 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 						state={git.topbarBranchActions.checkoutDialogState}
 						onClose={git.topbarBranchActions.closeCheckoutDialog}
 						onConfirmCheckout={git.topbarBranchActions.handleConfirmCheckout}
-						onSkipTaskConfirmationChange={projectRuntime.handleSkipTaskCheckoutConfirmationChange}
 						onStashAndCheckout={git.topbarBranchActions.handleStashAndCheckout}
 						isStashingAndCheckingOut={git.topbarBranchActions.isStashingAndCheckingOut}
 					/>

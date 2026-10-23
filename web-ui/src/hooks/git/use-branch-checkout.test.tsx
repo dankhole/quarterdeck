@@ -1,9 +1,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useBranchActions } from "@/hooks/git/use-branch-actions";
-import { useGitActions } from "@/hooks/git/use-git-actions";
-import type { RuntimeGitCheckoutResponse, RuntimeGitSyncSummary } from "@/runtime/types";
+import { type UseBranchActionsResult, useBranchActions } from "@/hooks/git/use-branch-actions";
+import type { RuntimeGitCheckoutResponse, RuntimeGitSyncSummary, RuntimeStashPushResponse } from "@/runtime/types";
 import {
 	getHomeGitStateVersion,
 	resetProjectMetadataStore,
@@ -15,68 +14,53 @@ import {
 import type { BoardData } from "@/types";
 
 const checkoutMutate = vi.hoisted(() => vi.fn<() => Promise<RuntimeGitCheckoutResponse>>());
+const stashPushMutate = vi.hoisted(() => vi.fn<() => Promise<RuntimeStashPushResponse>>());
 const showAppToast = vi.hoisted(() => vi.fn());
-const refreshGitHistory = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
-		project: { checkoutGitBranch: { mutate: checkoutMutate } },
+		project: { checkoutGitBranch: { mutate: checkoutMutate }, stashPush: { mutate: stashPushMutate } },
 	}),
 }));
 
 vi.mock("@/components/app-toaster", () => ({ showAppToast }));
-vi.mock("@/components/git/history", () => ({
-	useGitHistoryData: () => ({ refresh: refreshGitHistory }),
-}));
 
 const board: BoardData = { columns: [] };
 const selectBranchView = vi.fn();
-const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
-const fetchTaskWorktreeInfo = vi.fn(async () => null);
 const onCheckoutSuccess = vi.fn();
-const refreshProjectState = vi.fn(async () => {});
 
 interface CheckoutSnapshot {
 	checkout: (branch: string) => Promise<void> | void;
 	summary: RuntimeGitSyncSummary | null;
 	currentBranch: string | null;
+	branchActions: UseBranchActionsResult;
 }
 
 interface HarnessProps {
 	projectId: string;
 	onSnapshot: (snapshot: CheckoutSnapshot) => void;
+	taskScope?: { taskId: string; baseRef: string };
 }
 
-function BranchActionsHarness({ projectId, onSnapshot }: HarnessProps): null {
+function BranchActionsHarness({ projectId, onSnapshot, taskScope }: HarnessProps): null {
 	const summary = useHomeGitSummaryValue();
 	const actions = useBranchActions({
 		projectId,
 		board,
 		selectBranchView,
 		homeGitSummary: summary,
+		taskId: taskScope?.taskId,
+		baseRef: taskScope?.baseRef,
+		taskBranch: taskScope ? summary?.currentBranch : undefined,
+		taskChangedFiles: taskScope ? summary?.changedFiles : undefined,
 		onCheckoutSuccess,
 	});
 	onSnapshot({
 		checkout: (branch) => actions.handleConfirmCheckout(branch, "home"),
 		summary,
 		currentBranch: actions.currentBranch,
+		branchActions: actions,
 	});
-	return null;
-}
-
-function GitActionsHarness({ projectId, onSnapshot }: HarnessProps): null {
-	const summary = useHomeGitSummaryValue();
-	const actions = useGitActions({
-		currentProjectId: projectId,
-		board,
-		selectedCard: null,
-		runtimeProjectConfig: null,
-		sendTaskSessionInput,
-		fetchTaskWorktreeInfo,
-		isGitHistoryOpen: false,
-		refreshProjectState,
-	});
-	onSnapshot({ checkout: actions.switchHomeBranch, summary, currentBranch: summary?.currentBranch ?? null });
 	return null;
 }
 
@@ -113,10 +97,7 @@ function deferredCheckout(): {
 	return { promise, resolve };
 }
 
-describe.each([
-	{ name: "branch selector", Harness: BranchActionsHarness },
-	{ name: "home view", Harness: GitActionsHarness },
-])("$name checkout", ({ Harness }) => {
+describe("branch selector checkout", () => {
 	let root: Root;
 	let snapshot: CheckoutSnapshot;
 	let previousActEnvironment: boolean | undefined;
@@ -133,6 +114,7 @@ describe.each([
 		setHomeGitSummary("project-a", knownSummary);
 		vi.clearAllMocks();
 		checkoutMutate.mockReset();
+		stashPushMutate.mockReset();
 	});
 
 	afterEach(() => {
@@ -149,7 +131,7 @@ describe.each([
 	function render(projectId = "project-a"): void {
 		act(() => {
 			root.render(
-				<Harness
+				<BranchActionsHarness
 					projectId={projectId}
 					onSnapshot={(value) => {
 						snapshot = value;
@@ -188,8 +170,6 @@ describe.each([
 		expect(getHomeGitStateVersion()).toBe(knownVersion);
 		expect(showAppToast).toHaveBeenCalledWith(expect.objectContaining({ intent: "danger" }));
 		expect(onCheckoutSuccess).not.toHaveBeenCalled();
-		expect(refreshProjectState).not.toHaveBeenCalled();
-		expect(refreshGitHistory).not.toHaveBeenCalled();
 	});
 
 	it.each([
@@ -210,8 +190,6 @@ describe.each([
 		expect(snapshot.currentBranch).toBe(summary.currentBranch);
 		expect(showAppToast).toHaveBeenCalledWith(expect.objectContaining({ intent: "danger" }));
 		expect(onCheckoutSuccess).not.toHaveBeenCalled();
-		expect(refreshProjectState).not.toHaveBeenCalled();
-		expect(refreshGitHistory).not.toHaveBeenCalled();
 	});
 
 	it("applies the home summary after a successful checkout", async () => {
@@ -248,7 +226,6 @@ describe.each([
 		expect(snapshot.summary).toEqual(nextProjectSummary);
 		expect(snapshot.currentBranch).toBe("feature/project-b");
 		expect(onCheckoutSuccess).not.toHaveBeenCalled();
-		expect(refreshProjectState).not.toHaveBeenCalled();
 		expect(showAppToast).not.toHaveBeenCalled();
 	});
 
@@ -274,8 +251,116 @@ describe.each([
 			expect(snapshot.summary).toEqual(relocatedSummary);
 			expect(snapshot.currentBranch).toBe("feature/relocated");
 			expect(onCheckoutSuccess).not.toHaveBeenCalled();
-			expect(refreshProjectState).not.toHaveBeenCalled();
 			expect(showAppToast).not.toHaveBeenCalled();
 		},
 	);
+});
+
+describe("branch checkout confirmation", () => {
+	let root: Root;
+	let actions: UseBranchActionsResult;
+
+	beforeEach(() => {
+		vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+		root = createRoot(document.createElement("div"));
+		resetProjectMetadataStore("project-a");
+		setProjectPath("project-a", "/repo/a");
+		vi.clearAllMocks();
+		checkoutMutate.mockReset();
+		stashPushMutate.mockReset();
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		resetProjectMetadataStore();
+		vi.unstubAllGlobals();
+	});
+
+	function render(scope: "home" | "task", dirty: boolean): void {
+		setHomeGitSummary("project-a", { ...createSummary("feature/current"), changedFiles: dirty ? 1 : 0 });
+		act(() => {
+			root.render(
+				<BranchActionsHarness
+					projectId="project-a"
+					taskScope={scope === "task" ? { taskId: "task-a", baseRef: "main" } : undefined}
+					onSnapshot={(snapshot) => {
+						actions = snapshot.branchActions;
+					}}
+				/>,
+			);
+		});
+	}
+
+	it.each([
+		{ scope: "home", dirty: false },
+		{ scope: "task", dirty: false },
+		{ scope: "home", dirty: true },
+		{ scope: "task", dirty: true },
+	] as const)("waits for confirmation before $scope checkout (dirty: $dirty)", async ({ scope, dirty }) => {
+		checkoutMutate.mockResolvedValue(createCheckoutResponse(createSummary("feature/new")));
+		render(scope, dirty);
+
+		act(() => actions.handleCheckoutBranch("feature/new"));
+
+		expect(checkoutMutate).not.toHaveBeenCalled();
+		expect(actions.checkoutDialogState).toMatchObject({
+			type: dirty ? "dirty_warning" : "confirm",
+			branch: "feature/new",
+			scope,
+		});
+
+		await act(async () => {
+			const dialog = actions.checkoutDialogState;
+			if (dialog.type === "confirm" || dialog.type === "dirty_warning") {
+				actions.handleConfirmCheckout(dialog.branch, dialog.scope, dialog.taskId, dialog.baseRef);
+			}
+		});
+
+		expect(checkoutMutate).toHaveBeenCalledExactlyOnceWith({
+			branch: "feature/new",
+			...(scope === "task" ? { taskId: "task-a", baseRef: "main" } : {}),
+		});
+	});
+
+	it.each(["home", "task"] as const)("leaves the current %s branch unchanged", (scope) => {
+		render(scope, true);
+
+		act(() => actions.handleCheckoutBranch("feature/current"));
+
+		expect(actions.checkoutDialogState).toEqual({ type: "closed" });
+		expect(checkoutMutate).not.toHaveBeenCalled();
+		expect(showAppToast).toHaveBeenCalledWith({ message: "Already on feature/current" });
+	});
+
+	it.each(["home", "task"] as const)("stashes %s changes before the confirmed checkout", async (scope) => {
+		stashPushMutate.mockResolvedValue({ ok: true });
+		checkoutMutate.mockResolvedValue(createCheckoutResponse(createSummary("feature/new")));
+		render(scope, true);
+		act(() => actions.handleCheckoutBranch("feature/new"));
+
+		await act(async () => actions.handleStashAndCheckout());
+
+		expect(stashPushMutate).toHaveBeenCalledExactlyOnceWith({
+			taskScope: scope === "task" ? { taskId: "task-a", baseRef: "main" } : null,
+			paths: [],
+			message: undefined,
+		});
+		expect(checkoutMutate).toHaveBeenCalledExactlyOnceWith({
+			branch: "feature/new",
+			...(scope === "task" ? { taskId: "task-a", baseRef: "main" } : {}),
+		});
+		expect(stashPushMutate.mock.invocationCallOrder[0]!).toBeLessThan(checkoutMutate.mock.invocationCallOrder[0]!);
+		expect(actions.checkoutDialogState).toEqual({ type: "closed" });
+	});
+
+	it("keeps the dirty checkout warning open when stashing fails", async () => {
+		stashPushMutate.mockResolvedValue({ ok: false, error: "Stash failed" });
+		render("home", true);
+		act(() => actions.handleCheckoutBranch("feature/new"));
+
+		await act(async () => actions.handleStashAndCheckout());
+
+		expect(checkoutMutate).not.toHaveBeenCalled();
+		expect(actions.checkoutDialogState).toMatchObject({ type: "dirty_warning", branch: "feature/new" });
+	});
 });

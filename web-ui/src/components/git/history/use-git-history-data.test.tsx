@@ -150,16 +150,18 @@ async function flushPromises(): Promise<void> {
 function HookHarness({
 	taskScope,
 	enabled = true,
+	branch,
 	onRender,
 }: {
 	taskScope: { taskId: string; baseRef: string } | null;
 	enabled?: boolean;
+	branch?: string;
 	onRender: (snapshot: HookSnapshot, result: UseGitHistoryDataResult) => void;
 }): null {
 	const gitHistory = useGitHistoryData({
 		projectId: "project-1",
 		taskScope,
-		gitSummary: createGitSummary(taskScope ? "task-branch" : "main"),
+		gitSummary: createGitSummary(branch ?? (taskScope ? "task-branch" : "main")),
 		enabled,
 	});
 
@@ -225,6 +227,33 @@ describe("useGitHistoryData", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	it("refreshes refs and history after the checkout summary changes branches", async () => {
+		let latest!: UseGitHistoryDataResult;
+		const onRender = (_snapshot: HookSnapshot, result: UseGitHistoryDataResult) => {
+			latest = result;
+		};
+		await act(async () => {
+			root.render(<HookHarness taskScope={null} onRender={onRender} />);
+			await flushPromises();
+		});
+		expect(latest.activeRef?.name).toBe("main");
+
+		getGitRefsQueryMock.mockResolvedValue(createRefsResponse("feature/new", "newhash1"));
+		getGitLogQueryMock.mockResolvedValue(createLogResponse("newhash1", "New branch commit"));
+		await act(async () => {
+			root.render(<HookHarness taskScope={null} branch="feature/new" onRender={onRender} />);
+			await flushPromises();
+		});
+
+		expect(latest.activeRef?.name).toBe("feature/new");
+		expect(latest.selectedCommitHash).toBe("newhash1");
+		expect(latest.commits.map((commit) => commit.hash)).toEqual(["newhash1"]);
+		expect(getGitLogQueryMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({ ref: "feature/new", refs: ["feature/new"] }),
+			expect.anything(),
+		);
 	});
 
 	it("does not expose home git history data during a task scope transition", async () => {

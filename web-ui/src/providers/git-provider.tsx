@@ -57,7 +57,6 @@ export interface GitContextValue {
 		branch?: string | null,
 		options?: { updateHomeSummary?: boolean },
 	) => Promise<void>;
-	switchHomeBranch: (branch: string) => Promise<void>;
 	resetGitActionState: () => void;
 	taskGitActionLoadingByTaskId: Record<string, TaskGitActionLoadingState>;
 	onStashAndRetry: (() => void) | undefined;
@@ -109,8 +108,7 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 	const isProjectUnavailable = currentProjectAvailability?.status === "unavailable";
 	const availableProjectId = isProjectUnavailable ? null : currentProjectId;
 	const { projectPath, refreshProjectState, projectGit } = useProjectSyncContext();
-	const { runtimeProjectConfig, skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } =
-		useProjectRuntimeContext();
+	const { runtimeProjectConfig } = useProjectRuntimeContext();
 
 	const { board, selectedCard, sendTaskSessionInput, fetchTaskWorktreeInfo } = useBoardContext();
 	const { isGitHistoryOpen, mainView, navigateToGitView } = useSurfaceNavigationContext();
@@ -156,8 +154,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		board,
 		selectBranchView: fileBrowserSelectBranchView,
 		homeGitSummary,
-		skipHomeCheckoutConfirmation,
-		skipTaskCheckoutConfirmation,
 		onCheckoutSuccess: fileBrowserReturnToContextual,
 		onConflictDetected: navigateToGitView,
 	});
@@ -172,8 +168,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		taskChangedFiles: selectedCard ? selectedTaskGitState?.changedFiles : undefined,
 		taskId: selectedCard?.card.id ?? null,
 		baseRef: selectedCard?.card.baseRef ?? null,
-		skipTaskCheckoutConfirmation,
-		skipHomeCheckoutConfirmation,
 		onConflictDetected: navigateToGitView,
 	});
 
@@ -216,7 +210,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 		gitHistory,
 		gitHistoryTaskScope,
 		runGitAction,
-		switchHomeBranch,
 		resetGitActionState,
 		taskGitActionLoadingByTaskId,
 		onStashAndRetry,
@@ -248,7 +241,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			gitHistory,
 			gitHistoryTaskScope,
 			runGitAction,
-			switchHomeBranch,
 			resetGitActionState,
 			taskGitActionLoadingByTaskId,
 			onStashAndRetry,
@@ -273,7 +265,6 @@ export function GitProvider({ children }: GitProviderProps): ReactNode {
 			gitHistory,
 			gitHistoryTaskScope,
 			runGitAction,
-			switchHomeBranch,
 			resetGitActionState,
 			taskGitActionLoadingByTaskId,
 			onStashAndRetry,

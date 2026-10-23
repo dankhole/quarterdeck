@@ -7,13 +7,7 @@ import { HarnessSection } from "@/components/settings/agent-section";
 import { CodeNavigationSection } from "@/components/settings/code-navigation-section";
 import { DesktopEnvironmentSection } from "@/components/settings/desktop-environment-section";
 import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/components/settings/display-sections";
-import {
-	ConfirmationsSection,
-	DiagnosticsSection,
-	EditorSection,
-	GitSection,
-	TroubleshootingSection,
-} from "@/components/settings/general-sections";
+import { DiagnosticsSection, EditorSection, TroubleshootingSection } from "@/components/settings/general-sections";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { Button } from "@/components/ui/button";
 import {
@@ -192,10 +186,8 @@ export function RuntimeSettingsDialog({
 					<AiFeaturesSection {...sectionProps} llmConfigured={config?.llmConfigured ?? false} />
 					<NotificationsSection {...sectionProps} />
 					<TerminalSection {...sectionProps} />
-					<GitSection {...sectionProps} />
 					<EditorSection {...sectionProps} />
 					<CodeNavigationSection {...sectionProps} projectId={projectId} />
-					<ConfirmationsSection {...sectionProps} />
 					<TroubleshootingSection {...sectionProps} onResetLayout={resetLayoutCustomizations} />
 
 					<h5 className="font-semibold text-text-primary mt-4 mb-0">Project</h5>

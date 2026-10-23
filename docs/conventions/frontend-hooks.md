@@ -193,7 +193,6 @@ Use context providers and typed `useXxxContext()` hooks for React-aware shared s
       // Actions
       runGitAction: (action: GitAction) => Promise<GitActionResult>;
       handleToggleGitHistory: () => void;
-      switchHomeBranch: (branch: string) => Promise<void>;
 
       // Navigation
       navigateToFile: (path: string) => void;

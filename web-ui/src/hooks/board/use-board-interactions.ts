@@ -41,8 +41,6 @@ interface UseBoardInteractionsInput {
 	closeGitHistory: () => void;
 	clearTrash: UseTaskLifecycleOperationsResult["clearTrash"];
 	executeTaskLifecycle: UseTaskLifecycleOperationsResult["executeTaskLifecycle"];
-	showTrashWorktreeNotice: boolean;
-	saveTrashWorktreeNoticeDismissed: () => void;
 }
 
 export interface UseBoardInteractionsResult {
@@ -85,8 +83,6 @@ export function useBoardInteractions({
 	closeGitHistory,
 	clearTrash,
 	executeTaskLifecycle,
-	showTrashWorktreeNotice,
-	saveTrashWorktreeNoticeDismissed,
 }: UseBoardInteractionsInput): UseBoardInteractionsResult {
 	const {
 		handleProgrammaticCardMoveReady,
@@ -132,8 +128,6 @@ export function useBoardInteractions({
 			});
 			setTrashWarningState({ open: true, warning: viewModel, card, fromColumnId, optimisticMoveApplied });
 		},
-		showTrashWorktreeNotice,
-		saveTrashWorktreeNoticeDismissed,
 	});
 
 	useEffect(() => {

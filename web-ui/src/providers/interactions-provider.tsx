@@ -9,7 +9,6 @@ import {
 } from "@/hooks/board";
 import { useBoardContext } from "@/providers/board-provider";
 import { useProjectNavigationContext } from "@/providers/project-provider";
-import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useTaskEditorContext } from "@/providers/task-editor-provider";
 import { findCardSelection } from "@/state/board-state";
@@ -92,7 +91,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 	const { prepareCreateTaskForLifecycle } = taskEditor;
 
 	const { currentProjectId } = useProjectNavigationContext();
-	const { showTrashWorktreeNotice, saveTrashWorktreeNoticeDismissed } = useProjectRuntimeContext();
 	const { closeGitHistory } = useSurfaceNavigationContext();
 
 	const [isClearTrashDialogOpen, setIsClearTrashDialogOpen] = useState(false);
@@ -129,8 +127,6 @@ export function InteractionsProvider({ children }: InteractionsProviderProps): R
 		closeGitHistory,
 		clearTrash: taskLifecycle.clearTrash,
 		executeTaskLifecycle: taskLifecycle.executeTaskLifecycle,
-		showTrashWorktreeNotice,
-		saveTrashWorktreeNoticeDismissed,
 	});
 
 	const { handleCreateAndStartTask, handleCreateStartAndOpenTask } = useTaskStartActions({

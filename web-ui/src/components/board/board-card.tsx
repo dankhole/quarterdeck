@@ -30,7 +30,6 @@ export const BoardCard = memo(function BoardCard({
 	selected = false,
 	showSummaryOnCards = false,
 	showSummaryOnHover = true,
-	uncommittedChangesOnCardsEnabled = false,
 	onClick,
 	onDoubleClick,
 	onStart,
@@ -57,7 +56,6 @@ export const BoardCard = memo(function BoardCard({
 	selected?: boolean;
 	showSummaryOnCards?: boolean;
 	showSummaryOnHover?: boolean;
-	uncommittedChangesOnCardsEnabled?: boolean;
 	onClick?: () => void;
 	onDoubleClick?: () => void;
 	onStart?: (taskId: string) => void;
@@ -112,7 +110,6 @@ export const BoardCard = memo(function BoardCard({
 		sessionSummary,
 		showSummaryOnCards,
 		showSummaryOnHover,
-		uncommittedChangesOnCardsEnabled,
 		onRestartSession: readOnly ? undefined : onRestartSession,
 	});
 	const isCardInteractive = !readOnly && canInteractWithCard;

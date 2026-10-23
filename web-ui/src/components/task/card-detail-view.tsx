@@ -36,7 +36,6 @@ export function CardDetailView({
 	terminalProps: TaskDetailTerminalProps;
 }): React.ReactElement {
 	const { sidebar, sidePanelRatio, setSidePanelRatio } = layoutProps;
-	const { skipTaskCheckoutConfirmation, skipHomeCheckoutConfirmation } = repositoryProps;
 	// Task repository identity needs the project root to distinguish shared-checkout tasks
 	// from isolated worktrees. If more task-detail props need project-scoped identity
 	// context, move this into a task repository identity provider instead of threading
@@ -48,8 +47,6 @@ export function CardDetailView({
 		sidePanelRatio,
 		setSidePanelRatio,
 		sidebar,
-		skipTaskCheckoutConfirmation,
-		skipHomeCheckoutConfirmation,
 	});
 
 	// The component renders as a wrapper div whose children are the side panel + right column.
@@ -89,7 +86,6 @@ export function CardDetailView({
 			<TaskBranchDialogs
 				taskBranchActions={detail.repository.taskBranchActions}
 				currentProjectId={currentProjectId}
-				onSkipTaskCheckoutConfirmationChange={repositoryProps.onSkipTaskCheckoutConfirmationChange}
 			/>
 		</div>
 	);

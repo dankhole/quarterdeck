@@ -67,7 +67,6 @@ export interface UseGitActionsResult {
 	openPrTaskLoadingById: Record<string, boolean>;
 	agentCommitTaskLoadingById: Record<string, boolean>;
 	agentOpenPrTaskLoadingById: Record<string, boolean>;
-	isSwitchingHomeBranch: boolean;
 	isDiscardingHomeWorkingChanges: boolean;
 	isStashAndRetryingPull: boolean;
 	gitActionError: GitActionErrorState | null;
@@ -82,7 +81,6 @@ export interface UseGitActionsResult {
 		branch?: string | null,
 		options?: GitSyncSummaryPolicyOptions,
 	) => Promise<void>;
-	switchHomeBranch: (branch: string) => Promise<void>;
 	discardHomeWorkingChanges: () => Promise<void>;
 	handleCommitTask: (taskId: string) => void;
 	handleOpenPrTask: (taskId: string) => void;
@@ -105,10 +103,8 @@ export function useGitActions({
 	const [taskGitActionLoadingByTaskId, setTaskGitActionLoadingByTaskId] = useState<
 		Record<string, TaskGitActionLoadingState>
 	>({});
-	const switchHomeBranchGuard = useLoadingGuard();
 	const discardHomeChangesGuard = useLoadingGuard();
 	const stashAndRetryPullGuard = useLoadingGuard();
-	const isSwitchingHomeBranch = switchHomeBranchGuard.isLoading;
 	const isDiscardingHomeWorkingChanges = discardHomeChangesGuard.isLoading;
 	const isStashAndRetryingPull = stashAndRetryPullGuard.isLoading;
 	const [gitActionError, setGitActionError] = useState<GitActionErrorState | null>(null);
@@ -343,7 +339,7 @@ export function useGitActions({
 			branch?: string | null,
 			options?: GitSyncSummaryPolicyOptions,
 		) => {
-			if (!currentProjectId || runningGitAction || isSwitchingHomeBranch) {
+			if (!currentProjectId || runningGitAction) {
 				return;
 			}
 			const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
@@ -389,79 +385,7 @@ export function useGitActions({
 				if (isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) setRunningGitAction(null);
 			}
 		},
-		[applyHomeGitSummaryOrRefresh, currentProjectId, isSwitchingHomeBranch, refreshGitHistory, runningGitAction],
-	);
-
-	const switchHomeBranch = useCallback(
-		async (branch: string) => {
-			const normalizedBranch = branch.trim();
-			const currentBranch = homeGitSummary?.currentBranch ?? null;
-			if (!currentProjectId || !normalizedBranch || normalizedBranch === currentBranch) {
-				return;
-			}
-			const requestScopeVersion = getProjectMetadataScopeVersion(currentProjectId);
-			await switchHomeBranchGuard.run(async () => {
-				try {
-					const trpcClient = getRuntimeTrpcClient(currentProjectId);
-					const payload = await trpcClient.project.checkoutGitBranch.mutate({
-						branch: normalizedBranch,
-					});
-					if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
-					// Preflight failures have an empty branch and placeholder summary;
-					// attempted checkouts retain the requested branch and a measured summary.
-					if ((payload.ok || payload.branch !== "") && payload.summary) {
-						applyHomeGitSummaryOrRefresh(payload.summary, requestScopeVersion);
-					}
-					if (!payload.ok || !payload.summary) {
-						const errorMessage = payload.error ?? "Switch branch failed.";
-						if (payload.dirtyTree) {
-							showGitErrorToast(`Could not switch to ${normalizedBranch}. ${errorMessage}`, {
-								timeout: 12000,
-								action: {
-									label: "Stash & Switch",
-									onClick: () => {
-										if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
-										void (async () => {
-											try {
-												const stashClient = getRuntimeTrpcClient(currentProjectId);
-												const stashResult = await stashClient.project.stashPush.mutate({
-													taskScope: null,
-													paths: [],
-												});
-												if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
-												if (!stashResult.ok) {
-													showGitErrorToast(`Stash failed: ${stashResult.error ?? "Unknown error"}`);
-													return;
-												}
-												await switchHomeBranch(normalizedBranch);
-											} catch (stashError) {
-												showGitErrorToast(`Stash failed: ${toErrorMessage(stashError)}`);
-											}
-										})();
-									},
-								},
-							});
-						} else {
-							showGitErrorToast(`Could not switch to ${normalizedBranch}. ${errorMessage}`);
-						}
-						return;
-					}
-					refreshGitHistory();
-					await refreshProjectState();
-				} catch (error) {
-					if (!isProjectMetadataScopeCurrent(currentProjectId, requestScopeVersion)) return;
-					showGitErrorToast(`Could not switch to ${normalizedBranch}. ${toErrorMessage(error)}`);
-				}
-			});
-		},
-		[
-			applyHomeGitSummaryOrRefresh,
-			currentProjectId,
-			switchHomeBranchGuard.run,
-			homeGitSummary?.currentBranch,
-			refreshGitHistory,
-			refreshProjectState,
-		],
+		[applyHomeGitSummaryOrRefresh, currentProjectId, refreshGitHistory, runningGitAction],
 	);
 
 	const discardHomeWorkingChanges = useCallback(async () => {
@@ -559,11 +483,10 @@ export function useGitActions({
 	const resetGitActionState = useCallback(() => {
 		setRunningGitAction(null);
 		setTaskGitActionLoadingByTaskId({});
-		switchHomeBranchGuard.reset();
 		discardHomeChangesGuard.reset();
 		stashAndRetryPullGuard.reset();
 		setGitActionError(null);
-	}, [switchHomeBranchGuard, discardHomeChangesGuard, stashAndRetryPullGuard]);
+	}, [discardHomeChangesGuard, stashAndRetryPullGuard]);
 
 	const onStashAndRetry =
 		gitActionError?.dirtyTree && gitActionError.action === "pull" ? stashAndRetryPull : undefined;
@@ -577,7 +500,6 @@ export function useGitActions({
 		openPrTaskLoadingById,
 		agentCommitTaskLoadingById,
 		agentOpenPrTaskLoadingById,
-		isSwitchingHomeBranch,
 		isDiscardingHomeWorkingChanges,
 		isStashAndRetryingPull,
 		gitActionError,
@@ -589,7 +511,6 @@ export function useGitActions({
 		gitHistory,
 		gitHistoryTaskScope,
 		runGitAction,
-		switchHomeBranch,
 		discardHomeWorkingChanges,
 		handleCommitTask,
 		handleOpenPrTask,

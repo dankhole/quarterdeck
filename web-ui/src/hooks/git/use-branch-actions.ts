@@ -28,10 +28,6 @@ interface UseBranchActionsOptions {
 	taskBranch?: string | null;
 	/** For task scope — whether the working tree has uncommitted changes. */
 	taskChangedFiles?: number;
-	/** Config: skip task checkout confirmation. */
-	skipTaskCheckoutConfirmation?: boolean;
-	/** Config: skip home checkout confirmation. */
-	skipHomeCheckoutConfirmation?: boolean;
 	/** Task ID (when in task context). */
 	taskId?: string | null;
 	/** Task base ref (when in task context). */
@@ -98,8 +94,6 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 		homeGitSummary,
 		taskBranch,
 		taskChangedFiles,
-		skipTaskCheckoutConfirmation = false,
-		skipHomeCheckoutConfirmation = false,
 		taskId,
 		baseRef,
 		onCheckoutSuccess,
@@ -250,30 +244,13 @@ export function useBranchActions(options: UseBranchActionsOptions): UseBranchAct
 				currentBranch,
 				dirtyWorkingTree,
 				worktreeBranches,
-				skipTaskConfirmation: skipTaskCheckoutConfirmation,
-				skipHomeConfirmation: skipHomeCheckoutConfirmation,
 				taskId: taskId ?? undefined,
 				baseRef: baseRef ?? undefined,
 			});
 
-			if (result === "skip") {
-				void performCheckout(branch, scope, taskId ?? undefined, baseRef ?? undefined);
-				return;
-			}
-
 			setCheckoutDialogState(result);
 		},
-		[
-			currentBranch,
-			worktreeBranches,
-			taskChangedFiles,
-			homeGitSummary,
-			skipTaskCheckoutConfirmation,
-			skipHomeCheckoutConfirmation,
-			taskId,
-			baseRef,
-			performCheckout,
-		],
+		[currentBranch, worktreeBranches, taskChangedFiles, homeGitSummary, taskId, baseRef],
 	);
 
 	const handleConfirmCheckout = useCallback(

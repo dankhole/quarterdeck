@@ -30,8 +30,6 @@ interface UseCardDetailViewInput {
 	sidePanelRatio: number;
 	setSidePanelRatio: (ratio: number) => void;
 	sidebar: "projects" | "task_column" | "commit" | null;
-	skipTaskCheckoutConfirmation: boolean;
-	skipHomeCheckoutConfirmation: boolean;
 }
 
 export interface CardDetailViewLayoutState {
@@ -88,8 +86,6 @@ export function useCardDetailView({
 	sidePanelRatio,
 	setSidePanelRatio,
 	sidebar,
-	skipTaskCheckoutConfirmation,
-	skipHomeCheckoutConfirmation,
 }: UseCardDetailViewInput): UseCardDetailViewResult {
 	const { board, sessions: taskSessions, sendTaskSessionInput } = useBoardContext();
 	const terminalState = useTaskTerminalState(selection);
@@ -161,8 +157,6 @@ export function useCardDetailView({
 		homeGitSummary,
 		taskBranch: taskGitState.branch,
 		taskChangedFiles: taskGitState.changedFiles,
-		skipTaskCheckoutConfirmation,
-		skipHomeCheckoutConfirmation,
 		taskId: selection.card.id,
 		baseRef: selection.card.baseRef,
 		onCheckoutSuccess: taskReturnToContextual,

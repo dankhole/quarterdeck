@@ -9,21 +9,15 @@ import type { UseBranchActionsResult } from "@/hooks/git/use-branch-actions";
 interface TaskBranchDialogsProps {
 	taskBranchActions: UseBranchActionsResult;
 	currentProjectId: string | null;
-	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
 }
 
-export function TaskBranchDialogs({
-	taskBranchActions,
-	currentProjectId,
-	onSkipTaskCheckoutConfirmationChange,
-}: TaskBranchDialogsProps): React.ReactElement {
+export function TaskBranchDialogs({ taskBranchActions, currentProjectId }: TaskBranchDialogsProps): React.ReactElement {
 	return (
 		<>
 			<CheckoutConfirmationDialog
 				state={taskBranchActions.checkoutDialogState}
 				onClose={taskBranchActions.closeCheckoutDialog}
 				onConfirmCheckout={taskBranchActions.handleConfirmCheckout}
-				onSkipTaskConfirmationChange={onSkipTaskCheckoutConfirmationChange}
 				onStashAndCheckout={taskBranchActions.handleStashAndCheckout}
 				isStashingAndCheckingOut={taskBranchActions.isStashingAndCheckingOut}
 			/>

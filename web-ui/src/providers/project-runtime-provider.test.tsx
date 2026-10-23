@@ -157,7 +157,6 @@ describe("ProjectRuntimeProvider", () => {
 		expect(latestValue.selectedShortcutLabel).toBeNull();
 		expect(latestValue.isTaskAgentReady).toBeNull();
 		expect(latestValue.audibleNotificationsEnabled).toBe(CONFIG_DEFAULTS.audibleNotificationsEnabled);
-		expect(latestValue.showTrashWorktreeNotice).toBe(CONFIG_DEFAULTS.showTrashWorktreeNotice);
 	});
 
 	it("skips default base ref saves when no project is selected", async () => {
@@ -175,33 +174,5 @@ describe("ProjectRuntimeProvider", () => {
 
 		expect(mockSaveRuntimeConfig).not.toHaveBeenCalled();
 		expect(mockShowAppToast).not.toHaveBeenCalled();
-	});
-
-	it("shows a toast when dismissing the trash worktree notice fails", async () => {
-		const refreshRuntimeProjectConfig = vi.fn();
-		mockUseRuntimeProjectConfig.mockReturnValue({
-			config: {
-				showTrashWorktreeNotice: true,
-			},
-			isLoading: false,
-			refresh: refreshRuntimeProjectConfig,
-		});
-		mockSaveRuntimeConfig.mockRejectedValue(new Error("save failed"));
-
-		renderProvider({ currentProjectId: "project-1", navigationCurrentProjectId: null });
-
-		await act(async () => {
-			latestValue.saveTrashWorktreeNoticeDismissed();
-			await Promise.resolve();
-		});
-
-		expect(mockSaveRuntimeConfig).toHaveBeenCalledWith("project-1", {
-			showTrashWorktreeNotice: false,
-		});
-		expect(refreshRuntimeProjectConfig).not.toHaveBeenCalled();
-		expect(mockShowAppToast).toHaveBeenCalledWith({
-			intent: "danger",
-			message: "Failed to dismiss trash worktree notice",
-		});
 	});
 });

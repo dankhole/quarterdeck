@@ -24,13 +24,6 @@ export interface SettingsFormValues {
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	codeNavigationEnabled: boolean;
 	lspServers: RuntimeConfigResponse["lspServers"];
-	showTrashWorktreeNotice: boolean;
-	uncommittedChangesOnCardsEnabled: boolean;
-	unmergedChangesIndicatorEnabled: boolean;
-	behindBaseIndicatorEnabled: boolean;
-	skipTaskCheckoutConfirmation: boolean;
-	skipHomeCheckoutConfirmation: boolean;
-	skipCherryPickConfirmation: boolean;
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
 	audibleNotificationEvents: {
@@ -65,17 +58,6 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		codeNavigationEnabled: config?.codeNavigationEnabled ?? CONFIG_DEFAULTS.codeNavigationEnabled,
 		lspServers: config?.lspServers ?? CONFIG_DEFAULTS.lspServers,
-		showTrashWorktreeNotice: config?.showTrashWorktreeNotice ?? CONFIG_DEFAULTS.showTrashWorktreeNotice,
-		uncommittedChangesOnCardsEnabled:
-			config?.uncommittedChangesOnCardsEnabled ?? CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
-		unmergedChangesIndicatorEnabled:
-			config?.unmergedChangesIndicatorEnabled ?? CONFIG_DEFAULTS.unmergedChangesIndicatorEnabled,
-		behindBaseIndicatorEnabled: config?.behindBaseIndicatorEnabled ?? CONFIG_DEFAULTS.behindBaseIndicatorEnabled,
-		skipTaskCheckoutConfirmation:
-			config?.skipTaskCheckoutConfirmation ?? CONFIG_DEFAULTS.skipTaskCheckoutConfirmation,
-		skipHomeCheckoutConfirmation:
-			config?.skipHomeCheckoutConfirmation ?? CONFIG_DEFAULTS.skipHomeCheckoutConfirmation,
-		skipCherryPickConfirmation: config?.skipCherryPickConfirmation ?? CONFIG_DEFAULTS.skipCherryPickConfirmation,
 		audibleNotificationsEnabled: config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
 		audibleNotificationVolume: config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume,
 		audibleNotificationEvents: config?.audibleNotificationEvents ?? {

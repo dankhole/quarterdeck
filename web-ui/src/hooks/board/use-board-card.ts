@@ -10,7 +10,6 @@ interface UseBoardCardInput {
 	sessionSummary?: RuntimeTaskSessionSummary;
 	showSummaryOnCards: boolean;
 	showSummaryOnHover: boolean;
-	uncommittedChangesOnCardsEnabled: boolean;
 	onRestartSession?: (taskId: string) => void;
 }
 
@@ -20,7 +19,6 @@ export function useBoardCard({
 	sessionSummary,
 	showSummaryOnCards,
 	showSummaryOnHover,
-	uncommittedChangesOnCardsEnabled,
 	onRestartSession,
 }: UseBoardCardInput) {
 	const [isHovered, setIsHovered] = useState(false);
@@ -40,7 +38,6 @@ export function useBoardCard({
 				workspacePath,
 				showSummaryOnCards,
 				showSummaryOnHover,
-				uncommittedChangesOnCardsEnabled,
 				isRestartDelayElapsed,
 				hasRestartSessionHandler: Boolean(onRestartSession),
 			}),
@@ -52,7 +49,6 @@ export function useBoardCard({
 			workspacePath,
 			showSummaryOnCards,
 			showSummaryOnHover,
-			uncommittedChangesOnCardsEnabled,
 			isRestartDelayElapsed,
 			onRestartSession,
 		],

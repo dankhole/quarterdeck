@@ -1,10 +1,8 @@
 import * as RadixAlertDialog from "@radix-ui/react-alert-dialog";
-import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { AlertTriangle, Check, GitBranch, Info } from "lucide-react";
-import { useCallback, useState } from "react";
+import { AlertTriangle, GitBranch, Info } from "lucide-react";
+import { useCallback } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/components/ui/cn";
 import { AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -19,7 +17,6 @@ interface CheckoutConfirmationDialogProps {
 	onClose: () => void;
 	onConfirmCheckout: (branch: string, scope: "home" | "task", taskId?: string, baseRef?: string) => void;
 	onNavigateToTask?: (taskTitle: string) => void;
-	onSkipTaskConfirmationChange?: (skip: boolean) => void;
 	onStashAndCheckout?: () => void;
 	isStashingAndCheckingOut?: boolean;
 }
@@ -29,27 +26,19 @@ export function CheckoutConfirmationDialog({
 	onClose,
 	onConfirmCheckout,
 	onNavigateToTask,
-	onSkipTaskConfirmationChange,
 	onStashAndCheckout,
 	isStashingAndCheckingOut,
 }: CheckoutConfirmationDialogProps): React.ReactElement | null {
-	const [dontShowAgain, setDontShowAgain] = useState(false);
-
 	// Safe from Radix onOpenChange double-fire: onConfirmCheckout runs synchronously before handleCancel fires.
 	const handleConfirm = useCallback(() => {
 		if (state.type === "confirm" || state.type === "dirty_warning") {
-			if (state.scope === "task" && dontShowAgain && onSkipTaskConfirmationChange) {
-				onSkipTaskConfirmationChange(true);
-			}
 			onConfirmCheckout(state.branch, state.scope, state.taskId, state.baseRef);
 		}
 		onClose();
-		setDontShowAgain(false);
-	}, [state, dontShowAgain, onSkipTaskConfirmationChange, onConfirmCheckout, onClose]);
+	}, [state, onConfirmCheckout, onClose]);
 
 	const handleCancel = useCallback(() => {
 		onClose();
-		setDontShowAgain(false);
 	}, [onClose]);
 
 	if (state.type === "closed") {
@@ -165,24 +154,6 @@ export function CheckoutConfirmationDialog({
 					Switch to <code className="text-xs bg-surface-2 px-1 py-0.5 rounded">{state.branch}</code>?
 				</p>
 				<p className="text-text-tertiary text-xs">{description}</p>
-				{!isHome && onSkipTaskConfirmationChange ? (
-					<label htmlFor="skip-checkout-confirm" className="flex items-center gap-2 mt-1 cursor-pointer">
-						<RadixCheckbox.Root
-							id="skip-checkout-confirm"
-							checked={dontShowAgain}
-							onCheckedChange={(checked) => setDontShowAgain(checked === true)}
-							className={cn(
-								"flex h-3.5 w-3.5 shrink-0 translate-y-px items-center justify-center rounded border",
-								dontShowAgain ? "bg-accent border-accent" : "bg-surface-2 border-border-bright",
-							)}
-						>
-							<RadixCheckbox.Indicator className="flex items-center justify-center">
-								<Check size={10} className="block text-white" />
-							</RadixCheckbox.Indicator>
-						</RadixCheckbox.Root>
-						<span className="text-xs text-text-tertiary">Don't show again</span>
-					</label>
-				) : null}
 			</AlertDialogBody>
 			<AlertDialogFooter>
 				<RadixAlertDialog.Cancel asChild>
@@ -202,7 +173,7 @@ export function CheckoutConfirmationDialog({
 
 /**
  * Determines what dialog state to show before a checkout attempt.
- * Returns "skip" if no dialog is needed (setting enabled or already on branch).
+ * Keeps the dialog closed when the requested branch is already checked out.
  */
 export function resolveCheckoutDialogState(options: {
 	branch: string;
@@ -210,25 +181,15 @@ export function resolveCheckoutDialogState(options: {
 	currentBranch: string | null;
 	dirtyWorkingTree: boolean;
 	worktreeBranches: Map<string, string>;
-	skipTaskConfirmation: boolean;
-	skipHomeConfirmation: boolean;
 	taskId?: string;
 	baseRef?: string;
-}): CheckoutDialogState | "skip" {
-	const {
-		branch,
-		scope,
-		currentBranch,
-		dirtyWorkingTree,
-		worktreeBranches,
-		skipTaskConfirmation,
-		skipHomeConfirmation,
-	} = options;
+}): CheckoutDialogState {
+	const { branch, scope, currentBranch, dirtyWorkingTree, worktreeBranches } = options;
 
 	// Already on this branch
 	if (currentBranch === branch) {
 		showAppToast({ message: `Already on ${branch}` });
-		return "skip";
+		return { type: "closed" };
 	}
 
 	// Branch locked by a worktree
@@ -246,14 +207,6 @@ export function resolveCheckoutDialogState(options: {
 			taskId: options.taskId,
 			baseRef: options.baseRef,
 		};
-	}
-
-	// Check skip settings
-	if (scope === "task" && skipTaskConfirmation) {
-		return "skip";
-	}
-	if (scope === "home" && skipHomeConfirmation) {
-		return "skip";
 	}
 
 	return { type: "confirm", branch, scope, taskId: options.taskId, baseRef: options.baseRef };

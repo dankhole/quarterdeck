@@ -119,8 +119,6 @@ describe.each([
 			currentBranch,
 			dirtyWorkingTree: false,
 			worktreeBranches: branches,
-			skipTaskConfirmation: false,
-			skipHomeConfirmation: false,
 		});
 	}
 
@@ -132,7 +130,7 @@ describe.each([
 		});
 		expect(checkout()).toMatchObject({ type: "blocked", taskTitle: "Restored task" });
 		// The current checkout remains selectable rather than blocking itself.
-		expect(checkout("original-branch")).toBe("skip");
+		expect(checkout("original-branch")).toEqual({ type: "closed" });
 		act(() => {
 			setTaskRepositoryInfo("project-a", { ...attached, isDetached: true, branch: null });
 		});

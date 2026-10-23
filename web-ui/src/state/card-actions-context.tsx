@@ -39,7 +39,6 @@ export interface ReactiveCardState {
 	isLlmGenerationDisabled: boolean;
 	showSummaryOnCards: boolean;
 	showSummaryOnHover: boolean;
-	uncommittedChangesOnCardsEnabled: boolean;
 }
 
 const StableCardActionsContext = createContext<StableCardActions | null>(null);

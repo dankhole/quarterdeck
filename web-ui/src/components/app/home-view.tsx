@@ -167,9 +167,7 @@ export function HomeView({
 											<GitHistoryView
 												projectId={projectNavigation.currentProjectId}
 												gitHistory={git.gitHistory}
-												onCheckoutBranch={(branch) => {
-													void git.switchHomeBranch(branch);
-												}}
+												onCheckoutBranch={git.fileBrowserBranchActions.handleCheckoutBranch}
 												onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}
 												onPullLatest={() => {
 													void git.runGitAction("pull");
@@ -178,7 +176,6 @@ export function HomeView({
 												onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
 												onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 												taskScope={git.gitHistoryTaskScope}
-												skipCherryPickConfirmation={projectRuntime.skipCherryPickConfirmation}
 											/>
 										) : undefined
 									}

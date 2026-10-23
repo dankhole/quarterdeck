@@ -54,8 +54,7 @@ export function BoardColumn({
 		onUpdateTaskTitle,
 		onTogglePinTask,
 	} = useStableCardActions();
-	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover, uncommittedChangesOnCardsEnabled } =
-		useReactiveCardState();
+	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover } = useReactiveCardState();
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
 	const canClearTrash = !readOnly && column.id === "trash" && onClearTrash;
 	const isDropDisabled =
@@ -185,7 +184,6 @@ export function BoardColumn({
 												isMoveToTrashLoading={moveToTrashLoadingById[card.id] ?? false}
 												showSummaryOnCards={showSummaryOnCards}
 												showSummaryOnHover={showSummaryOnHover}
-												uncommittedChangesOnCardsEnabled={uncommittedChangesOnCardsEnabled}
 												onClick={() => {
 													if (column.id === "review" && card.unstarted) {
 														onEditTask?.(card);

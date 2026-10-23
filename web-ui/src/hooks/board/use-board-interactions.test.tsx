@@ -101,8 +101,6 @@ function HookHarness({
 		setIsClearTrashDialogOpen,
 		closeGitHistory: () => {},
 		executeTaskLifecycle,
-		showTrashWorktreeNotice: true,
-		saveTrashWorktreeNoticeDismissed: () => {},
 	});
 
 	useEffect(() => {

@@ -124,8 +124,6 @@ const newRequiredProps = {
 	},
 	repositoryProps: {
 		fileEditorAutosaveMode: "off" as const,
-		skipTaskCheckoutConfirmation: false,
-		skipHomeCheckoutConfirmation: false,
 		onDeselectTask: () => {},
 	},
 	terminalProps: {
@@ -159,7 +157,6 @@ const noopReactiveState: ReactiveCardState = {
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
 	showSummaryOnHover: true,
-	uncommittedChangesOnCardsEnabled: false,
 };
 
 const noopBoardContext: BoardContextValue = {
@@ -217,7 +214,6 @@ const noopGitContext: GitContextValue = {
 	},
 	gitHistoryTaskScope: null,
 	runGitAction: async () => {},
-	switchHomeBranch: async () => {},
 	resetGitActionState: () => {},
 	taskGitActionLoadingByTaskId: {},
 	onStashAndRetry: undefined,

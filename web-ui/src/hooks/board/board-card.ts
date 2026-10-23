@@ -23,7 +23,6 @@ export function resolveBoardCardViewModel({
 	workspacePath,
 	showSummaryOnCards,
 	showSummaryOnHover,
-	uncommittedChangesOnCardsEnabled,
 	isRestartDelayElapsed,
 	hasRestartSessionHandler,
 }: {
@@ -34,7 +33,6 @@ export function resolveBoardCardViewModel({
 	workspacePath: string | null;
 	showSummaryOnCards: boolean;
 	showSummaryOnHover: boolean;
-	uncommittedChangesOnCardsEnabled: boolean;
 	isRestartDelayElapsed: boolean;
 	hasRestartSessionHandler: boolean;
 }) {
@@ -93,10 +91,7 @@ export function resolveBoardCardViewModel({
 					deletions: reviewWorktreeSnapshot.deletions ?? 0,
 				};
 	const showUncommittedChangesIndicator =
-		uncommittedChangesOnCardsEnabled &&
-		showProjectStatus &&
-		!isTrashCard &&
-		(reviewWorktreeSnapshot?.changedFiles ?? 0) > 0;
+		showProjectStatus && !isTrashCard && (reviewWorktreeSnapshot?.changedFiles ?? 0) > 0;
 	const effectiveAgentId = sessionSummary?.agentId ?? card.agentId ?? null;
 	const agentBadge = effectiveAgentId
 		? {

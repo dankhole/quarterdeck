@@ -225,8 +225,6 @@ function createRepositoryProps(): TaskDetailRepositoryProps {
 		pinnedBranches: ["main"],
 		onTogglePinBranch: () => {},
 		fileEditorAutosaveMode: "off",
-		skipTaskCheckoutConfirmation: false,
-		skipHomeCheckoutConfirmation: false,
 		onDeselectTask: () => {},
 	};
 }

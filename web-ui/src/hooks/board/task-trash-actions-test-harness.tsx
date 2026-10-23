@@ -74,8 +74,6 @@ export interface HookHarnessProps {
 		fromColumnId: BoardColumnId,
 		optimisticMoveApplied: boolean,
 	) => void;
-	showTrashWorktreeNotice?: boolean;
-	saveTrashWorktreeNoticeDismissed?: () => void;
 	setSelectedTaskIdOverride?: Dispatch<SetStateAction<string | null>>;
 }
 
@@ -115,8 +113,6 @@ export function HookHarness({
 	onSnapshot,
 	executeTaskLifecycle,
 	onRequestTrashConfirmation,
-	showTrashWorktreeNotice,
-	saveTrashWorktreeNoticeDismissed,
 	setSelectedTaskIdOverride,
 }: HookHarnessProps): null {
 	const [board, setBoard] = useState<BoardData>(() => (boardFactory ? boardFactory() : createBoard()));
@@ -127,8 +123,6 @@ export function HookHarness({
 		setSelectedTaskId: setSelectedTaskIdOverride ?? setSelectedTaskId,
 		executeTaskLifecycle: executeTaskLifecycle ?? (async (draft) => createSuccessfulLifecycleResult(draft, board)),
 		onRequestTrashConfirmation,
-		showTrashWorktreeNotice,
-		saveTrashWorktreeNoticeDismissed,
 	});
 
 	useEffect(() => {

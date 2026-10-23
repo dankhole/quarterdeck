@@ -12,7 +12,6 @@ const reactive: ReactiveCardState = {
 	isLlmGenerationDisabled: false,
 	showSummaryOnCards: false,
 	showSummaryOnHover: true,
-	uncommittedChangesOnCardsEnabled: false,
 };
 const card = (id: string, unstarted = false) => ({
 	id,

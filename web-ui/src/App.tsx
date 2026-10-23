@@ -474,8 +474,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								selectedCard
 									? (selectedTaskWorktreeSnapshot?.changedFiles ?? 0) > 0
 										? "red"
-										: projectRuntime.unmergedChangesIndicatorEnabled &&
-												(selectedTaskWorktreeSnapshot?.hasUnmergedChanges ?? false)
+										: (selectedTaskWorktreeSnapshot?.hasUnmergedChanges ?? false)
 											? "blue"
 											: undefined
 									: (homeGitSummary?.changedFiles ?? 0) > 0
@@ -483,7 +482,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										: undefined
 							}
 							isBehindBase={
-								projectRuntime.behindBaseIndicatorEnabled && selectedCard
+								selectedCard
 									? (selectedTaskWorktreeSnapshot?.behindBaseCount ?? 0) > 0 ||
 										(selectedTaskWorktreeSnapshot?.behindRemoteBaseCount ?? 0) > 0
 									: false
@@ -600,7 +599,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 										onRenameBranch={git.fileBrowserBranchActions.handleRenameBranch}
 										onResetToRef={git.fileBrowserBranchActions.handleResetToRef}
 										taskScope={git.gitHistoryTaskScope}
-										skipCherryPickConfirmation={projectRuntime.skipCherryPickConfirmation}
 									/>
 								) : undefined,
 								pinnedBranches: projectRuntime.pinnedBranches,
@@ -608,9 +606,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								fileEditorAutosaveMode:
 									projectRuntime.runtimeProjectConfig?.fileEditorAutosaveMode ??
 									CONFIG_DEFAULTS.fileEditorAutosaveMode,
-								skipTaskCheckoutConfirmation: projectRuntime.skipTaskCheckoutConfirmation,
-								skipHomeCheckoutConfirmation: projectRuntime.skipHomeCheckoutConfirmation,
-								onSkipTaskCheckoutConfirmationChange: projectRuntime.handleSkipTaskCheckoutConfirmationChange,
 								onDeselectTask: () => setSelectedTaskId(null),
 							}}
 							terminalProps={{

@@ -29,9 +29,6 @@ export interface TaskDetailRepositoryProps {
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
-	skipTaskCheckoutConfirmation: boolean;
-	skipHomeCheckoutConfirmation: boolean;
-	onSkipTaskCheckoutConfirmationChange?: (skip: boolean) => void;
 	onDeselectTask: () => void;
 }
 

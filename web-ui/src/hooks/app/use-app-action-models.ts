@@ -141,16 +141,12 @@ export function useAppActionModels({
 				projectRuntime.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
 			showSummaryOnHover:
 				projectRuntime.runtimeProjectConfig?.showSummaryOnHover ?? CONFIG_DEFAULTS.showSummaryOnHover,
-			uncommittedChangesOnCardsEnabled:
-				projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled ??
-				CONFIG_DEFAULTS.uncommittedChangesOnCardsEnabled,
 		}),
 		[
 			interactions.moveToTrashLoadingById,
 			projectRuntime.isLlmGenerationDisabled,
 			projectRuntime.runtimeProjectConfig?.showSummaryOnCards,
 			projectRuntime.runtimeProjectConfig?.showSummaryOnHover,
-			projectRuntime.runtimeProjectConfig?.uncommittedChangesOnCardsEnabled,
 		],
 	);
 

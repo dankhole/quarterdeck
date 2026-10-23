@@ -39,7 +39,7 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 		getTaskWorktreeInfoMock.mockReset();
 	});
 
-	it("shows toast when trashing from in_progress with showTrashWorktreeNotice enabled", async () => {
+	it("shows toast when trashing from in_progress", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		const boardFactory = (): BoardData => ({
@@ -58,7 +58,6 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					boardFactory={boardFactory}
-					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -86,7 +85,6 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -110,7 +108,6 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					executeTaskLifecycle={async () => null}
-					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -125,13 +122,12 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 		expect(toastMock).not.toHaveBeenCalled();
 	});
 
-	it("does not show toast when trashing from backlog", async () => {
+	it("does not show toast when trashing an unstarted task", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -148,36 +144,12 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 		expect(toastMock).not.toHaveBeenCalled();
 	});
 
-	it("does not show toast when showTrashWorktreeNotice is false", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					showTrashWorktreeNotice={false}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		const initialSnapshot = requireSnapshot(latestSnapshot);
-
-		await act(async () => {
-			await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
-		});
-
-		expect(toastMock).not.toHaveBeenCalled();
-	});
-
 	it("does not show toast when skipWorkingChangeWarning bypasses the normal path", async () => {
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			ctx.root.render(
 				<HookHarness
-					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -193,161 +165,6 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 			});
 		});
 
-		expect(toastMock).not.toHaveBeenCalled();
-	});
-
-	it("toast action calls saveTrashWorktreeNoticeDismissed", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const saveTrashWorktreeNoticeDismissed = vi.fn();
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					showTrashWorktreeNotice={true}
-					saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		const initialSnapshot = requireSnapshot(latestSnapshot);
-
-		await act(async () => {
-			await initialSnapshot.requestMoveTaskToTrash("task-2", "review");
-		});
-
-		expect(toastMock).toHaveBeenCalledTimes(1);
-
-		const toastOptions = toastMock.mock.calls[0]![1];
-		toastOptions.cancel.onClick();
-
-		expect(saveTrashWorktreeNoticeDismissed).toHaveBeenCalledTimes(1);
-	});
-
-	it("suppresses toast after showTrashWorktreeNotice prop transitions from true to false", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		const boardFactory = (): BoardData => ({
-			columns: [
-				{
-					id: "in_progress",
-					title: "In Progress",
-					cards: [createTask("task-ip", "In progress task", 1)],
-				},
-				{
-					id: "review",
-					title: "Review",
-					cards: [createTask("task-rv", "Review task", 2)],
-				},
-				{ id: "trash", title: "Trash", cards: [] },
-			],
-		});
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					boardFactory={boardFactory}
-					showTrashWorktreeNotice={true}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		let snapshot = requireSnapshot(latestSnapshot);
-
-		await act(async () => {
-			await snapshot.requestMoveTaskToTrash("task-rv", "review");
-		});
-		expect(toastMock).toHaveBeenCalledTimes(1);
-		toastMock.mockClear();
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					boardFactory={boardFactory}
-					showTrashWorktreeNotice={false}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		snapshot = requireSnapshot(latestSnapshot);
-
-		await act(async () => {
-			await snapshot.requestMoveTaskToTrash("task-ip", "in_progress");
-		});
-		expect(toastMock).not.toHaveBeenCalled();
-	});
-
-	it("full dismiss lifecycle: 'Don't show again' followed by prop update suppresses future toasts", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const saveTrashWorktreeNoticeDismissed = vi.fn();
-
-		const boardFactory = (): BoardData => ({
-			columns: [
-				{
-					id: "in_progress",
-					title: "In Progress",
-					cards: [createTask("task-ip", "In progress task", 1)],
-				},
-				{
-					id: "review",
-					title: "Review",
-					cards: [createTask("task-rv", "Review task", 2)],
-				},
-				{ id: "trash", title: "Trash", cards: [] },
-			],
-		});
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					boardFactory={boardFactory}
-					showTrashWorktreeNotice={true}
-					saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		let snapshot = requireSnapshot(latestSnapshot);
-
-		await act(async () => {
-			await snapshot.requestMoveTaskToTrash("task-rv", "review");
-		});
-		expect(toastMock).toHaveBeenCalledTimes(1);
-
-		const toastOptions = toastMock.mock.calls[0]![1];
-		toastOptions.cancel.onClick();
-		expect(saveTrashWorktreeNoticeDismissed).toHaveBeenCalledTimes(1);
-		toastMock.mockClear();
-
-		await act(async () => {
-			ctx.root.render(
-				<HookHarness
-					boardFactory={boardFactory}
-					showTrashWorktreeNotice={false}
-					saveTrashWorktreeNoticeDismissed={saveTrashWorktreeNoticeDismissed}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-		});
-
-		snapshot = requireSnapshot(latestSnapshot);
-
-		await act(async () => {
-			await snapshot.requestMoveTaskToTrash("task-ip", "in_progress");
-		});
 		expect(toastMock).not.toHaveBeenCalled();
 	});
 
@@ -367,7 +184,6 @@ describe("useTaskTrashActions — worktree notice toast", () => {
 			ctx.root.render(
 				<HookHarness
 					onRequestTrashConfirmation={onRequestTrashConfirmation}
-					showTrashWorktreeNotice={true}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}

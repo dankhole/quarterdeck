@@ -24,8 +24,6 @@ export function useTaskTrashActions({
 	setSelectedTaskId,
 	executeTaskLifecycle,
 	onRequestTrashConfirmation,
-	showTrashWorktreeNotice,
-	saveTrashWorktreeNoticeDismissed,
 }: {
 	board: BoardData;
 	presentLifecycleBoard: Dispatch<SetStateAction<BoardData>>;
@@ -37,8 +35,6 @@ export function useTaskTrashActions({
 		fromColumnId: BoardColumnId,
 		optimisticMoveApplied: boolean,
 	) => void;
-	showTrashWorktreeNotice?: boolean;
-	saveTrashWorktreeNoticeDismissed?: () => void;
 }): {
 	confirmMoveTaskToTrash: (
 		task: BoardCard,
@@ -154,29 +150,15 @@ export function useTaskTrashActions({
 				movedToTrash &&
 				!isNonIsolated &&
 				!selection.card.unstarted &&
-				showTrashWorktreeNotice &&
 				(fromColumnId === "in_progress" || fromColumnId === "review")
 			) {
 				toast("Task moved to Trash", {
 					description: "The worktree and uncommitted work were kept. Restore the task to resume it.",
 					duration: 7000,
-					className: "toast-with-dismiss-link",
-					cancel: {
-						label: "Don't show again",
-						onClick: () => {
-							saveTrashWorktreeNoticeDismissed?.();
-						},
-					},
 				});
 			}
 		},
-		[
-			onRequestTrashConfirmation,
-			performMoveTaskToTrash,
-			saveTrashWorktreeNoticeDismissed,
-			setSelectedTaskId,
-			showTrashWorktreeNotice,
-		],
+		[onRequestTrashConfirmation, performMoveTaskToTrash, setSelectedTaskId],
 	);
 
 	return {
