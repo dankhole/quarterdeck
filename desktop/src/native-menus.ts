@@ -15,7 +15,6 @@ export interface DesktopMenuActions {
 	reloadWindow: () => void;
 	runtimeFailed?: boolean;
 	restartRuntime?: () => void;
-	environmentSetup?: () => void;
 	exportDiagnostics?: () => void;
 }
 
@@ -40,12 +39,6 @@ export function desktopMenuTemplate(actions: DesktopMenuActions): MenuItemConstr
 				{ role: "about" },
 				{ type: "separator" },
 				command("desktop.settings", "Settings…", "settings", "Cmd+,"),
-				{
-					id: "desktop.environment",
-					label: "Runtime Environment…",
-					enabled: actions.environmentSetup !== undefined,
-					click: () => actions.environmentSetup?.(),
-				},
 				{ type: "separator" },
 				{
 					id: "desktop.updateGuidance",

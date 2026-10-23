@@ -12,3 +12,5 @@ export const DESKTOP_NOTIFICATION_TARGET_CHANNEL = "quarterdeck:desktop-notifica
 export const DESKTOP_UPDATE_SNAPSHOT_CHANNEL = "quarterdeck:desktop-update-snapshot:v1";
 export const DESKTOP_UPDATE_SUBSCRIPTION_CHANNEL = "quarterdeck:desktop-update-subscription:v1";
 export const DESKTOP_UPDATE_INTENT_CHANNEL = "quarterdeck:desktop-update-intent:v1";
+export const DESKTOP_ENVIRONMENT_SNAPSHOT_CHANNEL = "quarterdeck:desktop-environment-snapshot:v1";
+export const DESKTOP_ENVIRONMENT_INTENT_CHANNEL = "quarterdeck:desktop-environment-intent:v1";

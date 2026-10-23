@@ -7,6 +7,7 @@ import type { Page } from "playwright-core";
 
 import { DesktopBrowserCoexistenceError, exerciseDesktopBrowserCoexistence } from "./desktop-browser-coexistence";
 import { DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
+import { exerciseDesktopEnvironmentSettings } from "./desktop-environment-settings";
 import type {
 	DesktopDocumentEvaluationModule,
 	DesktopEvaluationModule,
@@ -565,6 +566,7 @@ export async function runDesktopSmoke(options: {
 			await exerciseFakeAgentCoexistence(page, driver, true);
 			await driver.inspect("completed");
 		} else {
+			if (!options.agentMode || options.agentMode === "fake") await exerciseDesktopEnvironmentSettings(page, driver);
 			if (options.nativeExperience) {
 				try {
 					const proof = await exerciseDesktopNativeExperience(page, driver);

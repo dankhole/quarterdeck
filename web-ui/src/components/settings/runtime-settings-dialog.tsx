@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import { HarnessSection } from "@/components/settings/agent-section";
 import { CodeNavigationSection } from "@/components/settings/code-navigation-section";
+import { DesktopEnvironmentSection } from "@/components/settings/desktop-environment-section";
 import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/components/settings/display-sections";
 import {
 	ConfirmationsSection,
@@ -166,7 +167,7 @@ export function RuntimeSettingsDialog({
 
 	return (
 		<>
-			<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ width: "960px" }}>
+			<Dialog open={open} onOpenChange={onOpenChange} contentStyle={{ maxWidth: "960px" }}>
 				<DialogHeader title="Settings" icon={<Settings size={16} />} />
 				<DialogBody>
 					<h5 className="font-semibold text-text-primary m-0">Global</h5>
@@ -185,6 +186,7 @@ export function RuntimeSettingsDialog({
 						{config?.globalConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
 
+					<DesktopEnvironmentSection open={open} />
 					<HarnessSection {...sectionProps} config={config} />
 					<DiagnosticsSection />
 					<AiFeaturesSection {...sectionProps} llmConfigured={config?.llmConfigured ?? false} />

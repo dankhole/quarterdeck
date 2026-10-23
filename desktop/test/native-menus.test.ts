@@ -65,6 +65,7 @@ describe("native menus", () => {
 		expect(settings?.accelerator).toBe("Cmd+,");
 		settings?.click?.({} as Electron.MenuItem, {} as Electron.BrowserWindow, {} as Electron.KeyboardEvent);
 		expect(dispatch).toHaveBeenCalledExactlyOnceWith("settings");
+		expect(items(template).some((item) => item.id === "desktop.environment")).toBe(false);
 	});
 	it("defaults to disabled until publication and preserves only published offline recovery commands", () => {
 		const base = {

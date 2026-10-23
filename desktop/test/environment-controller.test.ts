@@ -45,23 +45,30 @@ describe("native runtime environment controller", () => {
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
 	});
 
-	it("shows shell-free defaults and discloses what enabling login-shell import allows", async () => {
-		const fixture = await setup([0]);
+	it("shows login-shell import enabled by default and discloses shell startup behavior", async () => {
+		const fixture = await setup([0], {
+			ownership: "owned",
+			source: "login-shell",
+			appliedDirectories: [],
+			appliedImportLoginShellEnvironment: true,
+		});
 		await fixture.controller.open();
 		expect(fixture.messages[0]?.buttons).toEqual([
 			"Close",
 			"Add Folders…",
 			"Reset Override",
 			"Refresh Environment",
-			"Enable Login-Shell Import",
+			"Disable Login-Shell Import",
 		]);
-		expect(fixture.messages[0]?.detail).toContain("Current login-shell import: Disabled");
-		expect(fixture.messages[0]?.detail).toContain("Saved login-shell import: Disabled");
+		expect(fixture.messages[0]?.detail).toContain("Current login-shell import: Enabled");
+		expect(fixture.messages[0]?.detail).toContain("Saved login-shell import: Enabled");
 		expect(fixture.messages[0]?.detail).toContain("Saved settings match");
 		expect(fixture.messages[0]?.detail).toContain(
 			"When enabled, app startup and Refresh Environment run shell startup files",
 		);
+		expect(fixture.messages[0]?.detail).toContain("enabled by default and can be disabled");
 		expect(fixture.messages[0]?.detail).toContain("run commands and access Keychain");
+		expect(fixture.messages[0]?.detail).toContain("shell aliases and functions are not imported");
 		expect(fixture.messages[0]?.detail).toContain("stay in memory and are never saved");
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
 	});
@@ -84,7 +91,7 @@ describe("native runtime environment controller", () => {
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [join(fixture.options.userDataPath, "agent tools")],
-			importLoginShellEnvironment: false,
+			importLoginShellEnvironment: true,
 		});
 		expect(fixture.messages.at(-1)?.message).toBe("Runtime environment refreshed");
 	});
@@ -105,7 +112,7 @@ describe("native runtime environment controller", () => {
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
 	});
 
-	it("adding folders preserves the saved login-shell import opt-in", async () => {
+	it("adding folders preserves the saved login-shell import preference", async () => {
 		const fixture = await setup([1, 0]);
 		const oldFolder = join(fixture.options.userDataPath, "old");
 		await writeDesktopEnvironmentPreferences(fixture.options.userDataPath, {
@@ -194,7 +201,7 @@ describe("native runtime environment controller", () => {
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [],
-			importLoginShellEnvironment: false,
+			importLoginShellEnvironment: true,
 		});
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
 	});
@@ -210,7 +217,7 @@ describe("native runtime environment controller", () => {
 		await expect(readDesktopEnvironmentPreferences(fixture.options.userDataPath)).resolves.toEqual({
 			version: 1,
 			extraExecutableDirectories: [],
-			importLoginShellEnvironment: false,
+			importLoginShellEnvironment: true,
 		});
 		expect(fixture.messages.at(-1)?.message).toBe("This runtime belongs to the CLI");
 		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
@@ -218,6 +225,11 @@ describe("native runtime environment controller", () => {
 
 	it("keeps the applied mode and saved pending mode separate after refresh is cancelled", async () => {
 		const fixture = await setup([4, 3, 0]);
+		await writeDesktopEnvironmentPreferences(fixture.options.userDataPath, {
+			version: 1,
+			extraExecutableDirectories: [],
+			importLoginShellEnvironment: false,
+		});
 		const requestRefresh = vi.fn(async () => "cancelled" as const);
 		const controller = new DesktopEnvironmentController({ ...fixture.options, requestRefresh });
 		await controller.open();
@@ -278,4 +290,155 @@ describe("native runtime environment controller", () => {
 			expect(fixture.messages.some((message) => message.message === "Runtime environment refreshed")).toBe(false);
 		},
 	);
+});
+
+describe("Settings environment intents", () => {
+	it("keeps native recovery and Settings mutations from overwriting each other's preferences", async () => {
+		const fixture = await setup([]);
+		let choose: (folders: string[]) => void = () => {};
+		let started: () => void = () => {};
+		const pickerStarted = new Promise<void>((resolve) => {
+			started = resolve;
+		});
+		fixture.options.showFolders.mockImplementation(() => {
+			started();
+			return new Promise<string[]>((resolve) => {
+				choose = resolve;
+			});
+		});
+		const adding = fixture.controller.request({ kind: "add-folders" });
+		await pickerStarted;
+		const native = fixture.controller.open();
+		expect(fixture.options.showMessage).not.toHaveBeenCalled();
+		choose([join(fixture.options.userDataPath, "tools")]);
+		expect((await adding).outcome).toBe("unavailable");
+		await native;
+		expect((await fixture.controller.getSnapshot()).preferences?.extraExecutableDirectories).toEqual([]);
+	});
+
+	it("rejects Settings writes while a native recovery dialog is open", async () => {
+		const fixture = await setup([]);
+		let close: (choice: number) => void = () => {};
+		let started: () => void = () => {};
+		const dialogStarted = new Promise<void>((resolve) => {
+			started = resolve;
+		});
+		fixture.options.showMessage.mockImplementation(() => {
+			started();
+			return new Promise<number>((resolve) => {
+				close = resolve;
+			});
+		});
+		const native = fixture.controller.open();
+		await dialogStarted;
+		expect((await fixture.controller.request({ kind: "set-login-shell-import", enabled: false })).outcome).toBe(
+			"unavailable",
+		);
+		close(0);
+		await native;
+		expect((await fixture.controller.getSnapshot()).preferences?.importLoginShellEnvironment).toBe(true);
+	});
+
+	it("returns only applied metadata and saved preferences, including unreadable preferences", async () => {
+		const fixture = await setup([]);
+		expect(await fixture.controller.getSnapshot()).toEqual({
+			ownership: "owned",
+			source: "inherited",
+			failureReason: null,
+			appliedDirectories: [],
+			appliedImportLoginShellEnvironment: false,
+			preferences: { importLoginShellEnvironment: true, extraExecutableDirectories: [] },
+		});
+		await mkdir(join(fixture.options.userDataPath, "environment-preferences"));
+		await writeFile(join(fixture.options.userDataPath, "environment-preferences", "folders.json"), "malformed");
+		expect((await fixture.controller.getSnapshot()).preferences).toBeNull();
+		expect(await fixture.controller.request({ kind: "reset-folders" })).toMatchObject({ outcome: "failed" });
+		expect(await fixture.controller.request({ kind: "reset-preferences" })).toMatchObject({
+			outcome: "saved",
+			snapshot: { preferences: { importLoginShellEnvironment: false, extraExecutableDirectories: [] } },
+		});
+	});
+
+	it.each([false, true])("saves folders while preserving import preference %s without refreshing", async (enabled) => {
+		const fixture = await setup([]);
+		expect(await fixture.controller.request({ kind: "set-login-shell-import", enabled })).toMatchObject({
+			outcome: "saved",
+		});
+		expect(await fixture.controller.request({ kind: "add-folders" })).toMatchObject({
+			outcome: "saved",
+			snapshot: {
+				preferences: {
+					importLoginShellEnvironment: enabled,
+					extraExecutableDirectories: [join(fixture.options.userDataPath, "agent tools")],
+				},
+			},
+		});
+		expect(await fixture.controller.request({ kind: "reset-folders" })).toMatchObject({
+			outcome: "saved",
+			snapshot: { preferences: { importLoginShellEnvironment: enabled, extraExecutableDirectories: [] } },
+		});
+		expect(fixture.options.requestRefresh).not.toHaveBeenCalled();
+		expect(fixture.options.showMessage).not.toHaveBeenCalled();
+	});
+
+	it("serializes picker and preference changes so neither loses the other's saved update", async () => {
+		const fixture = await setup([]);
+		let choose: (folders: string[]) => void = () => {};
+		let started: () => void = () => {};
+		const pickerStarted = new Promise<void>((resolve) => {
+			started = resolve;
+		});
+		fixture.options.showFolders.mockImplementation(() => {
+			started();
+			return new Promise<string[]>((resolve) => {
+				choose = resolve;
+			});
+		});
+		const adding = fixture.controller.request({ kind: "add-folders" });
+		await pickerStarted;
+		const disabling = fixture.controller.request({ kind: "set-login-shell-import", enabled: false });
+		choose([join(fixture.options.userDataPath, "chosen")]);
+		expect((await adding).outcome).toBe("saved");
+		expect((await disabling).outcome).toBe("saved");
+		expect((await fixture.controller.getSnapshot()).preferences).toEqual({
+			importLoginShellEnvironment: false,
+			extraExecutableDirectories: [join(fixture.options.userDataPath, "chosen")],
+		});
+	});
+
+	it.each(["admission", "ownership", "busy"])("rechecks %s after the native picker before saving", async (change) => {
+		const fixture = await setup([]);
+		let admitted = true;
+		let available = true;
+		const controller = new DesktopEnvironmentController({ ...fixture.options, canMutate: () => available });
+		fixture.options.showFolders.mockImplementation(async () => {
+			if (change === "admission") admitted = false;
+			if (change === "ownership") fixture.status.ownership = "attached";
+			if (change === "busy") available = false;
+			return [join(fixture.options.userDataPath, "tools")];
+		});
+		expect((await controller.request({ kind: "add-folders" }, () => admitted)).outcome).toBe("unavailable");
+		expect((await controller.getSnapshot()).preferences?.extraExecutableDirectories).toEqual([]);
+	});
+
+	it("blocks attached runtime mutation and uses existing guarded refresh outcomes", async () => {
+		const fixture = await setup([]);
+		const requestRefresh = vi.fn(async () => "incomplete" as const);
+		const controller = new DesktopEnvironmentController({ ...fixture.options, requestRefresh });
+		expect((await controller.request({ kind: "refresh" })).outcome).toBe("incomplete");
+		fixture.status.ownership = "attached";
+		expect((await controller.request({ kind: "set-login-shell-import", enabled: false })).outcome).toBe(
+			"unavailable",
+		);
+		expect((await controller.request({ kind: "refresh" })).outcome).toBe("unavailable");
+		expect(requestRefresh).toHaveBeenCalledOnce();
+		expect((await controller.getSnapshot()).preferences?.importLoginShellEnvironment).toBe(true);
+	});
+
+	it("treats a cancelled native folder picker as a cancelled intent", async () => {
+		const fixture = await setup([]);
+		const controller = new DesktopEnvironmentController({ ...fixture.options, showFolders: async () => null });
+		expect((await controller.request({ kind: "add-folders" })).outcome).toBe("cancelled");
+		expect((await controller.getSnapshot()).preferences?.extraExecutableDirectories).toEqual([]);
+	});
 });

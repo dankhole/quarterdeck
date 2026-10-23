@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { type DesktopBootstrap, QUARTERDECK_DESKTOP_BRIDGE_VERSION } from "../../src/shared/desktop-bridge-contract.js";
 import { DESKTOP_BOOTSTRAP_CHANNEL } from "./desktop-ipc-channels.js";
 import { createDesktopBridge } from "./preload-bridge.js";
+import { createDesktopEnvironmentBridge } from "./preload-environment-bridge.js";
 import { createDesktopUpdateBridge } from "./preload-update-bridge.js";
 
 // Startup/error pages deliberately receive no bridge.
@@ -23,6 +24,10 @@ if (
 		contextBridge.exposeInMainWorld(
 			"quarterdeckDesktop",
 			createDesktopBridge(envelope.bootstrap as DesktopBootstrap, ipcRenderer, envelope.documentId),
+		);
+		contextBridge.exposeInMainWorld(
+			"quarterdeckDesktopEnvironment",
+			createDesktopEnvironmentBridge(envelope.bootstrap as DesktopBootstrap, ipcRenderer, envelope.documentId),
 		);
 		contextBridge.exposeInMainWorld(
 			"quarterdeckDesktopUpdates",

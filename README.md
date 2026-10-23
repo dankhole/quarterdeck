@@ -51,7 +51,7 @@ quarterdeck --desktop   # Explicit macOS app launch
 
 The desktop app also opens from Finder or the Dock. Closing its window keeps tasks running; **Quit** checks unsaved work and live sessions before shutdown. **File → Open in Browser** opens the same runtime in your browser.
 
-If the app cannot find Git or an agent, use **Quarterdeck → Runtime Environment…** to add its executable folder and refresh. Desktop startup does not load shell startup files by default; shell environment import is opt-in. Local builds are ad-hoc signed and may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
+The desktop app imports your login shell’s exported environment by default. Use **Settings → Runtime Environment** to disable import, add executable folders, or refresh the runtime; existing explicit opt-outs remain disabled. Local builds are ad-hoc signed and may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
 
 See the [desktop guide](docs/desktop.md#using-the-app) for installation repair, window behavior, environment setup, and recovery. Windows browser support is also [experimental](docs/windows-support-audit.md).
 

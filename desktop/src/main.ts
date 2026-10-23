@@ -32,6 +32,7 @@ import { createDesktopWindow, restoreDesktopWindow } from "./desktop-window.js";
 import { createDesktopDiagnosticExporter } from "./diagnostic-export.js";
 import { installEditorDraftSave } from "./editor-draft-save.js";
 import { DesktopEnvironmentController, type DesktopEnvironmentRefreshResult } from "./environment-controller.js";
+import { installDesktopEnvironmentIpc } from "./environment-ipc.js";
 import { type DesktopInstallationPreflight, preflightDesktopInstallation } from "./installation-preflight.js";
 import { type DesktopLaunchConfig, readDesktopLaunchConfig, validateDesktopLaunchRequest } from "./launch-config.js";
 import type { DesktopLaunchEnvironmentResult } from "./launch-environment.js";
@@ -246,6 +247,17 @@ async function launchDesktop(
 		showMessage: (options) => dialogs.message(options),
 		showFolders: (options) => dialogs.chooseFolders(options),
 		requestRefresh: () => refreshEnvironment(),
+		canMutate: () =>
+			!starting &&
+			!stopping &&
+			!navigating &&
+			!reloading &&
+			!refreshing &&
+			!recovering &&
+			!supervisor?.isRecoveryRunning() &&
+			!coordinator?.isPending() &&
+			!updates?.isBusy() &&
+			!shutdownConfirmed,
 	});
 	const rebuildMenu = (): void => {
 		const update = updates?.getSnapshot();
@@ -293,19 +305,6 @@ async function launchDesktop(
 					restartRuntime: () => {
 						void startRuntime();
 					},
-					environmentSetup:
-						!starting &&
-						!stopping &&
-						!navigating &&
-						!reloading &&
-						!refreshing &&
-						!recovering &&
-						!updates?.isBusy() &&
-						!shutdownConfirmed
-							? () => {
-									void environmentController.open();
-								}
-							: undefined,
 					exportDiagnostics: exporter
 						? () => {
 								void exporter?.();
@@ -1014,9 +1013,15 @@ async function launchDesktop(
 		subscribe: (listener) => updateController.subscribe(listener),
 		request: (intent) => updateController.request(intent),
 	});
+	const disposeEnvironmentIpc = installDesktopEnvironmentIpc({
+		ipc: ipcMain,
+		getRenderer: () => renderer,
+		controller: environmentController,
+	});
 	app.once("will-quit", () => {
 		updates?.dispose();
 		disposeUpdateIpc();
+		disposeEnvironmentIpc();
 		commands?.dispose();
 		disposeDraftSave();
 		hostEffects.dispose();

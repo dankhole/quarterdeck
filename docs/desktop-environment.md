@@ -1,13 +1,15 @@
 # Desktop environment resolution
 
-The desktop app builds its runtime environment once at startup and again only after a guarded **Refresh Environment**. Ordinary Finder/Dock startup does not run a login shell, shell initialization scripts, a version manager, or an agent executable to find executable folders. Explicit shell terminals still start their requested shell.
+The desktop app builds its runtime environment once at startup and again only after a guarded **Refresh Environment**. By default, Finder/Dock startup imports exported variables and executable paths from your interactive login shell, including setup in files such as `.zshrc`. Disable **Import Login Shell Environment** in **Settings → Runtime Environment** to use shell-free executable discovery instead. Explicit shell terminals still start their requested shell.
 
 ## PATH construction
 
-In the default shell-free mode, the helper's effective PATH has this priority:
+With login-shell import enabled, PATH uses Quarterdeck's bundled Node directory first, saved executable folders second, and the captured shell PATH next, followed by standard fallback folders. The app does not import shell aliases or functions; agent commands must resolve to executables.
+
+With login-shell import disabled, the helper's effective PATH has this priority:
 
 1. Quarterdeck's bundled Node directory.
-2. Executable folders explicitly saved in **Quarterdeck → Runtime Environment…**.
+2. Executable folders explicitly saved in **Settings → Runtime Environment**.
 3. Valid absolute entries from the app's inherited PATH, in their original order.
 4. Existing common user-installation folders: `~/.local/bin`, `~/.npm-global/bin`, `~/bin`, and `$VOLTA_HOME/bin` or `~/.volta/bin`.
 5. At most one selected nvm installation's `bin` directory.
@@ -23,21 +25,21 @@ The app examines `$NVM_DIR/versions/node` or `~/.nvm/versions/node`. It follows 
 
 This is filesystem discovery, not the full nvm command contract: it does not inspect a project's `.nvmrc`, fetch releases, interpret arbitrary aliases, or choose a version separately for each task. Directory enumeration is capped at 512 entries, alias files at 1 KiB, and alias resolution at eight steps. Oversized or inaccessible installations are skipped; saved folders remain the escape hatch.
 
-## Optional login-shell import
+## Login-shell import
 
-Enable **Import Login Shell Environment** in Runtime Environment when agents require variables that exist only in shell startup files. The saved choice takes effect on the next app startup or after **Refresh Environment** completes. Import runs startup files, which can execute commands or request Keychain access. Disabling import prevents future startup captures; values already inherited from the launching process remain inherited.
+**Import Login Shell Environment** is enabled by default, including on existing installations that have not saved an explicit choice. An explicitly saved disabled choice remains disabled. The saved choice takes effect on the next app startup or after **Refresh Environment** completes. Import runs startup files, which can execute commands or request Keychain access. Disable it to prevent future startup captures; values already inherited from the launching process remain inherited.
 
-Import uses a fixed interactive login command so setup in files such as `.zshrc` is included. Standard input, output, and error streams are discarded; environment records use a separate private bounded channel. Its PATH comes from the captured shell environment rather than common-folder/nvm discovery; failed capture falls back to sanitized inherited PATH and standard folders. Bundled Node and saved folder overrides still take precedence. Import preserves environment sanitization, timeout and output limits, owned-process cleanup, and typed fallback guidance. Failed capture cannot silently report successful shell import. Unconfirmed capture cleanup blocks runtime startup. Shell-defined values remain in memory and are not written to preferences or diagnostics.
+Import uses a fixed interactive login command so setup in files such as `.zshrc` is included. Standard input, output, and error streams are discarded; environment records use a separate private bounded channel. Its PATH comes from the captured shell environment rather than common-folder/nvm discovery; failed capture falls back to sanitized inherited PATH and standard folders. Bundled Node and saved folder overrides still take precedence. Import preserves environment sanitization, timeout and output limits, owned-process cleanup, and typed fallback guidance. Failed capture cannot silently report successful shell import. Unconfirmed capture cleanup blocks runtime startup. Exported shell environment values remain in memory and are not written to preferences or diagnostics.
 
-The strict version-1 preference file remains compatible with existing folder-only records: an absent import choice means disabled. Adding or resetting folder overrides preserves the choice; resetting malformed preferences restores the shell-free default. The native dialog distinguishes the saved preference from the configuration used by the current runtime. Saving alone does not restart a runtime.
+The strict version-1 preference file remains compatible with existing folder-only records: an absent import choice means enabled. Adding or resetting folder overrides preserves the choice. Recovering malformed preferences explicitly clears saved folders and disables import, as the recovery dialog explains; this deliberate recovery action avoids running shell startup files while repairing configuration. The Runtime Environment section in Settings distinguishes the saved preference from the configuration used by the current runtime. Its controls save immediately, independently of the main Settings Save button. Saving alone does not restart a runtime. A native recovery dialog remains available from startup failures when Settings cannot open.
 
-Environment refresh retains draft protection, live-session confirmation, confirmed shutdown, and restart. A runtime owned by an already running CLI remains read-only from this menu and uses its CLI process environment. Synthetic Agent Lab startup skips ambient discovery and shell capture, preserving its fixture environment.
+Environment refresh retains draft protection, live-session confirmation, confirmed shutdown, and restart. A runtime owned by an already running CLI remains read-only from these controls and uses its CLI process environment. Synthetic Agent Lab startup skips ambient discovery and shell capture, preserving its fixture environment.
 
 ## Ownership and validation
 
-`desktop/src/executable-path-discovery.ts` owns bounded filesystem discovery. `launch-environment.ts` owns sanitization and optional capture. `environment-preferences.ts` owns private preference storage and explicit folder precedence. `runtime-environment.ts` composes those policies for both startup and refresh; `main.ts` owns runtime lifetime and applied-configuration status. The native controller saves intent without exposing arbitrary environment edits through renderer IPC.
+`desktop/src/executable-path-discovery.ts` owns bounded filesystem discovery. `launch-environment.ts` owns sanitization and capture. `environment-preferences.ts` owns private preference storage and explicit folder precedence. `runtime-environment.ts` composes those policies for both startup and refresh; `main.ts` owns runtime lifetime and applied-configuration status. The native controller serializes saved intents and accepts only a typed import toggle, native folder picker, folder reset, explicit preference recovery, and guarded refresh. The optional preload namespace binds requests and replies to the current admitted renderer document and runtime generation. Renderer IPC never accepts executable paths, commands, or arbitrary environment values.
 
-Focused tests cover real filesystem layouts, alias limits and special files, default no-shell behavior, preference migration, explicit import, fallback, and override priority through the production composition. Packaged Agent Lab checks validate bundled startup and lifecycle separately; its isolated environment does not prove discovery against a user's home directory.
+Focused tests cover real filesystem layouts, alias limits and special files, default login-shell import, legacy preferences, explicit opt-out, fallback, and override priority through the production composition. Packaged Agent Lab checks validate bundled startup and lifecycle separately; its isolated environment does not prove discovery against a user's home directory.
 
 ## Keychain prompts and signing
 

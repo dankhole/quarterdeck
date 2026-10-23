@@ -20,7 +20,7 @@ async function fixture() {
 	const nodePath = join(root, "bundled", "bin", "node");
 	const getLoginShell = vi.fn(() => "/bin/zsh");
 	const spawnCapture = vi.fn(() => {
-		throw new Error("Default startup must never execute shell configuration.");
+		throw new Error("Synthetic shell capture failure.");
 	});
 	return {
 		root,
@@ -37,8 +37,8 @@ async function fixture() {
 }
 
 describe("desktop runtime environment composition", () => {
-	it.each(["absent", "legacy", "disabled"])(
-		"uses shell-free discovery for %s saved preferences on ordinary desktop startup",
+	it.each(["absent", "legacy"])(
+		"imports the login shell for %s saved preferences on ordinary desktop startup",
 		async (saved) => {
 			const { options, discovered } = await fixture();
 			if (saved === "legacy") {
@@ -48,22 +48,40 @@ describe("desktop runtime environment composition", () => {
 					join(directory, "folders.json"),
 					JSON.stringify({ version: 1, extraExecutableDirectories: [] }),
 				);
-			} else if (saved === "disabled") {
-				await writeDesktopEnvironmentPreferences(options.userDataPath, {
-					version: 1,
-					extraExecutableDirectories: [],
-					importLoginShellEnvironment: false,
-				});
 			}
-			const result = await resolveDesktopRuntimeEnvironment(options);
-			expect(result.source).toBe("inherited");
-			expect(result.preferences.importLoginShellEnvironment).toBe(false);
-			expect(result.environment.PATH?.split(":")).toContain(discovered);
-			expect(result.environment.CUSTOM_VALUE).toBe("synthetic");
-			expect(options.getLoginShell).not.toHaveBeenCalled();
-			expect(options.spawnCapture).not.toHaveBeenCalled();
+			const spawnCapture = vi.fn((_executable: string, _args: string[], captureOptions: SpawnOptions) =>
+				spawn(
+					process.execPath,
+					["-e", "require('node:fs').writeSync(3, 'PATH=/synthetic/login/bin\\0CUSTOM_VALUE=imported\\0')"],
+					captureOptions,
+				),
+			);
+			const result = await resolveDesktopRuntimeEnvironment({ ...options, spawnCapture });
+			expect(result.source).toBe("login-shell");
+			expect(result.preferences.importLoginShellEnvironment).toBe(true);
+			expect(result.environment.PATH?.split(":")).toContain("/synthetic/login/bin");
+			expect(result.environment.PATH?.split(":")).not.toContain(discovered);
+			expect(result.environment.CUSTOM_VALUE).toBe("imported");
+			expect(options.getLoginShell).toHaveBeenCalledOnce();
+			expect(spawnCapture).toHaveBeenCalledOnce();
 		},
 	);
+
+	it("preserves explicit opt-out with shell-free executable discovery", async () => {
+		const { options, discovered } = await fixture();
+		await writeDesktopEnvironmentPreferences(options.userDataPath, {
+			version: 1,
+			extraExecutableDirectories: [],
+			importLoginShellEnvironment: false,
+		});
+		const result = await resolveDesktopRuntimeEnvironment(options);
+		expect(result.source).toBe("inherited");
+		expect(result.preferences.importLoginShellEnvironment).toBe(false);
+		expect(result.environment.PATH?.split(":")).toContain(discovered);
+		expect(result.environment.CUSTOM_VALUE).toBe("synthetic");
+		expect(options.getLoginShell).not.toHaveBeenCalled();
+		expect(options.spawnCapture).not.toHaveBeenCalled();
+	});
 
 	it("applies saved mode and folder precedence on each startup or guarded refresh", async () => {
 		const { options, root } = await fixture();
@@ -105,7 +123,7 @@ describe("desktop runtime environment composition", () => {
 		expect(options.spawnCapture).not.toHaveBeenCalled();
 	});
 
-	it("preserves capture cleanup and saved mode when an opted-in import fails", async () => {
+	it("preserves capture cleanup and saved mode when login-shell import fails", async () => {
 		const { options, root } = await fixture();
 		const override = join(root, "tools");
 		await writeDesktopEnvironmentPreferences(options.userDataPath, {

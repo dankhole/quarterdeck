@@ -1,5 +1,11 @@
 import type { MessageBoxOptions, OpenDialogOptions } from "electron";
 import {
+	type DesktopEnvironmentIntent,
+	type DesktopEnvironmentResponse,
+	type DesktopEnvironmentSnapshot,
+	desktopEnvironmentIntentSchema,
+} from "../../src/shared/desktop-environment-contract.js";
+import {
 	type DesktopEnvironmentPreferences,
 	readDesktopEnvironmentPreferences,
 	writeDesktopEnvironmentPreferences,
@@ -23,6 +29,7 @@ export interface DesktopEnvironmentControllerOptions {
 	showFolders: (options: OpenDialogOptions) => Promise<string[] | null>;
 	/** Main owns sealed draft preflight, live-session confirmation, confirmed shutdown, and restart. */
 	requestRefresh: () => Promise<DesktopEnvironmentRefreshResult>;
+	canMutate?: () => boolean;
 }
 
 const FAILURE_GUIDANCE: Record<DesktopEnvironmentFailureReason, string> = {
@@ -39,13 +46,90 @@ const FAILURE_GUIDANCE: Record<DesktopEnvironmentFailureReason, string> = {
 /** Native-only setup. Renderer IPC never supplies executable folders or arbitrary commands. */
 export class DesktopEnvironmentController {
 	private active: Promise<void> | null = null;
+	private mutation: Promise<unknown> = Promise.resolve();
 	constructor(private readonly options: DesktopEnvironmentControllerOptions) {}
+
+	async getSnapshot(): Promise<DesktopEnvironmentSnapshot> {
+		let preferences: DesktopEnvironmentSnapshot["preferences"] = null;
+		try {
+			const saved = await readDesktopEnvironmentPreferences(this.options.userDataPath);
+			preferences = {
+				importLoginShellEnvironment: saved.importLoginShellEnvironment,
+				extraExecutableDirectories: saved.extraExecutableDirectories,
+			};
+		} catch {
+			// Unreadable preferences require an explicit recovery intent, never a silent overwrite.
+		}
+		const status = this.options.getStatus();
+		return {
+			ownership: status.ownership,
+			source: status.source,
+			failureReason: status.failureReason ?? null,
+			appliedDirectories: [...status.appliedDirectories],
+			appliedImportLoginShellEnvironment: status.appliedImportLoginShellEnvironment ?? null,
+			preferences,
+		};
+	}
+
+	request(
+		intent: DesktopEnvironmentIntent,
+		isAdmitted: () => boolean = () => true,
+	): Promise<DesktopEnvironmentResponse> {
+		const pending = this.mutation.then(async (): Promise<DesktopEnvironmentResponse> => {
+			const allowed = () =>
+				isAdmitted() &&
+				!this.active &&
+				this.options.getStatus().ownership !== "attached" &&
+				(this.options.canMutate?.() ?? true);
+			const respond = async (
+				outcome: DesktopEnvironmentResponse["outcome"],
+			): Promise<DesktopEnvironmentResponse> => ({
+				outcome,
+				snapshot: isAdmitted() ? await this.getSnapshot() : null,
+			});
+			const parsed = desktopEnvironmentIntentSchema.safeParse(intent);
+			if (!parsed.success || !allowed()) return respond("unavailable");
+			try {
+				if (parsed.data.kind === "refresh") return respond(await this.options.requestRefresh());
+				let preferences: DesktopEnvironmentPreferences;
+				if (parsed.data.kind === "reset-preferences") {
+					preferences = { version: 1, extraExecutableDirectories: [], importLoginShellEnvironment: false };
+				} else {
+					preferences = await readDesktopEnvironmentPreferences(this.options.userDataPath);
+					if (!allowed()) return respond("unavailable");
+					if (parsed.data.kind === "set-login-shell-import") {
+						preferences.importLoginShellEnvironment = parsed.data.enabled;
+					} else if (parsed.data.kind === "reset-folders") {
+						preferences.extraExecutableDirectories = [];
+					} else {
+						const folders = await this.options.showFolders({
+							title: "Choose executable folders",
+							buttonLabel: "Add Folders",
+							properties: ["openDirectory", "multiSelections"],
+						});
+						if (!allowed()) return respond("unavailable");
+						if (!folders) return respond("cancelled");
+						preferences.extraExecutableDirectories.push(...folders);
+					}
+				}
+				if (!allowed()) return respond("unavailable");
+				await writeDesktopEnvironmentPreferences(this.options.userDataPath, preferences);
+				return respond("saved");
+			} catch {
+				return respond("failed");
+			}
+		});
+		this.mutation = pending.catch(() => undefined);
+		return pending;
+	}
 
 	open(): Promise<void> {
 		if (this.active) return this.active;
-		const action = this.present().finally(() => {
-			this.active = null;
-		});
+		const action = this.mutation
+			.then(() => this.present())
+			.finally(() => {
+				this.active = null;
+			});
 		this.active = action;
 		return action;
 	}
@@ -129,7 +213,7 @@ export class DesktopEnvironmentController {
 						? "Saved settings have unapplied changes."
 						: "Saved settings match the current app configuration.",
 					"Folders take precedence over discovered executables; bundled Node remains first. Refresh Environment applies saved settings and safely restarts an app-owned runtime after protecting drafts and confirming live sessions.",
-					"Login-shell import is optional. When enabled, app startup and Refresh Environment run shell startup files, which can run commands and access Keychain. Imported environment values stay in memory and are never saved.",
+					"Login-shell import is enabled by default and can be disabled. When enabled, app startup and Refresh Environment run shell startup files, which can run commands and access Keychain. Exported environment values stay in memory and are never saved; shell aliases and functions are not imported.",
 				].join("\n\n"),
 			});
 			if (choice === 0) return;

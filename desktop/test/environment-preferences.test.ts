@@ -19,14 +19,14 @@ async function root(): Promise<string> {
 afterEach(async () => {
 	await Promise.all(roots.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
-const prefs = (directories: string[], importLoginShellEnvironment = false) => ({
+const prefs = (directories: string[], importLoginShellEnvironment = true) => ({
 	version: 1 as const,
 	extraExecutableDirectories: directories,
 	importLoginShellEnvironment,
 });
 
 describe("desktop environment preferences", () => {
-	it("defaults without creating storage, then privately persists normalized folders and the import opt-in", async () => {
+	it("defaults to login-shell import without creating storage, then privately persists normalized folders", async () => {
 		const directory = await root();
 		await expect(readDesktopEnvironmentPreferences(directory)).resolves.toEqual(prefs([]));
 		await expect(stat(join(directory, "environment-preferences"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -41,7 +41,7 @@ describe("desktop environment preferences", () => {
 		}
 	});
 
-	it("reads existing version 1 folder preferences with login-shell import disabled", async () => {
+	it("enables login-shell import for existing version 1 folder preferences without an explicit choice", async () => {
 		const directory = await root();
 		const folder = join(directory, "tools");
 		const legacy = JSON.stringify({ version: 1, extraExecutableDirectories: [folder] });
@@ -52,7 +52,7 @@ describe("desktop environment preferences", () => {
 		expect(await readFile(file, "utf8")).toBe(legacy);
 	});
 
-	it.each([false, true])("round-trips an explicit login-shell import opt-in of %s", async (enabled) => {
+	it.each([false, true])("preserves an explicit login-shell import choice of %s", async (enabled) => {
 		const directory = await root();
 		const preferences = prefs([join(directory, "tools")], enabled);
 		await writeDesktopEnvironmentPreferences(directory, preferences);
