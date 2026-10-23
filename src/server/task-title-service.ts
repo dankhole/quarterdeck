@@ -42,15 +42,17 @@ export function createTaskTitleService(deps: TaskTitleServiceDependencies) {
 			const messages = history.entries.filter((entry) => entry.type === "message" && entry.text.trim().length > 0);
 			const hasUserMessage = messages.some((entry) => entry.type === "message" && entry.role === "user");
 			const finalMessage = session?.latestHookActivity?.finalMessage;
-			const summaries = (session?.conversationSummaries ?? []).filter((summary) => summary.text.trim()).slice(-8);
-			// Boundaries carry no task context; progress-only windows need the available completed-work summaries.
-			const useSummaries = !hasUserMessage && !finalMessage?.trim() && summaries.length > 0;
-			const entries: readonly ConversationEntry[] = useSummaries
-				? summaries.map((summary, index) => ({
+			const completedResponses = (session?.completedResponses ?? [])
+				.filter((response) => response.text.trim())
+				.slice(-8);
+			// Boundaries carry no task context; progress-only windows need the retained completed foreground responses.
+			const useCompletedResponses = !hasUserMessage && !finalMessage?.trim() && completedResponses.length > 0;
+			const entries: readonly ConversationEntry[] = useCompletedResponses
+				? completedResponses.map((response, index) => ({
 						type: "message",
 						role: "assistant",
-						id: `summary-${index}`,
-						text: summary.text,
+						id: `completed-response-${index}`,
+						text: response.text,
 					}))
 				: messages;
 			const hasActivity =

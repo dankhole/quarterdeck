@@ -1,7 +1,7 @@
 // Commit message generation from git diffs. Prefer the local Codex login,
 // then fall back to the optional OpenAI-compatible gateway.
 // This is a user-triggered path, so it sends a richer context than automatic
-// title/summary helpers. LLM failures return null so the UI can surface them.
+// title/branch helpers. LLM failures return null so the UI can surface them.
 import { createTaggedLogger } from "../core";
 import type { RuntimeCommitMessageFileContext, RuntimeCommitMessageGenerationContext } from "./commit-message-context";
 import { callGenerationHelper } from "./generation-helper";

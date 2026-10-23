@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-	createTaggedLogger,
 	findCardInBoard,
 	runtimeAutoMergedFilesRequestSchema,
 	runtimeAutoMergedFilesResponseSchema,
@@ -76,23 +75,9 @@ import {
 	runtimeWorktreeEnsureResponseSchema,
 } from "../core";
 import { toBrowserProjectStateResponse } from "../server/runtime-state-messages";
-import {
-	buildTaskGenerationContext,
-	generateBranchName,
-	generateCommitMessage,
-	generateDisplaySummary,
-	SUMMARY_FIRST_ACTIVITY_LIMIT,
-	SUMMARY_LATEST_ACTIVITY_LIMIT,
-	SUMMARY_ORIGINAL_PROMPT_LIMIT,
-	SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
-} from "../title";
+import { buildCommitMessageTaskContext, generateBranchName, generateCommitMessage } from "../title";
 import { projectGitProcedure, projectProcedure, savedProjectProcedure, t } from "./app-router-init";
 import { codeNavigationRouter } from "./code-navigation-router";
-
-const log = createTaggedLogger("task-gen");
-
-/** Tracks taskIds with in-flight LLM summary generation to prevent duplicate concurrent calls. */
-const summaryGenerationInFlight = new Set<string>();
 
 const optionalTaskWorktreeInfoRequestSchema = runtimeTaskWorktreeInfoRequestSchema.nullable().optional();
 const gitSyncActionInputSchema = z.object({
@@ -339,77 +324,6 @@ export const projectRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			return { ok: await ctx.projectApi.updateTaskTitle(ctx.projectScope, input.taskId, input.title) };
 		}),
-	generateDisplaySummary: projectProcedure
-		.input(
-			z.object({
-				taskId: z.string(),
-				staleAfterSeconds: z.number().min(5).default(300),
-			}),
-		)
-		.output(z.object({ ok: z.boolean(), summary: z.string().nullable() }))
-		.mutation(async ({ ctx, input }) => {
-			const state = await ctx.projectApi.loadState(ctx.projectScope);
-			const session = state.sessions[input.taskId];
-			if (!session) {
-				return { ok: false, summary: null };
-			}
-
-			const summaries = session.conversationSummaries ?? [];
-			const card = findCardInBoard(state.board, input.taskId);
-
-			// Server-side staleness check — always respect the caller-provided
-			// staleAfterSeconds window. Only regenerate after the window expires
-			// AND newer conversation data has arrived since the last generation.
-			if (session.displaySummaryGeneratedAt) {
-				const ageSeconds = (Date.now() - session.displaySummaryGeneratedAt) / 1000;
-				if (ageSeconds < input.staleAfterSeconds) {
-					return { ok: true, summary: session.displaySummary };
-				}
-				// Window expired — only regenerate if there's newer conversation data.
-				const latestCapturedAt = summaries.length > 0 ? Math.max(...summaries.map((s) => s.capturedAt)) : 0;
-				const hasNewerData = latestCapturedAt > session.displaySummaryGeneratedAt;
-				if (!hasNewerData) {
-					return { ok: true, summary: session.displaySummary };
-				}
-			}
-			const sourceText = buildTaskGenerationContext({
-				prompt: card?.prompt,
-				summaries,
-				finalMessage: session.latestHookActivity?.finalMessage,
-				limits: {
-					originalPrompt: SUMMARY_ORIGINAL_PROMPT_LIMIT,
-					firstActivity: SUMMARY_FIRST_ACTIVITY_LIMIT,
-					latestActivity: SUMMARY_LATEST_ACTIVITY_LIMIT,
-					previousActivity: SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
-				},
-			});
-			if (!sourceText?.trim()) {
-				return { ok: false, summary: null };
-			}
-			log.debug("generateDisplaySummary", {
-				taskId: input.taskId,
-				summaryCount: summaries.length,
-				sourceTextSnippet: sourceText.slice(0, 120),
-				usedFinalMessage: summaries.length === 0 && Boolean(session.latestHookActivity?.finalMessage),
-			});
-
-			// Prevent duplicate concurrent LLM calls for the same task.
-			if (summaryGenerationInFlight.has(input.taskId)) {
-				return { ok: true, summary: session.displaySummary };
-			}
-			summaryGenerationInFlight.add(input.taskId);
-			try {
-				const generated = await generateDisplaySummary(sourceText);
-				if (!generated) {
-					return { ok: false, summary: null };
-				}
-
-				await ctx.projectApi.setTaskDisplaySummary(ctx.projectScope, input.taskId, generated, Date.now());
-				return { ok: true, summary: generated };
-			} finally {
-				summaryGenerationInFlight.delete(input.taskId);
-			}
-		}),
 	// No server-side rate limiting: this is user-triggered (not batch) and the client
 	// guards against duplicate in-flight calls via isGeneratingBranchName state.
 	generateBranchName: projectGitProcedure
@@ -441,16 +355,10 @@ export const projectRouter = t.router({
 				generationContext = {
 					...generationContext,
 					taskTitle: card?.title ?? null,
-					taskContext: buildTaskGenerationContext({
+					taskContext: buildCommitMessageTaskContext({
 						prompt: card?.prompt,
-						summaries: session?.conversationSummaries ?? [],
+						completedResponses: session?.completedResponses ?? [],
 						finalMessage: session?.latestHookActivity?.finalMessage,
-						limits: {
-							originalPrompt: SUMMARY_ORIGINAL_PROMPT_LIMIT,
-							firstActivity: SUMMARY_FIRST_ACTIVITY_LIMIT,
-							latestActivity: SUMMARY_LATEST_ACTIVITY_LIMIT,
-							previousActivity: SUMMARY_PREVIOUS_ACTIVITY_LIMIT,
-						},
 					}),
 				};
 			}

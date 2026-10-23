@@ -80,7 +80,7 @@ describe("incremental task progress preview delivery", () => {
 			expect(
 				update.mock.calls.filter(([, change]) => change.progressMessage === "Checking focus restoration"),
 			).toHaveLength(1);
-			expect(store.getSummary("task-1")?.conversationSummaries).toEqual([]);
+			expect(store.getSummary("task-1")?.completedResponses).toEqual([]);
 		} finally {
 			await service.close();
 		}

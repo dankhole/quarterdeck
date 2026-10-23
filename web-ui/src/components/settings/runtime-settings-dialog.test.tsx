@@ -171,52 +171,23 @@ describe("RuntimeSettingsDialog", () => {
 		expect(findButtonByText(document.body, "Report issue")).toBeNull();
 	});
 
-	it("offers hover, card, and hidden summary display modes", async () => {
+	it("omits conversation summary controls and keeps saved-login guidance for AI helpers", async () => {
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
-					projectId={"project-1"}
+					projectId="project-1"
 					initialConfig={savedConfig}
 					onOpenChange={() => {}}
 				/>,
 			);
 		});
 
-		const select = document.body.querySelector<HTMLSelectElement>("#runtime-settings-summary-display");
-		expect(select).toBeInstanceOf(HTMLSelectElement);
-		expect(select?.value).toBe("hover");
-		expect(Array.from(select?.options ?? []).map((option) => option.value)).toEqual(["hover", "card", "hidden"]);
-
-		await act(async () => {
-			if (select) {
-				select.value = "hidden";
-				select.dispatchEvent(new Event("change", { bubbles: true }));
-			}
-		});
-		await act(async () => {
-			findButtonByText(document.body, "Save")?.click();
-		});
-		expect(saveMock).toHaveBeenCalledWith(
-			expect.objectContaining({ showSummaryOnCards: false, showSummaryOnHover: false }),
-		);
-	});
-
-	it("renders the summary polish checkbox and saved-login guidance", async () => {
-		await act(async () => {
-			root.render(
-				<RuntimeSettingsDialog
-					open={true}
-					projectId={"project-1"}
-					initialConfig={savedConfig}
-					onOpenChange={() => {}}
-				/>,
-			);
-		});
-
-		const checkbox = document.body.querySelector("#runtime-settings-llm-summary-polish");
-		expect(checkbox).toBeInstanceOf(HTMLButtonElement);
-		expect(checkbox?.getAttribute("data-state")).toBe("unchecked");
+		expect(document.body.querySelector("#runtime-settings-summary-display")).toBeNull();
+		expect(document.body.querySelector("#runtime-settings-llm-summary-polish")).toBeNull();
+		expect(document.body.textContent).not.toContain("Conversation summaries");
+		expect(document.body.textContent).not.toContain("Polish summaries with AI");
+		expect(document.body.textContent).toContain("Titles, branch names, and commit messages");
 		expect(document.body.textContent).toContain("saved Codex/ChatGPT login first");
 		expect(document.body.textContent).toContain("saved Claude Code login");
 	});
@@ -370,10 +341,6 @@ describe("RuntimeSettingsDialog", () => {
 		expect(warningText).toContain("QUARTERDECK_LLM_MODEL");
 		expect(warningText).toContain("saved Codex/ChatGPT login first");
 		expect(warningText).toContain("saved Claude Code login");
-		const summaryPolishCheckbox = document.body.querySelector(
-			"#runtime-settings-llm-summary-polish",
-		) as HTMLButtonElement | null;
-		expect(summaryPolishCheckbox?.disabled).toBe(false);
 	});
 
 	it("does not show LLM warning when configured", async () => {
@@ -492,16 +459,22 @@ describe("RuntimeSettingsDialog", () => {
 		expect(testButton.disabled).toBe(true);
 	});
 
-	it("includes audible settings in save payload", async () => {
+	it("saves audible settings without resubmitting legacy summary settings", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);
+		const legacyConfig = {
+			...savedConfig,
+			showSummaryOnCards: true,
+			showSummaryOnHover: true,
+			llmSummaryPolishEnabled: true,
+		};
 
 		await act(async () => {
 			root.render(
 				<RuntimeSettingsDialog
 					open={true}
 					projectId={"project-1"}
-					initialConfig={savedConfig}
+					initialConfig={legacyConfig}
 					onOpenChange={() => {}}
 				/>,
 			);
@@ -527,6 +500,9 @@ describe("RuntimeSettingsDialog", () => {
 		expect(saveMock).toHaveBeenCalledTimes(1);
 		const payload = saveMock.mock.calls[0]?.[0];
 		if (!payload) throw new Error("Expected a runtime config save payload.");
+		expect(payload).not.toHaveProperty("showSummaryOnCards");
+		expect(payload).not.toHaveProperty("showSummaryOnHover");
+		expect(payload).not.toHaveProperty("llmSummaryPolishEnabled");
 		expect(payload.audibleNotificationsEnabled).toBe(false);
 		expect(payload.audibleNotificationVolume).toBe(0.7);
 		expect(payload.audibleNotificationEvents).toEqual({
@@ -534,38 +510,6 @@ describe("RuntimeSettingsDialog", () => {
 			review: true,
 			failure: true,
 		});
-	});
-
-	it("includes LLM summary polish in save payload", async () => {
-		saveMock.mockReset();
-		saveMock.mockResolvedValue(true);
-
-		await act(async () => {
-			root.render(
-				<RuntimeSettingsDialog
-					open={true}
-					projectId={"project-1"}
-					initialConfig={savedConfig}
-					onOpenChange={() => {}}
-				/>,
-			);
-		});
-
-		const checkbox = document.getElementById("runtime-settings-llm-summary-polish") as HTMLButtonElement;
-		await act(async () => {
-			checkbox.click();
-		});
-
-		const saveButton = findButtonByText(document.body, "Save");
-		expect(saveButton).toBeInstanceOf(HTMLButtonElement);
-		await act(async () => {
-			saveButton!.click();
-		});
-
-		expect(saveMock).toHaveBeenCalledTimes(1);
-		const payload = saveMock.mock.calls[0]?.[0];
-		if (!payload) throw new Error("Expected a runtime config save payload.");
-		expect(payload.llmSummaryPolishEnabled).toBe(true);
 	});
 
 	it("includes file editor autosave mode in save payload", async () => {

@@ -107,7 +107,7 @@ export interface CreateRuntimeServerDependencies {
 		RuntimeSessionPersistence,
 		"persistRuntimeSessions" | "awaitRuntimeSessionsDurable" | "disposeProject" | "close"
 	>;
-	initializeProjectsForStartup?: (runProjectOperation: RuntimeTrpcContext["runProjectOperation"]) => Promise<void>;
+	initializeProjectsForStartup?: () => Promise<void>;
 	boardCommands: ProjectBoardCommandService;
 	/** Committed-state publication lanes; drained across relocation and closed on shutdown. */
 	projectStatePublications?: Pick<ProjectStatePublicationScheduler, "drainProject" | "releaseProject" | "close">;
@@ -472,7 +472,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			warn: deps.warn,
 		});
 		await projectLocations.recoverPendingProjects();
-		await deps.initializeProjectsForStartup?.(runProjectOperation);
+		await deps.initializeProjectsForStartup?.();
 		deps.projectRegistry.setProjectRemovalPreparationHandler(async (projectId, projectPath) => {
 			const result = await executionOwnership.prepareProjectRemoval({ projectId, projectPath });
 			if (result.ok) await codeNavigation.stopProject(projectId);
@@ -652,10 +652,8 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			});
 		}
 		const unguardedHooksApi = createHooksApi({
-			runProjectOperation,
 			projects: deps.projectRegistry,
 			terminals: deps.projectRegistry,
-			config: deps.projectRegistry,
 			persistSessionState: deps.runtimeSessionPersistence.persistRuntimeSessions,
 			awaitSessionStateDurable: deps.runtimeSessionPersistence.awaitRuntimeSessionsDurable,
 			diagnostics: deps.diagnostics,

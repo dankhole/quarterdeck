@@ -1,4 +1,3 @@
-import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { useCallback, useMemo } from "react";
 import { useTitleActions } from "@/hooks/board";
 import type { BoardContextValue } from "@/providers/board-provider";
@@ -137,17 +136,8 @@ export function useAppActionModels({
 		() => ({
 			moveToTrashLoadingById: interactions.moveToTrashLoadingById ?? {},
 			isLlmGenerationDisabled: projectRuntime.isLlmGenerationDisabled,
-			showSummaryOnCards:
-				projectRuntime.runtimeProjectConfig?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
-			showSummaryOnHover:
-				projectRuntime.runtimeProjectConfig?.showSummaryOnHover ?? CONFIG_DEFAULTS.showSummaryOnHover,
 		}),
-		[
-			interactions.moveToTrashLoadingById,
-			projectRuntime.isLlmGenerationDisabled,
-			projectRuntime.runtimeProjectConfig?.showSummaryOnCards,
-			projectRuntime.runtimeProjectConfig?.showSummaryOnHover,
-		],
+		[interactions.moveToTrashLoadingById, projectRuntime.isLlmGenerationDisabled],
 	);
 
 	const projectsBadgeColor: "orange" | undefined = useMemo(

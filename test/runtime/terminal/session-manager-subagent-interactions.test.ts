@@ -48,7 +48,6 @@ async function startClaudeTask() {
 	const sessionInstanceId = manager.store.getSummary(TASK_ID)?.sessionInstanceId;
 	if (!sessionInstanceId) throw new Error("Expected a session instance id.");
 	const api = createHooksApi({
-		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: () => "/tmp/repo" },
 		terminals: {
 			getTerminalManagerForProject: () => manager,
@@ -235,7 +234,6 @@ async function startCodexTask(codexApprovalsReviewer: "user" | "auto_review") {
 	const sessionInstanceId = manager.store.getSummary(TASK_ID)?.sessionInstanceId;
 	if (!sessionInstanceId) throw new Error("Expected a session instance id.");
 	const api = createHooksApi({
-		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: () => "/tmp/repo" },
 		terminals: {
 			getTerminalManagerForProject: () => manager,

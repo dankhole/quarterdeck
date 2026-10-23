@@ -11,9 +11,9 @@ import { areFormValuesEqual, reconcileSettingsFormValues, resolveInitialValues }
 describe("resolveInitialValues", () => {
 	it("returns an object with all expected keys", () => {
 		const values = resolveInitialValues(null);
-		expect(values).toHaveProperty("showSummaryOnCards");
-		expect(values).toHaveProperty("showSummaryOnHover");
-		expect(values).toHaveProperty("llmSummaryPolishEnabled");
+		expect(values).not.toHaveProperty("showSummaryOnCards");
+		expect(values).not.toHaveProperty("showSummaryOnHover");
+		expect(values).not.toHaveProperty("llmSummaryPolishEnabled");
 		expect(values).toHaveProperty("audibleNotificationEvents");
 		expect(values).toHaveProperty("shortcuts");
 		expect(values.worktreeSetupScript).toBe("");
@@ -43,7 +43,7 @@ describe("areFormValuesEqual", () => {
 
 	it("detects primitive field changes", () => {
 		const a = makeValues();
-		const b = { ...makeValues(), showSummaryOnHover: !a.showSummaryOnHover };
+		const b = { ...makeValues(), shellAutoRestartEnabled: !a.shellAutoRestartEnabled };
 		expect(areFormValuesEqual(a, b)).toBe(false);
 	});
 

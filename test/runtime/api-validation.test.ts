@@ -21,6 +21,54 @@ const baseSessionSummaryPayload = {
 } satisfies Record<string, unknown>;
 
 describe("runtimeTaskSessionSummarySchema", () => {
+	const legacyResponses = [
+		{ text: "First completed response", capturedAt: 100, sessionIndex: 0 },
+		{ text: "Latest completed response", capturedAt: 200, sessionIndex: 4 },
+	];
+
+	it("migrates retained legacy responses and discards the polished display synopsis", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			conversationSummaries: legacyResponses,
+			displaySummary: "AI-polished synopsis",
+			displaySummaryGeneratedAt: 300,
+		});
+
+		expect(parsed.completedResponses).toEqual(legacyResponses);
+		expect(parsed).not.toHaveProperty("conversationSummaries");
+		expect(parsed).not.toHaveProperty("displaySummary");
+		expect(parsed).not.toHaveProperty("displaySummaryGeneratedAt");
+	});
+
+	it.each([
+		{ completedResponses: [] },
+		{ completedResponses: [{ text: "Canonical response", capturedAt: 300, sessionIndex: 5 }] },
+	])("prefers canonical completed responses, including an empty list: %j", ({ completedResponses }) => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			completedResponses,
+			conversationSummaries: legacyResponses,
+		});
+		expect(parsed.completedResponses).toEqual(completedResponses);
+	});
+
+	it("never promotes a legacy display synopsis into a completed response", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			displaySummary: "AI-polished synopsis without a retained response",
+			displaySummaryGeneratedAt: 300,
+		});
+		expect(parsed.completedResponses).toEqual([]);
+	});
+
+	it("drops the legacy hook input field from published activity", () => {
+		const parsed = runtimeTaskSessionSummarySchema.parse({
+			...baseSessionSummaryPayload,
+			latestHookActivity: { hookEventName: "Stop", conversationSummaryText: "Legacy hook text" },
+		});
+		expect(parsed.latestHookActivity).not.toHaveProperty("conversationSummaryText");
+	});
+
 	it("defaults missing sessionLaunchPath to null", () => {
 		const parsed = runtimeTaskSessionSummarySchema.parse(baseSessionSummaryPayload);
 

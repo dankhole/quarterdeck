@@ -32,7 +32,6 @@ describe("isPermissionActivity", () => {
 				toolInputSummary: null,
 				finalMessage: null,
 				source: "claude",
-				conversationSummaryText: null,
 			}),
 		).toBe(true);
 	});
@@ -47,7 +46,6 @@ describe("isPermissionActivity", () => {
 				toolInputSummary: null,
 				finalMessage: null,
 				source: "codex",
-				conversationSummaryText: null,
 			}),
 		).toBe(true);
 	});

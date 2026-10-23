@@ -400,7 +400,6 @@ function prepared(
 			...(provider === "codex" ? { codexApprovalsReviewer: "user" as const } : {}),
 		},
 		taskCwd: `${root}/project`,
-		llmSummaryPolishEnabled: false,
 		resumeContextWarning: null,
 		resumeSessionWarning: null,
 	};

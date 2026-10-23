@@ -105,6 +105,7 @@ describe("TaskStartAgentOnboardingCarousel", () => {
 		expect(container.textContent).toContain("QUARTERDECK_LLM_API_KEY");
 		expect(container.textContent).toContain("QUARTERDECK_LLM_MODEL");
 		expect(container.textContent).toContain("QUARTERDECK_TITLE_PROVIDER=llm");
+		expect(container.textContent).not.toContain("summary polish");
 	});
 
 	it("shows Windows-native provider and helper setup commands", async () => {

@@ -12,14 +12,7 @@ import type { SettingsSectionProps } from "./settings-section-props";
 // AI Features
 // ---------------------------------------------------------------------------
 
-export function AiFeaturesSection({
-	fields,
-	setField,
-	disabled,
-	llmConfigured,
-}: SettingsSectionProps & { llmConfigured: boolean }): React.ReactElement {
-	const summaryDisplayMode = fields.showSummaryOnCards ? "card" : fields.showSummaryOnHover ? "hover" : "hidden";
-
+export function AiFeaturesSection({ llmConfigured }: { llmConfigured: boolean }): React.ReactElement {
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
@@ -44,58 +37,10 @@ export function AiFeaturesSection({
 				</div>
 			) : (
 				<p className="text-text-secondary text-[13px] mt-0 mb-2">
-					Titles, branch names, commit messages, and enabled summary polish try your saved Codex/ChatGPT login
-					first, then your saved Claude Code login, then the configured gateway. Explicit task-title provider
-					overrides still apply.
+					Titles, branch names, and commit messages try your saved Codex/ChatGPT login first, then your saved
+					Claude Code login, then the configured gateway. Explicit task-title provider overrides still apply.
 				</p>
 			)}
-
-			<div className="settings-row">
-				<div className="flex items-center justify-between gap-3">
-					<label htmlFor="runtime-settings-summary-display" className="text-text-primary text-[13px]">
-						Conversation summaries
-					</label>
-					<select
-						id="runtime-settings-summary-display"
-						name="summaryDisplayMode"
-						value={summaryDisplayMode}
-						onChange={(event) => {
-							const mode = event.currentTarget.value;
-							setField("showSummaryOnCards", mode === "card");
-							setField("showSummaryOnHover", mode === "hover");
-						}}
-						disabled={disabled}
-						className="h-7 min-w-36 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
-					>
-						<option value="hover">On hover</option>
-						<option value="card">On card</option>
-						<option value="hidden">Hidden</option>
-					</select>
-				</div>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
-					Choose whether the latest task summary appears on hover, directly on the card, or nowhere on task cards.
-				</p>
-			</div>
-
-			<div className="settings-row">
-				<label
-					htmlFor="runtime-settings-llm-summary-polish"
-					className="flex items-center gap-2 text-[13px] text-text-primary cursor-pointer"
-				>
-					<SettingsCheckbox
-						id="runtime-settings-llm-summary-polish"
-						checked={fields.llmSummaryPolishEnabled}
-						onCheckedChange={(v) => setField("llmSummaryPolishEnabled", v)}
-						disabled={disabled}
-					/>
-					<span>Polish summaries with AI</span>
-				</label>
-				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-					When enabled, task state changes can trigger background summary polish using your saved Codex/ChatGPT
-					login, then your saved Claude Code login, with the configured gateway as fallback. Without a usable
-					provider, existing summaries are retained.
-				</p>
-			</div>
 		</>
 	);
 }

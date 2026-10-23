@@ -79,7 +79,7 @@ export async function createProjectRelocationFixture(
 		await callbacks.beforeDirectoryProbe?.();
 		return (await stat(path)).isDirectory();
 	});
-	const config = createDefaultMockConfig({ llmSummaryPolishEnabled: true });
+	const config = createDefaultMockConfig();
 	const registry = await createProjectRegistry({
 		cwd: oldPath,
 		loadGlobalRuntimeConfig: async () => config,

@@ -60,9 +60,7 @@ function createPersistedReviewSession(
 		outstandingInteraction: null,
 		nativeWorkEvidence: null,
 		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: [],
 	};
 }
 

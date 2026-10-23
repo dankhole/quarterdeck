@@ -32,7 +32,6 @@ export const runtimeTaskHookActivitySchema = z.object({
 	hookEventName: z.string().nullable().default(null),
 	notificationType: z.string().nullable().default(null),
 	source: z.string().nullable().default(null),
-	conversationSummaryText: z.string().nullable().default(null),
 });
 export type RuntimeTaskHookActivity = z.infer<typeof runtimeTaskHookActivitySchema>;
 
@@ -113,6 +112,8 @@ export const runtimeCodexSessionStartSourceSchema = z.enum(CODEX_SESSION_START_S
 
 export const runtimeHookMetadataSchema = runtimeTaskHookActivitySchema
 	.extend({
+		/** Legacy native-hook input for completed assistant text; finalMessage takes precedence. */
+		conversationSummaryText: z.string().nullable().default(null),
 		sessionId: z.string().nullable().default(null),
 		sessionInstanceId: z.string().nullable().default(null),
 		turnId: z.string().nullable().default(null),
@@ -165,15 +166,15 @@ export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 });
 export type RuntimeTaskProviderHookOrderObservation = z.infer<typeof runtimeTaskProviderHookOrderObservationSchema>;
 
-export const conversationSummaryEntrySchema = z.object({
+export const completedAgentResponseSchema = z.object({
 	/** The extracted assistant message text, capped at 500 chars. */
 	text: z.string(),
-	/** Timestamp when this summary was captured. */
+	/** Timestamp when this completed foreground response was captured. */
 	capturedAt: z.number(),
 	/** Which session stop event produced this (first, latest, etc.). */
 	sessionIndex: z.number().int().nonnegative(),
 });
-export type ConversationSummaryEntry = z.infer<typeof conversationSummaryEntrySchema>;
+export type CompletedAgentResponse = z.infer<typeof completedAgentResponseSchema>;
 
 const runtimeTaskSessionSummaryBaseSchema = z.object({
 	taskId: z.string(),
@@ -228,11 +229,9 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	/** Legacy persistence erased the prior semantic state; remain neutral until a new event establishes meaning. */
 	startupRecoverySemanticStateUncertain: z.boolean().optional(),
 	warningMessage: z.string().nullable().optional(),
-	conversationSummaries: z.array(conversationSummaryEntrySchema).default([]),
+	completedResponses: z.array(completedAgentResponseSchema).default([]),
 	/** Best-effort running preview; never completion or lifecycle evidence. */
 	progressMessage: z.string().max(500).nullable().optional(),
-	displaySummary: z.string().nullable().default(null),
-	displaySummaryGeneratedAt: z.number().nullable().default(null),
 });
 
 type ParsedRuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummaryBaseSchema>;
@@ -392,8 +391,16 @@ export function normalizeRuntimeTaskSessionSummary(
 	return next;
 }
 
-export const runtimeTaskSessionSummarySchema = runtimeTaskSessionSummaryBaseSchema.transform((summary) =>
-	normalizeRuntimeTaskSessionSummary(summary),
+export const runtimeTaskSessionSummarySchema = z.preprocess(
+	(input) => {
+		if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+		// Both sessions.json and pending transaction journals use this boundary.
+		// An explicitly present canonical history, including [], always wins.
+		if (Object.hasOwn(input, "completedResponses") || !Object.hasOwn(input, "conversationSummaries")) return input;
+		const legacy = input as Record<string, unknown>;
+		return { ...legacy, completedResponses: legacy.conversationSummaries };
+	},
+	runtimeTaskSessionSummaryBaseSchema.transform((summary) => normalizeRuntimeTaskSessionSummary(summary)),
 );
 export type RuntimeTaskSessionSummary = z.infer<typeof runtimeTaskSessionSummarySchema>;
 

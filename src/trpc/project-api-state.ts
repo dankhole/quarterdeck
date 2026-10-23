@@ -22,11 +22,7 @@ import {
 	normalizeRequiredTaskScopeInput,
 	type ProjectApiContext,
 } from "./project-api-shared";
-import {
-	createBoardCommandCommittedEffects,
-	createProjectStateUpdatedEffects,
-	createTaskTitleUpdatedEffects,
-} from "./runtime-mutation-effects";
+import { createBoardCommandCommittedEffects, createTaskTitleUpdatedEffects } from "./runtime-mutation-effects";
 
 type StateOps = Pick<
 	RuntimeTrpcContext["projectApi"],
@@ -37,7 +33,6 @@ type StateOps = Pick<
 	| "applyBoardCommands"
 	| "updateTaskTitle"
 	| "regenerateTaskTitle"
-	| "setTaskDisplaySummary"
 	| "setFocusedTask"
 	| "setDocumentVisible"
 >;
@@ -247,15 +242,6 @@ export function createStateOps(ctx: ProjectApiContext): StateOps {
 				title,
 				commandId: `title:${randomUUID()}`,
 			}),
-
-		setTaskDisplaySummary: async (projectScope, taskId, text, generatedAt) => {
-			const manager = await ctx.deps.terminals.ensureTerminalManagerForProject(
-				projectScope.projectId,
-				projectScope.projectPath,
-			);
-			manager.store.setDisplaySummary(taskId, text, generatedAt);
-			ctx.applyEffects(createProjectStateUpdatedEffects(projectScope));
-		},
 
 		setFocusedTask: (projectScope, taskId) => {
 			// This intentionally stays a direct command instead of becoming a

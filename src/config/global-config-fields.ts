@@ -100,9 +100,6 @@ function enumField<T extends string>(defaultValue: T, allowed: readonly T[]): Co
 export const GLOBAL_CONFIG_FIELDS = {
 	readyForReviewNotificationsEnabled: boolField(true),
 	shellAutoRestartEnabled: boolField(true),
-	showSummaryOnCards: boolField(false),
-	showSummaryOnHover: boolField(true),
-	llmSummaryPolishEnabled: boolField(false),
 	audibleNotificationsEnabled: boolField(true),
 	audibleNotificationVolume: volumeField(0.7),
 	audibleNotificationsOnlyWhenHidden: boolField(true),

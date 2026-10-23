@@ -42,9 +42,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		nativeWorkEvidence,
 		stalledSince: null,
 		warningMessage: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: [],
 		...summaryOverrides,
 	};
 }
@@ -237,7 +235,6 @@ describe("SessionTransitionController", () => {
 					toolName: null,
 					toolInputSummary: null,
 					finalMessage: null,
-					conversationSummaryText: null,
 				},
 			}),
 		});

@@ -8,19 +8,10 @@ interface UseBoardCardInput {
 	card: BoardCard;
 	columnId: BoardColumnId;
 	sessionSummary?: RuntimeTaskSessionSummary;
-	showSummaryOnCards: boolean;
-	showSummaryOnHover: boolean;
 	onRestartSession?: (taskId: string) => void;
 }
 
-export function useBoardCard({
-	card,
-	columnId,
-	sessionSummary,
-	showSummaryOnCards,
-	showSummaryOnHover,
-	onRestartSession,
-}: UseBoardCardInput) {
+export function useBoardCard({ card, columnId, sessionSummary, onRestartSession }: UseBoardCardInput) {
 	const [isHovered, setIsHovered] = useState(false);
 	const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -36,22 +27,10 @@ export function useBoardCard({
 				sessionSummary,
 				reviewWorktreeSnapshot: reviewWorktreeSnapshot ?? undefined,
 				workspacePath,
-				showSummaryOnCards,
-				showSummaryOnHover,
 				isRestartDelayElapsed,
 				hasRestartSessionHandler: Boolean(onRestartSession),
 			}),
-		[
-			card,
-			columnId,
-			sessionSummary,
-			reviewWorktreeSnapshot,
-			workspacePath,
-			showSummaryOnCards,
-			showSummaryOnHover,
-			isRestartDelayElapsed,
-			onRestartSession,
-		],
+		[card, columnId, sessionSummary, reviewWorktreeSnapshot, workspacePath, isRestartDelayElapsed, onRestartSession],
 	);
 
 	useEffect(() => {

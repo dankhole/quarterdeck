@@ -44,7 +44,7 @@ function boundedProviderTimeoutMs(providerDefaultMs: number, remainingMs: number
 // backing off. A normalizer/sanitizer rejection of an otherwise-successful (non-null) response
 // is also never backoff-eligible. The Codex -> Claude -> gateway chain runs its attempts
 // sequentially, so a consistently fast-failing Codex would otherwise cost a fresh attempt on
-// every single title/branch/commit-message/summary call. Backing off here (coarser and
+// every single title/branch/commit-message call. Backing off here (coarser and
 // shorter-lived than Claude's own failure-kind backoff, since this classification is coarser)
 // bounds that latency. This is latency policy, not correctness: disabling it only makes a
 // failing Codex slower to skip past.

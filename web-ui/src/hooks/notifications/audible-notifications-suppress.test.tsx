@@ -172,7 +172,6 @@ describe("useAudibleNotifications — suppress current project", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: "codex",
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -225,7 +224,6 @@ describe("useAudibleNotifications — suppress current project", () => {
 								toolInputSummary: null,
 								finalMessage: "Done",
 								source: "codex",
-								conversationSummaryText: null,
 							},
 						}),
 					}}

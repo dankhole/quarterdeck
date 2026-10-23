@@ -183,7 +183,7 @@ export function RuntimeSettingsDialog({
 					<DesktopEnvironmentSection open={open} />
 					<HarnessSection {...sectionProps} config={config} />
 					<DiagnosticsSection />
-					<AiFeaturesSection {...sectionProps} llmConfigured={config?.llmConfigured ?? false} />
+					<AiFeaturesSection llmConfigured={config?.llmConfigured ?? false} />
 					<NotificationsSection {...sectionProps} />
 					<TerminalSection {...sectionProps} />
 					<EditorSection {...sectionProps} />

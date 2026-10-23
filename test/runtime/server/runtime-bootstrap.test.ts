@@ -316,7 +316,7 @@ describe("runtime bootstrap entry points", () => {
 				const [serverDeps] = mocks.createRuntimeServer.mock.calls[0] as unknown as [
 					Pick<CreateRuntimeServerDependencies, "initializeProjectsForStartup">,
 				];
-				await serverDeps.initializeProjectsForStartup?.(async (_scope, operation) => await operation());
+				await serverDeps.initializeProjectsForStartup?.();
 				const [startup] = mocks.projectRegistry.initializeIndexedProjectsForStartup.mock.calls[0] as unknown as [
 					{ beforeRecovery: () => Promise<unknown> },
 				];

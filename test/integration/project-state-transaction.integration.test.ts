@@ -170,6 +170,47 @@ describe("project state transactions", () => {
 			expect((await fixture.service.execute(fixture, move)).replayed).toBe(true);
 		}));
 
+	it.each([false, true])(
+		"migrates completed responses inside a pending legacy journal (canonical empty list: %s)",
+		async (hasCanonicalResponses) =>
+			await withProject(async (fixture) => {
+				const before = await loadProjectState(fixture.projectPath);
+				const meta = JSON.parse(readFileSync(join(fixture.statePath, "meta.json"), "utf8"));
+				const { completedResponses: _responses, ...session } = createTestTaskSessionSummary({ taskId: "task-a" });
+				const responses = [
+					{ text: "First completed response", capturedAt: 10, sessionIndex: 0 },
+					{ text: "Latest completed response", capturedAt: 20, sessionIndex: 3 },
+				];
+				writeFileSync(
+					getProjectStateTransactionPath(fixture.projectId),
+					JSON.stringify({
+						version: 1,
+						board: before.board,
+						sessions: {
+							"task-a": {
+								...session,
+								conversationSummaries: responses,
+								displaySummary: "AI-polished synopsis",
+								displaySummaryGeneratedAt: 30,
+								...(hasCanonicalResponses ? { completedResponses: [] } : {}),
+							},
+						},
+						meta,
+					}),
+				);
+
+				const recovered = await loadProjectState(fixture.projectPath);
+				expect(recovered.sessions["task-a"]?.completedResponses).toEqual(hasCanonicalResponses ? [] : responses);
+				expect(recovered.revision).toBe(before.revision);
+				expect(existsSync(getProjectStateTransactionPath(fixture.projectId))).toBe(false);
+				const persisted = JSON.parse(readFileSync(join(fixture.statePath, "sessions.json"), "utf8"));
+				expect(persisted["task-a"]).toEqual(recovered.sessions["task-a"]);
+				expect(persisted["task-a"]).not.toHaveProperty("conversationSummaries");
+				expect(persisted["task-a"]).not.toHaveProperty("displaySummary");
+				expect(persisted["task-a"]).not.toHaveProperty("displaySummaryGeneratedAt");
+			}),
+	);
+
 	it("fails closed on an invalid journal instead of exposing partial files", async () =>
 		await withProject(async (fixture) => {
 			writeFileSync(getProjectStateTransactionPath(fixture.projectId), '{"version":1}');

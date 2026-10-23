@@ -67,7 +67,6 @@ async function createHarness() {
 	await persistence.persistRuntimeSessions("project-1");
 	reconcileRuntimeSessions.mockClear();
 	const api = createHooksApi({
-		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: () => "/repo" },
 		terminals: {
 			getTerminalManagerForProject: () => manager,
@@ -188,7 +187,6 @@ function createGatedHarness() {
 		boardCommands: { reconcileRuntimeSessions },
 	});
 	const api = createHooksApi({
-		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: () => "/tmp/repo" },
 		terminals: {
 			getTerminalManagerForProject: () => manager,

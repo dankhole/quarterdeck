@@ -37,7 +37,7 @@ export const TASK_START_ONBOARDING_SLIDES: OnboardingSlide[] = [
 		kind: "llm-helper",
 		title: "Optional: configure AI helpers",
 		description:
-			"Titles, branch names, commit messages, and enabled summary polish use your saved Codex/ChatGPT login first. Optionally configure a fallback gateway.",
+			"Titles, branch names, and commit messages use your saved Codex/ChatGPT login first. Optionally configure a fallback gateway.",
 	},
 ];
 
@@ -124,8 +124,8 @@ function OptionalLlmHelperSetup({
 					) : null}
 				</div>
 				<p className="mt-1 mb-0 text-[12px] text-text-secondary">
-					No gateway setup is required. Sign in with ChatGPT through Codex to generate titles, branch names, commit
-					messages, and enabled summary polish. If generation fails, task titles fall back to local text.
+					No gateway setup is required. Sign in with ChatGPT through Codex to generate titles, branch names, and
+					commit messages. If generation fails, task titles fall back to local text.
 				</p>
 			</div>
 

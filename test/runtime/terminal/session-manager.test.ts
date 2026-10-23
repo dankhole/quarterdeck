@@ -159,7 +159,6 @@ describe("TerminalSessionManager", () => {
 					toolName: null,
 					toolInputSummary: null,
 					finalMessage: null,
-					conversationSummaryText: null,
 				},
 			}),
 		});
@@ -217,7 +216,6 @@ describe("TerminalSessionManager", () => {
 					toolName: "Bash",
 					toolInputSummary: "Bash: npm test",
 					finalMessage: null,
-					conversationSummaryText: null,
 				},
 			}),
 		});
@@ -251,7 +249,6 @@ describe("TerminalSessionManager", () => {
 					toolName: "Bash",
 					toolInputSummary: null,
 					finalMessage: null,
-					conversationSummaryText: null,
 				},
 			}),
 		});
@@ -333,58 +330,22 @@ describe("TerminalSessionManager", () => {
 		expect(entry.active.terminalProtocolFilter.interceptOscColorQueries).toBe(false);
 	});
 
-	describe("appendConversationSummary", () => {
-		it("adds a conversation summary entry and sets raw displaySummary", () => {
+	describe("appendCompletedResponse", () => {
+		it("retains a completed foreground response", () => {
 			const manager = createTestManager();
 			manager.store.hydrateFromRecord({
 				"task-1": createSummary({ state: "running" }),
 			});
 
-			const result = manager.store.appendConversationSummary("task-1", {
+			const result = manager.store.appendCompletedResponse("task-1", {
 				text: "Completed the auth refactor",
 				capturedAt: 1000,
 			});
 
 			expect(result).not.toBeNull();
-			expect(result?.conversationSummaries).toHaveLength(1);
-			expect(result?.conversationSummaries[0].text).toBe("Completed the auth refactor");
-			expect(result?.conversationSummaries[0].sessionIndex).toBe(0);
-			expect(result?.displaySummary).toBe("Completed the auth refactor");
-		});
-
-		it("truncates displaySummary to 90 chars with ellipsis", () => {
-			const manager = createTestManager();
-			manager.store.hydrateFromRecord({
-				"task-1": createSummary({ state: "running" }),
-			});
-
-			const longText = "X".repeat(100);
-			const result = manager.store.appendConversationSummary("task-1", {
-				text: longText,
-				capturedAt: 1000,
-			});
-
-			expect(result?.displaySummary?.length).toBe(91); // 90 + ellipsis
-			expect(result?.displaySummary?.endsWith("\u2026")).toBe(true);
-		});
-
-		it("replaces stale generated display summaries with the latest raw summary", () => {
-			const generatedAt = Date.now();
-			const manager = createTestManager();
-			manager.store.hydrateFromRecord({
-				"task-1": createSummary({
-					state: "running",
-					displaySummaryGeneratedAt: generatedAt,
-				}),
-			});
-
-			const result = manager.store.appendConversationSummary("task-1", {
-				text: "New summary",
-				capturedAt: 1000,
-			});
-
-			expect(result?.displaySummary).toBe("New summary");
-			expect(result?.displaySummaryGeneratedAt).toBeNull();
+			expect(result?.completedResponses).toHaveLength(1);
+			expect(result?.completedResponses[0].text).toBe("Completed the auth refactor");
+			expect(result?.completedResponses[0].sessionIndex).toBe(0);
 		});
 
 		it("retains at most 5 entries", () => {
@@ -394,18 +355,18 @@ describe("TerminalSessionManager", () => {
 			});
 
 			for (let i = 0; i < 7; i++) {
-				manager.store.appendConversationSummary("task-1", {
+				manager.store.appendCompletedResponse("task-1", {
 					text: `Summary ${i}`,
 					capturedAt: 1000 + i,
 				});
 			}
 
 			const result = manager.store.getSummary("task-1");
-			expect(result?.conversationSummaries.length).toBeLessThanOrEqual(5);
+			expect(result?.completedResponses.length).toBeLessThanOrEqual(5);
 			// First entry is always retained.
-			expect(result?.conversationSummaries[0].text).toBe("Summary 0");
+			expect(result?.completedResponses[0].text).toBe("Summary 0");
 			// Latest entry is always retained.
-			expect(result?.conversationSummaries[result?.conversationSummaries.length - 1].text).toBe("Summary 6");
+			expect(result?.completedResponses[result?.completedResponses.length - 1].text).toBe("Summary 6");
 		});
 
 		it("drops entries when total chars exceed 2000", () => {
@@ -416,17 +377,17 @@ describe("TerminalSessionManager", () => {
 
 			// Each entry is 450 chars. 5 entries = 2250 > 2000.
 			for (let i = 0; i < 5; i++) {
-				manager.store.appendConversationSummary("task-1", {
+				manager.store.appendCompletedResponse("task-1", {
 					text: `${"Z".repeat(448)}${i}`,
 					capturedAt: 1000 + i,
 				});
 			}
 
 			const result = manager.store.getSummary("task-1");
-			const totalChars = result?.conversationSummaries.reduce((sum, e) => sum + e.text.length, 0);
+			const totalChars = result?.completedResponses.reduce((sum, e) => sum + e.text.length, 0);
 			expect(totalChars).toBeLessThanOrEqual(2000);
 			// First and latest are always retained.
-			expect(result?.conversationSummaries.length).toBeGreaterThanOrEqual(2);
+			expect(result?.completedResponses.length).toBeGreaterThanOrEqual(2);
 		});
 
 		it("truncates individual entry text to 500 chars", () => {
@@ -436,17 +397,17 @@ describe("TerminalSessionManager", () => {
 			});
 
 			const longText = "Y".repeat(600);
-			const result = manager.store.appendConversationSummary("task-1", {
+			const result = manager.store.appendCompletedResponse("task-1", {
 				text: longText,
 				capturedAt: 1000,
 			});
 
-			expect(result?.conversationSummaries[0].text.length).toBe(501); // 500 + ellipsis
+			expect(result?.completedResponses[0].text.length).toBe(501); // 500 + ellipsis
 		});
 
 		it("returns null for a nonexistent task", () => {
 			const manager = createTestManager();
-			const result = manager.store.appendConversationSummary("nonexistent", {
+			const result = manager.store.appendCompletedResponse("nonexistent", {
 				text: "Some text",
 				capturedAt: 1000,
 			});
@@ -459,46 +420,13 @@ describe("TerminalSessionManager", () => {
 				"task-1": createSummary({ state: "running" }),
 			});
 
-			manager.store.appendConversationSummary("task-1", { text: "First", capturedAt: 1 });
-			manager.store.appendConversationSummary("task-1", { text: "Second", capturedAt: 2 });
-			const result = manager.store.appendConversationSummary("task-1", { text: "Third", capturedAt: 3 });
+			manager.store.appendCompletedResponse("task-1", { text: "First", capturedAt: 1 });
+			manager.store.appendCompletedResponse("task-1", { text: "Second", capturedAt: 2 });
+			const result = manager.store.appendCompletedResponse("task-1", { text: "Third", capturedAt: 3 });
 
-			expect(result?.conversationSummaries[0].sessionIndex).toBe(0);
-			expect(result?.conversationSummaries[1].sessionIndex).toBe(1);
-			expect(result?.conversationSummaries[2].sessionIndex).toBe(2);
-		});
-	});
-
-	describe("setDisplaySummary", () => {
-		it("sets displaySummary and generatedAt timestamp", () => {
-			const manager = createTestManager();
-			manager.store.hydrateFromRecord({
-				"task-1": createSummary({ state: "running" }),
-			});
-
-			const now = Date.now();
-			const result = manager.store.setDisplaySummary("task-1", "LLM-generated summary", now);
-
-			expect(result?.displaySummary).toBe("LLM-generated summary");
-			expect(result?.displaySummaryGeneratedAt).toBe(now);
-		});
-
-		it("sets generatedAt to null for raw fallback summaries", () => {
-			const manager = createTestManager();
-			manager.store.hydrateFromRecord({
-				"task-1": createSummary({ state: "running" }),
-			});
-
-			const result = manager.store.setDisplaySummary("task-1", "Raw fallback text", null);
-
-			expect(result?.displaySummary).toBe("Raw fallback text");
-			expect(result?.displaySummaryGeneratedAt).toBeNull();
-		});
-
-		it("returns null for a nonexistent task", () => {
-			const manager = createTestManager();
-			const result = manager.store.setDisplaySummary("nonexistent", "Text", null);
-			expect(result).toBeNull();
+			expect(result?.completedResponses[0].sessionIndex).toBe(0);
+			expect(result?.completedResponses[1].sessionIndex).toBe(1);
+			expect(result?.completedResponses[2].sessionIndex).toBe(2);
 		});
 	});
 
@@ -893,7 +821,6 @@ describe("TerminalSessionManager", () => {
 			hookEventName: "Stop",
 			notificationType: "review.ready",
 			source: "claude",
-			conversationSummaryText: null,
 		} as const;
 		(
 			manager as unknown as {

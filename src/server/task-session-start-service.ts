@@ -71,14 +71,12 @@ export interface TaskSessionStartServiceResult {
 	taskCwd: string;
 	sessionInstanceId: string | null;
 	startedNewSession: boolean;
-	llmSummaryPolishEnabled: boolean;
 }
 
 export interface PreparedTaskSessionStart {
 	terminalManager: TerminalSessionManager;
 	request: StartTaskSessionRequest;
 	taskCwd: string;
-	llmSummaryPolishEnabled: boolean;
 	resumeContextWarning: string | null;
 	resumeSessionWarning: string | null;
 	startupRecoveryWarningMessage?: string | null;
@@ -378,7 +376,6 @@ export async function prepareTaskSessionStart(
 		terminalManager,
 		request,
 		taskCwd,
-		llmSummaryPolishEnabled: scopedRuntimeConfig.llmSummaryPolishEnabled,
 		resumeContextWarning,
 		resumeSessionWarning,
 		startupRecoveryWarningMessage: options.startupRecoveryWarningMessage ?? null,
@@ -425,7 +422,6 @@ export async function launchPreparedTaskSession(
 		taskCwd: prepared.taskCwd,
 		sessionInstanceId,
 		startedNewSession,
-		llmSummaryPolishEnabled: prepared.llmSummaryPolishEnabled,
 	};
 }
 

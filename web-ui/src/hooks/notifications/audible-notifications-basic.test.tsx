@@ -74,7 +74,6 @@ describe("useAudibleNotifications — basic sound events", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -119,7 +118,6 @@ describe("useAudibleNotifications — basic sound events", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}

@@ -447,7 +447,6 @@ export function handleTaskSessionExit(
 	};
 	sessionLog.info("task session process exited", {
 		taskId: request.taskId,
-		displaySummary: currentSummaryAtExit?.displaySummary ?? null,
 		exitCode: event.exitCode,
 		trustConfirmCount: exitEventData.trustConfirmCount,
 	});
@@ -477,7 +476,6 @@ export function handleTaskSessionExit(
 	if (!autoRestartDecision.restart) {
 		const skipData = {
 			taskId: request.taskId,
-			displaySummary: currentSummaryAtExit?.displaySummary ?? null,
 			reason: autoRestartDecision.reason,
 			preExitState,
 			listenerCount: currentEntry.listeners.size,

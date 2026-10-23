@@ -3,9 +3,9 @@ import { trimGeneratedTranscriptEcho } from "./transcript-echo";
 const MAX_TITLE_LENGTH = 80;
 const TASK_CONTEXT_LABELS = [
 	"Original prompt",
-	"First agent summary",
-	"Most recent agent summary",
-	"Previous agent summary",
+	"First agent response",
+	"Most recent agent response",
+	"Previous agent response",
 ] as const;
 type TaskContextLabel = (typeof TASK_CONTEXT_LABELS)[number];
 const TASK_CONTEXT_SECTION_PATTERN = new RegExp(
@@ -142,9 +142,9 @@ function resolveFallbackTitleSource(context: string): string {
 		}
 	}
 	return (
-		sections.get("Most recent agent summary") ??
-		sections.get("Previous agent summary") ??
-		sections.get("First agent summary") ??
+		sections.get("Most recent agent response") ??
+		sections.get("Previous agent response") ??
+		sections.get("First agent response") ??
 		sections.get("Original prompt") ??
 		context
 	);

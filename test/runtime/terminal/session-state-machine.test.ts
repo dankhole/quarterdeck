@@ -192,7 +192,6 @@ describe("reduceSessionTransition", () => {
 					hookEventName: "PreToolUse",
 					notificationType: null,
 					source: "codex",
-					conversationSummaryText: null,
 				},
 			});
 
@@ -686,7 +685,6 @@ describe("reduceSessionTransition", () => {
 					hookEventName: "PermissionRequest",
 					notificationType: "permission.asked",
 					source: "claude",
-					conversationSummaryText: null,
 				},
 			});
 			const result = reduceSessionTransition(summary, { type: "user.stop" });
@@ -935,7 +933,6 @@ describe("reduceSessionTransition", () => {
 				hookEventName: "Stop",
 				notificationType: null,
 				source: "codex",
-				conversationSummaryText: "Implemented and verified.",
 			};
 			const result = reduceSessionTransition(
 				createSummary({

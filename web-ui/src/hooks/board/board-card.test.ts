@@ -14,25 +14,7 @@ const card: BoardCard = {
 	updatedAt: 1,
 };
 
-function resolveSummaryDisplay(showSummaryOnCards: boolean, showSummaryOnHover: boolean) {
-	return resolveBoardCardViewModel({
-		card,
-		columnId: "in_progress",
-		sessionSummary: createTestTaskSessionSummary({
-			taskId: card.id,
-			state: "running",
-			displaySummary: "Latest conversation summary",
-		}),
-		reviewWorktreeSnapshot: null,
-		workspacePath: "/tmp/project",
-		showSummaryOnCards,
-		showSummaryOnHover,
-		isRestartDelayElapsed: false,
-		hasRestartSessionHandler: false,
-	});
-}
-
-describe("resolveBoardCardViewModel summary display", () => {
+describe("resolveBoardCardViewModel", () => {
 	it("shows unstarted status without stale session or restart affordances", () => {
 		const result = resolveBoardCardViewModel({
 			card: { ...card, unstarted: true },
@@ -41,12 +23,10 @@ describe("resolveBoardCardViewModel summary display", () => {
 				taskId: card.id,
 				state: "awaiting_review",
 				pid: null,
-				displaySummary: "Stale summary",
+				completedResponses: [{ text: "Stale response", capturedAt: 1, sessionIndex: 0 }],
 			}),
 			reviewWorktreeSnapshot: null,
 			workspacePath: "/tmp/project",
-			showSummaryOnCards: true,
-			showSummaryOnHover: true,
 			isRestartDelayElapsed: true,
 			hasRestartSessionHandler: true,
 		});
@@ -56,30 +36,7 @@ describe("resolveBoardCardViewModel summary display", () => {
 			isSessionDead: false,
 			isSessionRestartable: false,
 			showProjectStatus: false,
-			latestSummaryText: null,
-			effectiveTooltip: null,
 		});
-	});
-
-	it("shows the summary only in the hover tooltip in hover mode", () => {
-		const result = resolveSummaryDisplay(false, true);
-
-		expect(result.isSummaryVisibleOnCard).toBe(false);
-		expect(result.effectiveTooltip).toBe("Latest conversation summary");
-	});
-
-	it("shows the summary only on the card in card mode", () => {
-		const result = resolveSummaryDisplay(true, false);
-
-		expect(result.isSummaryVisibleOnCard).toBe(true);
-		expect(result.effectiveTooltip).toBeNull();
-	});
-
-	it("suppresses both summary surfaces in hidden mode", () => {
-		const result = resolveSummaryDisplay(false, false);
-
-		expect(result.isSummaryVisibleOnCard).toBe(false);
-		expect(result.effectiveTooltip).toBeNull();
 	});
 });
 
@@ -109,8 +66,6 @@ describe("resolveBoardCardViewModel uncommitted changes indicator", () => {
 			columnId,
 			reviewWorktreeSnapshot,
 			workspacePath: "/tmp/project",
-			showSummaryOnCards: false,
-			showSummaryOnHover: true,
 			isRestartDelayElapsed: false,
 			hasRestartSessionHandler: false,
 		}).showUncommittedChangesIndicator;

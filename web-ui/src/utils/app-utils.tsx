@@ -92,9 +92,7 @@ export function createIdleTaskSession(taskId: string): RuntimeTaskSessionSummary
 		nativeWorkEvidence: null,
 		stalledSince: null,
 		warningMessage: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: [],
 	};
 }
 

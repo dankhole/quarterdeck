@@ -1,7 +1,6 @@
 import type { ConversationSourceHintRecorder } from "../conversation/index.js";
 import type {
 	IProjectResolver,
-	IRuntimeConfigProvider,
 	ITerminalManagerProvider,
 	RuntimeHookEvent,
 	RuntimeHookIngestRequest,
@@ -18,7 +17,6 @@ import {
 	type TerminalSessionManager,
 } from "../terminal";
 import type { RuntimeTrpcContext } from "./app-router";
-import { queueTaskDisplaySummaryPolish } from "./display-summary-polish";
 
 const log = createTaggedLogger("hooks");
 
@@ -59,16 +57,16 @@ function buildHookLogData(input: {
 	};
 }
 
-function applyConversationSummaryFromMetadata(
+function applyCompletedResponseFromMetadata(
 	store: SessionSummaryStore,
 	taskId: string,
 	metadata: { conversationSummaryText?: string | null; finalMessage?: string | null } | undefined,
 ): void {
 	// Retain the response independently of latestHookActivity: subsequent hooks
-	// clear its finalMessage. displaySummary is only a short, optional synopsis.
+	// clear its finalMessage. The legacy hook field remains an input fallback.
 	const text = metadata?.finalMessage?.trim() || metadata?.conversationSummaryText?.trim();
 	if (text) {
-		store.appendConversationSummary(taskId, {
+		store.appendCompletedResponse(taskId, {
 			text,
 			capturedAt: Date.now(),
 		});
@@ -112,10 +110,8 @@ function scheduleHookBackgroundTask(task: () => void): void {
 }
 
 export interface CreateHooksApiDependencies {
-	runProjectOperation: RuntimeTrpcContext["runProjectOperation"];
 	projects: Pick<IProjectResolver, "getProjectPathById">;
 	terminals: ITerminalManagerProvider;
-	config?: Pick<IRuntimeConfigProvider, "loadScopedRuntimeConfig">;
 	scheduleHookBackgroundTask?: HookBackgroundTaskScheduler;
 	/** Resolves only after the latest session-store generation is durable. */
 	persistSessionState?: (projectId: string) => Promise<void>;
@@ -299,28 +295,10 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const hasForegroundCompletionMetadata =
 					transitionResult.hookMetadataMode === "apply" && isForegroundCompletionMetadata(body.metadata);
 				if (hasForegroundCompletionMetadata) {
-					applyConversationSummaryFromMetadata(store, taskId, body.metadata);
+					applyCompletedResponseFromMetadata(store, taskId, body.metadata);
 				}
 				if (transitionResult.hookMetadataMode === "apply") {
 					deps.observeProgress?.({ projectId, taskId, store, previous: previousSummary });
-				}
-				const hasSummarySourceMetadata = Boolean(
-					hasForegroundCompletionMetadata &&
-						(body.metadata?.conversationSummaryText?.trim() || body.metadata?.finalMessage?.trim()),
-				);
-				if (deps.config && (transitionResult.changed || hasSummarySourceMetadata)) {
-					queueTaskDisplaySummaryPolish({
-						projectScope: { projectId, projectPath },
-						taskId,
-						reason: transitionResult.changed ? `hook.${event}` : "hook.metadata",
-						deps: {
-							runProjectOperation: deps.runProjectOperation,
-							config: deps.config,
-							getScopedTerminalManager: async (scope) =>
-								await deps.terminals.ensureTerminalManagerForProject(scope.projectId, scope.projectPath),
-							scheduleBackgroundTask,
-						},
-					});
 				}
 				// Ordering is committed after the canonical mutation so correlation for
 				// PermissionRequest observes the preceding PreToolUse, not itself. The

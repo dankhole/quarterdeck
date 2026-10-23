@@ -10,8 +10,6 @@ import type { BoardData } from "@/types";
 const reactive: ReactiveCardState = {
 	moveToTrashLoadingById: {},
 	isLlmGenerationDisabled: false,
-	showSummaryOnCards: false,
-	showSummaryOnHover: true,
 };
 const card = (id: string, unstarted = false) => ({
 	id,

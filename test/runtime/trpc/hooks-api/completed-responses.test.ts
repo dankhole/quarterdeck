@@ -4,13 +4,12 @@ import { InMemorySessionSummaryStore } from "../../../../src/terminal";
 
 import { createMockManager, createSummary, createTestApi } from "./_helpers";
 
-describe("createHooksApi — conversation summaries", () => {
-	it("calls appendConversationSummary when conversationSummaryText is present", async () => {
-		const appendConversationSummary = vi.fn();
+describe("createHooksApi — completed foreground responses", () => {
+	it("calls appendCompletedResponse when conversationSummaryText is present", async () => {
+		const appendCompletedResponse = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			appendConversationSummary,
-			setDisplaySummary: vi.fn(),
+			appendCompletedResponse,
 		});
 
 		const api = createTestApi(manager);
@@ -26,7 +25,7 @@ describe("createHooksApi — conversation summaries", () => {
 			},
 		});
 
-		expect(appendConversationSummary).toHaveBeenCalledWith("task-1", {
+		expect(appendCompletedResponse).toHaveBeenCalledWith("task-1", {
 			text: "Completed the auth refactor with tests",
 			capturedAt: expect.any(Number),
 		});
@@ -41,10 +40,10 @@ describe("createHooksApi — conversation summaries", () => {
 				"task-1",
 				createSummary({ agentId, sessionInstanceId: "launch-1", state: "awaiting_review", reviewReason: "hook" }),
 			);
-			store.appendConversationSummary("task-1", { text: "Older response", capturedAt: 1 });
+			store.appendCompletedResponse("task-1", { text: "Older response", capturedAt: 1 });
 			const manager = createMockManager({
 				getSummary: store.getSummary.bind(store),
-				appendConversationSummary: store.appendConversationSummary.bind(store),
+				appendCompletedResponse: store.appendCompletedResponse.bind(store),
 			});
 			manager.applyProviderHook = vi.fn((taskId, input) =>
 				store.applySessionEvent(taskId, {
@@ -68,7 +67,7 @@ describe("createHooksApi — conversation summaries", () => {
 					conversationSummaryText: "A shorter synopsis",
 				},
 			});
-			expect(store.getSummary("task-1")?.conversationSummaries.at(-1)?.text).toBe(finalMessage.trim());
+			expect(store.getSummary("task-1")?.completedResponses.at(-1)?.text).toBe(finalMessage.trim());
 			await api.ingest({
 				taskId: "task-1",
 				projectId: "project-1",
@@ -77,15 +76,15 @@ describe("createHooksApi — conversation summaries", () => {
 			});
 			const summary = store.getSummary("task-1");
 			expect(summary?.latestHookActivity?.finalMessage).toBeNull();
-			expect(summary?.conversationSummaries.at(-1)?.text).toBe(finalMessage.trim());
+			expect(summary?.completedResponses.at(-1)?.text).toBe(finalMessage.trim());
 		},
 	);
 
 	it("retains finalMessage without requiring conversationSummaryText", async () => {
-		const appendConversationSummary = vi.fn();
+		const appendCompletedResponse = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary()),
-			appendConversationSummary,
+			appendCompletedResponse,
 		});
 		await createTestApi(manager).ingest({
 			taskId: "task-1",
@@ -93,19 +92,17 @@ describe("createHooksApi — conversation summaries", () => {
 			event: "to_review",
 			metadata: { source: "claude", hookEventName: "Stop", finalMessage: "Latest response" },
 		});
-		expect(appendConversationSummary).toHaveBeenCalledWith("task-1", {
+		expect(appendCompletedResponse).toHaveBeenCalledWith("task-1", {
 			text: "Latest response",
 			capturedAt: expect.any(Number),
 		});
 	});
 
-	it("does not call summary methods when neither conversationSummaryText nor finalMessage is present", async () => {
-		const appendConversationSummary = vi.fn();
-		const setDisplaySummary = vi.fn();
+	it("does not call response retention when neither conversationSummaryText nor finalMessage is present", async () => {
+		const appendCompletedResponse = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			appendConversationSummary,
-			setDisplaySummary,
+			appendCompletedResponse,
 		});
 
 		const api = createTestApi(manager);
@@ -120,18 +117,16 @@ describe("createHooksApi — conversation summaries", () => {
 			},
 		});
 
-		expect(appendConversationSummary).not.toHaveBeenCalled();
-		expect(setDisplaySummary).not.toHaveBeenCalled();
+		expect(appendCompletedResponse).not.toHaveBeenCalled();
 	});
 
-	it("applies summary on the to_review transition path as well", async () => {
-		const appendConversationSummary = vi.fn();
+	it("retains a response on the to_review transition path as well", async () => {
+		const appendCompletedResponse = vi.fn();
 		const transitionedSummary = createSummary({ state: "awaiting_review", reviewReason: "hook" });
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
 			toReviewSummary: vi.fn(() => transitionedSummary),
-			appendConversationSummary,
-			setDisplaySummary: vi.fn(),
+			appendCompletedResponse,
 		});
 
 		const api = createTestApi(manager);
@@ -147,19 +142,17 @@ describe("createHooksApi — conversation summaries", () => {
 			},
 		});
 
-		expect(appendConversationSummary).toHaveBeenCalledWith("task-1", {
+		expect(appendCompletedResponse).toHaveBeenCalledWith("task-1", {
 			text: "Finished implementing feature",
 			capturedAt: expect.any(Number),
 		});
 	});
 
-	it("does not let a Claude subagent completion replace the foreground task summary", async () => {
-		const appendConversationSummary = vi.fn();
-		const setDisplaySummary = vi.fn();
+	it("does not let a Claude subagent completion replace the foreground task response", async () => {
+		const appendCompletedResponse = vi.fn();
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ state: "running" })),
-			appendConversationSummary,
-			setDisplaySummary,
+			appendCompletedResponse,
 		});
 		const api = createTestApi(manager);
 
@@ -176,7 +169,6 @@ describe("createHooksApi — conversation summaries", () => {
 			},
 		});
 
-		expect(appendConversationSummary).not.toHaveBeenCalled();
-		expect(setDisplaySummary).not.toHaveBeenCalled();
+		expect(appendCompletedResponse).not.toHaveBeenCalled();
 	});
 });

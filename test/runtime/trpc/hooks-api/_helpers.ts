@@ -99,9 +99,7 @@ export function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}
 		outstandingInteraction: null,
 		nativeWorkEvidence,
 		stalledSince: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: [],
 		warningMessage: null,
 		...summaryOverrides,
 	};
@@ -116,7 +114,6 @@ export function permissionActivity(overrides: Partial<RuntimeTaskHookActivity> =
 		toolInputSummary: null,
 		finalMessage: null,
 		source: "claude",
-		conversationSummaryText: null,
 		...overrides,
 	};
 }
@@ -130,13 +127,11 @@ export function nullFilledActivity(partial: Partial<RuntimeTaskHookActivity>): R
 		toolInputSummary: partial.toolInputSummary ?? null,
 		finalMessage: partial.finalMessage ?? null,
 		source: partial.source ?? null,
-		conversationSummaryText: partial.conversationSummaryText ?? null,
 	};
 }
 
 export function createTestApi(manager: TerminalSessionManager, overrides: Partial<CreateHooksApiDependencies> = {}) {
 	return createHooksApi({
-		runProjectOperation: async (_scope, operation) => await operation(),
 		projects: { getProjectPathById: vi.fn(() => "/tmp/repo") },
 		terminals: {
 			getTerminalManagerForProject: vi.fn(() => null),

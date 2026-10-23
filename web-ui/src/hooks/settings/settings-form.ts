@@ -14,9 +14,6 @@ import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/ty
 // ---------------------------------------------------------------------------
 
 export interface SettingsFormValues {
-	showSummaryOnCards: boolean;
-	showSummaryOnHover: boolean;
-	llmSummaryPolishEnabled: boolean;
 	shellAutoRestartEnabled: boolean;
 	claudeLaunchPermissionMode: RuntimeConfigResponse["claudeLaunchPermissionMode"];
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
@@ -48,9 +45,6 @@ export interface SettingsFormValues {
 
 export function resolveInitialValues(config: RuntimeConfigResponse | null): SettingsFormValues {
 	return {
-		showSummaryOnCards: config?.showSummaryOnCards ?? CONFIG_DEFAULTS.showSummaryOnCards,
-		showSummaryOnHover: config?.showSummaryOnHover ?? CONFIG_DEFAULTS.showSummaryOnHover,
-		llmSummaryPolishEnabled: config?.llmSummaryPolishEnabled ?? CONFIG_DEFAULTS.llmSummaryPolishEnabled,
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		claudeLaunchPermissionMode: config?.claudeLaunchPermissionMode ?? CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,

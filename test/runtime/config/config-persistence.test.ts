@@ -97,6 +97,33 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 	});
 
 	it.each([true, false])(
+		"ignores and removes retired display-summary settings (%s) on config save",
+		async (enabled) => {
+			const { path: tempHome, cleanup } = createTempDir("quarterdeck-retired-display-summary-");
+			try {
+				await withTemporaryEnv({ home: tempHome }, async () => {
+					const configDir = join(tempHome, ".quarterdeck");
+					const retiredSettings = {
+						showSummaryOnCards: enabled,
+						showSummaryOnHover: enabled,
+						llmSummaryPolishEnabled: enabled,
+					};
+					mkdirSync(configDir, { recursive: true });
+					writeFileSync(join(configDir, "config.json"), JSON.stringify(retiredSettings));
+					const loaded = await loadGlobalRuntimeConfig();
+					for (const setting of Object.keys(retiredSettings)) expect(loaded).not.toHaveProperty(setting);
+					await updateRuntimeConfig(null, { codeNavigationEnabled: true });
+					const saved = JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"));
+					for (const setting of Object.keys(retiredSettings)) expect(saved).not.toHaveProperty(setting);
+					expect(saved.codeNavigationEnabled).toBe(true);
+				});
+			} finally {
+				cleanup();
+			}
+		},
+	);
+
+	it.each([true, false])(
 		"ignores and removes the retired Pi tool approval setting (%s) on config save",
 		async (enabled) => {
 			const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-retired-pi-tool-approvals-");

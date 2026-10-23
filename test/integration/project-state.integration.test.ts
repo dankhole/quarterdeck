@@ -143,6 +143,44 @@ describe("project-state integration", { concurrent: false }, () => {
 		});
 	});
 
+	it("migrates retained completed responses when reading legacy sessions and saves only canonical fields", async () => {
+		await withTemporaryHome(async () => {
+			const { path: projectPath, cleanup } = createTempDir("quarterdeck-response-migration-");
+			try {
+				initGitRepository(projectPath);
+				const context = await loadProjectContext(projectPath);
+				await saveProjectState(projectPath, { board: createBoard("Keep response history"), sessions: {} });
+				const { completedResponses: _responses, ...session } = createSessionSummary("task-1");
+				const completedResponses = [
+					{ text: "First completed response", capturedAt: 10, sessionIndex: 0 },
+					{ text: "Latest completed response", capturedAt: 20, sessionIndex: 4 },
+				];
+				writeFileSync(
+					join(context.statePath, "sessions.json"),
+					JSON.stringify({
+						"task-1": {
+							...session,
+							conversationSummaries: completedResponses,
+							displaySummary: "AI-polished synopsis",
+							displaySummaryGeneratedAt: 30,
+						},
+					}),
+				);
+
+				const loaded = await loadProjectState(projectPath);
+				expect(loaded.sessions["task-1"]?.completedResponses).toEqual(completedResponses);
+				expect(loaded.sessions["task-1"]).not.toHaveProperty("conversationSummaries");
+				expect(loaded.sessions["task-1"]).not.toHaveProperty("displaySummary");
+				expect(loaded.sessions["task-1"]).not.toHaveProperty("displaySummaryGeneratedAt");
+				await saveProjectSessions(projectPath, loaded.sessions);
+				const persisted = JSON.parse(readFileSync(join(context.statePath, "sessions.json"), "utf8"));
+				expect(persisted["task-1"]).toEqual(loaded.sessions["task-1"]);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-project-");

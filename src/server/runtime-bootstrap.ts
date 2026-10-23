@@ -35,7 +35,6 @@ import {
 	PTY_RUNTIME_REMEDIATION,
 	PtyRuntimeDependencyError,
 } from "../terminal/pty-runtime-health";
-import type { RuntimeTrpcContext } from "../trpc";
 import { createHooksApi } from "../trpc/hooks-api";
 import { getGitProcessLimiterSnapshot } from "../workdir/git-utils";
 import { stopRuntimeOwnedProcessTrees } from "./owned-process-shutdown";
@@ -266,19 +265,15 @@ async function createRuntimeBootstrapState(
 		runtimeSessionPersistence.trackTerminalManager(projectId, terminalManager);
 		runtimeHub.trackTerminalManager(projectId, terminalManager);
 	}
-	const initializeProjectsForStartup = async (
-		runProjectOperation: RuntimeTrpcContext["runProjectOperation"],
-	): Promise<void> => {
+	const initializeProjectsForStartup = async (): Promise<void> => {
 		await projectRegistry.initializeIndexedProjectsForStartup({
 			beforeRecovery: async () => {
 				// Admission inspected prior-owned processes before cleanup. Await its
 				// completion before the final outbox snapshot and session recovery.
 				await startupAgentCleanup;
 				const startupHooksApi = createHooksApi({
-					runProjectOperation,
 					projects: projectRegistry,
 					terminals: projectRegistry,
-					config: projectRegistry,
 					persistSessionState: runtimeSessionPersistence.persistRuntimeSessions,
 					awaitSessionStateDurable: runtimeSessionPersistence.awaitRuntimeSessionsDurable,
 					diagnostics,

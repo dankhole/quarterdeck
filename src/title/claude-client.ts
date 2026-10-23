@@ -19,7 +19,7 @@ const CLAUDE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CLAUDE_MAX_BUFFER_BYTES = 1_000_000;
 // Bounded backoff after a failure classified as non-retryable (a signed-out/unauthenticated
 // CLI, or flags this installed Claude version rejects) so later calls do not keep paying a
-// failed launch for every title/branch/commit-message/summary request. This is helper-local
+// failed launch for every title/branch/commit-message request. This is helper-local
 // policy, not correctness: disabling it only makes a failing run slower.
 const CLAUDE_FAILURE_BACKOFF_MS = 10 * 60 * 1000;
 // A timeout is weaker evidence than a classified non-retryable failure (it may just be one

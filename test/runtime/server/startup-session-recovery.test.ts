@@ -194,7 +194,6 @@ function createPrepared(
 			startupRecoveryToken,
 		},
 		taskCwd: "/tmp/project-1-worktree",
-		llmSummaryPolishEnabled: false,
 		resumeContextWarning: null,
 		resumeSessionWarning: null,
 	};
@@ -216,7 +215,6 @@ function createStartedResult(
 		taskCwd: prepared.taskCwd,
 		sessionInstanceId,
 		startedNewSession: true,
-		llmSummaryPolishEnabled: false,
 	};
 }
 

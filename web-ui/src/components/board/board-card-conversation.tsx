@@ -151,10 +151,10 @@ export function BoardCardConversation({
 	statusBadges?: ReactNode;
 	readOnly?: boolean;
 }): React.ReactElement {
-	const latest = card.unstarted ? undefined : summary?.conversationSummaries?.at(-1);
+	const latest = card.unstarted ? undefined : summary?.completedResponses?.at(-1);
 	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage?.slice(0, 500);
 	const running = !card.unstarted && summary && deriveTaskIndicatorState(summary).publicStatus === "running";
-	const completedResponse = finalMessage || latest?.text || (!card.unstarted && summary?.displaySummary);
+	const completedResponse = finalMessage || latest?.text;
 	const progressMessage = running && summary.progressMessage?.trim() ? summary.progressMessage : undefined;
 	const text = (progressMessage || completedResponse || card.prompt).slice(0, 500);
 	return (

@@ -155,8 +155,6 @@ const noopStableActions: StableCardActions = {};
 const noopReactiveState: ReactiveCardState = {
 	moveToTrashLoadingById: {},
 	isLlmGenerationDisabled: false,
-	showSummaryOnCards: false,
-	showSummaryOnHover: true,
 };
 
 const noopBoardContext: BoardContextValue = {

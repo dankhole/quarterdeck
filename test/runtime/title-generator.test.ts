@@ -204,9 +204,9 @@ describe("generateTaskTitle", () => {
 		process.env.QUARTERDECK_TITLE_PROVIDER = "local";
 		const context = [
 			"Original prompt:\nFix the authentication bug",
-			"First agent summary:\nAdded login validation",
-			"Most recent agent summary:\nDocumented Windows setup commands",
-			"Previous agent summary:\nRefactored the auth helper",
+			"First agent response:\nAdded login validation",
+			"Most recent agent response:\nDocumented Windows setup commands",
+			"Previous agent response:\nRefactored the auth helper",
 		].join("\n\n");
 
 		expect(await generateTaskTitle(context)).toBe("Documented Windows Setup Commands");

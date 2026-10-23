@@ -110,7 +110,6 @@ function createRuntimeConfig(): RuntimeConfigState {
 		selectedAgentId: "codex",
 		claudeLaunchPermissionMode: "plan",
 		worktreeSystemPromptTemplate: "",
-		llmSummaryPolishEnabled: false,
 	} as RuntimeConfigState;
 }
 
@@ -886,7 +885,6 @@ describe("project registry startup recovery integration", () => {
 				finalMessage: null,
 				notificationType: "permission_prompt",
 				source: "codex",
-				conversationSummaryText: null,
 			},
 			expectedIndicator: { reviewReady: false, needsInput: true },
 		},

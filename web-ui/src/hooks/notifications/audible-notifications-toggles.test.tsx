@@ -112,7 +112,6 @@ describe("useAudibleNotifications — toggles & visibility", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -158,7 +157,6 @@ describe("useAudibleNotifications — toggles & visibility", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}

@@ -11,8 +11,7 @@ describe("createHooksApi — agent session persistence", () => {
 					createSummary({ agentId, state: "running", resumeSessionId: "claude-session-123" }),
 				),
 				toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-				appendConversationSummary: vi.fn(),
-				setDisplaySummary: vi.fn(),
+				appendCompletedResponse: vi.fn(),
 			});
 			const recordProviderHookHint = vi.fn();
 			const api = createTestApi(manager, {
@@ -40,8 +39,7 @@ describe("createHooksApi — agent session persistence", () => {
 	it("does not record a subagent transcript as the task conversation source", async () => {
 		const manager = createMockManager({
 			getSummary: vi.fn(() => createSummary({ agentId: "codex", state: "running", resumeSessionId: "codex-root" })),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+			appendCompletedResponse: vi.fn(),
 		});
 		const recordProviderHookHint = vi.fn();
 		const api = createTestApi(manager, { conversationSourceHints: { recordProviderHookHint } });
@@ -69,8 +67,7 @@ describe("createHooksApi — agent session persistence", () => {
 			getSummary: vi.fn(() => createSummary({ state: "running", agentId: "codex", resumeSessionId: null })),
 			update,
 			toReviewSummary: vi.fn(() => createSummary({ state: "awaiting_review", reviewReason: "hook" })),
-			appendConversationSummary: vi.fn(),
-			setDisplaySummary: vi.fn(),
+			appendCompletedResponse: vi.fn(),
 		});
 
 		const api = createTestApi(manager, {});

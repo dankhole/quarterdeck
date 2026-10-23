@@ -93,9 +93,7 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 		nativeWorkEvidence,
 		stalledSince: null,
 		warningMessage: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: [],
 		...summaryOverrides,
 	};
 }
@@ -583,7 +581,6 @@ describe("reconciliation sweep lifecycle", () => {
 					finalMessage: null,
 					notificationType: "permission_prompt",
 					source: "claude",
-					conversationSummaryText: null,
 				},
 			}),
 			error: createSummary({

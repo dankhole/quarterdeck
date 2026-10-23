@@ -12,7 +12,6 @@ function nullFilledActivity(partial: Partial<RuntimeTaskHookActivity>): RuntimeT
 		toolInputSummary: partial.toolInputSummary ?? null,
 		finalMessage: partial.finalMessage ?? null,
 		source: partial.source ?? null,
-		conversationSummaryText: partial.conversationSummaryText ?? null,
 	};
 }
 

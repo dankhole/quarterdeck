@@ -137,7 +137,7 @@ describe("task title service", () => {
 		h.setSession(
 			createTestTaskSessionSummary({
 				...h.getSession(),
-				conversationSummaries: [{ text: summary, capturedAt: 10, sessionIndex: 1 }],
+				completedResponses: [{ text: summary, capturedAt: 10, sessionIndex: 1 }],
 			}),
 		);
 		h.readRecent.mockResolvedValue(
@@ -176,7 +176,7 @@ describe("task title service", () => {
 	});
 	it("uses recent provider conversation when stored summaries and final message are empty", async () => {
 		const h = harness();
-		expect(h.getSession()?.conversationSummaries).toEqual([]);
+		expect(h.getSession()?.completedResponses).toEqual([]);
 		expect(h.getSession()?.latestHookActivity).toBeNull();
 		await expect(h.service.regenerate(scope, "task-1")).resolves.toEqual({
 			ok: true,

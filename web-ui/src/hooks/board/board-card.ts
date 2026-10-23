@@ -1,7 +1,7 @@
 import { deriveTaskIndicatorState } from "@runtime-contract";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardCard, BoardColumnId, ReviewTaskWorktreeSnapshot } from "@/types";
-import { getCardHoverTooltip, shortenBranchName } from "@/utils/board-card-display";
+import { shortenBranchName } from "@/utils/board-card-display";
 import { describeSessionState, getSessionStatusBadgeStyle, getSessionStatusTooltip } from "@/utils/session-status";
 import { getTaskAgentDisplayLabel, getTaskAgentShortLabel } from "@/utils/task-agent-display";
 import { resolveDetachedTaskWorktreeDisplay } from "@/utils/task-base-ref-display";
@@ -21,8 +21,6 @@ export function resolveBoardCardViewModel({
 	sessionSummary,
 	reviewWorktreeSnapshot,
 	workspacePath,
-	showSummaryOnCards,
-	showSummaryOnHover,
 	isRestartDelayElapsed,
 	hasRestartSessionHandler,
 }: {
@@ -31,8 +29,6 @@ export function resolveBoardCardViewModel({
 	sessionSummary?: RuntimeTaskSessionSummary;
 	reviewWorktreeSnapshot: ReviewTaskWorktreeSnapshot | null | undefined;
 	workspacePath: string | null;
-	showSummaryOnCards: boolean;
-	showSummaryOnHover: boolean;
 	isRestartDelayElapsed: boolean;
 	hasRestartSessionHandler: boolean;
 }) {
@@ -58,10 +54,6 @@ export function resolveBoardCardViewModel({
 			? getSessionStatusTooltip(sessionSummary)
 			: null;
 	const showStatusBadge = Boolean(statusLabel && statusTagStyle && !isTrashCard);
-	const cardHoverTooltip = getCardHoverTooltip(sessionSummary);
-	const latestSummaryText = isUnstarted ? null : (sessionSummary?.displaySummary ?? null);
-	const isSummaryVisibleOnCard = showSummaryOnCards && Boolean(latestSummaryText);
-	const effectiveTooltip = !isUnstarted && !isSummaryVisibleOnCard && showSummaryOnHover ? cardHoverTooltip : null;
 	const isSessionDead = !isUnstarted && isBoardCardSessionDead(sessionSummary);
 	const isSessionRestartable =
 		(columnId === "in_progress" || columnId === "review") &&
@@ -111,9 +103,6 @@ export function resolveBoardCardViewModel({
 		statusTagStyle,
 		statusTooltip,
 		showStatusBadge,
-		latestSummaryText,
-		isSummaryVisibleOnCard,
-		effectiveTooltip,
 		isSessionDead,
 		isSessionRestartable,
 		statusMarker,

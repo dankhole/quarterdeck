@@ -37,8 +37,6 @@ export interface StableCardActions {
 export interface ReactiveCardState {
 	moveToTrashLoadingById: Record<string, boolean>;
 	isLlmGenerationDisabled: boolean;
-	showSummaryOnCards: boolean;
-	showSummaryOnHover: boolean;
 }
 
 const StableCardActionsContext = createContext<StableCardActions | null>(null);

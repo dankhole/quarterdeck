@@ -1107,7 +1107,6 @@ export function reduceSessionTransition(
 						hookEventName: "RenderedApprovalOverlay",
 						notificationType: "permission.asked",
 						source: "codex",
-						conversationSummaryText: null,
 					},
 				},
 				clearAttentionBuffer: true,
@@ -1429,7 +1428,6 @@ export function reduceSessionTransition(
 								? "elicitation_dialog"
 								: "question.asked",
 						source: event.provider,
-						conversationSummaryText: null,
 					},
 					nativeWorkEvidence: null,
 					stalledSince: null,

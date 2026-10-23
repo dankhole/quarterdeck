@@ -67,7 +67,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -97,7 +96,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -124,7 +122,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 				toolInputSummary: null,
 				finalMessage: null,
 				source: null,
-				conversationSummaryText: null,
 			},
 		});
 
@@ -147,7 +144,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 				toolInputSummary: "npm test",
 				finalMessage: null,
 				source: "codex",
-				conversationSummaryText: null,
 			},
 		});
 		await act(async () => {
@@ -206,7 +202,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -236,7 +231,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -334,7 +328,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -454,7 +447,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}
@@ -548,7 +540,6 @@ describe("useAudibleNotifications — settle window & timing", () => {
 								toolInputSummary: null,
 								finalMessage: null,
 								source: null,
-								conversationSummaryText: null,
 							},
 						}),
 					}}

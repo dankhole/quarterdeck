@@ -44,7 +44,7 @@ describe("board card conversation", () => {
 					columnId="review"
 					summary={{
 						...ready,
-						conversationSummaries: [{ text: "Older response", capturedAt: 100, sessionIndex: 0 }],
+						completedResponses: [{ text: "Older response", capturedAt: 100, sessionIndex: 0 }],
 					}}
 				/>,
 			),
@@ -60,7 +60,7 @@ describe("board card conversation", () => {
 					summary={{
 						...ready,
 						latestHookActivity: null,
-						conversationSummaries: [{ text: "Older response", capturedAt: 100, sessionIndex: 0 }],
+						completedResponses: [{ text: "Older response", capturedAt: 100, sessionIndex: 0 }],
 					}}
 				/>,
 			),
@@ -79,6 +79,33 @@ describe("board card conversation", () => {
 		expect(container.textContent).not.toContain("The updated layout is ready.");
 		await render({ ...ready, progressMessage });
 		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
+		expect(container.querySelector("[aria-expanded]")).toBeNull();
+	});
+
+	it("restores the retained completed response after progress clears and native final output is absent", async () => {
+		const completedResponse = "The completed response survives the next turn.";
+		const summary = {
+			...running,
+			latestHookActivity: null,
+			completedResponses: [{ text: completedResponse, capturedAt: 100, sessionIndex: 0 }],
+		};
+		const render = async (progressMessage: string | null) =>
+			act(async () =>
+				root.render(
+					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...summary, progressMessage }} />,
+				),
+			);
+
+		await render(null);
+		expect(container.querySelector("p")?.textContent).toBe(completedResponse);
+		await render("Validating the next change.");
+		expect(container.querySelector("p")?.textContent).toBe("Validating the next change.");
+		const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
+		expect(trigger?.textContent).toBe("Previous response");
+		await act(async () => trigger?.click());
+		expect(container.textContent).toContain(completedResponse);
+		await render(null);
+		expect(container.querySelector("p")?.textContent).toBe(completedResponse);
 		expect(container.querySelector("[aria-expanded]")).toBeNull();
 	});
 	it.each([undefined, null, "", "   "])(
@@ -119,15 +146,14 @@ describe("board card conversation", () => {
 		expect(trigger?.getAttribute("aria-expanded")).toBe("false");
 		expect(container.textContent).not.toContain("The updated layout is ready.");
 	});
-	it("keeps the retained response beyond the short display summary visible when the next turn starts", async () => {
+	it("keeps the retained completed response visible when the next turn starts", async () => {
 		const response = "The latest completed response has more detail than a short synopsis. ".repeat(10).trim();
 		const summary = {
 			...ready,
-			conversationSummaries: [
+			completedResponses: [
 				{ text: "Older response", capturedAt: 100, sessionIndex: 0 },
 				{ text: response, capturedAt: 200, sessionIndex: 1 },
 			],
-			displaySummary: `${response.slice(0, 90)}…`,
 		};
 		await act(async () =>
 			root.render(
@@ -178,7 +204,11 @@ describe("board card conversation", () => {
 				<BoardCardConversation
 					card={{ ...card, unstarted: true }}
 					columnId="in_progress"
-					summary={{ ...running, progressMessage: "Current progress", displaySummary: "Old synopsis" }}
+					summary={{
+						...running,
+						progressMessage: "Current progress",
+						completedResponses: [{ text: "Old response", capturedAt: 100, sessionIndex: 0 }],
+					}}
 				/>,
 			),
 		);

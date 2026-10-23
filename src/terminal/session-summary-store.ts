@@ -6,7 +6,7 @@
 // Designed as a synchronous, process-agnostic store so it maps 1:1 to a Go interface.
 
 import {
-	type ConversationSummaryEntry,
+	type CompletedAgentResponse,
 	createTaggedLogger,
 	normalizeRuntimeTaskSessionSummary,
 	type RuntimeHookMetadata,
@@ -14,7 +14,6 @@ import {
 	type RuntimeTaskProviderHookOrderObservation,
 	type RuntimeTaskSessionSummary,
 } from "../core";
-import { compactDisplaySummaryText } from "../title";
 import { deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
 import {
 	inferLegacyOutstandingInteraction,
@@ -52,11 +51,10 @@ export interface SessionSummaryStore {
 	): RuntimeTaskSessionSummary | null;
 
 	// Domain mutations
-	appendConversationSummary(
+	appendCompletedResponse(
 		taskId: string,
 		entry: { text: string; capturedAt: number },
 	): RuntimeTaskSessionSummary | null;
-	setDisplaySummary(taskId: string, text: string, generatedAt: number | null): RuntimeTaskSessionSummary | null;
 
 	// Bulk operations
 	markAllInterrupted(
@@ -101,9 +99,7 @@ function createDefaultSummary(taskId: string): RuntimeTaskSessionSummary {
 		nativeWorkEvidence: null,
 		stalledSince: null,
 		warningMessage: null,
-		conversationSummaries: [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: [],
 	};
 }
 
@@ -119,7 +115,7 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 			: {}),
 		initialWorkConfirmation: summary.initialWorkConfirmation ? { ...summary.initialWorkConfirmation } : null,
 		nativeWorkEvidence: summary.nativeWorkEvidence ? { ...summary.nativeWorkEvidence } : null,
-		conversationSummaries: summary.conversationSummaries.map((entry) => ({ ...entry })),
+		completedResponses: summary.completedResponses.map((entry) => ({ ...entry })),
 	};
 }
 
@@ -138,7 +134,6 @@ function buildNextHookActivity(
 		typeof activity.toolName !== "string" &&
 		typeof activity.toolInputSummary !== "string" &&
 		typeof activity.finalMessage !== "string" &&
-		typeof activity.conversationSummaryText !== "string" &&
 		typeof activity.notificationType !== "string";
 	if (isSessionIdentityOnly) {
 		return previous;
@@ -188,10 +183,6 @@ function buildNextHookActivity(
 					? null
 					: (previous?.notificationType ?? null),
 		source: typeof activity.source === "string" ? activity.source : (previous?.source ?? null),
-		conversationSummaryText:
-			typeof activity.conversationSummaryText === "string"
-				? activity.conversationSummaryText
-				: (previous?.conversationSummaryText ?? null),
 	};
 }
 
@@ -206,8 +197,7 @@ function didHookActivityChange(
 		(next?.finalMessage ?? null) !== (previous?.finalMessage ?? null) ||
 		(next?.hookEventName ?? null) !== (previous?.hookEventName ?? null) ||
 		(next?.notificationType ?? null) !== (previous?.notificationType ?? null) ||
-		(next?.source ?? null) !== (previous?.source ?? null) ||
-		(next?.conversationSummaryText ?? null) !== (previous?.conversationSummaryText ?? null)
+		(next?.source ?? null) !== (previous?.source ?? null)
 	);
 }
 
@@ -390,7 +380,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 
 	// ── Domain mutations ──────────────────────────────────────────────────
 
-	appendConversationSummary(
+	appendCompletedResponse(
 		taskId: string,
 		entry: { text: string; capturedAt: number },
 	): RuntimeTaskSessionSummary | null {
@@ -403,9 +393,9 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		const text = entry.text.length > 500 ? `${entry.text.slice(0, 500)}\u2026` : entry.text;
 
 		// Auto-assign sessionIndex from the highest existing index.
-		const existing = sessionEntry.conversationSummaries;
+		const existing = sessionEntry.completedResponses;
 		const maxIndex = existing.reduce((max, e) => Math.max(max, e.sessionIndex), -1);
-		const newEntry: ConversationSummaryEntry = {
+		const newEntry: CompletedAgentResponse = {
 			text,
 			capturedAt: entry.capturedAt,
 			sessionIndex: maxIndex + 1,
@@ -433,19 +423,10 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		}
 
 		const patch: Partial<RuntimeTaskSessionSummary> = {
-			conversationSummaries: entries,
-			displaySummary: compactDisplaySummaryText(text),
-			displaySummaryGeneratedAt: null,
+			completedResponses: entries,
 		};
 
 		return this.update(taskId, patch);
-	}
-
-	setDisplaySummary(taskId: string, text: string, generatedAt: number | null): RuntimeTaskSessionSummary | null {
-		return this.update(taskId, {
-			displaySummary: text,
-			displaySummaryGeneratedAt: generatedAt,
-		});
 	}
 
 	// ── Bulk operations ───────────────────────────────────────────────────

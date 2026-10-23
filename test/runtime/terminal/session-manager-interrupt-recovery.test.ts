@@ -120,7 +120,6 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		});
 		const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
 		const api = createHooksApi({
-			runProjectOperation: async (_scope, operation) => await operation(),
 			projects: { getProjectPathById: () => "/tmp/repo" },
 			terminals: {
 				getTerminalManagerForProject: () => manager,
@@ -157,7 +156,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		expect(manager.store.getSummary("task-1")).toMatchObject({
 			state: "awaiting_review",
 			reviewReason: "interrupted",
-			conversationSummaries: [],
+			completedResponses: [],
 		});
 		await ingest(4, "activity", "PreToolUse", Date.now());
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
@@ -305,7 +304,6 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			});
 			const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId ?? undefined;
 			const api = createHooksApi({
-				runProjectOperation: async (_scope, operation) => await operation(),
 				projects: { getProjectPathById: () => "/tmp/repo" },
 				terminals: {
 					getTerminalManagerForProject: () => manager,

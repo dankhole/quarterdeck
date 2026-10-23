@@ -1,6 +1,6 @@
 /**
  * Provider-neutral client for lightweight, single-turn completions (titles,
- * branch names, display summaries, commit messages).
+ * branch names, commit messages).
  *
  * Preferred environment variables:
  *   QUARTERDECK_LLM_BASE_URL — OpenAI-compatible API base URL

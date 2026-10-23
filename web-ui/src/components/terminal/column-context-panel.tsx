@@ -53,7 +53,7 @@ function ColumnSection({
 		onTerminalWarmup,
 		onTerminalCancelWarmup,
 	} = useStableCardActions();
-	const { moveToTrashLoadingById, showSummaryOnCards, showSummaryOnHover } = useReactiveCardState();
+	const { moveToTrashLoadingById } = useReactiveCardState();
 	const [open, setOpen] = useState(defaultOpen);
 	const unstartedCount = column.cards.filter((card) => card.unstarted).length;
 	const canClearTrash = column.id === "trash" && onClearTrash;
@@ -174,8 +174,6 @@ function ColumnSection({
 											onRegenerateTitle={onRegenerateTitleTask}
 											onUpdateTitle={onUpdateTaskTitle}
 											onTogglePin={onTogglePinTask}
-											showSummaryOnCards={showSummaryOnCards}
-											showSummaryOnHover={showSummaryOnHover}
 											onTerminalWarmup={onTerminalWarmup}
 											onTerminalCancelWarmup={onTerminalCancelWarmup}
 											onClick={() => {

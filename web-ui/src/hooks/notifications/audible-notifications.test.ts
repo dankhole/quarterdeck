@@ -98,7 +98,6 @@ describe("resolveSessionSoundEvent", () => {
 					toolInputSummary: null,
 					finalMessage: null,
 					source: null,
-					conversationSummaryText: null,
 				},
 			}),
 		);
@@ -118,7 +117,6 @@ describe("resolveSessionSoundEvent", () => {
 					toolInputSummary: null,
 					finalMessage: null,
 					source: null,
-					conversationSummaryText: null,
 				},
 			}),
 		);
@@ -138,7 +136,6 @@ describe("resolveSessionSoundEvent", () => {
 					toolInputSummary: null,
 					finalMessage: null,
 					source: null,
-					conversationSummaryText: null,
 				},
 			}),
 		);

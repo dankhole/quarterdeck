@@ -6,7 +6,6 @@ import {
 } from "../../server/task-session-start-service";
 import type { TerminalSessionManager } from "../../terminal";
 import type { RuntimeTrpcContext, RuntimeTrpcProjectScope } from "../app-router-context";
-import { queueTaskDisplaySummaryPolish } from "../display-summary-polish";
 
 const log = createTaggedLogger("task-session-start");
 
@@ -49,15 +48,6 @@ export async function handleStartTaskSession(
 				: undefined,
 		});
 		await deps.onTaskSessionStarted?.(projectScope, result);
-		if (result.llmSummaryPolishEnabled) {
-			queueTaskDisplaySummaryPolish({
-				projectScope,
-				taskId: body.taskId,
-				deps,
-				reason: "task-started",
-				promptOverride: body.prompt,
-			});
-		}
 		log.debug("start-task-session returning ok", {
 			taskId: body.taskId,
 			agentId: result.summary.agentId,

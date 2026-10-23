@@ -65,7 +65,6 @@ describe("RuntimeSessionPersistence integration", { concurrent: false }, () => {
 				persistence = new RuntimeSessionPersistence({ projectRegistry: projects, boardCommands });
 				persistence.trackTerminalManager(context.projectId, manager);
 				const api = createHooksApi({
-					runProjectOperation: async (_scope, operation) => await operation(),
 					projects,
 					terminals: {
 						getTerminalManagerForProject: () => manager,

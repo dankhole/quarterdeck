@@ -113,8 +113,7 @@ const STORE_METHOD_NAMES = new Set([
 	"listSummaries",
 	"update",
 	"applySessionEvent",
-	"appendConversationSummary",
-	"setDisplaySummary",
+	"appendCompletedResponse",
 ]);
 
 /**

@@ -11,12 +11,12 @@ import type { SessionTransitionEvent } from "../../src/terminal";
 
 type TestTaskSessionSummaryOverrides = Omit<
 	Partial<RuntimeTaskSessionSummary>,
-	"latestHookActivity" | "outstandingInteraction" | "nativeWorkEvidence" | "conversationSummaries"
+	"latestHookActivity" | "outstandingInteraction" | "nativeWorkEvidence" | "completedResponses"
 > & {
 	latestHookActivity?: Partial<RuntimeTaskHookActivity> | null;
 	outstandingInteraction?: RuntimeTaskOutstandingInteraction | null;
 	nativeWorkEvidence?: RuntimeTaskSessionSummary["nativeWorkEvidence"];
-	conversationSummaries?: RuntimeTaskSessionSummary["conversationSummaries"];
+	completedResponses?: RuntimeTaskSessionSummary["completedResponses"];
 };
 
 export function createTestTaskHookActivity(overrides: Partial<RuntimeTaskHookActivity> = {}): RuntimeTaskHookActivity {
@@ -28,7 +28,6 @@ export function createTestTaskHookActivity(overrides: Partial<RuntimeTaskHookAct
 		hookEventName: null,
 		notificationType: null,
 		source: null,
-		conversationSummaryText: null,
 		...overrides,
 	};
 }
@@ -76,13 +75,8 @@ export function createTestTaskNativeWorkEvidence(
 export function createTestTaskSessionSummary(
 	overrides: TestTaskSessionSummaryOverrides = {},
 ): RuntimeTaskSessionSummary {
-	const {
-		latestHookActivity,
-		outstandingInteraction,
-		nativeWorkEvidence,
-		conversationSummaries,
-		...summaryOverrides
-	} = overrides;
+	const { latestHookActivity, outstandingInteraction, nativeWorkEvidence, completedResponses, ...summaryOverrides } =
+		overrides;
 	const resolvedLatestHookActivity =
 		latestHookActivity == null ? null : createTestTaskHookActivity(latestHookActivity);
 
@@ -107,9 +101,7 @@ export function createTestTaskSessionSummary(
 		nativeWorkEvidence: nativeWorkEvidence ? { ...nativeWorkEvidence } : null,
 		stalledSince: null,
 		warningMessage: null,
-		conversationSummaries: conversationSummaries ? [...conversationSummaries] : [],
-		displaySummary: null,
-		displaySummaryGeneratedAt: null,
+		completedResponses: completedResponses ? [...completedResponses] : [],
 		...summaryOverrides,
 	};
 }
