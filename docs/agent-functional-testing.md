@@ -138,6 +138,8 @@ Each canonical checkpoint flushes and validates the current ledger while the run
 
 ## First-time setup
 
+Use an external Node.js installation matching the repository's supported version for browser Agent Lab. A terminal started inside Quarterdeck may put the app's bundled Node first on `PATH`; `node -p 'process.execPath'` must not end in `/Contents/Resources/runtime/bin/nodeHost`. Source-lab children cannot retain the app's native installation admission. Startup rejects that executable before creating a run; this is not a broken app installation. Prepend your external Node.js `bin` directory to `PATH` for both `agent:lab` and `agent:browser` commands, without changing the app or bypassing admission.
+
 Install project dependencies normally, then install the browser used only by the agent wrapper:
 
 ```bash

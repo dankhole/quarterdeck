@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { TerminalWheelInput } from "./terminal-wheel-input";
 
-describe("Codex wheel input adapter", () => {
+describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentId) => {
 	let terminal: Terminal;
 	let input: TerminalWheelInput;
 	let handleWheel: (event: WheelEvent) => boolean;
@@ -12,7 +12,7 @@ describe("Codex wheel input adapter", () => {
 	let element: HTMLDivElement;
 	const reports = vi.fn();
 	beforeEach(async () => {
-		agentId = "codex";
+		agentId = initialAgentId;
 		taskId = "task";
 		reports.mockClear();
 		terminal = new Terminal({ rows: 30 });
@@ -45,12 +45,11 @@ describe("Codex wheel input adapter", () => {
 	}
 	it("expands a large pixel delta at the original coordinates without duplicate handling", () => {
 		expect(wheel()).toBe(false);
-		expect(reports.mock.calls).toEqual([
-			[1, 1, 120, 150],
-			[1, 1, 120, 150],
-		]);
+		expect(reports.mock.calls).toEqual(
+			Array.from({ length: initialAgentId === "pi" ? 6 : 2 }, () => [1, 1, 120, 150]),
+		);
 	});
-	it.each<RuntimeAgentId | null>(["claude", "pi", null])("leaves %s with xterm", (agent) => {
+	it.each<RuntimeAgentId | null>(["claude", null])("leaves %s with xterm", (agent) => {
 		agentId = agent;
 		expect(wheel()).toBe(true);
 		expect(reports).not.toHaveBeenCalled();
@@ -72,10 +71,44 @@ describe("Codex wheel input adapter", () => {
 		expect(reports).not.toHaveBeenCalled();
 	});
 	it("does not carry fractional motion to another task", () => {
-		wheel({ deltaY: 20 });
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
 		taskId = "other";
-		wheel({ deltaY: 10 });
+		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
 		expect(reports).not.toHaveBeenCalled();
+	});
+	it("does not carry fractional motion across providers", () => {
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
+		agentId = initialAgentId === "pi" ? "codex" : "pi";
+		wheel({ deltaY: agentId === "pi" ? 4 : 20 });
+		expect(reports).not.toHaveBeenCalled();
+	});
+	it("does not carry fractional motion across buffer changes", async () => {
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
+		await write("\u001b[?1049l");
+		expect(wheel()).toBe(true);
+		await write("\u001b[?1049h");
+		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
+		expect(reports).not.toHaveBeenCalled();
+	});
+	it("preserves equivalent distance for coalesced and fine-grained deltas", () => {
+		wheel();
+		const coalescedCount = reports.mock.calls.length;
+		reports.mockClear();
+		for (let i = 0; i < 10; i++) wheel({ deltaY: 6 });
+		expect(reports).toHaveBeenCalledTimes(coalescedCount);
+	});
+	it("leaves already-consumed input with xterm", () => {
+		const event = new WheelEvent("wheel", { cancelable: true, deltaY: 60 });
+		event.preventDefault();
+		expect(handleWheel(event)).toBe(true);
+		expect(reports).not.toHaveBeenCalled();
+	});
+	it("bounds synchronous report dispatch without replaying a backlog", () => {
+		wheel({ deltaY: 1e9 });
+		expect(reports).toHaveBeenCalledTimes(100);
+		reports.mockClear();
+		wheel();
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
 	});
 	it("restores ordinary xterm handling on disposal", () => {
 		input.dispose();

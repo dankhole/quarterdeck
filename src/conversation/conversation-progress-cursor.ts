@@ -88,6 +88,16 @@ export function createConversationProgressCursor(input: {
 	roots?: ConversationHistoryRoots;
 	limits?: Partial<typeof PROGRESS_READ_LIMITS>;
 }): ConversationProgressCursor {
+	// Pi hints support full copying, not the Claude/Codex progress parser.
+	if (input.hint.providerId === "pi") {
+		return {
+			beginEpoch() {},
+			pause() {},
+			async read() {
+				return { text: null, hasMore: false, sourceBytesExamined: 0 };
+			},
+		};
+	}
 	const limits = { ...PROGRESS_READ_LIMITS, ...input.limits };
 	const maxPreviewRecordBytes = Math.min(MAX_PREVIEW_RECORD_BYTES, Math.floor(limits.maxSourceBytes / 4));
 	const roots = input.roots ?? resolveDefaultConversationHistoryRoots();

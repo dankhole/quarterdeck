@@ -225,6 +225,13 @@ async function startAgentLab(options: StartOptions): Promise<void> {
 	if (claudeOnlyScenarios.has(options.scenario) && options.agent !== "fake-claude") {
 		throw new Error("Claude lifecycle scenarios require --agent fake-claude.");
 	}
+	// A source lab cannot retain native installation admission when its isolated
+	// supervisor reuses process.execPath. Never launch it with the app's Node host.
+	if (process.execPath.endsWith("/Contents/Resources/runtime/bin/nodeHost")) {
+		throw new Error(
+			"Browser Agent Lab requires an external Node.js installation, not Quarterdeck's bundled nodeHost. Prepend an external Node.js bin directory to PATH for agent:lab and agent:browser commands; verify it with node -p 'process.execPath'. Do not repair the app installation or bypass native installation admission.",
+		);
+	}
 	const agent = (() => {
 		switch (options.agent) {
 			case "real-codex":

@@ -126,6 +126,16 @@ function getSessionFileId(ctx) {
 	}
 }
 
+// File paths are data, not display text or normalized comparison identities.
+function getSessionFilePath(ctx) {
+	try {
+		const path = ctx.sessionManager.getSessionFile?.();
+		return typeof path === "string" && path.length > 0 && path.length <= 4096 ? path : null;
+	} catch {
+		return null;
+	}
+}
+
 function appendFlag(args, flag, value) {
 	const normalized = truncate(value);
 	if (normalized) {
@@ -251,6 +261,9 @@ function sendHookHttpNotify(metadata, ctx) {
 				turn_id: truncate(turnId),
 				tool_use_id: truncate(metadata.toolUseId),
 				session_id: truncate(sessionId),
+				transcript_path: Object.prototype.hasOwnProperty.call(metadata, "transcriptPath")
+					? metadata.transcriptPath
+					: getSessionFilePath(ctx),
 			});
 			const search = new URLSearchParams({ event: HOOK_HTTP_EVENT, source: HOOK_HTTP_SOURCE }).toString();
 			const sessionInstanceId = process.env[HOOK_HTTP_SESSION_INSTANCE_ID_ENV];
@@ -323,6 +336,10 @@ function emitQuarterdeckHook(event, metadata, ctx, options = {}) {
 	appendFlag(args, "--turn-id", turnId);
 	appendFlag(args, "--tool-use-id", metadata.toolUseId);
 	appendFlag(args, "--session-id", sessionId);
+	const transcriptPath = Object.prototype.hasOwnProperty.call(metadata, "transcriptPath")
+		? metadata.transcriptPath
+		: getSessionFilePath(ctx);
+	if (transcriptPath) args.push("--transcript-path", transcriptPath);
 
 	return spawnHookCommand(binary, args, waitForExit);
 }
@@ -338,6 +355,7 @@ function enqueueDurableHook(event, metadata, ctx) {
 		...metadata,
 		turnId: Object.prototype.hasOwnProperty.call(metadata, "turnId") ? metadata.turnId : activeRunId,
 		sessionId: Object.prototype.hasOwnProperty.call(metadata, "sessionId") ? metadata.sessionId : getSessionId(ctx),
+		transcriptPath: getSessionFilePath(ctx),
 	};
 	durableHookQueue = durableHookQueue.then(
 		() => emitQuarterdeckHook(event, queuedMetadata, ctx, { waitForExit: true }),

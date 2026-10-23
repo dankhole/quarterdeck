@@ -4,12 +4,12 @@ import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
-/** Connected Claude and Codex tasks can export their exact saved conversation. */
+/** Connected Claude, Codex, and Pi tasks can export their exact saved conversation. */
 export function canCopyFullConversation(
 	session: Pick<RuntimeTaskSessionSummary, "agentId" | "pid" | "resumeSessionId"> | null | undefined,
 ): boolean {
 	return (
-		(session?.agentId === "codex" || session?.agentId === "claude") &&
+		(session?.agentId === "codex" || session?.agentId === "claude" || session?.agentId === "pi") &&
 		session.pid !== null &&
 		Boolean(session.resumeSessionId)
 	);

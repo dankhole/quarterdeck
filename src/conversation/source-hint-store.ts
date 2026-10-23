@@ -24,7 +24,7 @@ function hintKey(projectId: string, taskId: string): string {
 
 function hookProvider(metadata: RuntimeHookMetadata) {
 	const source = metadata.source?.trim().toLowerCase();
-	return source === "claude" || source === "codex" ? source : null;
+	return source === "claude" || source === "codex" || source === "pi" ? source : null;
 }
 
 export class ConversationSourceHintStore implements ConversationSourceHintReader, ConversationSourceHintRecorder {
@@ -40,12 +40,14 @@ export class ConversationSourceHintStore implements ConversationSourceHintReader
 		const providerId = metadata ? hookProvider(metadata) : null;
 		const sourcePath = metadata?.transcriptPath?.trim() ?? "";
 		const providerSessionId = metadata?.sessionId?.trim() || input.expectedProviderSessionId?.trim() || "";
+		const sessionInstanceId = metadata?.sessionInstanceId?.trim();
 		if (
 			!metadata ||
 			!providerId ||
 			!sourcePath ||
 			sourcePath.length > MAX_SOURCE_HINT_PATH_LENGTH ||
-			!providerSessionId
+			!providerSessionId ||
+			(providerId === "pi" && (!metadata.sessionId?.trim() || !sessionInstanceId))
 		) {
 			return;
 		}
@@ -58,6 +60,7 @@ export class ConversationSourceHintStore implements ConversationSourceHintReader
 			providerId,
 			providerSessionId,
 			sourcePath,
+			...(providerId === "pi" ? { sessionInstanceId } : {}),
 		});
 		while (this.hints.size > MAX_SOURCE_HINTS) {
 			const oldestKey = this.hints.keys().next().value;
@@ -77,6 +80,7 @@ export class ConversationSourceHintStore implements ConversationSourceHintReader
 			providerId: hint.providerId,
 			providerSessionId: hint.providerSessionId,
 			sourcePath: hint.sourcePath,
+			...(hint.sessionInstanceId ? { sessionInstanceId: hint.sessionInstanceId } : {}),
 		};
 	}
 }

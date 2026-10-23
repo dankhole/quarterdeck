@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { resolveAgentCommandForLaunch } from "../../config/agent-registry";
 import { exportClaudeConversation, resolveClaudeTaskProfileRoot } from "../../conversation/claude-conversation-export";
 import { ConversationExportError, exportCodexConversation } from "../../conversation/codex-conversation-export";
+import { exportPiConversation } from "../../conversation/pi-conversation-export";
 import type { ConversationSourceHintReader } from "../../conversation/types";
 import {
 	type IRuntimeConfigProvider,
@@ -20,14 +21,15 @@ interface ReadTaskConversationDependencies {
 	conversationSourceHints?: ConversationSourceHintReader;
 	exportConversation?: typeof exportCodexConversation;
 	exportClaudeConversation?: typeof exportClaudeConversation;
+	exportPiConversation?: typeof exportPiConversation;
 	resolveCommand?: typeof resolveAgentCommandForLaunch;
 }
 
-const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" } as const;
+const PROVIDER_LABELS = { claude: "Claude", codex: "Codex", pi: "Pi" } as const;
 type ExportableAgentId = keyof typeof PROVIDER_LABELS;
 
 function isExportableAgent(agentId: string | null | undefined): agentId is ExportableAgentId {
-	return agentId === "claude" || agentId === "codex";
+	return agentId === "claude" || agentId === "codex" || agentId === "pi";
 }
 
 export async function handleReadTaskConversation(
@@ -43,7 +45,7 @@ export async function handleReadTaskConversation(
 		const identity = manager.getTaskSessionProcessIdentity(request.taskId);
 		const agentId = summary?.agentId;
 		if (!summary || !isExportableAgent(agentId)) {
-			throw new ConversationExportError("Full conversation copying is available for Claude and Codex tasks.");
+			throw new ConversationExportError("Full conversation copying is available for Claude, Codex, and Pi tasks.");
 		}
 		label = PROVIDER_LABELS[agentId];
 		if (!summary.resumeSessionId)
@@ -64,6 +66,14 @@ export async function handleReadTaskConversation(
 			text = await (deps.exportClaudeConversation ?? exportClaudeConversation)({
 				profileRoot: resolveClaudeTaskProfileRoot(launchPath, profile),
 				sessionId: summary.resumeSessionId,
+				hint:
+					deps.conversationSourceHints?.getHint(scope.projectId, request.taskId, summary.resumeSessionId) ?? null,
+			});
+		} else if (agentId === "pi") {
+			text = await (deps.exportPiConversation ?? exportPiConversation)({
+				sessionId: summary.resumeSessionId,
+				sessionInstanceId: request.sessionInstanceId,
+				launchPath,
 				hint:
 					deps.conversationSourceHints?.getHint(scope.projectId, request.taskId, summary.resumeSessionId) ?? null,
 			});

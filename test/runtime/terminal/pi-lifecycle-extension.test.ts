@@ -331,6 +331,19 @@ describe("Pi lifecycle extension source", () => {
 		);
 	});
 
+	it("freezes each queued saved source path without truncating long custom profile paths", async () => {
+		const firstPath = `/custom/My  Repo\t/${"profile/".repeat(100)}first.jsonl`;
+		const secondPath = "/other/Two  Spaces\t/second.jsonl";
+		const calls = await captureLifecycleHooks((handlers, context) => {
+			context.sessionManager.getSessionFile = () => firstPath;
+			handlers.get("session_start")?.({}, context);
+			context.sessionManager.getSessionFile = () => secondPath;
+			handlers.get("agent_start")?.({}, context);
+		}, 2);
+		expect(flagValue(calls[0], "--transcript-path")).toBe(firstPath);
+		expect(flagValue(calls[1], "--transcript-path")).toBe(secondPath);
+	});
+
 	it("freezes each queued hook to the run identity active when it was enqueued", async () => {
 		const calls = await captureLifecycleHooks((handlers, context) => {
 			handlers.get("session_start")?.({}, context);
@@ -939,12 +952,14 @@ describe("Pi lifecycle extension best-effort HTTP delivery", () => {
 		process.env[QUARTERDECK_HOOK_TASK_ID_ENV] = "task-http";
 		process.env[QUARTERDECK_HOOK_PROJECT_ID_ENV] = "project-http";
 		process.env[QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV] = "instance-http";
+		const sessionFilePath = "/sessions/My  Repo\t/pi-session-1.json";
 
 		try {
 			// agent_start's durable `to_in_progress` must still spawn `hooks
 			// ingest`; the two best-effort tool_execution hooks below must not
 			// spawn anything at all once the HTTP URL env is published.
 			await captureLifecycleHooks((handlers, context) => {
+				context.sessionManager.getSessionFile = () => sessionFilePath;
 				handlers.get("agent_start")?.({}, context);
 				handlers.get("tool_execution_start")?.(
 					{ toolName: "Bash", toolCallId: "call-1", args: { command: "npm test" } },
@@ -972,6 +987,7 @@ describe("Pi lifecycle extension best-effort HTTP delivery", () => {
 				expect(request.headers[HOOK_HTTP_PROJECT_ID_HEADER]).toBe("project-http");
 				expect(request.headers[HOOK_HTTP_SESSION_INSTANCE_ID_HEADER]).toBe("instance-http");
 				expect(request.body.session_id).toBe("pi-session-1");
+				expect(request.body.transcript_path).toBe(sessionFilePath);
 				expect(typeof request.body.turn_id).toBe("string");
 				expect((request.body.turn_id as string).length).toBeGreaterThan(0);
 			}

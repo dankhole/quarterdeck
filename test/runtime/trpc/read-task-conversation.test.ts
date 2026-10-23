@@ -158,10 +158,76 @@ describe("read Claude task conversation", () => {
 
 	it("rejects unsupported providers", async () => {
 		const f = fixture();
-		f.getSummary.mockReturnValue({ ...f.summary, agentId: "pi" });
+		f.getSummary.mockReturnValue({ ...f.summary, agentId: null });
 		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
 			ok: false,
-			error: "Full conversation copying is available for Claude and Codex tasks.",
+			error: "Full conversation copying is available for Claude, Codex, and Pi tasks.",
+		});
+	});
+});
+
+describe("read Pi task conversation", () => {
+	function piFixture() {
+		const f = fixture();
+		const summary = { ...f.summary, agentId: "pi" as const, resumeSessionId: "pi-session-1" };
+		f.getSummary.mockReturnValue(summary);
+		f.getTaskSessionProcessIdentity.mockReturnValue({ ...f.identity, agentId: "pi", binary: "pi" });
+		const exportPiConversation = vi.fn(async () => "pi history");
+		const hint = {
+			providerId: "pi" as const,
+			providerSessionId: "pi-session-1",
+			sourcePath: "/custom/session.jsonl",
+			sessionInstanceId: "launch-1",
+		};
+		const getHint = vi.fn(() => hint);
+		return {
+			...f,
+			summary,
+			hint,
+			getHint,
+			exportPiConversation,
+			dependencies: { ...f.dependencies, exportPiConversation, conversationSourceHints: { getHint } },
+		};
+	}
+	it("reads only the scoped task's exact hook-reported saved file without resolving or launching a provider", async () => {
+		const f = piFixture();
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: true,
+			text: "pi history",
+		});
+		expect(f.getHint).toHaveBeenCalledWith("project-1", "task-1", "pi-session-1");
+		expect(f.exportPiConversation).toHaveBeenCalledWith({
+			sessionId: "pi-session-1",
+			sessionInstanceId: "launch-1",
+			launchPath: "/tmp/worktree",
+			hint: f.hint,
+		});
+		expect(f.dependencies.resolveCommand).not.toHaveBeenCalled();
+		expect(f.dependencies.config.loadScopedRuntimeConfig).not.toHaveBeenCalled();
+		expect(f.exportConversation).not.toHaveBeenCalled();
+	});
+	it("rejects stale Pi launches before reading and hides private source failures", async () => {
+		const f = piFixture();
+		await expect(
+			handleReadTaskConversation(scope, { ...request, sessionInstanceId: "old" }, f.dependencies),
+		).resolves.toEqual({ ok: false, error: "The Pi session is no longer connected. Open the task and try again." });
+		expect(f.exportPiConversation).not.toHaveBeenCalled();
+		f.exportPiConversation.mockRejectedValue(new Error("private path"));
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: false,
+			error: "Could not read the full Pi conversation. Try again.",
+		});
+	});
+	it.each(["session", "process"])("discards Pi output when the %s changes during reading", async (kind) => {
+		const f = piFixture();
+		f.exportPiConversation.mockImplementation(async () => {
+			if (kind === "session") f.getSummary.mockReturnValue({ ...f.summary, resumeSessionId: "new" });
+			else f.getTaskSessionProcessIdentity.mockReturnValue({ ...f.identity, agentId: "pi", pid: 99 });
+			return "stale";
+		});
+		await expect(handleReadTaskConversation(scope, request, f.dependencies)).resolves.toEqual({
+			ok: false,
+			error: "The Pi conversation changed while copying. Try again.",
 		});
 	});
 });

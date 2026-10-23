@@ -109,7 +109,9 @@ describe("canCopyFullConversation", () => {
 		[{ agentId: "claude", pid: 1, resumeSessionId: "session" }, true],
 		[{ agentId: "claude", pid: null, resumeSessionId: "session" }, false],
 		[{ agentId: "claude", pid: 1, resumeSessionId: null }, false],
-		[{ agentId: "pi", pid: 1, resumeSessionId: "session" }, false],
+		[{ agentId: "pi", pid: 1, resumeSessionId: "session" }, true],
+		[{ agentId: "pi", pid: null, resumeSessionId: "session" }, false],
+		[{ agentId: "pi", pid: 1, resumeSessionId: null }, false],
 		[null, false],
 	] as const)("%j -> %s", (session, expected) => {
 		expect(canCopyFullConversation(session)).toBe(expected);

@@ -22,9 +22,11 @@ export interface ConversationTaskSessionResolver {
 }
 
 export interface ConversationSourceHint {
-	providerId: ConversationProviderId;
+	providerId: ConversationProviderId | "pi";
 	providerSessionId: string;
 	sourcePath: string;
+	/** Pi exports require a source reported by this exact native launch. */
+	sessionInstanceId?: string;
 }
 
 export interface ConversationSourceHintReader {

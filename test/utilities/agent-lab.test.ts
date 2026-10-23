@@ -1679,6 +1679,23 @@ describe("agent-lab manifest compatibility", () => {
 	});
 });
 
+describe("agent-lab Node launch preflight", () => {
+	it.each([
+		"/Users/synthetic/Applications/Quarterdeck.app/Contents/Resources/runtime/bin/nodeHost",
+		"/tmp/synthetic/Quarterdeck.app/Contents/Resources/runtime/bin/nodeHost",
+	])("rejects bundled Node before creating a run: %s", async (execPath) => {
+		const previousExecPath = process.execPath;
+		process.execPath = execPath;
+		try {
+			await expect(runAgentLabCli(["node", "agent-lab", "start", "--json"])).rejects.toThrow(
+				"Prepend an external Node.js bin directory to PATH for agent:lab and agent:browser commands",
+			);
+		} finally {
+			process.execPath = previousExecPath;
+		}
+	});
+});
+
 describe("agent-lab loopback ports", () => {
 	it("maps the documented auto CLI value to an ephemeral numeric port", () => {
 		expect(parseAgentLabPort("auto")).toBe(0);

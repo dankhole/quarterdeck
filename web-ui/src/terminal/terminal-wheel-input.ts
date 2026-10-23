@@ -2,11 +2,12 @@ import type { Terminal } from "@xterm/xterm";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { TerminalWheelAccumulator } from "@/terminal/terminal-wheel-policy";
 
-/** Normalize Codex distance, leaving mouse coordinates and protocol encoding to xterm. */
+/** Normalize fullscreen Codex/Pi distance; xterm owns mouse coordinates and encoding. */
 export class TerminalWheelInput {
 	private readonly accumulator = new TerminalWheelAccumulator();
 	private forwarding = false;
 	private sessionKey: string | null = null;
+	private agentId: RuntimeAgentId | null = null;
 	private buffer: Terminal["buffer"]["active"] | null = null;
 
 	constructor(
@@ -23,11 +24,14 @@ export class TerminalWheelInput {
 		if (this.forwarding) return true;
 		const { terminal } = this;
 		const sessionKey = this.callbacks.getConnectedTaskId();
-		if (this.sessionKey !== sessionKey || this.buffer !== terminal.buffer.active) this.accumulator.reset();
+		const agentId = this.callbacks.getSessionAgentId();
+		if (this.sessionKey !== sessionKey || this.agentId !== agentId || this.buffer !== terminal.buffer.active)
+			this.accumulator.reset();
 		this.sessionKey = sessionKey;
+		this.agentId = agentId;
 		this.buffer = terminal.buffer.active;
 		if (
-			this.callbacks.getSessionAgentId() !== "codex" ||
+			(agentId !== "codex" && agentId !== "pi") ||
 			terminal.buffer.active.type !== "alternate" ||
 			!["vt200", "drag", "any"].includes(terminal.modes.mouseTrackingMode) ||
 			event.defaultPrevented ||
@@ -44,8 +48,19 @@ export class TerminalWheelInput {
 		const element = terminal.element;
 		const screen = element?.querySelector(".xterm-screen");
 		const height = screen?.getBoundingClientRect().height ?? 0;
-		if (!element || height <= 0) return true;
-		const reports = this.accumulator.consume(event, height / terminal.rows, terminal.rows);
+		if (
+			!element ||
+			!Number.isFinite(height) ||
+			height <= 0 ||
+			!Number.isFinite(terminal.rows) ||
+			terminal.rows <= 0
+		) {
+			this.accumulator.reset();
+			return true;
+		}
+		// Codex advances three rows/report. Pi's local macOS auto mode expects
+		// one report per browser row; its native wheel setting remains a multiplier.
+		const reports = this.accumulator.consume(event, height / terminal.rows, terminal.rows, agentId === "pi" ? 1 : 3);
 		this.forwarding = true;
 		try {
 			for (let i = 0; i < Math.abs(reports); i++) {

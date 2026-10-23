@@ -3,9 +3,9 @@
 import { describe, expect, it } from "vitest";
 import { TerminalWheelAccumulator } from "./terminal-wheel-policy";
 
-function scroll(deltas: number[], deltaMode = 0, cellHeight = 10): number[] {
+function scroll(deltas: number[], deltaMode = 0, cellHeight = 10, rowsPerReport = 3): number[] {
 	const accumulator = new TerminalWheelAccumulator();
-	return deltas.map((deltaY) => accumulator.consume({ deltaY, deltaMode }, cellHeight, 30));
+	return deltas.map((deltaY) => accumulator.consume({ deltaY, deltaMode }, cellHeight, 30, rowsPerReport));
 }
 
 describe("terminal wheel distance", () => {
@@ -42,7 +42,7 @@ describe("terminal wheel distance", () => {
 			deltaMode: 1,
 			timeStamp: index * gap,
 		}));
-		expect(events.map((event) => accumulator.consume(event, 10, 30))).toEqual([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+		expect(events.map((event) => accumulator.consume(event, 10, 30, 3))).toEqual([0, 0, 1, 0, 0, 1, 0, 0, 1]);
 	});
 	it("preserves small pixel movements across a pause", () => {
 		const accumulator = new TerminalWheelAccumulator();
@@ -50,15 +50,46 @@ describe("terminal wheel distance", () => {
 			{ deltaY: 20, deltaMode: 0, timeStamp: 0 },
 			{ deltaY: 10, deltaMode: 0, timeStamp: 300 },
 		];
-		expect(events.map((event) => accumulator.consume(event, 10, 30))).toEqual([0, 1]);
+		expect(events.map((event) => accumulator.consume(event, 10, 30, 3))).toEqual([0, 1]);
 	});
 	it("drops fractional motion on explicit reset", () => {
 		const accumulator = new TerminalWheelAccumulator();
-		expect(accumulator.consume({ deltaY: 20, deltaMode: 0 }, 10, 30)).toBe(0);
+		expect(accumulator.consume({ deltaY: 20, deltaMode: 0 }, 10, 30, 3)).toBe(0);
 		accumulator.reset();
-		expect(accumulator.consume({ deltaY: 10, deltaMode: 0 }, 10, 30)).toBe(0);
+		expect(accumulator.consume({ deltaY: 10, deltaMode: 0 }, 10, 30, 3)).toBe(0);
 	});
 	it("bounds pathological input without retaining a delayed scroll backlog", () => {
 		expect(scroll([Infinity, NaN, 1e9, 30])).toEqual([0, 0, 100, 1]);
+	});
+	it.each([1, 3])("preserves coalesced/fine distance and browser units with %i rows per report", (rowsPerReport) => {
+		expect(scroll([60], 0, 10, rowsPerReport)).toEqual([6 / rowsPerReport]);
+		expect(
+			scroll(
+				Array.from({ length: 10 }, () => 6),
+				0,
+				10,
+				rowsPerReport,
+			).reduce((sum, n) => sum + n, 0),
+		).toBe(6 / rowsPerReport);
+		expect(scroll([6, -6], 1, 10, rowsPerReport)).toEqual([6 / rowsPerReport, -6 / rowsPerReport]);
+		expect(scroll([1, -1], 2, 10, rowsPerReport)).toEqual([30 / rowsPerReport, -30 / rowsPerReport]);
+		expect(scroll([1e9, 30], 0, 10, rowsPerReport)).toEqual([100, 3 / rowsPerReport]);
+	});
+	it("retains Pi sub-row deltas across pauses, resetting on reversal", () => {
+		const accumulator = new TerminalWheelAccumulator();
+		const events = [
+			{ deltaY: 6, deltaMode: 0, timeStamp: 0 },
+			{ deltaY: 4, deltaMode: 0, timeStamp: 1000 },
+			{ deltaY: 6, deltaMode: 0, timeStamp: 2000 },
+			{ deltaY: -4, deltaMode: 0, timeStamp: 3000 },
+			{ deltaY: -6, deltaMode: 0, timeStamp: 4000 },
+		];
+		expect(events.map((event) => accumulator.consume(event, 10, 30, 1))).toEqual([0, 1, 0, 0, -1]);
+	});
+	it.each([0, -1, NaN, Infinity])("rejects invalid geometry/report policy %s", (invalid) => {
+		const accumulator = new TerminalWheelAccumulator();
+		expect(accumulator.consume({ deltaY: 30, deltaMode: 0 }, invalid, 30, 1)).toBe(0);
+		expect(accumulator.consume({ deltaY: 30, deltaMode: 0 }, 10, invalid, 1)).toBe(0);
+		expect(accumulator.consume({ deltaY: 30, deltaMode: 0 }, 10, 30, invalid)).toBe(0);
 	});
 });
