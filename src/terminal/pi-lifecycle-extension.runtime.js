@@ -36,12 +36,16 @@ const MAX_TEXT_LENGTH = 600;
 // this timeout (see `selectHookCommandArgs`/`spawnHookCommand`'s `waitForExit`
 // branch) and stay fire-and-forget short.
 const DURABLE_HOOK_TIMEOUT_MS = 30_000;
-// pi-subagents (third-party, optional) announces background worker lifecycle
-// on Pi's shared cross-extension bus `pi.events`. Pi core has no background
-// work API of its own, so this is the only signal that a settled turn still
-// has async subagent work in flight.
+// Optional Nico (0.80.0) and Tintinweb (0.22.0) subagent integrations use
+// different native bus contracts. Neither is a dependency of this asset.
 const SUBAGENT_ASYNC_STARTED_EVENT = "subagent:async-started";
 const SUBAGENT_ASYNC_COMPLETE_EVENT = "subagent:async-complete";
+const TINTINWEB_MANAGER_KEY = Symbol.for("pi-subagents:manager");
+// Queued Tintinweb cancellation has no terminal event. Reconcile only IDs
+// observed on this session's bus, and only while admitted work has not started.
+const TINTINWEB_RECONCILE_MS = 1_000;
+const TINTINWEB_PENDING_STATUSES = new Set(["queued", "running"]);
+const TINTINWEB_TERMINAL_STATUSES = new Set(["completed", "steered", "aborted", "stopped", "error"]);
 // After the last tracked background run completes while Pi is idle, wait
 // this long for pi-subagents' wake turn (a fresh agent_start) before emitting
 // the deferred Review, so a finished worker that immediately re-prompts the
@@ -67,11 +71,15 @@ let currentSessionFileId = null;
 // only to ask `ctx.isIdle()` whether Pi is still mid-turn when the wake-grace
 // timer expires. Never used for hook identity.
 let lastCtx = null;
-// id -> { mode, parentWorkflowRunId }. mode "workflow" marks a workflow
-// coordinator run; its children (matched by parentWorkflowRunId) are tracked
-// too, since we still must wait for them, but excluded from the displayed
-// subagent count.
+// Provider-prefixed IDs keep the optional integrations independent. Nico
+// workflow coordinators are tracked but excluded from the displayed count.
 const backgroundRuns = new Map();
+// Registry lookups require a locally observed ID; prior-session IDs remain
+// fenced even though Tintinweb's native bus payloads have no session identity.
+const observedTintinwebIds = new Set();
+const retiredTintinwebIds = new Set();
+let tintinwebReconcileTimer = null;
+let unsubscribeBackgroundEvents = null;
 let deferredSettlement = null; // { runId, finalMessage, sessionId } | null
 let backgroundWakeGraceTimer = null;
 let backgroundHoldTimer = null;
@@ -556,6 +564,7 @@ function armBackgroundHoldTimer() {
 		// saw finish, or a wake turn that never arrived): forget tracked runs
 		// and flush today's Review rather than hold the task Running forever.
 		backgroundRuns.clear();
+		clearTintinwebReconcileTimer();
 		clearBackgroundWakeGraceTimer();
 		flushDeferredSettlement();
 	}, BACKGROUND_WORK_MAX_HOLD_MS);
@@ -599,32 +608,222 @@ function flushDeferredSettlement() {
 	);
 }
 
+function clearTintinwebReconcileTimer() {
+	if (tintinwebReconcileTimer) {
+		clearTimeout(tintinwebReconcileTimer);
+		tintinwebReconcileTimer = null;
+	}
+}
+
 function clearBackgroundTracking() {
 	backgroundRuns.clear();
+	for (const id of observedTintinwebIds) {
+		retiredTintinwebIds.add(id);
+	}
+	observedTintinwebIds.clear();
 	deferredSettlement = null;
+	clearTintinwebReconcileTimer();
 	clearBackgroundWakeGraceTimer();
 	clearBackgroundHoldTimer();
 }
 
-function subscribeToBackgroundSubagentEvents(pi) {
-	if (typeof pi.events?.on !== "function") {
-		// No cross-extension bus (older Pi, or pi-subagents not installed):
-		// behavior stays exactly as it is today.
+function backgroundRunsCompleted(noWakeComing = false) {
+	if (backgroundRuns.size > 0) {
+		armBackgroundHoldTimer();
 		return;
 	}
+	if (!deferredSettlement) {
+		clearBackgroundHoldTimer();
+		return;
+	}
+	if (noWakeComing) {
+		flushDeferredSettlement();
+		return;
+	}
+	// Native child completion is not foreground completion. Tintinweb's
+	// outbox can request a wake after emitting its terminal event.
+	armBackgroundHoldTimer();
+	armBackgroundWakeGraceTimer();
+}
 
-	pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, (payload) => {
-		if (!isRecord(payload)) {
+function tintinwebKey(id) {
+	return "tintinweb:" + id;
+}
+
+function hasTintinwebQueuedRuns() {
+	for (const run of backgroundRuns.values()) {
+		if (run.provider === "tintinweb" && !run.started) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// This is the documented read-only registry surface, not a global running
+// probe. Never scan records or read result/session/prompt/credential content.
+// Missing or broken lookup is unknown, NOT evidence of completion.
+function readTintinwebRecord(id) {
+	if (!observedTintinwebIds.has(id)) {
+		return null;
+	}
+	try {
+		const manager = globalThis[TINTINWEB_MANAGER_KEY];
+		if (typeof manager?.getRecord !== "function") {
+			return null;
+		}
+		const record = manager.getRecord(id);
+		if (
+			!isRecord(record) || record.id !== id ||
+			(!TINTINWEB_PENDING_STATUSES.has(record.status) && !TINTINWEB_TERMINAL_STATUSES.has(record.status)) ||
+			(record.blocking !== undefined && typeof record.blocking !== "boolean") ||
+			(record.isBackground !== undefined && typeof record.isBackground !== "boolean")
+		) {
+			return null;
+		}
+		return {
+			status: record.status,
+			pending: TINTINWEB_PENDING_STATUSES.has(record.status),
+			// `isBackground: false` may still be detached RPC work. Only
+			// `blocking` means the parent is awaiting this worker inline.
+			detached: record.blocking !== true,
+			owned: record.parentAgentId !== undefined || record.workflowId !== undefined,
+		};
+	} catch {
+		return null;
+	}
+}
+
+function reconcileTintinwebRuns() {
+	let changed = false;
+	for (const run of backgroundRuns.values()) {
+		if (run.provider !== "tintinweb" || run.started) {
+			continue;
+		}
+		const record = readTintinwebRecord(run.id);
+		if (!record || record.owned) {
+			continue;
+		}
+		if (record.status === "running") {
+			run.started = true;
+		} else if (!record.pending) {
+			// Queued cancellation/startup failure can omit a terminal event.
+			// Started work must instead wait for onComplete: abort() marks a
+			// running record stopped BEFORE asynchronous cleanup has finished.
+			changed = backgroundRuns.delete(tintinwebKey(run.id)) || changed;
+		}
+	}
+	if (!hasTintinwebQueuedRuns()) {
+		clearTintinwebReconcileTimer();
+	}
+	if (changed) {
+		backgroundRunsCompleted();
+	}
+}
+
+function armTintinwebReconcileTimer() {
+	if (tintinwebReconcileTimer || !hasTintinwebQueuedRuns()) {
+		return;
+	}
+	tintinwebReconcileTimer = setTimeout(() => {
+		tintinwebReconcileTimer = null;
+		reconcileTintinwebRuns();
+		armTintinwebReconcileTimer();
+	}, TINTINWEB_RECONCILE_MS);
+	tintinwebReconcileTimer.unref?.();
+}
+
+function observeTintinwebEvent(kind, payload) {
+	if (!isRecord(payload) || payload.parentAgentId !== undefined || payload.workflowId !== undefined) {
+		return;
+	}
+	const id = normalizeText(payload.id);
+	if (!id || id !== payload.id || id.length > 512 || retiredTintinwebIds.has(id)) {
+		return;
+	}
+	if (isAnotherSession(normalizeText(payload.sessionId))) {
+		return;
+	}
+	if (kind === "created" && payload.isBackground !== true) {
+		return;
+	}
+	observedTintinwebIds.add(id);
+	const key = tintinwebKey(id);
+	const run = backgroundRuns.get(key);
+	const record = readTintinwebRecord(id);
+	if (record?.owned) {
+		return;
+	}
+	if (kind === "terminal") {
+		// A delayed terminal for the previous generation cannot end a native
+		// record that is already queued/running again under the same ID.
+		if (record?.pending) {
+			if (record.status === "queued" && run) {
+				// Cleanup of the previous generation can finish after a resume
+				// queued this same ID. Its queued cancellation has no event, so
+				// do not retain the previous generation's started fence.
+				const wasStarted = run.started;
+				run.started = false;
+				if (wasStarted) armBackgroundHoldTimer();
+				armTintinwebReconcileTimer();
+			}
 			return;
 		}
+		if (backgroundRuns.delete(key)) {
+			if (!hasTintinwebQueuedRuns()) clearTintinwebReconcileTimer();
+			backgroundRunsCompleted();
+		}
+		return;
+	}
+	if (kind === "started" && run) {
+		// Lookup loss or an early stopped status cannot undo native start
+		// evidence for admitted work: asynchronous cleanup may still be active.
+		run.started = true;
+		if (!hasTintinwebQueuedRuns()) clearTintinwebReconcileTimer();
+	}
+	// No new work is inferred from `created` alone or a foreign/unknown
+	// manager. Native terminal status also rejects late registration without
+	// tombstones, while pending status admits same-ID queued resumes.
+	if (!record?.pending || !record.detached) return;
+	const started = kind === "started" || record.status === "running";
+	const newQueuedGeneration = run?.started === true && !started;
+	if (!run) {
+		backgroundRuns.set(key, { provider: "tintinweb", id, mode: null, started });
+	} else {
+		run.started = started;
+	}
+	if (!run || kind === "started" || newQueuedGeneration) {
+		clearBackgroundWakeGraceTimer();
+		armBackgroundHoldTimer();
+	}
+	// Running admission includes foreground-to-background handoff, whose
+	// earlier foreground `started` was correctly ignored while blocking.
+	if (!hasTintinwebQueuedRuns()) clearTintinwebReconcileTimer();
+	armTintinwebReconcileTimer();
+}
+
+function subscribeToBackgroundSubagentEvents(pi) {
+	if (typeof pi.events?.on !== "function") {
+		return null;
+	}
+	let active = true;
+	const unsubscribers = [];
+	function on(name, handler) {
+		const guardedHandler = (payload) => {
+			if (active) handler(payload);
+		};
+		const unsubscribe = pi.events.on(name, guardedHandler);
+		if (typeof unsubscribe === "function") {
+			unsubscribers.push(unsubscribe);
+		} else if (typeof pi.events.off === "function") {
+			unsubscribers.push(() => pi.events.off(name, guardedHandler));
+		}
+	}
+	on(SUBAGENT_ASYNC_STARTED_EVENT, (payload) => {
+		if (!isRecord(payload)) return;
 		const id = normalizeText(payload.id);
-		if (!id) {
-			return;
-		}
-		if (isAnotherSession(normalizeText(payload.sessionId))) {
-			return;
-		}
-		backgroundRuns.set(id, {
+		if (!id || isAnotherSession(normalizeText(payload.sessionId))) return;
+		backgroundRuns.set("nico:" + id, {
+			provider: "nico",
 			mode: normalizeText(payload.mode),
 			parentWorkflowRunId: normalizeText(payload.parentWorkflowRunId),
 		});
@@ -632,56 +831,43 @@ function subscribeToBackgroundSubagentEvents(pi) {
 		armBackgroundHoldTimer();
 	});
 
-	pi.events.on(SUBAGENT_ASYNC_COMPLETE_EVENT, (payload) => {
+	on(SUBAGENT_ASYNC_COMPLETE_EVENT, (payload) => {
 		const runId = resolveAsyncCompleteRunId(payload);
-		if (!runId) {
-			return;
-		}
-		const completedRun = backgroundRuns.get(runId);
-		let changed = backgroundRuns.delete(runId);
+		if (!runId || isAnotherSession(normalizeText(payload.sessionId))) return;
+		const key = "nico:" + runId;
+		const completedRun = backgroundRuns.get(key);
+		let changed = backgroundRuns.delete(key);
 		if (completedRun?.mode === "workflow" || payload.mode === "workflow") {
-			// The coordinator is done (a detached foreground workflow completes
-			// without ever announcing a start); drop any children tracked under
-			// it that never reported their own completion.
 			for (const [childId, child] of backgroundRuns) {
-				if (child.parentWorkflowRunId === runId) {
+				if (child.provider === "nico" && child.parentWorkflowRunId === runId) {
 					backgroundRuns.delete(childId);
 					changed = true;
 				}
 			}
 		}
-		if (!changed) {
-			return;
+		if (changed) {
+			const noWakeComing = payload.awaitedByWorkflow !== true &&
+				(payload.triggerTurn === false || payload.intercomDelivered === true);
+			backgroundRunsCompleted(noWakeComing);
 		}
-		if (backgroundRuns.size > 0) {
-			armBackgroundHoldTimer();
-			return;
-		}
-		if (!deferredSettlement) {
-			// agent_start clears deferredSettlement, so its absence here means
-			// either Pi is still running the current turn or there is nothing
-			// waiting on a Review; either way there is nothing to flush.
-			clearBackgroundHoldTimer();
-			return;
-		}
-		// A workflow-awaited child reports triggerTurn: false because its
-		// coordinator, not the child, will wake the parent.
-		const noWakeComing =
-			payload.awaitedByWorkflow !== true && (payload.triggerTurn === false || payload.intercomDelivered === true);
-		if (noWakeComing) {
-			flushDeferredSettlement();
-			return;
-		}
-		// Keep a bounded fallback armed for the whole deferred-settlement
-		// wait, not just while runs are tracked, in case the wake turn never
-		// arrives.
-		armBackgroundHoldTimer();
-		armBackgroundWakeGraceTimer();
 	});
+	on("subagents:created", (payload) => observeTintinwebEvent("created", payload));
+	on("subagents:started", (payload) => observeTintinwebEvent("started", payload));
+	on("subagents:completed", (payload) => observeTintinwebEvent("terminal", payload));
+	on("subagents:failed", (payload) => observeTintinwebEvent("terminal", payload));
+	return () => {
+		active = false;
+		for (const unsubscribe of unsubscribers) {
+			try {
+				unsubscribe();
+			} catch {
+				// The inert guard still fences callbacks on a disposed bus.
+			}
+		}
+	};
 }
 
 export default function quarterdeckLifecycle(pi) {
-	subscribeToBackgroundSubagentEvents(pi);
 	// Freeze launch authority at initialization so later environment changes cannot
 	// move it. The adapter supplies one verified canonical checkout.
 	const trustScope = process.env[WORKTREE_TRUST_SCOPE_ENV];
@@ -727,7 +913,9 @@ export default function quarterdeckLifecycle(pi) {
 		// turn's deferred settlement in Running forever; falls back to
 		// today's Review behavior for the new session.
 		flushDeferredSettlement();
+		unsubscribeBackgroundEvents?.();
 		clearBackgroundTracking();
+		unsubscribeBackgroundEvents = subscribeToBackgroundSubagentEvents(pi);
 		void enqueueDurableHook(
 			"activity",
 			{
@@ -742,6 +930,8 @@ export default function quarterdeckLifecycle(pi) {
 		// Same reload-safety rationale as session_start: flush before
 		// clearing so a pending deferred settlement is not silently lost.
 		flushDeferredSettlement();
+		unsubscribeBackgroundEvents?.();
+		unsubscribeBackgroundEvents = null;
 		clearBackgroundTracking();
 		lastCtx = null;
 	});
@@ -757,6 +947,7 @@ export default function quarterdeckLifecycle(pi) {
 		// tracked background runs, they still belong to this session.
 		deferredSettlement = null;
 		clearBackgroundWakeGraceTimer();
+		if (backgroundRuns.size === 0) clearBackgroundHoldTimer();
 		void enqueueDurableHook(
 			"to_in_progress",
 			{
@@ -792,6 +983,9 @@ export default function quarterdeckLifecycle(pi) {
 		const finalMessage = aborted || failed ? null : lastAssistantSummary;
 		currentSessionId = getSessionId(ctx);
 		currentSessionFileId = getSessionFileId(ctx);
+		// Reconcile only not-yet-started queued cancellations/startup failures
+		// that have no terminal event before deciding whether work remains.
+		reconcileTintinwebRuns();
 		// Interruption/failure must surface immediately even with background
 		// work pending; only a clean settle can be deferred.
 		if (!aborted && !failed && backgroundRuns.size > 0) {
@@ -819,6 +1013,7 @@ export default function quarterdeckLifecycle(pi) {
 		const reviewRunId = settledRunId ?? deferredSettlement?.runId ?? null;
 		deferredSettlement = null;
 		clearBackgroundWakeGraceTimer();
+		if (backgroundRuns.size === 0) clearBackgroundHoldTimer();
 		void enqueueDurableHook(
 			"to_review",
 			{

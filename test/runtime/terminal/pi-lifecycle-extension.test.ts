@@ -197,6 +197,11 @@ async function captureLifecycleHooks(
 	};
 	const originalHookCommand = process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
 	const originalOutputPath = process.env.QD_TEST_PI_HOOK_OUTPUT;
+	// Pi binds optional bus listeners at session_start, not extension-factory
+	// time (factories can be filtered out). Boot without recording metadata so
+	// individual cases continue to assert only the hooks they exercise.
+	process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = "";
+	await handlers.get("session_start")?.({}, context);
 	process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = JSON.stringify([process.execPath, helperPath, "notify"]);
 	process.env.QD_TEST_PI_HOOK_OUTPUT = outputPath;
 	async function readHookLines(): Promise<string[]> {
@@ -222,6 +227,10 @@ async function captureLifecycleHooks(
 		}
 		return (await readHookLines()).map((line) => JSON.parse(line) as string[]);
 	} finally {
+		// Dispose listeners and background timers without launching cleanup hooks
+		// after this case's temporary capture directory has been removed.
+		process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = "";
+		await handlers.get("session_shutdown")?.({}, context);
 		if (originalHookCommand === undefined) delete process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
 		else process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = originalHookCommand;
 		if (originalOutputPath === undefined) delete process.env.QD_TEST_PI_HOOK_OUTPUT;
