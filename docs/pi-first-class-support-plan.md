@@ -18,7 +18,11 @@ The native Pi TUI remains the execution owner. Pi does not participate in the in
 - Pi hooks may affect a task only when project, task, provider session, launch session instance, run/tool identity, and delivery ordering match current runtime authority.
 - Managed sessions block Pi-local `/new`, `/resume`, and `/fork` operations that would replace provider identity outside Quarterdeck's lifecycle owner.
 
-Pi owns project trust, saved trust decisions, and tool execution. Quarterdeck does not register `project_trust` or `tool_call` handlers, add confirmation dialogs, or override native trust policy. The lifecycle extension only observes execution and protects the managed provider identity. Dialogs created by user extensions remain in Pi’s terminal and are not mapped to Quarterdeck input notifications. Native startup trust prompts remain visible in Pi’s terminal; they do not produce Quarterdeck approval notifications. Restart existing sessions to load the simplified extension.
+Quarterdeck automatically grants session-only Pi trust to the exact registered task worktree verified inside its managed worktrees area. The launch-scoped lifecycle extension uses Pi's native `project_trust` event and does not save a trust decision, trust the parent directory, or change Pi's global configuration. Each fresh start, resume, restart, and recovery verifies its own scope. Shared checkouts and directories outside that scope retain Pi's normal trust handling, and Pi's explicit trust overrides retain their native precedence. Restart existing sessions to load the updated extension.
+
+Pi evaluates extension trust decisions before saved folder decisions and `defaultProjectTrust`, so Quarterdeck's session grant takes precedence over those settings for an eligible task worktree. Pi's first decisive extension response wins; an earlier explicit extension can supply its own decision. Quarterdeck preserves extension ordering.
+
+Pi owns saved trust decisions and tool execution. Quarterdeck does not register `tool_call` handlers or add confirmation dialogs. Dialogs created by user extensions remain in Pi’s terminal and are not mapped to Quarterdeck input notifications. Any remaining native startup trust prompts also remain in Pi’s terminal without Quarterdeck approval notifications.
 
 ## Recovery contract
 

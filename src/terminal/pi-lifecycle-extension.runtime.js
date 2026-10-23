@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { realpath } from "node:fs/promises";
 import http from "node:http";
+import { isAbsolute } from "node:path";
 
 const HOOK_COMMAND_ENV = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 // Published only while the runtime's loopback hook HTTP channel is active;
@@ -8,6 +10,7 @@ const HOOK_COMMAND_ENV = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 // spawning `hooks notify` (see `emitQuarterdeckHook`). Durable hooks always
 // keep the CLI command above, regardless of this env var.
 const HOOK_HTTP_URL_ENV = "__QUARTERDECK_PI_HOOK_HTTP_URL_ENV__";
+const WORKTREE_TRUST_SCOPE_ENV = "__QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV__";
 // Identity/credential env names and header names below must stay byte-for-byte
 // in sync with `hook-http-channel.ts` (`QUARTERDECK_HOOK_HTTP_TOKEN_ENV`,
 // `HOOK_HTTP_*_HEADER`) and `hook-runtime-context.ts` (`QUARTERDECK_HOOK_*_ENV`);
@@ -661,6 +664,36 @@ function subscribeToBackgroundSubagentEvents(pi) {
 
 export default function quarterdeckLifecycle(pi) {
 	subscribeToBackgroundSubagentEvents(pi);
+	// Freeze launch authority at initialization so later environment changes cannot
+	// move it. The adapter supplies one verified canonical checkout.
+	const trustScope = process.env[WORKTREE_TRUST_SCOPE_ENV];
+	const managedTrustScope =
+		trustScope &&
+		isAbsolute(trustScope) &&
+		[HOOK_HTTP_TASK_ID_ENV, HOOK_HTTP_PROJECT_ID_ENV, HOOK_HTTP_SESSION_INSTANCE_ID_ENV].every((key) =>
+			Boolean(process.env[key]?.trim()),
+		)
+			? trustScope
+			: null;
+	pi.on("project_trust", async (event, ctx) => {
+		if (managedTrustScope && typeof event.cwd === "string" && typeof ctx.cwd === "string") {
+			try {
+				if (isAbsolute(event.cwd) && isAbsolute(ctx.cwd)) {
+					const [scope, eventCwd, contextCwd] = await Promise.all([
+						realpath(managedTrustScope),
+						realpath(event.cwd),
+						realpath(ctx.cwd),
+					]);
+					if (scope === managedTrustScope && eventCwd === scope && contextCwd === scope) {
+						return { trusted: "yes", remember: false };
+					}
+				}
+			} catch {
+				// Deleted or redirected paths cannot retain the launch's trust authority.
+			}
+		}
+		return { trusted: "undecided" };
+	});
 
 	pi.on("session_start", (_event, ctx) => {
 		lastCtx = ctx;

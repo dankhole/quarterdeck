@@ -1,14 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	HOOK_HTTP_PROJECT_ID_HEADER,
@@ -26,6 +26,7 @@ import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
+	QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
 import { useProcessTestBudget } from "../../utilities/process-test-budget";
 
@@ -37,6 +38,7 @@ useProcessTestBudget();
 
 const HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 const HOOK_HTTP_URL_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_HTTP_URL_ENV__";
+const WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER = "__QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV__";
 const PI_LIFECYCLE_RUNTIME_ASSET_URL = new URL(
 	"../../../src/terminal/pi-lifecycle-extension.runtime.js",
 	import.meta.url,
@@ -61,6 +63,7 @@ function listenerBlock(source: string, eventName: string): string {
 }
 
 interface PiExtensionContextHarness {
+	cwd?: string;
 	ui: {
 		notify(message: string, type?: string): void;
 	};
@@ -234,16 +237,19 @@ describe("Pi lifecycle extension source", () => {
 
 		expect(assetSource.split(HOOK_COMMAND_ENV_PLACEHOLDER)).toHaveLength(2);
 		expect(assetSource.split(HOOK_HTTP_URL_ENV_PLACEHOLDER)).toHaveLength(2);
+		expect(assetSource.split(WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER)).toHaveLength(2);
 		expect(assetSource).not.toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
 		expect(source).toBe(
 			assetSource
 				.replace(HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV)
-				.replace(HOOK_HTTP_URL_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_HTTP_URL_ENV),
+				.replace(HOOK_HTTP_URL_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_HTTP_URL_ENV)
+				.replace(WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER, QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV),
 		);
 		expect(source).toContain(`const HOOK_COMMAND_ENV = "${QUARTERDECK_PI_HOOK_COMMAND_ENV}";`);
 		expect(source).toContain(`const HOOK_HTTP_URL_ENV = "${QUARTERDECK_PI_HOOK_HTTP_URL_ENV}";`);
 		expect(source).not.toContain(HOOK_COMMAND_ENV_PLACEHOLDER);
 		expect(source).not.toContain(HOOK_HTTP_URL_ENV_PLACEHOLDER);
+		expect(source).not.toContain(WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER);
 	});
 
 	it("keeps its hardcoded HTTP header and identity/credential env names in sync with hook-http-channel.ts and hook-runtime-context.ts", () => {
@@ -435,15 +441,120 @@ describe("Pi lifecycle extension source", () => {
 		expect(endBlock).toContain("forgetToolInput(event);");
 	});
 
-	it("leaves tool execution and project trust entirely to Pi", async () => {
+	it("leaves tool execution to Pi and registers launch-scoped project trust", async () => {
 		const initialize = await loadPiLifecycleExtension();
 		const handlers = new Map<string, PiEventHandlerHarness>();
 		initialize({ on: (eventName, handler) => handlers.set(eventName, handler) });
 		expect(handlers.has("tool_call")).toBe(false);
-		expect(handlers.has("project_trust")).toBe(false);
+		expect(handlers.has("project_trust")).toBe(true);
 		expect(handlers.has("input")).toBe(false);
 		expect(handlers.has("tool_execution_start")).toBe(true);
 		expect(handlers.has("agent_settled")).toBe(true);
+	});
+});
+
+describe("Pi session-only worktree trust", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	async function prepareTrustHandler(scope: string | undefined): Promise<PiEventHandlerHarness> {
+		vi.stubEnv(QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV, scope);
+		vi.stubEnv(QUARTERDECK_HOOK_TASK_ID_ENV, "task-pi");
+		vi.stubEnv(QUARTERDECK_HOOK_PROJECT_ID_ENV, "project-pi");
+		vi.stubEnv(QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV, "launch-pi");
+		return await initializeTrustHandler();
+	}
+
+	async function initializeTrustHandler(): Promise<PiEventHandlerHarness> {
+		const initialize = await loadPiLifecycleExtension();
+		const handlers = new Map<string, PiEventHandlerHarness>();
+		initialize({ on: (eventName, handler) => handlers.set(eventName, handler) });
+		const handler = handlers.get("project_trust");
+		if (!handler) throw new Error("Expected project_trust handler.");
+		return handler;
+	}
+
+	function context(cwd?: string): PiExtensionContextHarness {
+		return { cwd, ui: { notify: vi.fn() }, sessionManager: { getSessionId: () => "pi-session" } };
+	}
+
+	it("trusts only the exact canonical launch checkout without remembering, including a reload", async () => {
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-trust-"));
+		try {
+			const scope = await realpath(tempDir);
+			const handler = await prepareTrustHandler(scope);
+			expect(await handler({ cwd: scope }, context(scope))).toEqual({ trusted: "yes", remember: false });
+			// Later env mutation cannot move this extension's launch authority.
+			vi.stubEnv(QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV, join(scope, "other"));
+			expect(await handler({ cwd: scope }, context(scope))).toEqual({ trusted: "yes", remember: false });
+			vi.stubEnv(QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV, scope);
+			const reloadedHandler = await initializeTrustHandler();
+			expect(await reloadedHandler({ cwd: scope }, context(scope))).toEqual({ trusted: "yes", remember: false });
+		} finally {
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	it("defers when scope or any managed launch identity is missing", async () => {
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-trust-"));
+		try {
+			const scope = await realpath(tempDir);
+			const noScope = await prepareTrustHandler(undefined);
+			expect(await noScope({ cwd: scope }, context(scope))).toEqual({ trusted: "undecided" });
+			for (const key of [
+				QUARTERDECK_HOOK_TASK_ID_ENV,
+				QUARTERDECK_HOOK_PROJECT_ID_ENV,
+				QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV,
+			]) {
+				await prepareTrustHandler(scope);
+				vi.stubEnv(key, " ");
+				const handler = await initializeTrustHandler();
+				expect(await handler({ cwd: scope }, context(scope))).toEqual({ trusted: "undecided" });
+			}
+		} finally {
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	it("defers for other directories, children, sibling prefixes, or conflicting event/context cwd", async () => {
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-trust-"));
+		try {
+			const scope = join(await realpath(tempDir), "worktree");
+			await mkdir(join(scope, "child"), { recursive: true });
+			await mkdir(`${scope}-sibling`);
+			const handler = await prepareTrustHandler(scope);
+			for (const cwd of [tempDir, join(scope, "child"), `${scope}-sibling`, join(scope, "absent")]) {
+				expect(await handler({ cwd }, context(cwd))).toEqual({ trusted: "undecided" });
+				expect(await handler({ cwd: scope }, context(cwd))).toEqual({ trusted: "undecided" });
+				expect(await handler({ cwd }, context(scope))).toEqual({ trusted: "undecided" });
+			}
+			expect(await handler({ cwd: scope }, context())).toEqual({ trusted: "undecided" });
+			expect(await handler({}, context(scope))).toEqual({ trusted: "undecided" });
+			expect(await handler({ cwd: "." }, context(scope))).toEqual({ trusted: "undecided" });
+		} finally {
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	it("accepts aliases of the same checkout but rejects deleted or symlink-redirected launch paths", async () => {
+		const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-trust-"));
+		try {
+			const root = await realpath(tempDir);
+			const scope = join(root, "worktree");
+			const outside = join(root, "outside");
+			const alias = join(root, "alias");
+			await mkdir(scope);
+			await mkdir(outside);
+			await symlink(scope, alias, process.platform === "win32" ? "junction" : "dir");
+			const handler = await prepareTrustHandler(scope);
+			expect(await handler({ cwd: alias }, context(alias))).toEqual({ trusted: "yes", remember: false });
+			await rename(scope, join(root, "original"));
+			expect(await handler({ cwd: scope }, context(scope))).toEqual({ trusted: "undecided" });
+			await symlink(outside, scope, process.platform === "win32" ? "junction" : "dir");
+			expect(await handler({ cwd: scope }, context(scope))).toEqual({ trusted: "undecided" });
+			expect(await handler({ cwd: outside }, context(outside))).toEqual({ trusted: "undecided" });
+		} finally {
+			await rm(tempDir, { recursive: true, force: true });
+		}
 	});
 });
 

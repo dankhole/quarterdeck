@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const QUARTERDECK_PI_HOOK_COMMAND_ENV = "QUARTERDECK_PI_HOOK_COMMAND_JSON";
+export const QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV = "QUARTERDECK_PI_WORKTREE_TRUST_SCOPE";
 // Published only when the runtime's loopback hook HTTP channel is active (see
 // `hook-http-channel.ts`); the extension POSTs best-effort activity hooks to
 // this URL in-process instead of spawning `hooks notify`, mirroring Claude's
@@ -13,6 +14,7 @@ export const QUARTERDECK_PI_HOOK_HTTP_URL_ENV = "QUARTERDECK_PI_HOOK_HTTP_URL";
 const PI_LIFECYCLE_EXTENSION_ASSET_FILENAME = "pi-lifecycle-extension.runtime.js";
 const PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 const PI_LIFECYCLE_EXTENSION_HOOK_HTTP_URL_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_HTTP_URL_ENV__";
+const PI_LIFECYCLE_EXTENSION_WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER = "__QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV__";
 
 let cachedPiLifecycleExtensionSource: string | null = null;
 
@@ -31,9 +33,11 @@ export function buildPiLifecycleExtensionSource(): string {
 	const source = readPiLifecycleExtensionAsset();
 	requireExactlyOnePlaceholder(source, PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER);
 	requireExactlyOnePlaceholder(source, PI_LIFECYCLE_EXTENSION_HOOK_HTTP_URL_ENV_PLACEHOLDER);
+	requireExactlyOnePlaceholder(source, PI_LIFECYCLE_EXTENSION_WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER);
 	cachedPiLifecycleExtensionSource = source
 		.replace(PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV)
-		.replace(PI_LIFECYCLE_EXTENSION_HOOK_HTTP_URL_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_HTTP_URL_ENV);
+		.replace(PI_LIFECYCLE_EXTENSION_HOOK_HTTP_URL_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_HTTP_URL_ENV)
+		.replace(PI_LIFECYCLE_EXTENSION_WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER, QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV);
 	return cachedPiLifecycleExtensionSource;
 }
 

@@ -1173,7 +1173,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(extensionSource).toContain('pi.on("agent_settled"');
 		expect(extensionSource).toContain('pi.on("agent_start"');
 		expect(extensionSource).not.toContain('pi.on("tool_call"');
-		expect(extensionSource).not.toContain('pi.on("project_trust"');
+		expect(extensionSource).toContain('pi.on("project_trust"');
 		expect(extensionSource).not.toContain("PermissionRequest");
 		expect(extensionSource).toContain("enqueueDurableHook");
 		expect(extensionSource).toContain("detached: !waitForExit");

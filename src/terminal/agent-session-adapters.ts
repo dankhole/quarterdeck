@@ -31,7 +31,9 @@ import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
+	QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV,
 } from "./pi-lifecycle-extension";
+import { resolvePiWorktreeTrustScope } from "./pi-worktree-trust";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 import type { TerminalScreenSnapshot } from "./terminal-state-mirror";
@@ -569,9 +571,15 @@ const piAdapter: AgentSessionAdapter = {
 				args.push("--continue");
 			}
 		}
-		const env: Record<string, string | undefined> = {};
+		const env: Record<string, string | undefined> = {
+			// Always override process/request inheritance, including unmanaged launches.
+			[QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV]: undefined,
+		};
 		const hooks = resolveHookContext(input);
 		if (hooks) {
+			if (hooks.taskId.trim() && hooks.sessionInstanceId?.trim()) {
+				env[QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV] = await resolvePiWorktreeTrustScope(input);
+			}
 			const extensionPath = getPiLifecycleExtensionPath();
 			await ensureTextFile(extensionPath, buildPiLifecycleExtensionSource());
 			if (!args.includes(extensionPath)) {
