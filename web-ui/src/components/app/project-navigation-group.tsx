@@ -17,6 +17,7 @@ export function ProjectNavigationGroup({
 	collapsed,
 	currentProjectId,
 	needsInputByProject,
+	errorByProject,
 	disabled,
 	dragging,
 	onToggle,
@@ -28,6 +29,7 @@ export function ProjectNavigationGroup({
 	collapsed: boolean;
 	currentProjectId: string | null;
 	needsInputByProject: Record<string, number>;
+	errorByProject: Record<string, number>;
 	disabled: boolean;
 	dragging: boolean;
 	onToggle: () => void;
@@ -40,14 +42,19 @@ export function ProjectNavigationGroup({
 	const current = collapsed && section.projects.some((project) => project.id === currentProjectId);
 	const counts = section.projects.reduce(
 		(sum, project) => {
-			const counts = resolveProjectNavigationTaskCounts(project.taskCounts, needsInputByProject[project.id] ?? 0);
+			const counts = resolveProjectNavigationTaskCounts(
+				project.taskCounts,
+				needsInputByProject[project.id] ?? 0,
+				errorByProject[project.id] ?? 0,
+			);
 			return {
 				inProgress: sum.inProgress + counts.inProgress,
 				review: sum.review + counts.review,
 				needsInput: sum.needsInput + counts.needsInput,
+				error: sum.error + counts.error,
 			};
 		},
-		{ inProgress: 0, review: 0, needsInput: 0 },
+		{ inProgress: 0, review: 0, needsInput: 0, error: 0 },
 	);
 	return (
 		<section
@@ -121,12 +128,13 @@ export function ProjectNavigationGroup({
 					</>
 				) : null}
 			</div>
-			{collapsed && counts.inProgress + counts.review + counts.needsInput > 0 ? (
+			{collapsed && counts.inProgress + counts.review + counts.needsInput + counts.error > 0 ? (
 				<div role="group" className="flex gap-1 pl-6 pb-1 pt-0.5" aria-label={`Activity in ${section.name}`}>
 					{[
 						{ count: counts.inProgress, label: "IP", title: "In Progress", tone: statusPillColors.in_progress },
 						{ count: counts.review, label: "R", title: "Review", tone: statusPillColors.review },
 						{ count: counts.needsInput, label: "NI", title: "Needs Input", tone: statusPillColors.needs_input },
+						{ count: counts.error, label: "Error", title: "Error", tone: statusPillColors.error },
 					]
 						.filter((item) => item.count > 0)
 						.map((item) => (

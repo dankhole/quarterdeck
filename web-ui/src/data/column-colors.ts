@@ -29,6 +29,7 @@ export const statusPillColors = {
 	in_progress: "bg-accent/20 text-accent",
 	review: "bg-status-green/20 text-status-green",
 	needs_input: "bg-status-orange/20 text-status-orange",
+	error: "bg-status-red/20 text-status-red",
 } as const;
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ export interface FlattenedProjectNotificationTask {
 
 export interface ProjectNotificationProjection {
 	needsInputByProject: Record<string, number>;
+	errorByProject: Record<string, number>;
 	currentProjectHasNeedsInput: boolean;
 	otherProjectsHaveNeedsInput: boolean;
 }
@@ -42,12 +43,17 @@ export function buildProjectNotificationProjection(
 	currentProjectId: string | null,
 ): ProjectNotificationProjection {
 	const needsInputByProject: Record<string, number> = {};
+	const errorByProject: Record<string, number> = {};
 	let currentProjectHasNeedsInput = false;
 	let otherProjectsHaveNeedsInput = false;
 
 	for (const [projectId, projectState] of Object.entries(notificationProjects)) {
 		for (const summary of Object.values(projectState.sessions)) {
-			if (!deriveTaskIndicatorState(summary).needsInput) {
+			const indicator = deriveTaskIndicatorState(summary);
+			if (indicator.publicStatus === "error") {
+				errorByProject[projectId] = (errorByProject[projectId] ?? 0) + 1;
+			}
+			if (!indicator.needsInput) {
 				continue;
 			}
 
@@ -62,6 +68,7 @@ export function buildProjectNotificationProjection(
 
 	return {
 		needsInputByProject,
+		errorByProject,
 		currentProjectHasNeedsInput,
 		otherProjectsHaveNeedsInput,
 	};

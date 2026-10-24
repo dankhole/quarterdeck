@@ -20,6 +20,7 @@ export function ProjectNavigationPanel({
 	onOrganization,
 	organizationDisabled,
 	needsInputByProject,
+	errorByProject,
 }: {
 	projects: RuntimeProjectSummary[];
 	isLoadingProjects?: boolean;
@@ -34,6 +35,7 @@ export function ProjectNavigationPanel({
 	organizationDisabled?: boolean;
 	onCreateTask: () => void;
 	needsInputByProject: Record<string, number>;
+	errorByProject: Record<string, number>;
 }): React.ReactElement {
 	const management = useContext(ProjectManagementContext);
 	const isProjectUnavailable =
@@ -54,6 +56,7 @@ export function ProjectNavigationPanel({
 				currentProjectId={currentProjectId}
 				removingProjectId={removingProjectId}
 				needsInputByProject={needsInputByProject}
+				errorByProject={errorByProject}
 				onSelectProject={onSelectProject}
 				onPreloadProject={onPreloadProject}
 				onRequestRemoveProject={panel.requestProjectRemoval}

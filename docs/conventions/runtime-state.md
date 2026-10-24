@@ -134,10 +134,10 @@ Any browser notification map spanning projects keys task identity by `projectId`
 Notification ownership is intentionally split:
 
 - `web-ui/src/runtime/runtime-state-stream-store.ts` keeps cross-project notification state bucketed by project rather than as one flat task map plus a task-to-project lookup.
-- UI consumers read the provider-owned projection (`needsInputByProject` and current/other-project Needs Input flags) rather than re-deriving ownership from raw buckets.
+- UI consumers read the provider-owned projection (`needsInputByProject`, `errorByProject`, and current/other-project Needs Input flags) rather than re-deriving ownership from raw buckets.
 - `use-audible-notifications` may flatten project buckets into task entries because sound transitions are cross-project and event-oriented.
 - Audible detection follows semantic notification edges, not only active/stopped column changes. A stopped Review card can become approval-required without crossing columns; that higher-priority transition emits one sound, while retained initial state and unchanged metadata remain silent.
-- Board columns and project navigation pills answer different questions. A blocked task remains physically in Review, but navigation attention categories are exclusive: Needs Input overrides Review. Three Review-column cards with one blocked task display `R 2 · NI 1`; one blocked Review card displays only `NI 1`.
+- Board columns and project navigation pills answer different questions. A blocked or errored task remains physically in Review, but navigation attention categories are exclusive: classifier-derived Needs Input and Error counts are excluded from ordinary Review in both project rows and collapsed group totals. Three Review-column cards with one blocked task and one error display `R 1 · NI 1 · Error 1`; a lone errored Review card displays only `Error 1`. These counts use the existing project-scoped actionable notification projection, excluding Trash and unstarted tasks.
 
 ## Task indicator semantics
 
