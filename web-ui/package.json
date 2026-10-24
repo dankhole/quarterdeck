@@ -70,7 +70,7 @@
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.8",
     "tailwindcss": "^4.3.3",
-    "zod": "^4.6.2"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@playwright/cli": "^0.1.19",
