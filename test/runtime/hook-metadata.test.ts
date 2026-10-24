@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-
 import {
 	appendMetadataFlags,
 	buildHookIngestRequest,
@@ -7,6 +6,7 @@ import {
 	parseMetadataFromOptions,
 	resolveHookEventFromPayload,
 } from "../../src/commands/hook-metadata";
+import { normalizeHookTransitionReplayMetadata } from "../../src/hook-transition-outbox-core";
 
 describe("buildHookIngestRequest", () => {
 	it("binds a provider payload to the launch identity shared by every hook transport", () => {
@@ -48,7 +48,103 @@ describe("buildHookIngestRequest", () => {
 	});
 });
 
+const MARKDOWN_REPLY = [
+	"**Read:** the updated files.",
+	"",
+	"- First item",
+	"  - Nested item",
+	"",
+	"```ts",
+	"function example() {",
+	"  return true;",
+	"}",
+	"```",
+].join("\n");
+
 describe("hook metadata", () => {
+	it("preserves Markdown in final-message flags without changing compact activity, tool, or identity flags", () => {
+		const metadata = parseMetadataFromOptions({
+			source: " pi\n ",
+			sessionId: " session\n id ",
+			activityText: " Working\n  on tests ",
+			toolName: " Bash\n tool ",
+			toolInputSummary: " npm\n  test ",
+			finalMessage: `\r\n${MARKDOWN_REPLY.replaceAll("\n", "\r\n")}\r\n`,
+			hookEventName: "AgentSettled",
+		});
+		expect(metadata).toMatchObject({
+			source: "pi",
+			sessionId: "session id",
+			activityText: "Working on tests",
+			toolName: "Bash tool",
+			toolInputSummary: "npm test",
+			finalMessage: MARKDOWN_REPLY,
+		});
+		expect(appendMetadataFlags([], metadata)).toContain(MARKDOWN_REPLY);
+		expect(normalizeHookMetadata("to_review", null, metadata)?.finalMessage).toBe(MARKDOWN_REPLY);
+		expect(normalizeHookTransitionReplayMetadata("to_review", metadata)?.finalMessage).toBe(MARKDOWN_REPLY);
+	});
+
+	it.each([
+		{ last_assistant_message: MARKDOWN_REPLY },
+		{ lastAssistantMessage: MARKDOWN_REPLY },
+		{ "last-assistant-message": MARKDOWN_REPLY },
+		{ taskComplete: { taskMetadata: { result: MARKDOWN_REPLY } } },
+		{ taskComplete: { result: MARKDOWN_REPLY } },
+	])("preserves final payload Markdown while inferred activity remains compact: %o", (payload) => {
+		const metadata = normalizeHookMetadata(
+			"to_review",
+			{ hook_event_name: "Stop", ...payload },
+			{ source: "claude" },
+		);
+		expect(metadata?.finalMessage).toBe(MARKDOWN_REPLY);
+		expect(metadata?.conversationSummaryText).toBe(MARKDOWN_REPLY);
+		expect(metadata?.activityText).toBe(`Final: ${MARKDOWN_REPLY.replace(/\s+/g, " ")}`);
+	});
+
+	it.each([
+		{ conversation_summary_text: MARKDOWN_REPLY },
+		{ conversationSummaryText: MARKDOWN_REPLY },
+		{ taskComplete: { taskMetadata: { summary: MARKDOWN_REPLY } } },
+	])("preserves legacy reply Markdown through the bounded recovery copy: %o", (payload) => {
+		const metadata = normalizeHookMetadata(
+			"to_review",
+			{ hook_event_name: "AgentSettled", ...payload },
+			{ source: "pi" },
+		);
+		expect(metadata?.conversationSummaryText).toBe(MARKDOWN_REPLY);
+		const replayMetadata = normalizeHookTransitionReplayMetadata("to_review", metadata);
+		expect(replayMetadata?.finalMessage).toBe(MARKDOWN_REPLY);
+		expect(replayMetadata).not.toHaveProperty("conversationSummaryText");
+		expect(normalizeHookMetadata("to_review", null, replayMetadata ?? {})?.finalMessage).toBe(MARKDOWN_REPLY);
+	});
+
+	it("retains reply flag precedence and the existing character caps on direct and compatibility ingress", () => {
+		const text = `${MARKDOWN_REPLY}\n${"x".repeat(1_000)}`;
+		const expected = `${text.slice(0, 500)}\u2026`;
+		const flags = parseMetadataFromOptions({ finalMessage: text });
+		expect(flags.finalMessage).toBe(expected);
+		expect(
+			normalizeHookMetadata(
+				"to_review",
+				{ hook_event_name: "Stop", last_assistant_message: text },
+				{ source: "claude" },
+			),
+		).toMatchObject({ finalMessage: expected, conversationSummaryText: expected });
+		const metadata = normalizeHookMetadata(
+			"to_review",
+			{ hook_event_name: "Stop", last_assistant_message: "Payload loses" },
+			{ source: "claude", finalMessage: text, conversationSummaryText: text },
+		);
+		expect(metadata?.finalMessage).toBe(expected);
+		expect(metadata?.conversationSummaryText).toBe(expected);
+		expect(normalizeHookTransitionReplayMetadata("to_review", metadata)?.finalMessage).toBe(expected);
+		expect(
+			normalizeHookMetadata("to_review", { conversation_summary_text: text }, { source: "pi" })
+				?.conversationSummaryText,
+		).toBe(expected);
+	});
+
 	it.each(["startup", "resume", "clear", "compact", "fork"])(
 		"retains native Codex SessionStart source %s independently of provider identity",
 		(source) => {

@@ -2,6 +2,7 @@ import * as Collapsible from "@radix-ui/react-collapsible";
 import { canSendTaskQuickReply, deriveTaskIndicatorState, TASK_QUICK_REPLY_MAX_LENGTH } from "@runtime-contract";
 import { ChevronRight, MessageSquare, Send, X } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { BoardResponsePreview } from "@/components/board/board-response-preview";
 import { Button } from "@/components/ui/button";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { BoardReplyScope } from "@/state/board-reply-drafts";
@@ -152,17 +153,18 @@ export function BoardCardConversation({
 	readOnly?: boolean;
 }): React.ReactElement {
 	const latest = card.unstarted ? undefined : summary?.completedResponses?.at(-1);
-	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage?.slice(0, 500);
+	const finalMessage = card.unstarted ? undefined : summary?.latestHookActivity?.finalMessage;
 	const running = !card.unstarted && summary && deriveTaskIndicatorState(summary).publicStatus === "running";
 	const completedResponse = finalMessage || latest?.text;
 	const progressMessage = running && summary.progressMessage?.trim() ? summary.progressMessage : undefined;
-	const text = (progressMessage || completedResponse || card.prompt).slice(0, 500);
+	const text = progressMessage || completedResponse || card.prompt;
 	return (
 		<>
 			<div className="my-2 min-h-[120px] flex-1 rounded-md bg-surface-0/60 px-2 py-1.5">
-				<p className="m-0 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-primary/90">
-					{text || "No response yet. Open the agent to follow its progress."}
-				</p>
+				<BoardResponsePreview
+					text={text || "No response yet. Open the agent to follow its progress."}
+					className="text-text-primary/90"
+				/>
 				{progressMessage && completedResponse ? (
 					<Collapsible.Root
 						className="mt-2 border-t border-border pt-1.5"
@@ -174,9 +176,7 @@ export function BoardCardConversation({
 							Previous response
 						</Collapsible.Trigger>
 						<Collapsible.Content>
-							<p className="mb-0 mt-1.5 line-clamp-6 whitespace-pre-wrap break-words text-xs leading-[18px] text-text-secondary">
-								{completedResponse.slice(0, 500)}
-							</p>
+							<BoardResponsePreview text={completedResponse} className="mt-1.5 text-text-secondary" />
 						</Collapsible.Content>
 					</Collapsible.Root>
 				) : null}

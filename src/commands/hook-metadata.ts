@@ -28,6 +28,15 @@ function compactHookMetadataText(value: string): string {
 		: normalized;
 }
 
+// Reply previews retain Markdown structure; activity/tool metadata stays single-line.
+// Keep the existing character cap and ellipsis, not the transcript reader's byte cap.
+function boundHookReplyText(value: string): string {
+	const normalized = value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
+	return normalized.length > HOOK_METADATA_TEXT_MAX_LENGTH
+		? `${normalized.slice(0, HOOK_METADATA_TEXT_MAX_LENGTH)}\u2026`
+		: normalized;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return null;
@@ -171,7 +180,7 @@ export function parseMetadataFromOptions(options: HookCommandMetadataOptionValue
 		metadata.toolInputSummary = compactHookMetadataText(toolInputSummary);
 	}
 	if (finalMessage) {
-		metadata.finalMessage = compactHookMetadataText(finalMessage);
+		metadata.finalMessage = boundHookReplyText(finalMessage);
 	}
 	if (hookEventName) {
 		metadata.hookEventName = normalizeWhitespace(hookEventName);
@@ -458,15 +467,17 @@ export function normalizeHookMetadata(
 			: null;
 	const backgroundWork = classifyClaudeStopBackgroundWork(payload, source, hookEventName);
 	const waitingForBackgroundWork = backgroundWork === "pending";
+	const taskComplete = payload ? asRecord(payload.taskComplete) : null;
+	const taskMetadata = taskComplete ? asRecord(taskComplete.taskMetadata) : null;
 	const extractedFinalMessage = payload
-		? (readStringField(payload, "last_assistant_message") ??
-			readStringField(payload, "lastAssistantMessage") ??
-			readStringField(payload, "last-assistant-message") ??
-			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
-			readNestedString(payload, ["taskComplete", "result"]))
+		? (readTrimmedStringField(payload, "last_assistant_message") ??
+			readTrimmedStringField(payload, "lastAssistantMessage") ??
+			readTrimmedStringField(payload, "last-assistant-message") ??
+			(taskMetadata ? readTrimmedStringField(taskMetadata, "result") : null) ??
+			(taskComplete ? readTrimmedStringField(taskComplete, "result") : null))
 		: null;
 	const finalMessage =
-		!waitingForBackgroundWork && extractedFinalMessage ? compactHookMetadataText(extractedFinalMessage) : null;
+		!waitingForBackgroundWork && extractedFinalMessage ? boundHookReplyText(extractedFinalMessage) : null;
 	const transcriptPath = payload
 		? (readTrimmedStringField(payload, "transcript_path") ?? readTrimmedStringField(payload, "transcriptPath"))
 		: null;
@@ -502,9 +513,9 @@ export function normalizeHookMetadata(
 		: isClaudeMainStopSummary({ source, hookEventName, finalMessage })
 			? finalMessage
 			: payload
-				? (readStringField(payload, "conversation_summary_text") ??
-					readStringField(payload, "conversationSummaryText") ??
-					readNestedString(payload, ["taskComplete", "taskMetadata", "summary"]))
+				? (readTrimmedStringField(payload, "conversation_summary_text") ??
+					readTrimmedStringField(payload, "conversationSummaryText") ??
+					(taskMetadata ? readTrimmedStringField(taskMetadata, "summary") : null))
 				: null;
 
 	const activityText = inferActivityText(
@@ -526,7 +537,9 @@ export function normalizeHookMetadata(
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage: waitingForBackgroundWork
 			? null
-			: (flagMetadata.finalMessage ?? (finalMessage ? compactHookMetadataText(finalMessage) : null)),
+			: flagMetadata.finalMessage != null
+				? boundHookReplyText(flagMetadata.finalMessage)
+				: finalMessage,
 		activityText:
 			flagMetadata.activityText ??
 			(explicitActivityText ? compactHookMetadataText(explicitActivityText) : null) ??
@@ -542,8 +555,11 @@ export function normalizeHookMetadata(
 		...(sessionStartSource ? { sessionStartSource } : undefined),
 		conversationSummaryText: waitingForBackgroundWork
 			? null
-			: (flagMetadata.conversationSummaryText ??
-				(conversationSummaryText ? compactHookMetadataText(conversationSummaryText) : null)),
+			: flagMetadata.conversationSummaryText != null
+				? boundHookReplyText(flagMetadata.conversationSummaryText)
+				: conversationSummaryText
+					? boundHookReplyText(conversationSummaryText)
+					: null,
 		...(backgroundWork === "unbounded" ? { unboundedBackgroundWorkPending: true } : undefined),
 	};
 

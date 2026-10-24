@@ -100,6 +100,19 @@ function truncate(value, maxLength = MAX_TEXT_LENGTH) {
 	return normalized.length > maxLength ? normalized.slice(0, maxLength) + "..." : normalized;
 }
 
+// Final replies are Markdown, unlike compact activity/tool/identity metadata.
+// Retain the same character budget while preserving line breaks and indentation.
+function truncateReply(value) {
+	if (typeof value !== "string") {
+		return null;
+	}
+	const normalized = value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
+	if (!normalized) {
+		return null;
+	}
+	return normalized.length > MAX_TEXT_LENGTH ? normalized.slice(0, MAX_TEXT_LENGTH) + "..." : normalized;
+}
+
 function readHookCommandParts() {
 	const encoded = process.env[HOOK_COMMAND_ENV];
 	if (!encoded) {
@@ -334,7 +347,8 @@ function emitQuarterdeckHook(event, metadata, ctx, options = {}) {
 	appendFlag(args, "--activity-text", metadata.activityText);
 	appendFlag(args, "--tool-name", metadata.toolName);
 	appendFlag(args, "--tool-input-summary", metadata.toolInputSummary);
-	appendFlag(args, "--final-message", metadata.finalMessage);
+	const finalMessage = truncateReply(metadata.finalMessage);
+	if (finalMessage) args.push("--final-message", finalMessage);
 	appendFlag(args, "--hook-event-name", metadata.hookEventName);
 	appendFlag(args, "--notification-type", metadata.notificationType);
 	const turnId = Object.prototype.hasOwnProperty.call(metadata, "turnId") ? metadata.turnId : activeRunId;
@@ -964,7 +978,7 @@ export default function quarterdeckLifecycle(pi) {
 		lastAssistantFailed = assistantMessage?.stopReason === "error";
 		lastAssistantSummary = lastAssistantFailed
 			? null
-			: truncate(textFromContent(assistantMessage?.content)) ?? lastAssistantSummary;
+			: truncateReply(textFromContent(assistantMessage?.content)) ?? lastAssistantSummary;
 		void enqueueDurableHook(
 			"activity",
 			{

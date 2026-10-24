@@ -366,6 +366,46 @@ describe("Pi lifecycle extension source", () => {
 	});
 
 	it.each([false, true])(
+		"preserves bounded Markdown reply flags (truncated=%s) with compact activity",
+		async (truncated) => {
+			const markdown = [
+				"**Read:** the updated files.",
+				"",
+				"- First item",
+				"  - Nested item",
+				"",
+				"```ts",
+				"function example() {",
+				"  return true;",
+				"}",
+				"```",
+			].join("\n");
+			const text = truncated ? `${markdown}\n${"x".repeat(1_000)}` : markdown;
+			const expected = truncated ? `${text.slice(0, 600)}...` : text;
+			const calls = await captureLifecycleHooks((handlers, context) => {
+				handlers.get("agent_start")?.({}, context);
+				handlers.get("agent_end")?.(
+					{
+						messages: [
+							{
+								role: "assistant",
+								content: [{ type: "text", text: `\r\n${text.replaceAll("\n", "\r\n")}\r\n` }],
+							},
+						],
+					},
+					context,
+				);
+				handlers.get("agent_settled")?.({ aborted: false }, context);
+			}, 3);
+			expect(flagValue(calls[2], "--final-message")).toBe(expected);
+			const activity = `Final: ${expected}`.replace(/\s+/g, " ").trim();
+			expect(flagValue(calls[2], "--activity-text")).toBe(
+				activity.length > 600 ? `${activity.slice(0, 600)}...` : activity,
+			);
+		},
+	);
+
+	it.each([false, true])(
 		"reports aborted=%s settlement without promoting interrupted output to completion",
 		async (aborted) => {
 			const calls = await captureLifecycleHooks((handlers, context) => {

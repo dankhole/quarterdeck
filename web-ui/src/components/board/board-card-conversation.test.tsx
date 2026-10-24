@@ -22,6 +22,7 @@ const running = {
 	reviewReason: null,
 	nativeWorkEvidence: createTestTaskNativeWorkEvidence({ sessionInstanceId: "launch-1" }),
 };
+const previewSelector = "[data-board-response-preview]";
 
 describe("board card conversation", () => {
 	let root: Root;
@@ -36,54 +37,79 @@ describe("board card conversation", () => {
 		await act(async () => root.unmount());
 		container.remove();
 	});
-	it("shows the current final response instead of older history and its timestamp", async () => {
-		await act(async () =>
-			root.render(
-				<BoardCardConversation
-					card={card}
-					columnId="review"
-					summary={{
-						...ready,
-						completedResponses: [{ text: "Older response", capturedAt: 100, sessionIndex: 0 }],
-					}}
-				/>,
-			),
-		);
-		expect(container.textContent).toContain("The updated layout is ready.");
-		expect(container.textContent).not.toContain("Older response");
-		expect(container.querySelector("time")).toBeNull();
-		await act(async () =>
-			root.render(
-				<BoardCardConversation
-					card={card}
-					columnId="review"
-					summary={{
-						...ready,
-						latestHookActivity: null,
-						completedResponses: [{ text: "Older response", capturedAt: 100, sessionIndex: 0 }],
-					}}
-				/>,
-			),
-		);
-		expect(container.textContent).toContain("Older response");
-		expect(container.querySelector("time")).toBeNull();
-	});
-	it("keeps the completed response until current progress arrives and restores it in Review", async () => {
-		const render = async (summary: RuntimeTaskSessionSummary) =>
-			act(async () => root.render(<BoardCardConversation card={card} columnId="in_progress" summary={summary} />));
-		const progressMessage = "Checking the remaining keyboard shortcuts.";
-		await render(running);
-		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
-		await render({ ...running, progressMessage });
-		expect(container.querySelector("p")?.textContent).toBe(progressMessage);
-		expect(container.textContent).not.toContain("The updated layout is ready.");
-		await render({ ...ready, progressMessage });
-		expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
-		expect(container.querySelector("[aria-expanded]")).toBeNull();
-	});
 
-	it("restores the retained completed response after progress clears and native final output is absent", async () => {
-		const completedResponse = "The completed response survives the next turn.";
+	function preview(index = 0): HTMLElement {
+		const element = container.querySelectorAll<HTMLElement>(previewSelector)[index];
+		if (!element) throw new Error(`Missing response preview ${index}`);
+		return element;
+	}
+
+	it.each(["codex", "claude", "pi"] as const)(
+		"formats %s previews while preserving progress, final, retained, and prompt precedence",
+		async (agentId) => {
+			const summary: RuntimeTaskSessionSummary = {
+				...running,
+				agentId,
+				nativeWorkEvidence: { ...running.nativeWorkEvidence!, provider: agentId },
+				progressMessage: "**Current progress**",
+				latestHookActivity: { ...ready.latestHookActivity!, finalMessage: "**Current final**" },
+				completedResponses: [
+					{ text: "**Older retained**", capturedAt: 100, sessionIndex: 0 },
+					{ text: "**Latest retained**", capturedAt: 200, sessionIndex: 1 },
+				],
+			};
+			const render = async (value: RuntimeTaskSessionSummary | undefined, unstarted = false) =>
+				act(async () =>
+					root.render(
+						<BoardCardConversation
+							card={{ ...card, prompt: "**Original prompt**", unstarted }}
+							columnId="in_progress"
+							summary={value}
+						/>,
+					),
+				);
+			await render(summary);
+			expect(preview().querySelector("strong")?.textContent).toBe("Current progress");
+			expect(container.textContent).not.toContain("Current final");
+			await render({ ...summary, progressMessage: null });
+			expect(preview().querySelector("strong")?.textContent).toBe("Current final");
+			expect(container.querySelector("[aria-expanded]")).toBeNull();
+			await render({ ...summary, state: "awaiting_review", reviewReason: "hook" });
+			expect(preview().querySelector("strong")?.textContent).toBe("Current final");
+			await render({ ...summary, progressMessage: null, latestHookActivity: null });
+			expect(preview().querySelector("strong")?.textContent).toBe("Latest retained");
+			expect(container.textContent).not.toContain("Older retained");
+			expect(container.querySelector("time")).toBeNull();
+			await render({ ...summary, progressMessage: null, latestHookActivity: null, completedResponses: [] });
+			expect(preview().querySelector("strong")?.textContent).toBe("Original prompt");
+			await render(undefined);
+			expect(preview().querySelector("strong")?.textContent).toBe("Original prompt");
+			await render(summary, true);
+			expect(preview().querySelector("strong")?.textContent).toBe("Original prompt");
+			expect(container.querySelector("[aria-expanded]")).toBeNull();
+			expect(container.textContent).toContain("Ready when you are");
+			expect(container.textContent).not.toContain("Current progress");
+			expect(container.textContent).not.toContain("Current final");
+			expect(container.textContent).not.toContain("Latest retained");
+		},
+	);
+
+	it.each([undefined, null, "", "   "])(
+		"shows the previous final response directly when running progress is %s",
+		async (progressMessage) => {
+			await act(async () =>
+				root.render(
+					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />,
+				),
+			);
+			expect(preview().textContent).toBe("The updated layout is ready.");
+			expect(container.querySelector("[aria-expanded]")).toBeNull();
+			expect(container.textContent).not.toContain("Working…");
+		},
+	);
+
+	it("restores the retained response after progress clears and native final output is absent", async () => {
+		const completedResponse = "The **completed response** survives the next turn.";
 		const summary = {
 			...running,
 			latestHookActivity: null,
@@ -95,42 +121,55 @@ describe("board card conversation", () => {
 					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...summary, progressMessage }} />,
 				),
 			);
-
 		await render(null);
-		expect(container.querySelector("p")?.textContent).toBe(completedResponse);
-		await render("Validating the next change.");
-		expect(container.querySelector("p")?.textContent).toBe("Validating the next change.");
+		expect(preview().querySelector("strong")?.textContent).toBe("completed response");
+		const formattedResponse = preview().innerHTML;
+		await render("Validating the **next change**.");
+		expect(preview().querySelector("strong")?.textContent).toBe("next change");
 		const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
 		expect(trigger?.textContent).toBe("Previous response");
 		await act(async () => trigger?.click());
-		expect(container.textContent).toContain(completedResponse);
+		expect(preview(1).innerHTML).toBe(formattedResponse);
 		await render(null);
-		expect(container.querySelector("p")?.textContent).toBe(completedResponse);
+		expect(preview().innerHTML).toBe(formattedResponse);
 		expect(container.querySelector("[aria-expanded]")).toBeNull();
 	});
-	it.each([undefined, null, "", "   "])(
-		"shows the previous final response directly when running progress is %s",
-		async (progressMessage) => {
-			await act(async () =>
+
+	it("formats current and previous responses identically without changing card navigation", async () => {
+		const openTask = vi.fn();
+		const response =
+			"## Result\n\nThe **layout** uses *compact* `code`.\n\n- [Details](https://example.com)\n- Keyboard support";
+		const render = async (progressMessage: string | null) =>
+			act(async () =>
 				root.render(
-					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />,
+					<div onClick={openTask} onDoubleClick={openTask}>
+						<BoardCardConversation
+							card={card}
+							columnId="in_progress"
+							summary={{
+								...running,
+								progressMessage,
+								latestHookActivity: { ...ready.latestHookActivity!, finalMessage: response },
+							}}
+						/>
+					</div>,
 				),
 			);
-			expect(container.querySelector("p")?.textContent).toBe("The updated layout is ready.");
-			expect(container.querySelector("[aria-expanded]")).toBeNull();
-			expect(container.textContent).not.toContain("Working…");
-		},
-	);
-	it("keeps the previous response expandable after new progress arrives without opening the task", async () => {
-		const openTask = vi.fn();
-		const progressMessage = "Checking the remaining keyboard shortcuts.";
-		await act(async () =>
-			root.render(
-				<div onClick={openTask} onDoubleClick={openTask}>
-					<BoardCardConversation card={card} columnId="in_progress" summary={{ ...running, progressMessage }} />
-				</div>,
-			),
-		);
+		await render(null);
+		expect(preview().querySelector("h2")?.textContent).toBe("Result");
+		expect(preview().querySelector("strong")?.textContent).toBe("layout");
+		expect(preview().querySelector("em")?.textContent).toBe("compact");
+		expect(preview().querySelector("code")?.textContent).toBe("code");
+		expect(preview().querySelectorAll("li")).toHaveLength(2);
+		expect(preview().querySelector("a, img, button, input, textarea, select")).toBeNull();
+		expect(preview().textContent).toContain("Details");
+		const formattedResponse = preview().innerHTML;
+		await act(async () => preview().querySelector("strong")?.click());
+		await act(async () => preview().dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+		expect(openTask).toHaveBeenCalledTimes(2);
+		openTask.mockClear();
+		await render("Checking the **remaining shortcuts**.");
+		expect(preview().querySelector("strong")?.textContent).toBe("remaining shortcuts");
 		const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
 		expect(trigger?.textContent).toBe("Previous response");
 		expect(trigger?.type).toBe("button");
@@ -138,30 +177,54 @@ describe("board card conversation", () => {
 		expect(trigger?.getAttribute("aria-expanded")).toBe("true");
 		const contentId = trigger?.getAttribute("aria-controls");
 		expect(contentId).toBeTruthy();
-		expect(document.getElementById(contentId!)?.textContent).toBe("The updated layout is ready.");
+		expect(document.getElementById(contentId!)?.querySelector(previewSelector)?.innerHTML).toBe(formattedResponse);
+		await act(async () => preview(1).querySelector("strong")?.click());
+		await act(async () => preview(1).dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 		await act(async () => trigger?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 		expect(openTask).not.toHaveBeenCalled();
-		expect(container.querySelector("p")?.textContent).toBe(progressMessage);
 		await act(async () => trigger?.click());
 		expect(trigger?.getAttribute("aria-expanded")).toBe("false");
-		expect(container.textContent).not.toContain("The updated layout is ready.");
+		expect(container.querySelectorAll(previewSelector)).toHaveLength(1);
+		await act(async () => preview().click());
+		expect(openTask).toHaveBeenCalledOnce();
 	});
-	it("keeps the latest Pi-shortcuts answer preview when the next turn clears transient final output", async () => {
-		const response = [
-			"While Pi is working:",
-			"",
-			"| What you want | Keys |",
-			"|---|---|",
-			"| Redirect it as soon as possible | Type your message and press Enter. It receives it after the current response and tool calls finish. |",
-			"| Stop immediately, then give new instructions | Press Esc, then type/send your message with Enter. |",
-			"| Queue something for after the whole task finishes | Option+Enter on Mac (Alt+Enter). |",
-			"| Bring queued messages back to edit | Option+↑. |",
-			"",
-			"So for “stop what you’re doing and listen to this,” use Esc → message → Enter.",
-			"",
-			"For a Tintinweb subagent, open /agents, select the worker, press Enter to compose guidance, then Enter to send. To stop that worker, press x, then x again to confirm.",
-		].join("\n");
-		expect(response.length).toBeGreaterThan(500);
+
+	it.each(["progress", "final", "retained", "prompt", "previous"] as const)(
+		"bounds the %s source through the shared formatted preview",
+		async (source) => {
+			const text = `**Bounded** ${"x".repeat(600)} omitted tail`;
+			const summary: RuntimeTaskSessionSummary = {
+				...running,
+				latestHookActivity:
+					source === "final" || source === "previous"
+						? { ...ready.latestHookActivity!, finalMessage: text }
+						: null,
+				progressMessage: source === "progress" ? text : source === "previous" ? "Current progress" : null,
+				completedResponses: source === "retained" ? [{ text, capturedAt: 100, sessionIndex: 0 }] : [],
+			};
+			await act(async () =>
+				root.render(
+					<BoardCardConversation
+						card={{ ...card, prompt: source === "prompt" ? text : card.prompt }}
+						columnId="in_progress"
+						summary={summary}
+					/>,
+				),
+			);
+			if (source === "previous") {
+				await act(async () => container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click());
+			}
+			const bounded = preview(source === "previous" ? 1 : 0);
+			expect(bounded.querySelector("strong")?.textContent).toBe("Bounded");
+			expect(bounded.textContent).toBe(`Bounded ${"x".repeat(500 - "**Bounded** ".length)}`);
+			expect(bounded.textContent).not.toContain("omitted tail");
+			expect(bounded.classList.contains("max-h-[108px]")).toBe(true);
+			expect(bounded.classList.contains("overflow-hidden")).toBe(true);
+		},
+	);
+
+	it("keeps the latest Pi-shortcuts answer formatted when transient final output clears", async () => {
+		const response = `While **Pi** is working:\n\n- Redirect it with \`Enter\`.\n- Stop with \`Esc\`.\n\n${"More detail. ".repeat(50)}`;
 		const summary: RuntimeTaskSessionSummary = {
 			...ready,
 			agentId: "pi",
@@ -179,7 +242,9 @@ describe("board card conversation", () => {
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toBe(response.slice(0, 500));
+		expect(preview().querySelector("strong")?.textContent).toBe("Pi");
+		expect(preview().querySelectorAll("code")).toHaveLength(2);
+		const formattedResponse = preview().innerHTML;
 		await act(async () =>
 			root.render(
 				<BoardCardConversation
@@ -195,77 +260,17 @@ describe("board card conversation", () => {
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toBe(response.slice(0, 500));
-		expect(container.querySelector("p")?.classList.contains("line-clamp-6")).toBe(true);
+		expect(preview().innerHTML).toBe(formattedResponse);
 		expect(container.querySelector("[aria-expanded]")).toBeNull();
 		expect(container.textContent).not.toContain("The installed Tintinweb extension is available.");
-		expect(container.textContent).not.toContain(response.slice(500));
 	});
-	it.each(["codex", "claude", "pi"] as const)(
-		"selects the latest retained %s answer when transient output is absent",
-		async (agentId) => {
-			await act(async () =>
-				root.render(
-					<BoardCardConversation
-						card={card}
-						columnId="review"
-						summary={{
-							...ready,
-							agentId,
-							latestHookActivity: {
-								...ready.latestHookActivity!,
-								hookEventName: "PostToolUse",
-								finalMessage: null,
-							},
-							completedResponses: [
-								{ text: "The installed Tintinweb extension is available.", capturedAt: 100, sessionIndex: 0 },
-								{ text: "An intermediate completed answer.", capturedAt: 200, sessionIndex: 1 },
-								{ text: "The newest answer explains Pi shortcuts.", capturedAt: 300, sessionIndex: 2 },
-							],
-						}}
-					/>,
-				),
-			);
-			expect(container.querySelector("p")?.textContent).toBe("The newest answer explains Pi shortcuts.");
-			expect(container.textContent).not.toContain("The installed Tintinweb extension is available.");
-			expect(container.textContent).not.toContain("An intermediate completed answer.");
-		},
-	);
-	it("shows the original prompt without a disclosure when there is no previous response", async () => {
-		await act(async () =>
-			root.render(
-				<BoardCardConversation
-					card={card}
-					columnId="in_progress"
-					summary={{ ...running, latestHookActivity: null }}
-				/>,
-			),
-		);
-		expect(container.querySelector("p")?.textContent).toBe(card.prompt);
-		expect(container.querySelector("button[aria-expanded]")).toBeNull();
-		expect(container.textContent).not.toContain("Working…");
+
+	it("shows the empty-state preview when neither a prompt nor response exists", async () => {
+		await act(async () => root.render(<BoardCardConversation card={{ ...card, prompt: "" }} columnId="review" />));
+		expect(preview().textContent).toBe("No response yet. Open the agent to follow its progress.");
+		expect(container.querySelector("[aria-expanded]")).toBeNull();
 	});
-	it("keeps unstarted cards on the original prompt even when old runtime messages exist", async () => {
-		await act(async () =>
-			root.render(
-				<BoardCardConversation
-					card={{ ...card, unstarted: true }}
-					columnId="in_progress"
-					summary={{
-						...running,
-						progressMessage: "Current progress",
-						completedResponses: [{ text: "Old response", capturedAt: 100, sessionIndex: 0 }],
-					}}
-				/>,
-			),
-		);
-		expect(container.querySelector("p")?.textContent).toBe(card.prompt);
-		expect(container.querySelector("button[aria-expanded]")).toBeNull();
-		expect(container.textContent).toContain("Ready when you are");
-		expect(container.textContent).not.toContain("Current progress");
-		expect(container.textContent).not.toContain("The updated layout is ready.");
-		expect(container.textContent).not.toContain("Old synopsis");
-	});
+
 	it("keeps a draft across navigation and readiness changes, and submits only explicitly to the current launch", async () => {
 		const drafts = new BoardReplyDrafts();
 		const key = JSON.stringify(["project", card.id, card.createdAt]);
@@ -287,7 +292,8 @@ describe("board card conversation", () => {
 		await act(async () => root.render(null));
 		await render(ready);
 		expect(container.querySelector("textarea")?.value).toContain("Please check keyboard focus.");
-		expect(container.textContent).toContain("The updated layout is ready.");
+		expect(preview().textContent).toBe("The updated layout is ready.");
+		await render({ ...ready, sessionInstanceId: "launch-2" });
 		expect(sendInput).not.toHaveBeenCalled();
 		await act(async () =>
 			container
@@ -307,36 +313,75 @@ describe("board card conversation", () => {
 				intent: "submit",
 				appendNewline: true,
 				preferTerminal: false,
-				replyToSessionInstanceId: "launch-1",
+				replyToSessionInstanceId: "launch-2",
 			},
 		);
 		expect(container.textContent).toContain("Reply sent");
 		expect(drafts.get(key).text).toBe("");
 	});
-	it("retains rejected replies and bounds plain-text hook previews", async () => {
+
+	it.each(["unstarted", "trash", "read-only"] as const)("does not offer replies for %s cards", async (mode) => {
 		const drafts = new BoardReplyDrafts();
-		const key = JSON.stringify(["project", card.id, card.createdAt]);
-		drafts.edit(key, "Try this");
+		const sendInput = vi.fn(async () => ({ ok: true }));
+		drafts.edit(JSON.stringify(["project", card.id, card.createdAt]), "Keep this draft");
 		await act(async () =>
 			root.render(
 				<BoardCardConversation
-					card={card}
-					columnId="review"
-					summary={{
-						...ready,
-						latestHookActivity: { ...ready.latestHookActivity!, finalMessage: "x".repeat(1000) },
-					}}
-					replyScope={{
-						projectId: "project",
-						drafts,
-						sendInput: async () => ({ ok: false, message: "Session changed" }),
-					}}
+					card={{ ...card, unstarted: mode === "unstarted" }}
+					columnId={mode === "trash" ? "trash" : "review"}
+					summary={ready}
+					readOnly={mode === "read-only"}
+					replyScope={{ projectId: "project", drafts, sendInput }}
 				/>,
 			),
 		);
-		expect(container.querySelector("p")?.textContent).toHaveLength(500);
+		expect(container.querySelector("textarea, button")).toBeNull();
+		expect(sendInput).not.toHaveBeenCalled();
+		expect(drafts.get(JSON.stringify(["project", card.id, card.createdAt])).text).toBe("Keep this draft");
+	});
+
+	it("keeps reply controls isolated from card navigation and retains drafts on rejection", async () => {
+		const openTask = vi.fn();
+		const drafts = new BoardReplyDrafts();
+		const key = JSON.stringify(["project", card.id, card.createdAt]);
+		drafts.edit(key, "Try this");
+		const sendInput = vi.fn(async () => ({ ok: false, message: "Session changed" }));
+		await act(async () =>
+			root.render(
+				<div onClick={openTask} onDoubleClick={openTask}>
+					<BoardCardConversation
+						card={card}
+						columnId="review"
+						summary={{
+							...ready,
+							latestHookActivity: {
+								...ready.latestHookActivity!,
+								finalMessage: "The **formatted result** is ready.",
+							},
+						}}
+						replyScope={{ projectId: "project", drafts, sendInput }}
+					/>
+				</div>,
+			),
+		);
+		expect(preview().querySelector("strong")?.textContent).toBe("formatted result");
+		await act(async () => container.querySelector("textarea")?.click());
+		await act(async () =>
+			container.querySelector("textarea")?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })),
+		);
 		await act(async () => container.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
 		expect(container.querySelector('[role="alert"]')?.textContent).toBe("Session changed");
 		expect(container.querySelector("textarea")?.value).toBe("Try this");
+		await act(async () =>
+			container.querySelector<HTMLButtonElement>('button[aria-label="Close reply, keep draft"]')?.click(),
+		);
+		expect(container.querySelector("textarea")).toBeNull();
+		const continueDraft = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent === "Continue draft",
+		);
+		await act(async () => continueDraft?.click());
+		expect(container.querySelector("textarea")?.value).toBe("Try this");
+		expect(sendInput).toHaveBeenCalledOnce();
+		expect(openTask).not.toHaveBeenCalled();
 	});
 });
