@@ -20,12 +20,18 @@ import {
 	QUARTERDECK_HOOK_HTTP_TOKEN_ENV,
 	setActiveHookHttpChannel,
 } from "../../../src/terminal/hook-http-channel";
+import { QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV } from "../../../src/terminal/hook-runtime-context";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+
+const prepareOutboxCapabilityMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock("../../../src/hook-transition-outbox-private-directory", () => ({
+	prepareHookTransitionOutboxDirectoryCapability: prepareOutboxCapabilityMock,
+}));
 
 const buildWorktreeContextPromptMock = vi.hoisted(() => vi.fn().mockResolvedValue(""));
 vi.mock("../../../src/terminal/worktree-context.js", () => ({
@@ -87,6 +93,7 @@ function getCodexConfigOverrideValues(args: string[], key: string): string[] {
 }
 
 afterEach(() => {
+	prepareOutboxCapabilityMock.mockReset().mockResolvedValue(undefined);
 	_resetLoggerForTests();
 	if (originalHome === undefined) {
 		delete process.env.HOME;
@@ -151,6 +158,45 @@ afterEach(() => {
 });
 
 describe("prepareAgentLaunch hook strategies", () => {
+	it.each(["claude", "codex", "pi"] as const)(
+		"hands off only a freshly prepared private outbox capability for %s",
+		async (agentId) => {
+			const cwd = setupTempHome();
+			for (const capability of ["fresh runtime proof", undefined]) {
+				prepareOutboxCapabilityMock.mockResolvedValueOnce(capability);
+				const launch = await prepareAgentLaunch({
+					taskId: "task-1",
+					agentId,
+					args: [],
+					cwd,
+					prompt: "",
+					projectId: "project-1",
+					hookSessionInstanceId: "launch-1",
+					env: { [QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "untrusted inherited proof" },
+				});
+				expect(launch.env).toHaveProperty(QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV, capability ?? "");
+			}
+			expect(prepareOutboxCapabilityMock).toHaveBeenCalledTimes(2);
+		},
+	);
+
+	it.each(["claude", "codex", "pi"] as const)(
+		"clears inherited private outbox capability without managed hooks for %s",
+		async (agentId) => {
+			const cwd = setupTempHome();
+			const launch = await prepareAgentLaunch({
+				taskId: "task-1",
+				agentId,
+				args: [],
+				cwd,
+				prompt: "",
+				env: { [QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "untrusted inherited proof" },
+			});
+			expect(launch.env).toHaveProperty(QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV, "");
+			expect(prepareOutboxCapabilityMock).not.toHaveBeenCalled();
+		},
+	);
+
 	it("keeps launch diagnostics free of prompts, paths, arguments, binaries, and provider session ids", async () => {
 		const home = setupTempHome();
 		const cwd = join(home, "sentinel-private-worktree");

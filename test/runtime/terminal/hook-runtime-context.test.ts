@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createHookRuntimeEnv,
 	parseHookRuntimeContextFromEnv,
+	QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV,
 	QUARTERDECK_HOOK_PROJECT_ID_ENV,
 	QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV,
 	QUARTERDECK_HOOK_TASK_ID_ENV,
@@ -19,7 +20,21 @@ describe("hook-runtime-context", () => {
 			[QUARTERDECK_HOOK_TASK_ID_ENV]: "task-1",
 			[QUARTERDECK_HOOK_PROJECT_ID_ENV]: "project-1",
 			[QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV]: "process-1",
+			[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "",
 		});
+	});
+
+	it("clears inherited outbox capability unless the runtime explicitly supplies one", () => {
+		const context = { taskId: "task-1", projectId: "project-1", sessionInstanceId: "process-1" };
+		const inherited = { [QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "untrusted inherited proof" };
+		expect({ ...inherited, ...createHookRuntimeEnv(context) }).toHaveProperty(
+			QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV,
+			"",
+		);
+		expect(createHookRuntimeEnv(context, "runtime-prepared proof")).toHaveProperty(
+			QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV,
+			"runtime-prepared proof",
+		);
 	});
 
 	it("parses hook runtime context from env", () => {

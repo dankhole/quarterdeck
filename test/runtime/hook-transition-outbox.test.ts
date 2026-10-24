@@ -1,10 +1,12 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeHookIngestRequest } from "../../src/core";
+import * as runtimeStateHome from "../../src/core/runtime-state-home";
 import {
 	abandonHookTransition,
 	createHookTransitionOutboxReplayer,
@@ -14,8 +16,14 @@ import {
 	HOOK_TRANSITION_OUTBOX_TTL_MS,
 	loadPendingHookTransitions,
 } from "../../src/hook-transition-outbox";
+import { normalizeHookTransitionReplayMetadata } from "../../src/hook-transition-outbox-core";
+import { prepareHookTransitionOutboxDirectoryCapability } from "../../src/hook-transition-outbox-private-directory";
+import { QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV } from "../../src/terminal/hook-runtime-context";
+
+vi.mock("node:fs/promises", { spy: true });
 
 const originalStateHome = process.env.QUARTERDECK_STATE_HOME;
+const originalPrivateOutboxCapability = process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV];
 let stateHome: string;
 
 function request(index: number, occurredAt: number = index * 100): RuntimeHookIngestRequest {
@@ -44,6 +52,21 @@ function request(index: number, occurredAt: number = index * 100): RuntimeHookIn
 	};
 }
 
+const supportedCompletions = [
+	{ source: "codex", hookEventName: "Stop", event: "to_review" },
+	{ source: "claude", hookEventName: "Stop", event: "to_review" },
+	{ source: "pi", hookEventName: "AgentSettled", event: "to_review" },
+	{ source: "pi", hookEventName: "AgentSettledBackgroundPending", event: "activity" },
+] satisfies Array<{ source: string; hookEventName: string; event: RuntimeHookIngestRequest["event"] }>;
+
+function completionRequest(index: number = 1): RuntimeHookIngestRequest {
+	return {
+		...request(index),
+		event: "to_review",
+		metadata: { ...request(index).metadata, hookEventName: "Stop" },
+	};
+}
+
 function deliveryId(index: number): string {
 	return `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 }
@@ -67,11 +90,27 @@ async function writeRecord(
 }
 
 beforeEach(async () => {
+	vi.clearAllMocks();
 	stateHome = await mkdtemp(join(tmpdir(), "quarterdeck-hook-outbox-"));
 	process.env.QUARTERDECK_STATE_HOME = stateHome;
+	delete process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV];
+	if (process.platform === "win32") {
+		// Synthetic storage: exercise the handoff without spawning PowerShell in
+		// every outbox test. The private-directory suite owns ACL implementation.
+		process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV] = await prepareHookTransitionOutboxDirectoryCapability({
+			platform: "win32",
+			runWindowsAclCommand: async () => ({ ok: true }),
+		});
+	}
 });
 
 afterEach(async () => {
+	vi.restoreAllMocks();
+	if (originalPrivateOutboxCapability === undefined) {
+		delete process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV];
+	} else {
+		process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV] = originalPrivateOutboxCapability;
+	}
 	if (originalStateHome === undefined) {
 		delete process.env.QUARTERDECK_STATE_HOME;
 	} else {
@@ -100,6 +139,315 @@ describe("hook transition outbox", () => {
 			toolName: "Bash",
 			notificationType: null,
 		});
+	});
+
+	it.each(supportedCompletions)("round-trips one canonical foreground reply: %o", async (completion) => {
+		const input = {
+			...request(1),
+			event: completion.event,
+			payload: "private top-level native payload",
+			delivery: { id: deliveryId(1), occurredAt: 100, payload: "private delivery payload" },
+			metadata: {
+				...request(1).metadata,
+				source: ` ${completion.source.toUpperCase()} `,
+				hookEventName: ` ${completion.hookEventName.toUpperCase()} `,
+				finalMessage: "  Latest foreground answer\nwith formatting.  ",
+				conversationSummaryText: "obsolete compatibility answer",
+				rawPayload: { secret: "private native payload" },
+			},
+		};
+		const original = structuredClone(input);
+
+		expect(await enqueueHookTransition(input)).toBe(true);
+		const path = join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`);
+		const raw = await readFile(path, "utf8");
+		const [record] = await loadPendingHookTransitions();
+
+		const retainedText = "Latest foreground answer\nwith formatting.";
+		expect(record?.request.metadata?.finalMessage).toBe(retainedText);
+		expect(normalizeHookTransitionReplayMetadata(input.event, record?.request.metadata)?.finalMessage).toBe(
+			retainedText,
+		);
+		for (const excluded of [
+			"conversationSummaryText",
+			"activityText",
+			"toolInputSummary",
+			"transcriptPath",
+			"rawPayload",
+			"private top-level native payload",
+			"private delivery payload",
+			"private native payload",
+			"obsolete compatibility answer",
+			"/private/",
+		]) {
+			expect(raw).not.toContain(excluded);
+		}
+		expect(record?.request.delivery).toEqual(request(1).delivery);
+		expect(input).toEqual(original);
+	});
+
+	it.each([
+		{ finalMessage: null, conversationSummaryText: "  legacy answer  ", expected: "legacy answer" },
+		{ finalMessage: " \n\t ", conversationSummaryText: "  fallback answer  ", expected: "fallback answer" },
+		{ finalMessage: undefined, conversationSummaryText: undefined, expected: undefined },
+		{ finalMessage: null, conversationSummaryText: null, expected: undefined },
+		{ finalMessage: "  ", conversationSummaryText: "\n\t", expected: undefined },
+	])("normalizes blank and legacy completion text: %o", ({ expected, ...text }) => {
+		const input = completionRequest();
+		const metadata = normalizeHookTransitionReplayMetadata(input.event, { ...input.metadata, ...text });
+
+		expect(metadata?.finalMessage).toBe(expected);
+		expect(metadata).not.toHaveProperty("conversationSummaryText");
+	});
+
+	it.each(["finalMessage", "conversationSummaryText"] as const)(
+		"bounds %s before persistence and keeps repeated normalization stable",
+		async (field) => {
+			const input = completionRequest();
+			input.metadata = {
+				...input.metadata,
+				finalMessage: null,
+				conversationSummaryText: null,
+				[field]: `  ${"a".repeat(700)}  `,
+			};
+			await enqueueHookTransition(input);
+			const [record] = await loadPendingHookTransitions();
+			const expected = `${"a".repeat(500)}\u2026`;
+
+			expect(createPersistedHookTransition(input)?.request.metadata?.finalMessage).toBe(expected);
+			const retainedText = expected;
+			expect(record?.request.metadata?.finalMessage).toBe(retainedText);
+			expect(normalizeHookTransitionReplayMetadata(input.event, record?.request.metadata)?.finalMessage).toBe(
+				retainedText,
+			);
+			expect(
+				await readFile(join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`), "utf8"),
+			).not.toContain("a".repeat(501));
+		},
+	);
+
+	it("strips content for every unsupported provider/event/hook combination", () => {
+		for (const source of ["codex", "claude", "pi", "unknown"]) {
+			for (const event of ["to_review", "to_in_progress", "activity"] as const) {
+				for (const hookEventName of [
+					"Stop",
+					"AgentSettled",
+					"AgentSettledBackgroundPending",
+					"SubagentStop",
+					"PostCompact",
+					"PreToolUse",
+				]) {
+					if (
+						supportedCompletions.some(
+							(entry) =>
+								entry.source === source && entry.event === event && entry.hookEventName === hookEventName,
+						)
+					)
+						continue;
+					const metadata = normalizeHookTransitionReplayMetadata(event, {
+						...request(1).metadata,
+						source,
+						hookEventName,
+					});
+					expect(metadata, `${source}/${event}/${hookEventName}`).not.toHaveProperty("finalMessage");
+					expect(metadata).not.toHaveProperty("conversationSummaryText");
+					expect(metadata).not.toHaveProperty("activityText");
+					expect(metadata).not.toHaveProperty("toolInputSummary");
+					expect(metadata).not.toHaveProperty("transcriptPath");
+				}
+			}
+		}
+	});
+
+	it.each(supportedCompletions)("strips subagent replies: %o", async (completion) => {
+		await enqueueHookTransition({
+			...request(1),
+			event: completion.event,
+			metadata: {
+				...request(1).metadata,
+				source: completion.source,
+				hookEventName: completion.hookEventName,
+				providerAgentId: " child-agent ",
+			},
+		});
+		const raw = await readFile(join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`), "utf8");
+		expect(raw).not.toContain("finalMessage");
+		expect(raw).not.toContain("conversationSummaryText");
+		const [record] = await loadPendingHookTransitions();
+		expect(record?.request.metadata?.providerAgentId).toBe(" child-agent ");
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"protects POSIX completion storage before writing and abandonment rewrites",
+		async () => {
+			const directory = join(stateHome, "hook-transition-outbox");
+			await mkdir(directory, { recursive: true });
+			await chmod(directory, 0o755);
+			const protect = vi.spyOn(fsPromises, "chmod");
+
+			await enqueueHookTransition(completionRequest());
+			expect(protect).toHaveBeenCalledWith(directory, 0o700);
+			expect((await stat(directory)).mode & 0o777).toBe(0o700);
+			expect((await stat(join(directory, `${deliveryId(1)}.json`))).mode & 0o777).toBe(0o600);
+			await chmod(directory, 0o755);
+			protect.mockClear();
+
+			await abandonHookTransition(deliveryId(1));
+			expect(protect).toHaveBeenCalledOnce();
+			expect((await stat(directory)).mode & 0o777).toBe(0o700);
+		},
+	);
+
+	it.skipIf(process.platform === "win32")(
+		"retains content-free lifecycle delivery when POSIX protection fails",
+		async () => {
+			const protect = vi.spyOn(fsPromises, "chmod").mockRejectedValueOnce(new Error("mode denied"));
+
+			await expect(enqueueHookTransition(completionRequest())).resolves.toBe(true);
+			expect(protect).toHaveBeenCalledOnce();
+			const [record] = await loadPendingHookTransitions();
+			expect(record?.request.delivery).toEqual(completionRequest().delivery);
+			expect(record?.request.metadata).not.toHaveProperty("finalMessage");
+			expect(record?.request.metadata).not.toHaveProperty("conversationSummaryText");
+		},
+	);
+
+	it.skipIf(process.platform === "win32")(
+		"abandons lifecycle delivery without text when POSIX protection fails",
+		async () => {
+			await enqueueHookTransition(completionRequest());
+			const path = join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`);
+			vi.spyOn(fsPromises, "chmod").mockRejectedValueOnce(new Error("mode denied"));
+
+			await expect(abandonHookTransition(deliveryId(1), 123)).resolves.toBeUndefined();
+			const record = JSON.parse(await readFile(path, "utf8"));
+			expect(record.abandonedAt).toBe(123);
+			expect(record.request.delivery).toEqual(completionRequest().delivery);
+			expect(record.request.metadata).not.toHaveProperty("finalMessage");
+			expect(record.request.metadata).not.toHaveProperty("conversationSummaryText");
+			expect(await readdir(join(stateHome, "hook-transition-outbox"))).toEqual([`${deliveryId(1)}.json`]);
+		},
+	);
+
+	it.each(supportedCompletions)(
+		"normalizes legacy full-metadata records again on disk read: %o",
+		async (completion) => {
+			const input = {
+				...request(1),
+				event: completion.event,
+				metadata: {
+					...request(1).metadata,
+					source: completion.source,
+					hookEventName: completion.hookEventName,
+					finalMessage: "  ",
+					conversationSummaryText: ` ${"b".repeat(700)} `,
+				},
+			};
+			await enqueueHookTransition(input);
+			const path = join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`);
+			const record = JSON.parse(await readFile(path, "utf8"));
+			// Exercise the read boundary rather than only the current writer's output.
+			await writeFile(path, JSON.stringify({ ...record, request: input }), "utf8");
+
+			const [loaded] = await loadPendingHookTransitions();
+			expect(loaded?.request.metadata?.finalMessage).toBe(`${"b".repeat(500)}\u2026`);
+			for (const excluded of ["conversationSummaryText", "activityText", "toolInputSummary", "transcriptPath"]) {
+				expect(loaded?.request.metadata).not.toHaveProperty(excluded);
+			}
+			expect(loaded?.request.delivery).toEqual(input.delivery);
+			expect(loaded?.expiresAt).toBe(record.expiresAt);
+			expect(loaded?.enqueuedAt).toBe(record.enqueuedAt);
+		},
+	);
+
+	it("strips unsupported completion text supplied directly on disk", async () => {
+		await enqueueHookTransition(request(1));
+		const path = join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`);
+		const record = JSON.parse(await readFile(path, "utf8"));
+		await writeFile(path, JSON.stringify({ ...record, request: request(1) }), "utf8");
+
+		const [loaded] = await loadPendingHookTransitions();
+		expect(loaded?.request.metadata).not.toHaveProperty("finalMessage");
+		expect(loaded?.request.metadata).not.toHaveProperty("conversationSummaryText");
+	});
+
+	it("retains Windows lifecycle delivery without writing reply content or invoking ACL preparation", async () => {
+		const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+		if (!platformDescriptor) throw new Error("Missing process platform descriptor");
+		vi.spyOn(runtimeStateHome, "getRuntimeHomePath").mockReturnValue(stateHome);
+		const protect = vi.spyOn(fsPromises, "chmod");
+		try {
+			Object.defineProperty(process, "platform", { value: "win32" });
+			delete process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV];
+			await expect(enqueueHookTransition(completionRequest())).resolves.toBe(true);
+			await abandonHookTransition(deliveryId(1), 123);
+			const [record] = await loadPendingHookTransitions();
+			expect(record?.request.delivery).toEqual(completionRequest().delivery);
+			expect(record?.abandonedAt).toBe(123);
+			expect(record?.request.metadata).not.toHaveProperty("finalMessage");
+			expect(record?.request.metadata).not.toHaveProperty("conversationSummaryText");
+			expect(protect).not.toHaveBeenCalled();
+			const raw = await readFile(join(stateHome, "hook-transition-outbox", `${deliveryId(1)}.json`), "utf8");
+			expect(raw).not.toContain("sensitive");
+		} finally {
+			Object.defineProperty(process, "platform", platformDescriptor);
+		}
+	});
+
+	it.each(["prepared", "malformed", "foreign_path", "replaced_directory", "acl_failure"] as const)(
+		"uses the runtime-prepared Windows capability without hook-side ACL work: %s",
+		async (scenario) => {
+			const acl = vi.fn(async () => ({ ok: scenario !== "acl_failure" }));
+			const capability = await prepareHookTransitionOutboxDirectoryCapability({
+				platform: "win32",
+				runWindowsAclCommand: acl,
+			});
+			expect(acl).toHaveBeenCalledOnce();
+			const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+			if (!platformDescriptor) throw new Error("Missing process platform descriptor");
+			vi.spyOn(runtimeStateHome, "getRuntimeHomePath").mockReturnValue(stateHome);
+			if (scenario === "malformed") {
+				process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV] = "not JSON";
+			} else if (scenario === "foreign_path") {
+				const proof = JSON.parse(capability ?? "null");
+				process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV] = JSON.stringify({
+					...proof,
+					path: join(stateHome, "other"),
+				});
+			} else if (scenario === "replaced_directory") {
+				await fsPromises.rename(join(stateHome, "hook-transition-outbox"), join(stateHome, "retired-outbox"));
+				await mkdir(join(stateHome, "hook-transition-outbox"));
+				process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV] = capability;
+			} else if (capability) {
+				process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV] = capability;
+			} else {
+				delete process.env[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV];
+			}
+			const protect = vi.spyOn(fsPromises, "chmod");
+			try {
+				Object.defineProperty(process, "platform", { value: "win32" });
+				await expect(enqueueHookTransition(completionRequest())).resolves.toBe(true);
+				await abandonHookTransition(deliveryId(1), 123);
+				const [record] = await loadPendingHookTransitions();
+				expect(record?.request.delivery).toEqual(completionRequest().delivery);
+				expect(record?.abandonedAt).toBe(123);
+				expect(record?.request.metadata?.finalMessage).toBe(
+					scenario === "prepared" ? "sensitive final response" : undefined,
+				);
+				expect(record?.request.metadata).not.toHaveProperty("conversationSummaryText");
+				expect(acl).toHaveBeenCalledOnce();
+				expect(protect).not.toHaveBeenCalled();
+			} finally {
+				Object.defineProperty(process, "platform", platformDescriptor);
+			}
+		},
+	);
+
+	it("does not add permission preparation to content-free hooks", async () => {
+		const protect = vi.spyOn(fsPromises, "chmod");
+		await enqueueHookTransition(request(1));
+		await abandonHookTransition(deliveryId(1));
+		expect(protect).not.toHaveBeenCalled();
 	});
 
 	it("does not queue best-effort Codex activity events", () => {
@@ -138,7 +486,7 @@ describe("hook transition outbox", () => {
 		const [record] = await loadPendingHookTransitions();
 		expect(record?.request.metadata?.sessionStartSource).toBe(evidence.sessionStartSource);
 		expect(record?.request.metadata?.sessionStartHasTranscript).toBe(evidence.hasTranscript);
-		expect(record?.request.metadata?.transcriptPath).toBeNull();
+		expect(record?.request.metadata).not.toHaveProperty("transcriptPath");
 		expect(JSON.stringify(record)).not.toContain("/private/");
 		if (!record) throw new Error("Missing persisted hook transition");
 		expect(createPersistedHookTransition(record.request)?.request.metadata?.sessionStartHasTranscript).toBe(
