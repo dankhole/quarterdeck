@@ -209,6 +209,7 @@ export type FakeAgentCommand =
 	| { kind: "commit"; message: string }
 	| { kind: "status" }
 	| { kind: "clipboard-read" }
+	| { kind: "hyperlink" }
 	| { kind: "spam"; count: number }
 	| { kind: "alternate-screen"; enabled: boolean }
 	| { kind: "delay-review"; delayMs: number; message: string }
@@ -240,6 +241,9 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input === "/status") {
 		return { kind: "status" };
+	}
+	if (input === "/hyperlink") {
+		return { kind: "hyperlink" };
 	}
 	if (input === "/clipboard-read") {
 		return { kind: "clipboard-read" };

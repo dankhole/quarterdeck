@@ -1,8 +1,28 @@
+import headlessModule, { type Terminal as HeadlessTerminal } from "@xterm/headless";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalStateMirror } from "../../../src/terminal";
 
+const { Terminal } = headlessModule as { Terminal: typeof HeadlessTerminal };
 const mirrors: TerminalStateMirror[] = [];
+const viewers: HeadlessTerminal[] = [];
+
+async function restoreViewer(mirror: TerminalStateMirror): Promise<HeadlessTerminal> {
+	const snapshot = await mirror.getSnapshot();
+	if (!snapshot) throw new Error("Expected a live snapshot");
+	const viewer = new Terminal({ allowProposedApi: true, cols: snapshot.cols, rows: snapshot.rows, scrollback: 100 });
+	viewers.push(viewer);
+	await new Promise<void>((resolve) => viewer.write(snapshot.snapshot, resolve));
+	return viewer;
+}
+
+function uriAt(viewer: HeadlessTerminal, row: number, col: number): string | undefined {
+	const cell = viewer.buffer.active.getLine(row)?.getCell(col) as { extended: { urlId: number } } | undefined;
+	const internal = viewer as unknown as {
+		_core: { _oscLinkService: { getLinkData(id: number): { uri: string } | undefined } };
+	};
+	return cell ? internal._core._oscLinkService.getLinkData(cell.extended.urlId)?.uri : undefined;
+}
 
 function createMirror(cols = 80, rows = 24): TerminalStateMirror {
 	const mirror = new TerminalStateMirror(cols, rows);
@@ -11,12 +31,55 @@ function createMirror(cols = 80, rows = 24): TerminalStateMirror {
 }
 
 afterEach(() => {
+	for (const viewer of viewers.splice(0)) viewer.dispose();
 	while (mirrors.length > 0) {
 		mirrors.pop()?.dispose();
 	}
 });
 
 describe("TerminalStateMirror", () => {
+	it("keeps an untouched snapshot empty for the stale-empty browser restore guard", async () => {
+		const mirror = createMirror();
+		const snapshot = await mirror.getSnapshot();
+		// shouldSkipEmptyRestoreSnapshot uses length === 0 to protect live output
+		// received before this snapshot. Protocol-only bytes break that sentinel.
+		expect(snapshot).toEqual({ snapshot: "", cols: 80, rows: 24 });
+	});
+
+	it.each([false, true])("restores actual OSC 8 URI metadata from split writes (batching=%s)", async (batching) => {
+		const mirror = createMirror(20, 4);
+		mirror.setBatching(batching);
+		for (const chunk of [
+			"\u001b]8;id=one;https://",
+			"example.test/first\u001b",
+			"\\label\u001b]8;;",
+			"\u0007 plain",
+		]) {
+			mirror.applyOutput(Buffer.from(chunk));
+		}
+		const viewer = await restoreViewer(mirror);
+		expect(viewer.buffer.active.getLine(0)?.translateToString(true)).toBe("label plain");
+		for (let col = 0; col < 5; col += 1) expect(uriAt(viewer, 0, col)).toBe("https://example.test/first");
+		expect(uriAt(viewer, 0, 5)).toBeUndefined();
+		expect(uriAt(viewer, 0, 10)).toBeUndefined();
+	});
+
+	it("retains OSC 8 targets in only the requested scrollback", async () => {
+		const mirror = new TerminalStateMirror(20, 4, { scrollback: 2 });
+		mirrors.push(mirror);
+		for (let row = 0; row < 10; row += 1) {
+			mirror.applyOutput(
+				Buffer.from(`\u001b]8;;https://example.test/${row}\u001b\\row-${row}\u001b]8;;\u001b\\\r\n`),
+			);
+		}
+		const viewer = await restoreViewer(mirror);
+		expect(viewer.buffer.normal.length).toBe(6);
+		expect(viewer.buffer.normal.getLine(0)?.translateToString(true)).toBe("row-5");
+		expect(uriAt(viewer, 0, 0)).toBe("https://example.test/5");
+		expect(uriAt(viewer, 4, 0)).toBe("https://example.test/9");
+		expect(uriAt(viewer, 5, 0)).toBeUndefined();
+	});
+
 	it("reports the settled rendered viewport after an output write", async () => {
 		const mirror = createMirror(40, 10);
 

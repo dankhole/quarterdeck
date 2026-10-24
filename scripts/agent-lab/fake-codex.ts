@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
 import { buildGitCommandArgs, resolveWindowsCompatibleCommand } from "../../src/core";
+import { buildQuarterdeckRuntimeUrl } from "../../src/core/runtime-endpoint";
 
 import {
 	buildClaudeHookPayload,
@@ -247,6 +248,7 @@ function printHelp(): void {
 	writeLine("  /commit [message]            commit all disposable changes");
 	writeLine("  /status                      show git status");
 	writeLine("  /clipboard-read              read the lab clipboard through OSC 52");
+	writeLine("  /hyperlink                   print a labeled OSC 8 link to the lab runtime");
 	writeLine("  /spam [1-2000]               produce terminal scrollback");
 	writeLine("  /alt-on | /alt-off           exercise the alternate screen");
 	writeLine("  /delay-review <ms> [message] schedule a review hook");
@@ -562,6 +564,13 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			for (const line of status.output.trimEnd().split("\n")) {
 				writeLine(line);
 			}
+			return;
+		}
+		case "hyperlink": {
+			const url = buildQuarterdeckRuntimeUrl("/health");
+			// Exercise the same browser/provider mouse arbitration as a fullscreen TUI.
+			process.stdout.write("\u001b[?1000h\u001b[?1006h");
+			writeLine(`AGENT LAB LINK: \u001b]8;;${url}\u001b\\Open lab health\u001b]8;;\u001b\\`);
 			return;
 		}
 		case "clipboard-read":

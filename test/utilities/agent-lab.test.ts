@@ -1498,6 +1498,7 @@ describe("agent-lab fake agent protocol", () => {
 			message: "provider approved",
 		});
 		expect(parseFakeAgentCommand("/approval-overlay")).toEqual({ kind: "approval-overlay" });
+		expect(parseFakeAgentCommand("/hyperlink")).toEqual({ kind: "hyperlink" });
 		expect(parseFakeAgentCommand("/turn-interrupted")).toEqual({ kind: "turn-interrupted" });
 		expect(parseFakeAgentCommand("/native-interrupt")).toEqual({ kind: "native-interrupt" });
 		expect(parseFakeAgentCommand("/new-turn continue")).toEqual({ kind: "new-turn", message: "continue" });

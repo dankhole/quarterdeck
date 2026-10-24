@@ -580,6 +580,10 @@ const piAdapter: AgentSessionAdapter = {
 		}
 		const env: Record<string, string | undefined> = {
 			[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "",
+			// Advertise the managed terminal's OSC 8 capability, overriding inherited
+			// env preferences without spoofing TERM_PROGRAM. Pi's explicit native
+			// terminal.hyperlinks setting still takes precedence over this env hint.
+			PI_HYPERLINKS: "1",
 			// Always override process/request inheritance, including unmanaged launches.
 			[QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV]: undefined,
 		};

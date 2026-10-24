@@ -26,6 +26,7 @@ import {
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
+import { buildTerminalEnvironment } from "../../../src/terminal/session-manager-types";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const prepareOutboxCapabilityMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -1187,11 +1188,67 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		expect(launch.binary).toBe("pi");
 		expect(launch.args).toEqual(["--", "Try the Pi TUI"]);
+		expect(launch.env.PI_HYPERLINKS).toBe("1");
 		expect(launch.env.PI_OFFLINE).toBeUndefined();
 		expect(launch.env.PI_CODING_AGENT_DIR).toBeUndefined();
 		expect(launch.env.AWS_ENDPOINT_URL_BEDROCK_RUNTIME).toBeUndefined();
 		expect(launch.env.AWS_BEARER_TOKEN_BEDROCK).toBeUndefined();
 		expect(launch.env.AWS_REGION).toBeUndefined();
+	});
+
+	it.each([
+		{ name: "fresh", resumeConversation: false, resumeSessionId: undefined },
+		{ name: "exact resume/recovery", resumeConversation: true, resumeSessionId: "stored-session" },
+		{ name: "best-effort resume", resumeConversation: true, resumeSessionId: undefined },
+	])("advertises Pi hyperlinks for $name without mutating launch inputs", async (mode) => {
+		setupTempHome();
+		vi.stubEnv("PI_HYPERLINKS", "0");
+		vi.stubEnv("TERM_PROGRAM", "outer-terminal");
+		const requestedEnv = Object.freeze({ PI_HYPERLINKS: "0", TERM_PROGRAM: "request-terminal" });
+		const inheritedEnv = { ...process.env };
+		try {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-pi-hyperlinks",
+				agentId: "pi",
+				binary: "pi",
+				args: [],
+				cwd: "/tmp",
+				prompt: "",
+				resumeConversation: mode.resumeConversation,
+				resumeSessionId: mode.resumeSessionId,
+				projectId: "project-1",
+				hookSessionInstanceId: "launch-instance",
+				env: requestedEnv,
+			});
+
+			expect(launch.env.PI_HYPERLINKS).toBe("1");
+			expect(launch.env.TERM_PROGRAM).toBeUndefined();
+			expect(buildTerminalEnvironment(requestedEnv, launch.env)).toMatchObject({
+				PI_HYPERLINKS: "1",
+				TERM_PROGRAM: "quarterdeck",
+				TERM: "xterm-256color",
+				COLORTERM: "truecolor",
+			});
+			// Shell launches do not use agent adapter env and retain the user's preference.
+			expect(buildTerminalEnvironment(requestedEnv).PI_HYPERLINKS).toBe("0");
+			expect(requestedEnv).toEqual({ PI_HYPERLINKS: "0", TERM_PROGRAM: "request-terminal" });
+			expect(process.env).toEqual(inheritedEnv);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it.each(["codex", "claude"] as const)("does not set Pi hyperlink capability for %s", async (agentId) => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: `task-${agentId}-hyperlinks`,
+			agentId,
+			binary: agentId,
+			args: [],
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(launch.env.PI_HYPERLINKS).toBeUndefined();
 	});
 
 	it("loads the Quarterdeck Pi lifecycle extension when hook context is available", async () => {

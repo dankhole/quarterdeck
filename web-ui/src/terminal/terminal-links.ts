@@ -9,7 +9,7 @@ interface HoveredLink {
 	confirmNavigation: boolean;
 }
 
-/** Own recognized web-link clicks before Codex receives the same mouse gesture. */
+/** Own recognized web-link clicks before fullscreen providers receive the same mouse gesture. */
 export function configureTerminalLinks(
 	terminal: Terminal,
 	host: HTMLElement,
@@ -48,11 +48,12 @@ export function configureTerminalLinks(
 		const forcedSelection = isMacPlatform
 			? terminal.options.macOptionClickForcesSelection && event.altKey
 			: event.shiftKey;
+		const agentId = callbacks.getSessionAgentId();
 		if (
 			!hovered ||
 			event.button !== 0 ||
 			forcedSelection ||
-			callbacks.getSessionAgentId() !== "codex" ||
+			(agentId !== "codex" && agentId !== "pi") ||
 			terminal.buffer.active.type !== "alternate" ||
 			terminal.modes.mouseTrackingMode === "none"
 		)

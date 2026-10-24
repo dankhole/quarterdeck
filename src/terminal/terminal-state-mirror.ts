@@ -1,12 +1,11 @@
-import serializeAddonModule from "@xterm/addon-serialize";
-import headlessTerminalModule from "@xterm/headless";
+import headlessTerminalModule, { type Terminal as HeadlessTerminal } from "@xterm/headless";
 
 import { createTaggedLogger } from "../core";
+import { SerializeAddon } from "./xterm-serialize";
 
 const log = createTaggedLogger("terminal-mirror");
 
-const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-serialize");
-const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
+const { Terminal } = headlessTerminalModule as { Terminal: typeof HeadlessTerminal };
 
 /** Must match web-ui/src/terminal/terminal-slot.ts TERMINAL_SCROLLBACK */
 const TERMINAL_SCROLLBACK = 1_500;
