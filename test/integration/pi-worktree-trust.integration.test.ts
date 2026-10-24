@@ -49,7 +49,7 @@ describe("Pi managed worktree trust eligibility", { concurrent: false }, () => {
 					projectId: "project-pi",
 					hookSessionInstanceId: "launch-pi",
 				});
-				expect(launch.env[QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV]).toBe(realpathSync(fixture.cwd));
+				expect(launch.env[QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV]).toBe(realpathSync.native(fixture.cwd));
 				expect(launch.args.slice(0, 2)).toEqual(["--extension", "custom-extension.js"]);
 			}
 		});
@@ -146,6 +146,8 @@ describe("Pi managed worktree trust eligibility", { concurrent: false }, () => {
 			const otherCwd = join(dirname(fixture.cwd), "other");
 			runGit(fixture.projectPath, ["worktree", "add", "--detach", otherCwd]);
 			const staleGitFile = readFileSync(join(otherCwd, ".git"), "utf8");
+			// Git marks this file hidden on Windows; replace it instead of truncating it.
+			rmSync(join(fixture.cwd, ".git"));
 			writeFileSync(join(fixture.cwd, ".git"), staleGitFile);
 			expect(await resolvePiWorktreeTrustScope(fixture)).toBeUndefined();
 			expect(readFileSync(join(fixture.cwd, ".git"), "utf8")).toBe(staleGitFile);
@@ -165,6 +167,8 @@ describe("Pi managed worktree trust eligibility", { concurrent: false }, () => {
 			const movedAdminPath = join(dirname(dirname(adminPath)), "unregistered", "project");
 			mkdirSync(dirname(movedAdminPath));
 			renameSync(adminPath, movedAdminPath);
+			// Git marks this file hidden on Windows; replace it instead of truncating it.
+			rmSync(join(fixture.cwd, ".git"));
 			writeFileSync(join(fixture.cwd, ".git"), `gitdir: ${movedAdminPath}\n`);
 			expect(runGit(fixture.cwd, ["rev-parse", "HEAD"])).toBe(runGit(fixture.projectPath, ["rev-parse", "HEAD"]));
 			expect(await resolvePiWorktreeTrustScope(fixture)).toBeUndefined();
