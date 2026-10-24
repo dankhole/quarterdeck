@@ -5,11 +5,201 @@ import {
 } from "../../../src/server/owned-process-shutdown.js";
 import type { OwnedProcessSnapshot } from "../../../src/server/owned-process-snapshot.js";
 
-function row(pid: number, parentPid: number, creationIdentity = String(pid)): OwnedProcessSnapshot {
-	return { pid, parentPid, creationIdentity, preciseIdentity: true, zombie: false };
+function row(
+	pid: number,
+	parentPid: number,
+	creationIdentity = String(pid),
+	birth = BigInt(pid),
+): OwnedProcessSnapshot {
+	return {
+		pid,
+		parentPid,
+		creationIdentity,
+		birthTime: { clock: "windows", value: birth },
+		preciseIdentity: true,
+		zombie: false,
+	};
+}
+
+function withRuntime(rows: readonly OwnedProcessSnapshot[]): OwnedProcessSnapshot[] {
+	return [row(1, 0), ...rows];
 }
 
 describe("exact-owned process shutdown", () => {
+	it.each([false, true])(
+		"refuses an explicit root older than the runtime (include children=%s)",
+		async (includeRuntimeChildren) => {
+			const signal = vi.fn();
+			const onUnconfirmed = vi.fn();
+			const shutdown = createRuntimeOwnedProcessShutdown({
+				runtimePid: 1,
+				getRootPids: () => [10],
+				includeRuntimeChildren,
+				snapshot: async () => [row(1, 0, "runtime", 400n), row(10, 1, "old", 200n), row(11, 10, "child", 500n)],
+				signal,
+				onUnconfirmed,
+			});
+			expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+			expect(signal).not.toHaveBeenCalled();
+			expect(onUnconfirmed.mock.calls[0]?.[0]).toMatchObject({ coverageUncertain: true, targetCount: 0 });
+		},
+	);
+
+	it("ignores provably older automatic runtime children and their entire foreign subtree", async () => {
+		let rows = [row(10, 1, "old", 200n), row(11, 10, "foreign-child", 500n), row(20, 1, "owned", 600n)];
+		const signal = vi.fn((pid: number) => {
+			rows = rows.filter((entry) => entry.pid !== pid);
+		});
+		expect(
+			await stopRuntimeOwnedProcessTrees({
+				runtimePid: 1,
+				getRootPids: () => [],
+				includeRuntimeChildren: true,
+				stopSessions: () => {},
+				snapshot: async () => [row(1, 0, "runtime", 400n), ...rows],
+				signal,
+			}),
+		).toEqual({ status: "stopped" });
+		expect(signal.mock.calls.map(([pid]) => pid)).toEqual([20]);
+		expect(rows.map((entry) => entry.pid)).toEqual([10, 11]);
+	});
+
+	it.each(["initial", "late"])("rejects older descendants at every %s ancestry edge", async (phase) => {
+		const parent = row(10, 1, "owned", 638000000000000001n);
+		const child = row(11, 10, "owned-child", 638000000000000002n);
+		// A one-tick difference above Number's safe range must not round into equality.
+		const foreign = row(12, 11, "foreign", 638000000000000001n);
+		const foreignChild = row(13, 12, "foreign-child", 638000000000000003n);
+		let rows = [parent, child, foreign, foreignChild];
+		let queries = 0;
+		const signal = vi.fn((pid: number) => {
+			rows = rows.filter((entry) => entry.pid !== pid);
+		});
+		expect(
+			await stopRuntimeOwnedProcessTrees({
+				runtimePid: 1,
+				getRootPids: () => [10],
+				stopSessions: () => {},
+				snapshot: async () => withRuntime(++queries === 1 && phase === "late" ? [parent] : rows),
+				signal,
+			}),
+		).toEqual({ status: "stopped" });
+		expect(signal.mock.calls.map(([pid]) => pid)).toEqual([11, 10]);
+		expect(rows).toEqual([foreign, foreignChild]);
+	});
+
+	it.each(["windows", "linux", "bsd"] as const)(
+		"accepts legitimate children sharing a %s clock tick",
+		async (clock) => {
+			const birthTime = clock === "linux" ? { clock, bootId: "boot", value: 400n } : { clock, value: 400n };
+			const runtime = { ...row(1, 0), birthTime, preciseIdentity: clock !== "bsd" };
+			let rows = [row(10, 1), row(11, 10)].map((entry) => ({
+				...entry,
+				birthTime,
+				preciseIdentity: clock !== "bsd",
+			}));
+			const signal = vi.fn((pid: number) => {
+				rows = rows.filter((entry) => entry.pid !== pid);
+			});
+			expect(
+				await stopRuntimeOwnedProcessTrees({
+					runtimePid: 1,
+					getRootPids: () => [10],
+					stopSessions: () => {},
+					snapshot: async () => [runtime, ...rows],
+					signal,
+				}),
+			).toEqual({ status: "stopped" });
+			expect(signal.mock.calls.map(([pid]) => pid)).toEqual([11, 10]);
+		},
+	);
+
+	it.each(["runtime row", "runtime identity", "runtime birth time", "root identity", "root birth time"])(
+		"fails closed without %s",
+		async (missing) => {
+			const runtime = row(1, 0);
+			const root = row(10, 1);
+			if (missing === "runtime identity") runtime.creationIdentity = "";
+			if (missing === "runtime birth time") runtime.birthTime = undefined;
+			if (missing === "root identity") root.creationIdentity = "";
+			if (missing === "root birth time") root.birthTime = undefined;
+			const signal = vi.fn();
+			expect(
+				await stopRuntimeOwnedProcessTrees({
+					runtimePid: 1,
+					getRootPids: () => [10],
+					includeRuntimeChildren: true,
+					stopSessions: () => {},
+					snapshot: async () => (missing === "runtime row" ? [root] : [runtime, root]),
+					signal,
+				}),
+			).toEqual({ status: "unconfirmed" });
+			expect(signal).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not claim complete runtime-child coverage when the runtime row is missing", async () => {
+		expect(
+			await stopRuntimeOwnedProcessTrees({
+				runtimePid: 1,
+				getRootPids: () => [],
+				includeRuntimeChildren: true,
+				stopSessions: () => {},
+				snapshot: async () => [],
+				signal: vi.fn(),
+			}),
+		).toEqual({ status: "unconfirmed" });
+	});
+
+	it.each(["initial", "late"])(
+		"retains unknown %s ancestry coverage without adopting or orphaning it",
+		async (phase) => {
+			for (const child of [
+				{ ...row(11, 10), creationIdentity: "" },
+				{ ...row(11, 10), birthTime: undefined },
+				{ ...row(11, 10), birthTime: { clock: "linux" as const, bootId: "other", value: 11n } },
+			]) {
+				let rows = [row(10, 1), child, row(12, 11)];
+				let queries = 0;
+				const signal = vi.fn();
+				const onUnconfirmed = vi.fn();
+				const shutdown = createRuntimeOwnedProcessShutdown({
+					runtimePid: 1,
+					getRootPids: () => [10],
+					snapshot: async () => withRuntime(++queries === 1 && phase === "late" ? [row(10, 1)] : rows),
+					signal,
+					timeoutMs: 0,
+					onUnconfirmed,
+				});
+				expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+				expect(signal).not.toHaveBeenCalled();
+				expect(onUnconfirmed.mock.calls[0]?.[0]).toMatchObject({ coverageUncertain: true, targetCount: 1 });
+				rows = [];
+				expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+			}
+		},
+	);
+
+	it("never mistakes a missing current identity for proof of PID replacement", async () => {
+		let queries = 0;
+		const signal = vi.fn();
+		const onUnconfirmed = vi.fn();
+		const shutdown = createRuntimeOwnedProcessShutdown({
+			runtimePid: 1,
+			getRootPids: () => [10],
+			snapshot: async () => withRuntime([row(10, 1, ++queries === 1 ? "captured" : "")]),
+			signal,
+			timeoutMs: 0,
+			onUnconfirmed,
+		});
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		expect(signal).not.toHaveBeenCalled();
+		expect(onUnconfirmed.mock.calls[0]?.[0].blockers[0]).toMatchObject({
+			identityPresent: false,
+			reason: "identity_unavailable",
+		});
+	});
+
 	it("shares in-flight cleanup and caches only confirmed termination", async () => {
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
@@ -39,7 +229,7 @@ describe("exact-owned process shutdown", () => {
 				runtimePid: 1,
 				getRootPids: () => [10],
 				stopSessions: () => {},
-				snapshot: async () => [...rows],
+				snapshot: async () => withRuntime(rows),
 				graceMs: 1,
 				signal: (pid, name) => {
 					signals.push([pid, name]);
@@ -68,7 +258,7 @@ describe("exact-owned process shutdown", () => {
 			const shutdown = createRuntimeOwnedProcessShutdown({
 				runtimePid: 1,
 				getRootPids: () => roots,
-				snapshot: async () => [...rows],
+				snapshot: async () => withRuntime(rows),
 				signal,
 				timeoutMs: 0,
 			});
@@ -93,7 +283,7 @@ describe("exact-owned process shutdown", () => {
 			signal,
 			snapshot: async () => {
 				if (fail) throw new Error("synthetic snapshot failure");
-				return [row(51, 99)];
+				return withRuntime([row(51, 99)]);
 			},
 		});
 		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
@@ -112,7 +302,7 @@ describe("exact-owned process shutdown", () => {
 			signal,
 			snapshot: async () => {
 				if (fail) throw new Error("synthetic metadata failure");
-				return [row(11, 99)];
+				return withRuntime([row(11, 99)]);
 			},
 		});
 		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
@@ -128,7 +318,7 @@ describe("exact-owned process shutdown", () => {
 		const shutdown = createRuntimeOwnedProcessShutdown({
 			runtimePid: 1,
 			getRootPids: () => roots,
-			snapshot: async () => rows,
+			snapshot: async () => withRuntime(rows),
 			signal: vi.fn(),
 		});
 		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
@@ -146,9 +336,9 @@ describe("exact-owned process shutdown", () => {
 			getRootPids: () => [10],
 			signal,
 			snapshot: async () => {
-				if (++queries === 1) return [row(10, 1, "original")];
+				if (++queries === 1) return withRuntime([row(10, 1, "original")]);
 				if (failObservation) throw new Error("synthetic snapshot error");
-				return [row(10, 1, "replacement")];
+				return withRuntime([row(10, 1, "replacement")]);
 			},
 		});
 		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
@@ -163,7 +353,7 @@ describe("exact-owned process shutdown", () => {
 		const shutdown = createRuntimeOwnedProcessShutdown({
 			runtimePid: 1,
 			getRootPids: () => rows.map((entry) => entry.pid),
-			snapshot: async () => rows,
+			snapshot: async () => withRuntime(rows),
 			signal: vi.fn(),
 			timeoutMs: 0,
 			onUnconfirmed,
@@ -189,7 +379,7 @@ describe("exact-owned process shutdown", () => {
 		const stopSessions = vi.fn(() => {
 			expect(snapshot).toHaveBeenCalledTimes(1);
 		});
-		const snapshot = vi.fn(async () => [...rows]);
+		const snapshot = vi.fn(async () => withRuntime(rows));
 		const signal = vi.fn((pid: number) => {
 			rows = rows.filter((entry) => entry.pid !== pid);
 		});
@@ -209,7 +399,7 @@ describe("exact-owned process shutdown", () => {
 				getRootPids: () => [10],
 				stopSessions: () => {},
 				signal,
-				snapshot: async () => (++queries === 1 ? [row(10, 1, "old")] : [row(10, 1, "replacement")]),
+				snapshot: async () => withRuntime(++queries === 1 ? [row(10, 1, "old")] : [row(10, 1, "replacement")]),
 			}),
 		).toEqual({ status: "stopped" });
 		expect(signal).not.toHaveBeenCalled();
@@ -224,7 +414,7 @@ describe("exact-owned process shutdown", () => {
 				hasPendingLaunches: () => true,
 				stopSessions: () => {},
 				signal,
-				snapshot: async () => [row(10, 99)],
+				snapshot: async () => withRuntime([row(10, 99)]),
 			}),
 		).toEqual({ status: "unconfirmed" });
 		expect(signal).not.toHaveBeenCalled();
@@ -253,7 +443,7 @@ describe("exact-owned process shutdown", () => {
 				getRootPids: () => [10],
 				stopSessions,
 				snapshot: async () => {
-					if (++queries === 1) return [row(10, 1)];
+					if (++queries === 1) return withRuntime([row(10, 1)]);
 					throw new Error("process metadata unavailable");
 				},
 			}),
@@ -274,8 +464,8 @@ describe("exact-owned process shutdown", () => {
 				stopSessions: () => {},
 				signal,
 				snapshot: async () => {
-					if (++queries === 1) return [row(10, 1), row(11, 10)];
-					return descendantLive ? [row(11, 99)] : [];
+					if (++queries === 1) return withRuntime([row(10, 1), row(11, 10)]);
+					return withRuntime(descendantLive ? [row(11, 99)] : []);
 				},
 			}),
 		).toEqual({ status: "stopped" });
@@ -292,7 +482,7 @@ describe("exact-owned process shutdown", () => {
 				signal,
 				graceMs: 0,
 				timeoutMs: 0,
-				snapshot: async () => [row(10, 1)],
+				snapshot: async () => withRuntime([row(10, 1)]),
 			}),
 		).toEqual({ status: "unconfirmed" });
 		expect(signal).toHaveBeenCalledWith(10, "SIGKILL");
@@ -312,9 +502,9 @@ describe("exact-owned process shutdown", () => {
 					signal,
 					snapshot: async () => {
 						queries++;
-						if (queries === 1) return [row(10, 1), { ...row(11, 10), preciseIdentity: false }];
-						if (queries === 2) return [{ ...row(11, 99), preciseIdentity: false }];
-						return [];
+						if (queries === 1) return withRuntime([row(10, 1), { ...row(11, 10), preciseIdentity: false }]);
+						if (queries === 2) return withRuntime([{ ...row(11, 99), preciseIdentity: false }]);
+						return withRuntime([]);
 					},
 				}),
 			).toEqual({ status: hasPendingLaunches ? "unconfirmed" : "stopped" });
@@ -335,9 +525,9 @@ describe("exact-owned process shutdown", () => {
 				signal,
 				snapshot: async () => {
 					queries++;
-					if (queries === 1) return [coarseRow(10, 1), coarseRow(11, 10)];
-					if (queries === 2) return [coarseRow(11, 99), coarseRow(12, 11)];
-					return [coarseRow(12, 99)];
+					if (queries === 1) return withRuntime([coarseRow(10, 1), coarseRow(11, 10)]);
+					if (queries === 2) return withRuntime([coarseRow(11, 99), coarseRow(12, 11)]);
+					return withRuntime([coarseRow(12, 99)]);
 				},
 			}),
 		).toEqual({ status: "unconfirmed" });
@@ -355,12 +545,13 @@ describe("exact-owned process shutdown", () => {
 				stopSessions: () => {},
 				signal,
 				timeoutMs: 0,
-				snapshot: async () => [
-					{
-						...row(10, ++queries === 1 ? 1 : 99),
-						preciseIdentity: false,
-					},
-				],
+				snapshot: async () =>
+					withRuntime([
+						{
+							...row(10, ++queries === 1 ? 1 : 99),
+							preciseIdentity: false,
+						},
+					]),
 			}),
 		).toEqual({ status: "unconfirmed" });
 		expect(signal).not.toHaveBeenCalled();

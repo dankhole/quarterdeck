@@ -1,5 +1,9 @@
 import type { RuntimeOwnedProcessShutdownOutcome } from "../core/api/runtime-shutdown.js";
-import { type OwnedProcessSnapshot, queryOwnedProcessSnapshot } from "./owned-process-snapshot.js";
+import {
+	compareOwnedProcessBirth,
+	type OwnedProcessSnapshot,
+	queryOwnedProcessSnapshot,
+} from "./owned-process-snapshot.js";
 
 export interface StopRuntimeOwnedProcessTreesOptions {
 	getRootPids: () => readonly number[];
@@ -36,19 +40,39 @@ function sameIdentity(left: OwnedProcessSnapshot, right: OwnedProcessSnapshot): 
 	return left.pid === right.pid && left.creationIdentity === right.creationIdentity;
 }
 
-function selectForest(rows: readonly OwnedProcessSnapshot[], rootPids: ReadonlySet<number>): OwnedProcessSnapshot[] {
-	const selected = new Set(rootPids);
+function ancestry(
+	parent: OwnedProcessSnapshot | undefined,
+	child: OwnedProcessSnapshot,
+): "verified" | "foreign" | "unknown" {
+	if (!parent) return "unknown";
+	if (parent.pid === child.pid || parent.pid !== child.parentPid) return "foreign";
+	const order = compareOwnedProcessBirth(parent, child);
+	// A stale PPID can name a newer, unrelated process after PID reuse (notably on Windows).
+	return order === null ? "unknown" : order > 0 ? "foreign" : "verified";
+}
+
+function selectForest(
+	rows: readonly OwnedProcessSnapshot[],
+	rootPids: ReadonlySet<number>,
+): { owned: OwnedProcessSnapshot[]; possible: OwnedProcessSnapshot[] } {
+	const byPid = new Map(rows.map((row) => [row.pid, row]));
+	const selected = new Map([...rootPids].map((pid) => [pid, true]));
 	let expanded = true;
 	while (expanded) {
 		expanded = false;
 		for (const row of rows) {
-			if (!selected.has(row.pid) && selected.has(row.parentPid)) {
-				selected.add(row.pid);
-				expanded = true;
-			}
+			if (selected.has(row.pid) || !selected.has(row.parentPid)) continue;
+			const edge = ancestry(byPid.get(row.parentPid), row);
+			if (edge === "foreign") continue;
+			selected.set(row.pid, edge === "verified" && selected.get(row.parentPid) === true);
+			expanded = true;
 		}
 	}
-	return rows.filter((row) => selected.has(row.pid));
+	return {
+		owned: rows.filter((row) => selected.get(row.pid) === true),
+		// Unknown edges block parent teardown and clean release, but never authorize adoption/signals.
+		possible: rows.filter((row) => selected.has(row.pid)),
+	};
 }
 
 /** One lifetime owner: retries retain the original identities and coverage gaps. */
@@ -74,17 +98,22 @@ export function createRuntimeOwnedProcessShutdown(
 		};
 		for (const target of targets ?? []) {
 			const current = observed.get(target.pid);
-			if (!current || current.zombie || (target.creationIdentity && !sameIdentity(target, current))) continue;
+			if (
+				!current ||
+				current.zombie ||
+				(target.creationIdentity && current.creationIdentity && !sameIdentity(target, current))
+			)
+				continue;
 			append({
 				pid: target.pid,
 				parentPid: target.parentPid,
 				observedParentPid: current.parentPid,
-				identityPresent: Boolean(target.creationIdentity),
+				identityPresent: Boolean(target.creationIdentity && current.creationIdentity),
 				preciseIdentity: target.preciseIdentity,
 				reason:
 					reason === "snapshot_failed"
 						? reason
-						: !target.creationIdentity
+						: !target.creationIdentity || !current.creationIdentity
 							? "identity_unavailable"
 							: !target.preciseIdentity && current.parentPid !== target.parentPid
 								? "ancestry_changed"
@@ -126,20 +155,26 @@ export function createRuntimeOwnedProcessShutdown(
 				if (currentRoots.size !== originalRoots.size || [...currentRoots].some((pid) => !originalRoots?.has(pid))) {
 					uncertain = true;
 				}
+				const runtime = rows.find((row) => row.pid === runtimePid);
 				if (options.includeRuntimeChildren) {
-					for (const row of rows) if (row.parentPid === runtimePid) originalRoots.add(row.pid);
+					if (!runtime?.creationIdentity || !runtime.birthTime) uncertain = true;
+					for (const row of rows) {
+						if (row.parentPid === runtimePid && ancestry(runtime, row) !== "foreign") originalRoots.add(row.pid);
+					}
 				}
 				const verifiedRoots = new Set<number>();
 				for (const pid of originalRoots) {
 					const root = rows.find((row) => row.pid === pid);
-					if (!root || pid === runtimePid || root.parentPid !== runtimePid) {
+					if (!root || pid === runtimePid || ancestry(runtime, root) !== "verified") {
 						uncertain = true;
 						unverifiedRoots.add(pid);
 						continue;
 					}
 					verifiedRoots.add(pid);
 				}
-				targets = selectForest(rows, verifiedRoots);
+				const forest = selectForest(rows, verifiedRoots);
+				targets = forest.owned;
+				if (forest.possible.length !== forest.owned.length) uncertain = true;
 				observed = new Map(targets.map((row) => [row.pid, row]));
 			} catch {
 				// Without a full initial snapshot even unknown direct runtime children
@@ -178,7 +213,9 @@ export function createRuntimeOwnedProcessShutdown(
 					})
 					.map((target) => target.pid),
 			);
-			for (const row of selectForest(rows, liveOwned)) {
+			const forest = selectForest(rows, liveOwned);
+			if (forest.possible.length !== forest.owned.length) uncertain = true;
+			for (const row of forest.owned) {
 				if (!targets.some((target) => sameIdentity(target, row))) targets.push(row);
 			}
 			observed = new Map(
@@ -190,7 +227,7 @@ export function createRuntimeOwnedProcessShutdown(
 			let remaining = false;
 			for (const target of targets) {
 				const current = byPid.get(target.pid);
-				if (!target.creationIdentity && current) {
+				if (current && (!target.creationIdentity || !current.creationIdentity)) {
 					uncertain = true;
 					remaining = true;
 					continue;
@@ -200,7 +237,7 @@ export function createRuntimeOwnedProcessShutdown(
 				// Coarse BSD birth times cannot safely authorize a reparented/recycled PID.
 				if (!target.preciseIdentity && current.parentPid !== target.parentPid) {
 					if (
-						selectForest(rows, new Set([target.pid])).some(
+						selectForest(rows, new Set([target.pid])).possible.some(
 							(row) => !row.zombie && !targets?.some((captured) => sameIdentity(captured, row)),
 						)
 					)
@@ -209,7 +246,9 @@ export function createRuntimeOwnedProcessShutdown(
 				}
 				// A signal is not exit confirmation. Keep parents alive until the next
 				// snapshot proves every descendant stopped, including TERM-resistant ones.
-				if (selectForest(rows, new Set([target.pid])).some((row) => row.pid !== target.pid && !row.zombie)) {
+				if (
+					selectForest(rows, new Set([target.pid])).possible.some((row) => row.pid !== target.pid && !row.zombie)
+				) {
 					continue;
 				}
 				const force = Date.now() - startedAt >= graceMs;

@@ -142,8 +142,9 @@ describe("native Quit preflight composition", () => {
 				);
 				options.finalize = vi.fn(async () => {});
 				expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
-				expect(options.confirmUnconfirmedExit).toHaveBeenCalledOnce();
-				expect(responses).toHaveLength(2);
+				// Recovery readiness now vetoes the initial preflight, before offering Force Quit.
+				expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
+				expect(responses).toHaveLength(1);
 				for (const response of responses)
 					expect(response).toMatchObject({ decision: "blocked", status: { dirtyEditorCount: 0 } });
 				expect(options.stop).not.toHaveBeenCalled();
@@ -155,6 +156,7 @@ describe("native Quit preflight composition", () => {
 				} else expect(await retryFileEditorRecoveryStorage(storage)).toBe(true);
 				await Promise.resolve();
 				expect(await owner.request("quit")).toEqual({ kind: "forced", cleanup: "unconfirmed" });
+				expect(options.confirmUnconfirmedExit).toHaveBeenCalledOnce();
 				expect(options.finalize).toHaveBeenCalledOnce();
 			} finally {
 				acknowledge?.();
