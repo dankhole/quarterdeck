@@ -1,8 +1,10 @@
 import type {
 	RuntimeHookIngestRequest,
+	RuntimeTaskLocalForegroundInterrupt,
 	RuntimeTaskOutstandingInteraction,
 	RuntimeTaskProviderHookOrderObservation,
 } from "../core";
+import { isLaterSameProducerHookDelivery } from "../hook-delivery-order";
 import { isCodexForegroundSessionStart } from "./codex-hook-session-scope";
 import {
 	commitSubagentHookOrder,
@@ -17,8 +19,8 @@ import {
 	subagentPermissionToolUseCandidates,
 } from "./subagent-hook-order";
 
-// Ordering is additive: only launch-scoped events with documented Codex turn
-// identity participate. Older/third-party payloads fall through unchanged.
+// Provider identities and capture times fence launch-scoped foreground work.
+// Transport startup time alone cannot distinguish an unseen old turn from a new one.
 const TRACKED_ID_TTL_MS = 30 * 60 * 1000;
 const MAX_TRACKED_IDS = 512;
 
@@ -49,6 +51,8 @@ export interface HookEventOrderState {
 	activePiRunId: string | null;
 	activePiRunLatestOccurredAt: number | null;
 	activePiRunCompleted: boolean;
+	/** End/settlement capture identity, used only to prove an equal-time successor run. */
+	activePiRunBoundaryDeliveryId: string | null;
 	retiredPiRunIds: Map<string, number>;
 	completedPiToolUseIds: Map<string, number>;
 	activeTurnId: string | null;
@@ -67,6 +71,8 @@ export interface HookEventOrderState {
 	/** Completed Claude tool identities retained to reject delayed requests. */
 	claudeCompletedToolUses: Map<string, ClaudeToolUseObservation>;
 	activeClaudePromptId: string | null;
+	/** Distinguishes an anonymous active prompt from the absence of foreground work. */
+	claudeForegroundPromptActive: boolean;
 	activeClaudePromptLatestOccurredAt: number | null;
 	latestClaudeRootCompletionOccurredAt: number | null;
 	retiredClaudePromptIds: Map<string, number>;
@@ -83,6 +89,8 @@ export interface HookEventOrderState {
 	/** In-memory subagent tool/answer/stop identity; never mixed into foreground ordering. */
 	subagents: SubagentHookOrderState;
 	processedDeliveryIds: Map<string, number>;
+	/** Local negative evidence, separate from a provider's terminal completion receipt. */
+	foregroundInterrupt: RuntimeTaskLocalForegroundInterrupt | null;
 }
 
 export type HookEventOrderRejectionReason =
@@ -98,6 +106,7 @@ export type HookEventOrderRejectionReason =
 	| "completed_interaction"
 	| "resolved_by_user_input"
 	| "interrupted_prompt"
+	| "interrupted_foreground"
 	| "unrelated_tool_completion";
 
 export type HookEventOrderDecision = { accepted: true } | { accepted: false; reason: HookEventOrderRejectionReason };
@@ -119,6 +128,7 @@ export function createHookEventOrderState(sessionInstanceId: string): HookEventO
 		activePiRunId: null,
 		activePiRunLatestOccurredAt: null,
 		activePiRunCompleted: false,
+		activePiRunBoundaryDeliveryId: null,
 		retiredPiRunIds: new Map(),
 		completedPiToolUseIds: new Map(),
 		activeTurnId: null,
@@ -134,6 +144,7 @@ export function createHookEventOrderState(sessionInstanceId: string): HookEventO
 		claudePendingToolUses: new Map(),
 		claudeCompletedToolUses: new Map(),
 		activeClaudePromptId: null,
+		claudeForegroundPromptActive: false,
 		activeClaudePromptLatestOccurredAt: null,
 		latestClaudeRootCompletionOccurredAt: null,
 		retiredClaudePromptIds: new Map(),
@@ -146,6 +157,7 @@ export function createHookEventOrderState(sessionInstanceId: string): HookEventO
 		claudeUnboundedBackgroundWorkWithoutPrompt: false,
 		subagents: createSubagentHookOrderState(),
 		processedDeliveryIds: new Map(),
+		foregroundInterrupt: null,
 	};
 }
 
@@ -274,13 +286,12 @@ function endsScopeActivation(observation: RuntimeTaskProviderHookOrderObservatio
 
 /**
  * Bounds durable ordering history while preserving replay's accept/reject
- * decisions. Tool observations behind a root-completion fence (Claude/Codex)
- * or inside a settled Pi run can no longer change a decision: every later
- * hook from that span is rejected by the fence, `completed_turn`, or
- * `stale_turn` before any per-tool check runs. One observation per
- * prompt/turn identity per activation is still kept so replay activates and
- * retires that identity exactly as live ingest did. Permission correlation
- * for already-fenced pending tools is intentionally not preserved.
+ * decisions. Codex/Pi tool observations behind a completed turn/run are
+ * redundant. Claude may omit prompt_id on later hooks, so retain one receipt
+ * per tool identity even behind Stop; otherwise a delayed identity-bearing
+ * tool start could reopen that tool after hydration. Keep one observation per
+ * prompt/turn activation too. Every retained receipt remains content-free and
+ * subject to the same maxEntries cap.
  */
 export function compactProviderHookOrderObservations(
 	observations: readonly RuntimeTaskProviderHookOrderObservation[],
@@ -290,8 +301,16 @@ export function compactProviderHookOrderObservations(
 	const settledPiRunIds = new Set<string>();
 	const retainedScopeKeys = new Set<string>();
 	const scopeKeys: Array<string | null> = [];
+	const latestClaudeToolIndices = new Map<string, number>();
 	let activation = 0;
-	for (const observation of observations) {
+	for (const [index, observation] of observations.entries()) {
+		if (
+			observation.source === "claude" &&
+			observation.toolUseId &&
+			TOOL_ORDER_HOOK_EVENTS.has(observation.hookEventName?.toLowerCase() ?? "")
+		) {
+			latestClaudeToolIndices.set(observation.toolUseId, index);
+		}
 		const fence = rootCompletionFenceOccurredAt(observation);
 		if (fence !== null) fenceOccurredAt = Math.max(fenceOccurredAt ?? fence, fence);
 		if (isPiRunSettlement(observation) && observation.turnId) settledPiRunIds.add(observation.turnId);
@@ -303,6 +322,10 @@ export function compactProviderHookOrderObservations(
 		}
 		if (endsScopeActivation(observation)) activation += 1;
 	}
+	for (const index of latestClaudeToolIndices.values()) {
+		const scopeKey = scopeKeys[index];
+		if (scopeKey) retainedScopeKeys.add(scopeKey);
+	}
 	const compacted = observations.filter((observation, index) => {
 		if (!TOOL_ORDER_HOOK_EVENTS.has(observation.hookEventName?.toLowerCase() ?? "")) return true;
 		const fenced =
@@ -310,6 +333,13 @@ export function compactProviderHookOrderObservations(
 				? observation.turnId !== null && settledPiRunIds.has(observation.turnId)
 				: fenceOccurredAt !== null && observation.occurredAt <= fenceOccurredAt;
 		if (!fenced) return true;
+		if (
+			observation.source === "claude" &&
+			observation.toolUseId &&
+			latestClaudeToolIndices.get(observation.toolUseId) === index
+		) {
+			return true;
+		}
 		const scopeKey = scopeKeys[index] ?? null;
 		if (!scopeKey || retainedScopeKeys.has(scopeKey)) return false;
 		retainedScopeKeys.add(scopeKey);
@@ -349,6 +379,7 @@ export function restoreHookEventOrderState(input: {
 	recentDeliveryIds: readonly string[];
 	outstandingInteraction: RuntimeTaskOutstandingInteraction | null;
 	providerSessionId?: string | null;
+	localForegroundInterrupt?: RuntimeTaskLocalForegroundInterrupt | null;
 }): HookEventOrderState {
 	const state = createHookEventOrderState(input.sessionInstanceId);
 	for (const observation of input.observations) {
@@ -358,6 +389,25 @@ export function restoreHookEventOrderState(input: {
 		commitHookEventOrder(state, hookInput, { advanceTurn: true });
 	}
 	state.codexSessionId ??= input.providerSessionId ?? null;
+	const interrupt = input.localForegroundInterrupt;
+	if (interrupt?.sessionInstanceId === input.sessionInstanceId) {
+		state.foregroundInterrupt = { ...interrupt, toolUseIds: [...interrupt.toolUseIds] };
+		if (interrupt.provider === "claude") {
+			// Apply only the tools captured at Ctrl-C, never newer anonymous tools
+			// admitted by a later native prompt. Prior receipts remain native truth.
+			for (const toolUseId of interrupt.toolUseIds) {
+				const pending = state.claudePendingToolUses.get(toolUseId);
+				state.claudePendingToolUses.delete(toolUseId);
+				if (!state.claudeCompletedToolUses.has(toolUseId)) {
+					state.claudeCompletedToolUses.set(toolUseId, {
+						promptId: pending ? pending.promptId : interrupt.scopeId,
+						toolName: pending?.toolName ?? null,
+						occurredAt: Math.max(pending?.occurredAt ?? interrupt.occurredAt, interrupt.occurredAt),
+					});
+				}
+			}
+		}
+	}
 	const restoredAt = Date.now();
 	for (const deliveryId of input.recentDeliveryIds) {
 		state.processedDeliveryIds.set(deliveryId, restoredAt);
@@ -469,7 +519,17 @@ function evaluatePiHookEventOrder(state: HookEventOrderState, input: RuntimeHook
 		state.activePiRunLatestOccurredAt !== null &&
 		occurredAt <= state.activePiRunLatestOccurredAt
 	) {
-		return { accepted: false, reason: "stale_turn" };
+		// Pi may immediately dequeue another run in the same millisecond as
+		// agent_end or settlement. Only its captured producer ordinal proves
+		// that succession; a timestamp tie or a tool event alone does not.
+		const provenSuccessor =
+			occurredAt === state.activePiRunLatestOccurredAt &&
+			hookEventName === "agentstart" &&
+			input.event === "to_in_progress" &&
+			state.activePiRunBoundaryDeliveryId !== null &&
+			input.delivery !== undefined &&
+			isLaterSameProducerHookDelivery(input.delivery.id, state.activePiRunBoundaryDeliveryId);
+		if (!provenSuccessor) return { accepted: false, reason: "stale_turn" };
 	}
 	if (runId && runId === state.activePiRunId && state.activePiRunCompleted) {
 		return { accepted: false, reason: "completed_turn" };
@@ -624,6 +684,164 @@ export function recordHookUserSubmission(
 	}
 }
 
+type ForegroundHook = Pick<RuntimeHookIngestRequest, "event" | "metadata">;
+
+function foregroundScopeId(input: ForegroundHook): string | null {
+	return optionalIdentity(
+		input.metadata?.source?.trim().toLowerCase() === "claude" ? input.metadata.promptId : input.metadata?.turnId,
+	);
+}
+
+function isForegroundStart(input: ForegroundHook): boolean {
+	const name = input.metadata?.hookEventName?.trim().toLowerCase();
+	return input.metadata?.source?.trim().toLowerCase() === "pi" ? name === "agentstart" : name === "userpromptsubmit";
+}
+
+function isForegroundSettlement(input: ForegroundHook): boolean {
+	if (input.event !== "to_review") return false;
+	const name = input.metadata?.hookEventName?.trim().toLowerCase() ?? "";
+	return name === "agentsettled" || isCodexTurnEnd(name);
+}
+
+function claudeBackgroundWakeExpected(state: HookEventOrderState, promptId: string | null): boolean {
+	return promptId
+		? state.claudeUnboundedBackgroundPromptIds.has(promptId)
+		: state.claudeUnboundedBackgroundWorkWithoutPrompt;
+}
+
+function closeClaudePendingTools(state: HookEventOrderState, promptId: string | null, occurredAt: number): void {
+	for (const [toolUseId, pending] of state.claudePendingToolUses) {
+		if (pending.promptId && pending.promptId !== promptId) continue;
+		state.claudePendingToolUses.delete(toolUseId);
+		state.claudeCompletedToolUses.set(toolUseId, {
+			...pending,
+			occurredAt: Math.max(pending.occurredAt, occurredAt),
+		});
+	}
+	pruneClaudeToolObservations(state.claudeCompletedToolUses, occurredAt);
+}
+
+/**
+ * Ctrl-C closes the known foreground generation, not the provider session.
+ * Keep native terminal settlement admissible and leave subagent lanes alone.
+ * An unseen identity with a later capture time remains intrinsically ambiguous.
+ */
+export function recordForegroundInterrupt(
+	state: HookEventOrderState | null,
+	provider: string | null,
+	occurredAt = Date.now(),
+): void {
+	if (!state || (provider !== "claude" && provider !== "codex" && provider !== "pi")) return;
+	const scopeId = activeForegroundScopeId(state, provider);
+	state.foregroundInterrupt = {
+		sessionInstanceId: state.sessionInstanceId,
+		provider,
+		scopeId,
+		occurredAt,
+		toolUseIds:
+			provider === "claude"
+				? [...state.claudePendingToolUses]
+						.filter(([, tool]) => !tool.promptId || tool.promptId === scopeId)
+						.map(([toolUseId]) => toolUseId)
+				: provider === "codex"
+					? [...state.codexPendingToolUses.keys()]
+					: [],
+		awaitingNativeStart: true,
+	};
+	if (provider === "claude") closeClaudePendingTools(state, scopeId, occurredAt);
+}
+
+/** Also used by the controller so direct callers cannot bypass a local interrupt. */
+export function evaluateForegroundInterruptOrder(
+	state: HookEventOrderState | null,
+	input: ForegroundHook & { occurredAt?: number },
+): HookEventOrderDecision {
+	const fence = state?.foregroundInterrupt;
+	if (
+		!state ||
+		!fence ||
+		(fence.provider !== "pi" && input.metadata?.providerAgentId?.trim()) ||
+		input.metadata?.source?.trim().toLowerCase() !== fence.provider
+	) {
+		return { accepted: true };
+	}
+	const occurredAt = input.occurredAt;
+	if (occurredAt === undefined || occurredAt <= fence.occurredAt) {
+		return { accepted: false, reason: "stale_observation" };
+	}
+	const scopeId = foregroundScopeId(input);
+	const backgroundWake = fence.provider === "claude" && claudeBackgroundWakeExpected(state, scopeId);
+	// Local cancellation is not a synthetic Stop: the provider still owns its
+	// first completion, error, or abort. Once newer native work superseded that
+	// generation, its old completion cannot overwrite the newer owner either.
+	if (isForegroundSettlement(input)) {
+		if (
+			!fence.awaitingNativeStart &&
+			scopeId &&
+			scopeId === fence.scopeId &&
+			activeForegroundScopeId(state, fence.provider) !== scopeId &&
+			!backgroundWake
+		) {
+			return { accepted: false, reason: "interrupted_foreground" };
+		}
+		return { accepted: true };
+	}
+	if (isForegroundNavigation(input, state.codexSessionId)) return { accepted: true };
+	const toolUseId = optionalIdentity(input.metadata?.toolUseId);
+	if (toolUseId && fence.toolUseIds.includes(toolUseId)) return { accepted: false, reason: "completed_tool" };
+	if (!backgroundWake && scopeId && scopeId === fence.scopeId) {
+		return { accepted: false, reason: "interrupted_foreground" };
+	}
+	if (!backgroundWake && !scopeId && fence.awaitingNativeStart && !isForegroundStart(input)) {
+		return { accepted: false, reason: "interrupted_foreground" };
+	}
+	return { accepted: true };
+}
+
+function activeForegroundScopeId(
+	state: HookEventOrderState,
+	provider: RuntimeTaskLocalForegroundInterrupt["provider"],
+): string | null {
+	return provider === "claude"
+		? state.activeClaudePromptId
+		: provider === "codex"
+			? state.activeTurnId
+			: state.activePiRunId;
+}
+
+function isForegroundNavigation(input: ForegroundHook, providerSessionId: string | null | undefined): boolean {
+	const incomingSessionId = optionalIdentity(input.metadata?.sessionId);
+	return Boolean(
+		providerSessionId &&
+			incomingSessionId &&
+			incomingSessionId !== providerSessionId &&
+			isCodexForegroundSessionStart(input.metadata),
+	);
+}
+
+/** Advance negative evidence only after the reducer admitted native evidence. */
+export function advanceLocalForegroundInterrupt(
+	interrupt: RuntimeTaskLocalForegroundInterrupt | null | undefined,
+	input: ForegroundHook,
+	providerSessionId: string | null | undefined,
+): RuntimeTaskLocalForegroundInterrupt | null | undefined {
+	if (
+		!interrupt ||
+		input.metadata?.providerAgentId?.trim() ||
+		input.metadata?.source?.trim().toLowerCase() !== interrupt.provider
+	)
+		return interrupt;
+	if (isForegroundNavigation(input, providerSessionId)) return null;
+	const scopeId = foregroundScopeId(input);
+	if (
+		interrupt.awaitingNativeStart &&
+		(isForegroundStart(input) || (scopeId && scopeId !== interrupt.scopeId && !isForegroundSettlement(input)))
+	) {
+		return { ...interrupt, awaitingNativeStart: false };
+	}
+	return interrupt;
+}
+
 /** Records a bare Escape written to Claude and the foreground prompt it can interrupt. */
 export function recordClaudeInterruptKey(state: HookEventOrderState | null, occurredAt = Date.now()): void {
 	if (!state) return;
@@ -652,19 +870,14 @@ export function retireInterruptedClaudePrompt(state: HookEventOrderState | null,
 	if (!state) return;
 	const promptId = state.claudeInterruptKey?.promptId ?? state.activeClaudePromptId;
 	state.claudeInterruptKey = null;
-	for (const [toolUseId, pending] of state.claudePendingToolUses) {
-		if (promptId && pending.promptId && pending.promptId !== promptId) continue;
-		state.claudePendingToolUses.delete(toolUseId);
-		state.claudeCompletedToolUses.set(toolUseId, { ...pending, occurredAt: Math.max(pending.occurredAt, now) });
-	}
-	const backgroundWakeExpected = promptId
-		? state.claudeUnboundedBackgroundPromptIds.has(promptId)
-		: state.claudeUnboundedBackgroundWorkWithoutPrompt;
+	closeClaudePendingTools(state, promptId, now);
+	const backgroundWakeExpected = claudeBackgroundWakeExpected(state, promptId);
 	if (backgroundWakeExpected) return;
 	if (promptId) state.retiredClaudePromptIds.set(promptId, now);
 	if (!promptId || state.activeClaudePromptId === promptId) {
 		state.activeClaudePromptId = null;
 		state.activeClaudePromptLatestOccurredAt = null;
+		state.claudeForegroundPromptActive = false;
 	}
 	state.claudeAwaitingPromptAfterInterrupt = true;
 }
@@ -700,6 +913,8 @@ export function evaluateHookEventOrder(
 	if (!state) {
 		return { accepted: true };
 	}
+	const interruptOrder = evaluateForegroundInterruptOrder(state, { ...input, occurredAt: input.delivery?.occurredAt });
+	if (!interruptOrder.accepted) return interruptOrder;
 	if (isPiInput(input)) {
 		return evaluatePiHookEventOrder(state, input);
 	}
@@ -725,6 +940,16 @@ export function evaluateHookEventOrder(
 		// would otherwise reject the hooks that resolve that wait. Whether a wait may
 		// open at all is decided by the reducer from the foreground lifecycle.
 		if (subagentAgentId) return evaluateSubagentHookOrder(state.subagents, input, subagentAgentId);
+		if (
+			promptId &&
+			state.claudeUnboundedBackgroundPromptIds.has(promptId) &&
+			state.claudeForegroundPromptActive &&
+			promptId !== state.activeClaudePromptId
+		) {
+			// A wake from an older background prompt cannot take ownership from a
+			// newer foreground prompt, including one whose id Claude omitted.
+			return { accepted: false, reason: "stale_prompt" };
+		}
 		if (
 			(hookEventName === "stop" || hookEventName === "stopfailure") &&
 			!promptId &&
@@ -760,6 +985,18 @@ export function evaluateHookEventOrder(
 			if (completed) {
 				return { accepted: false, reason: "completed_tool" };
 			}
+		}
+		if (
+			!promptId &&
+			state.latestClaudeRootCompletionOccurredAt !== null &&
+			!state.claudeUnboundedBackgroundWorkWithoutPrompt &&
+			(hookEventName === "posttooluse" || hookEventName === "posttoolusefailure") &&
+			(!toolUseId || !state.claudePendingToolUses.has(toolUseId))
+		) {
+			// A prompt-less completion cannot prove a new activation after Stop.
+			// Require its native tool predecessor even if an older receipt was
+			// evicted from the bounded history.
+			return { accepted: false, reason: "completed_tool" };
 		}
 		if (hookEventName === "permissionrequest") {
 			for (const completed of state.claudeCompletedToolUses.values()) {
@@ -826,6 +1063,13 @@ export function evaluateHookEventOrder(
 	}
 	const turnId = input.metadata?.turnId?.trim() || null;
 	if (!turnId) {
+		if (
+			hookEventName === "posttooluse" &&
+			state.latestCodexRootCompletionOccurredAt !== null &&
+			!state.codexPendingToolUses.has(normalizedToolUseId(input) ?? "")
+		) {
+			return { accepted: false, reason: "completed_tool" };
+		}
 		if (
 			isCodexTurnEnd(hookEventName) &&
 			state.activeTurnLatestOccurredAt !== null &&
@@ -920,6 +1164,8 @@ export function commitHookEventOrder(
 	if (!options.advanceTurn) {
 		return;
 	}
+	state.foregroundInterrupt =
+		advanceLocalForegroundInterrupt(state.foregroundInterrupt, input, state.codexSessionId) ?? null;
 	if (isPiInput(input)) {
 		const occurredAt = input.delivery?.occurredAt ?? now;
 		const runId = input.metadata?.turnId?.trim() || null;
@@ -928,6 +1174,7 @@ export function commitHookEventOrder(
 			state.activePiRunId = runId;
 			state.activePiRunLatestOccurredAt = occurredAt;
 			state.activePiRunCompleted = false;
+			state.activePiRunBoundaryDeliveryId = null;
 		} else if (runId) {
 			state.activePiRunLatestOccurredAt = Math.max(state.activePiRunLatestOccurredAt ?? occurredAt, occurredAt);
 		}
@@ -950,6 +1197,14 @@ export function commitHookEventOrder(
 		) {
 			state.activePiRunCompleted = true;
 		}
+		if (
+			runId === state.activePiRunId &&
+			(state.activePiRunCompleted ||
+				hookEventName === "agentend" ||
+				hookEventName === "agentsettledbackgroundpending")
+		) {
+			state.activePiRunBoundaryDeliveryId = input.delivery?.id ?? null;
+		}
 		pruneTrackedIds(state.retiredPiRunIds, now);
 		pruneTrackedIds(state.completedPiToolUseIds, occurredAt);
 		return;
@@ -968,14 +1223,29 @@ export function commitHookEventOrder(
 			state.claudeInterruptKey = null;
 			state.claudeAwaitingPromptAfterInterrupt = false;
 			state.claudeUnboundedBackgroundWorkWithoutPrompt = false;
+			state.claudeForegroundPromptActive = true;
+			if (!promptId) {
+				const previousPromptId = state.activeClaudePromptId;
+				if (previousPromptId && !state.claudeUnboundedBackgroundPromptIds.has(previousPromptId)) {
+					state.retiredClaudePromptIds.set(previousPromptId, now);
+				}
+				state.activeClaudePromptId = null;
+				state.activeClaudePromptLatestOccurredAt = occurredAt;
+			}
 		}
 		if (promptId) {
 			if (
 				state.activeClaudePromptId !== promptId &&
 				(state.activeClaudePromptLatestOccurredAt === null || occurredAt > state.activeClaudePromptLatestOccurredAt)
 			) {
-				if (state.activeClaudePromptId) state.retiredClaudePromptIds.set(state.activeClaudePromptId, now);
+				if (
+					state.activeClaudePromptId &&
+					!state.claudeUnboundedBackgroundPromptIds.has(state.activeClaudePromptId)
+				) {
+					state.retiredClaudePromptIds.set(state.activeClaudePromptId, now);
+				}
 				state.activeClaudePromptId = promptId;
+				state.claudeForegroundPromptActive = true;
 				state.activeClaudePromptLatestOccurredAt = occurredAt;
 				state.claudeAwaitingPromptAfterInterrupt = false;
 			} else if (state.activeClaudePromptId === promptId) {
@@ -987,6 +1257,8 @@ export function commitHookEventOrder(
 		}
 		const toolUseId = normalizedToolUseId(input);
 		if (hookEventName === "pretooluse" && toolUseId) {
+			// Anonymous tool activity may be a wake of the previous background
+			// prompt. Only UserPromptSubmit establishes a new anonymous owner.
 			state.claudePendingToolUses.set(toolUseId, {
 				promptId,
 				toolName: normalizedToolName(input),
@@ -1021,11 +1293,12 @@ export function commitHookEventOrder(
 			if (!promptId || state.activeClaudePromptId === promptId) {
 				state.activeClaudePromptId = null;
 				state.activeClaudePromptLatestOccurredAt = null;
+				state.claudeForegroundPromptActive = false;
 			}
-			for (const [pendingToolUseId, pending] of state.claudePendingToolUses) {
-				if (!completedPromptId || pending.promptId === completedPromptId) {
-					state.claudePendingToolUses.delete(pendingToolUseId);
-				}
+			if (!input.metadata?.unboundedBackgroundWorkPending) {
+				closeClaudePendingTools(state, completedPromptId, occurredAt);
+				state.claudeUnboundedBackgroundWorkWithoutPrompt = false;
+				if (completedPromptId) state.claudeUnboundedBackgroundPromptIds.delete(completedPromptId);
 			}
 		}
 		if (hookEventName === "elicitationresult") {

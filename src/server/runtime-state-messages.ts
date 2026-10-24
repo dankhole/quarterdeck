@@ -33,17 +33,22 @@ import type { ProjectOrganization } from "../core/api/project-organization.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../core/api/runtime-protocol";
 
 /**
- * Browsers never read provider delivery IDs or ordering observations; they are
- * durable-only receipts that `sessions.json` keeps for hook deduplication and
- * ordering hydration. Up to 640 entries per task would otherwise ride along on
- * every session delta and project-state payload. The fields stay present and
- * empty so the wire shape is unchanged.
+ * Browsers never read provider ordering receipts or local interrupt fences;
+ * sessions.json retains that content-free evidence for ordering hydration.
+ * Strip the optional fence and keep the older receipt fields present and empty
+ * so legacy browser wire shapes remain unchanged.
  */
 export function toBrowserTaskSessionSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSessionSummary {
-	if (summary.recentProviderHookDeliveryIds.length === 0 && summary.recentProviderHookOrderObservations.length === 0) {
+	if (
+		summary.recentProviderHookDeliveryIds.length === 0 &&
+		summary.recentProviderHookOrderObservations.length === 0 &&
+		summary.localForegroundInterrupt === undefined
+	) {
 		return summary;
 	}
-	return { ...summary, recentProviderHookDeliveryIds: [], recentProviderHookOrderObservations: [] };
+	const browserSummary = { ...summary, recentProviderHookDeliveryIds: [], recentProviderHookOrderObservations: [] };
+	delete browserSummary.localForegroundInterrupt;
+	return browserSummary;
 }
 
 function toBrowserTaskSessionSummaries(summaries: RuntimeTaskSessionSummary[]): RuntimeTaskSessionSummary[] {

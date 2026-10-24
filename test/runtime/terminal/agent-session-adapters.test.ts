@@ -1462,7 +1462,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(extensionSource).toContain('pi.on("project_trust"');
 		expect(extensionSource).not.toContain("PermissionRequest");
 		expect(extensionSource).toContain("enqueueDurableHook");
-		expect(extensionSource).toContain("detached: !waitForExit");
+		expect(extensionSource).toContain("publishReliableHook(request)");
+		expect(extensionSource).toContain("detached: true");
+		expect(extensionSource).not.toContain("waitForExit");
 		expect(extensionSource).toContain(QUARTERDECK_PI_HOOK_COMMAND_ENV);
 		expect(extensionSource).not.toContain("\\${");
 		expect(launch.env[QUARTERDECK_PI_HOOK_HTTP_URL_ENV]).toBeUndefined();

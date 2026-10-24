@@ -59,21 +59,22 @@ export function scheduleInterruptRecovery(
 	if (!entry.active) {
 		return;
 	}
-	clearInterruptRecoveryTimer(entry.active);
+	const active = entry.active;
+	clearInterruptRecoveryTimer(active);
 	ctx.onRecoveryScheduled?.(signal);
 	const taskId = entry.taskId;
-	entry.active.interruptRecoveryStartedAt = Date.now();
-	entry.active.lastInterruptAt = entry.active.interruptRecoveryStartedAt;
-	entry.active.interruptRecoverySignal = signal;
+	active.interruptRecoveryStartedAt = Date.now();
+	active.lastInterruptAt = active.interruptRecoveryStartedAt;
+	active.interruptRecoverySignal = signal;
 	const result = ctx.applyTransitionEvent(entry, { type: "interrupt.recovery" });
 	ctx.onRecoveryApplied?.(signal, result);
-	entry.active.interruptRecoveryTimer = setTimeout(() => {
+	active.interruptRecoveryTimer = setTimeout(() => {
 		const current = ctx.getEntry(taskId);
-		if (!current?.active) {
+		if (current !== entry || current.active !== active) {
 			return;
 		}
-		current.active.interruptRecoveryTimer = null;
-		current.active.interruptRecoveryStartedAt = null;
-		current.active.interruptRecoverySignal = null;
+		active.interruptRecoveryTimer = null;
+		active.interruptRecoveryStartedAt = null;
+		active.interruptRecoverySignal = null;
 	}, INTERRUPT_RECOVERY_DELAY_MS);
 }

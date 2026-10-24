@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeHookIngestRequest } from "../../src/core";
 import * as runtimeStateHome from "../../src/core/runtime-state-home";
+import { createHookDeliveryIdGenerator } from "../../src/hook-delivery-order.js";
 import {
 	abandonHookTransition,
 	createHookTransitionOutboxReplayer,
@@ -568,6 +569,171 @@ describe("hook transition outbox", () => {
 			"00000000-0000-4000-8000-000000000001",
 			"00000000-0000-4000-8000-000000000002",
 		]);
+	});
+
+	it("replays same-millisecond Pi settlement before the next start across hexadecimal carries", async () => {
+		const nextId = createHookDeliveryIdGenerator();
+		const ids = Array.from({ length: 258 }, () => nextId());
+		const inputs = [15, 16, 255, 256].map((ordinal) => ({
+			...request(ordinal, 123),
+			event: ordinal % 2 ? ("to_review" as const) : ("to_in_progress" as const),
+			metadata: {
+				source: "pi",
+				sessionInstanceId: "process-1",
+				hookEventName: ordinal % 2 ? "AgentSettled" : "AgentStart",
+				promptId: `run-${ordinal}`,
+				finalMessage: ordinal % 2 ? `retained reply ${ordinal}` : null,
+			},
+			delivery: { id: ids[ordinal] ?? "", occurredAt: 123 },
+		}));
+		for (const input of [...inputs].reverse()) await enqueueHookTransition(input);
+		const ingest = vi.fn(async (_input: RuntimeHookIngestRequest) => ({ ok: true as const }));
+		const replayer = createHookTransitionOutboxReplayer({ ingest });
+		try {
+			await replayer.replayOnce();
+			expect(ingest.mock.calls.map(([input]) => input.delivery)).toEqual(inputs.map((input) => input.delivery));
+			expect(ingest.mock.calls[0]?.[0].metadata?.finalMessage).toBe("retained reply 15");
+			expect(ingest.mock.calls[2]?.[0].metadata?.finalMessage).toBe("retained reply 255");
+			expect(await loadPendingHookTransitions()).toEqual([]);
+		} finally {
+			await replayer.close();
+		}
+	});
+
+	it("holds an abandoned Pi successor behind an active producer head while another producer passes", async () => {
+		const nextId = createHookDeliveryIdGenerator();
+		const headId = nextId();
+		const laterId = nextId();
+		const unrelatedId = createHookDeliveryIdGenerator()();
+		for (const id of [headId, laterId, unrelatedId]) {
+			await enqueueHookTransition({
+				...request(1, 123),
+				metadata: { source: "pi", sessionInstanceId: "process-1", hookEventName: "AgentStart" },
+				delivery: { id, occurredAt: 123 },
+			});
+		}
+		await abandonHookTransition(laterId);
+		await abandonHookTransition(unrelatedId);
+		const ingest = vi.fn(async (_input: RuntimeHookIngestRequest) => ({ ok: true as const }));
+		const onReplayPassCompleted = vi.fn();
+		const replayer = createHookTransitionOutboxReplayer({ ingest, intervalMs: 60_000, onReplayPassCompleted });
+		try {
+			replayer.start();
+			await vi.waitFor(() => expect(onReplayPassCompleted).toHaveBeenCalledOnce());
+			expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([unrelatedId]);
+			expect(replayer.getDiagnosticSnapshot()).toMatchObject({ pendingRecords: 2, lastAttempted: 1 });
+			await replayer.close();
+			await replayer.replayOnce();
+			expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([unrelatedId, headId, laterId]);
+		} finally {
+			await replayer.close();
+		}
+	});
+
+	it.each(["rejected", "thrown", "ack_failed"] as const)(
+		"blocks later same-producer Pi replay after a %s head without blocking other producers",
+		async (failure) => {
+			const nextId = createHookDeliveryIdGenerator();
+			const headId = nextId();
+			const laterId = nextId();
+			const unrelatedId = createHookDeliveryIdGenerator()();
+			for (const [id, occurredAt] of [
+				[headId, 100],
+				[laterId, 100],
+				[unrelatedId, 101],
+			] as const) {
+				await enqueueHookTransition({
+					...request(1, occurredAt),
+					metadata: { source: "pi", sessionInstanceId: "process-1", hookEventName: "AgentStart" },
+					delivery: { id, occurredAt },
+				});
+			}
+			const ingest = vi.fn(async (input: RuntimeHookIngestRequest) => {
+				if (input.delivery?.id !== headId) return { ok: true };
+				if (failure === "thrown") throw new Error("synthetic ingestion failure");
+				return { ok: failure === "ack_failed" };
+			});
+			if (failure === "ack_failed")
+				vi.spyOn(fsPromises, "rm").mockRejectedValueOnce(new Error("synthetic ack failure"));
+			const replayer = createHookTransitionOutboxReplayer({ ingest });
+			try {
+				await replayer.replayOnce();
+				expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([headId, unrelatedId]);
+				expect((await loadPendingHookTransitions()).map((record) => record.request.delivery.id)).toEqual([
+					headId,
+					laterId,
+				]);
+				ingest.mockResolvedValue({ ok: true });
+				await replayer.replayOnce();
+				expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([
+					headId,
+					unrelatedId,
+					headId,
+					laterId,
+				]);
+				expect(await loadPendingHookTransitions()).toEqual([]);
+			} finally {
+				await replayer.close();
+			}
+		},
+	);
+
+	it("does not overtake a pending producer predecessor after the wall clock moves backwards", async () => {
+		const nextId = createHookDeliveryIdGenerator();
+		const headId = nextId();
+		const laterId = nextId();
+		for (const [id, occurredAt] of [
+			[headId, 200],
+			[laterId, 100],
+		] as const) {
+			await enqueueHookTransition({
+				...request(1, occurredAt),
+				metadata: { source: "pi", sessionInstanceId: "process-1", hookEventName: "AgentStart" },
+				delivery: { id, occurredAt },
+			});
+		}
+		const ingest = vi.fn(async (_input: RuntimeHookIngestRequest) => ({ ok: false }));
+		const replayer = createHookTransitionOutboxReplayer({ ingest });
+		try {
+			await replayer.replayOnce();
+			expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([headId]);
+			ingest.mockResolvedValue({ ok: true });
+			await replayer.replayOnce();
+			await replayer.replayOnce();
+			expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([headId, headId, laterId]);
+			expect(await loadPendingHookTransitions()).toEqual([]);
+		} finally {
+			await replayer.close();
+		}
+	});
+
+	it.each([
+		{ source: "codex", orderedIds: true },
+		{ source: "claude", orderedIds: true },
+		{ source: "pi", orderedIds: false },
+	])("preserves independent replay for non-Pi or legacy IDs: %o", async ({ source, orderedIds }) => {
+		const nextId = createHookDeliveryIdGenerator();
+		const headId = orderedIds ? nextId() : deliveryId(1);
+		const laterId = orderedIds ? nextId() : deliveryId(2);
+		for (const [id, occurredAt] of [
+			[headId, 100],
+			[laterId, 101],
+		] as const) {
+			await enqueueHookTransition({
+				...request(1, occurredAt),
+				metadata: { ...request(1).metadata, source },
+				delivery: { id, occurredAt },
+			});
+		}
+		const ingest = vi.fn(async (input: RuntimeHookIngestRequest) => ({ ok: input.delivery?.id !== headId }));
+		const replayer = createHookTransitionOutboxReplayer({ ingest });
+		try {
+			await replayer.replayOnce();
+			expect(ingest.mock.calls.map(([input]) => input.delivery?.id)).toEqual([headId, laterId]);
+			expect((await loadPendingHookTransitions()).map((record) => record.request.delivery.id)).toEqual([headId]);
+		} finally {
+			await replayer.close();
+		}
 	});
 
 	it("removes successfully replayed transitions", async () => {

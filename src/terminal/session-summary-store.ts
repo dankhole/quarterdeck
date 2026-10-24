@@ -16,7 +16,7 @@ import {
 	type RuntimeTaskProviderHookOrderObservation,
 	type RuntimeTaskSessionSummary,
 } from "../core";
-import { compactProviderHookOrderObservations } from "./hook-event-order";
+import { advanceLocalForegroundInterrupt, compactProviderHookOrderObservations } from "./hook-event-order";
 import { deriveStartupRecoveryPolicy } from "./session-startup-recovery-policy";
 import {
 	inferLegacyOutstandingInteraction,
@@ -27,7 +27,7 @@ import {
 
 const storeLog = createTaggedLogger("session-store");
 const MAX_RECENT_PROVIDER_HOOK_DELIVERY_IDS = 128;
-// Compaction keeps only open-turn tool history, so this bounds one long turn.
+// Bounds open-turn history plus retained Claude tool identities.
 // Evicting the previous turn's fence weakens restart replay, so keep it wide.
 const MAX_RECENT_PROVIDER_HOOK_ORDER_OBSERVATIONS = 512;
 
@@ -169,6 +169,14 @@ export function cloneSummary(summary: RuntimeTaskSessionSummary): RuntimeTaskSes
 		...summary,
 		recentProviderHookDeliveryIds: [...summary.recentProviderHookDeliveryIds],
 		recentProviderHookOrderObservations: summary.recentProviderHookOrderObservations.map((entry) => ({ ...entry })),
+		...(summary.localForegroundInterrupt
+			? {
+					localForegroundInterrupt: {
+						...summary.localForegroundInterrupt,
+						toolUseIds: [...summary.localForegroundInterrupt.toolUseIds],
+					},
+				}
+			: {}),
 		latestHookActivity: summary.latestHookActivity ? { ...summary.latestHookActivity } : null,
 		outstandingInteraction: summary.outstandingInteraction ? { ...summary.outstandingInteraction } : null,
 		...(summary.subagentInteractions
@@ -396,12 +404,18 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		}
 		const transition = reduceSessionTransition(entry, event);
 		const timestamp = now();
+		const hookMetadata = event.type === "provider.hook" ? event.metadata : undefined;
+		const metadataMode = transition.hookMetadataMode ?? (hookMetadata ? "apply" : "preserve");
+		const localForegroundInterrupt =
+			event.type === "provider.hook" && (metadataMode === "apply" || transition.hookOrderingMode === "advance")
+				? advanceLocalForegroundInterrupt(entry.localForegroundInterrupt, event, entry.resumeSessionId)
+				: entry.localForegroundInterrupt;
+		const localInterruptChanged = localForegroundInterrupt !== entry.localForegroundInterrupt;
 		const semanticSummary: RuntimeTaskSessionSummary = {
 			...entry,
 			...transition.patch,
+			...(localInterruptChanged ? { localForegroundInterrupt } : {}),
 		};
-		const hookMetadata = event.type === "provider.hook" ? event.metadata : undefined;
-		const metadataMode = transition.hookMetadataMode ?? (hookMetadata ? "apply" : "preserve");
 		const metadataForPatch =
 			metadataMode === "apply"
 				? hookMetadata
@@ -411,7 +425,7 @@ export class InMemorySessionSummaryStore implements SessionSummaryStore {
 		const metadataPatch = metadataForPatch
 			? buildHookMetadataPatch(taskId, semanticSummary, metadataForPatch, timestamp)
 			: null;
-		if (!transition.changed && !metadataPatch) {
+		if (!transition.changed && !metadataPatch && !localInterruptChanged) {
 			return { ...transition, summary: cloneSummary(entry) };
 		}
 		const updated = normalizeRuntimeTaskSessionSummary({

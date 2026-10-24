@@ -256,14 +256,17 @@ describe("InMemorySessionSummaryStore interaction persistence", () => {
 		});
 
 		expect(store.getSummary("task-1")?.recentProviderHookOrderObservations).toEqual(toolReceipts);
-		expect(
-			store.getSummary("task-2")?.recentProviderHookOrderObservations.map((entry) => entry.hookEventName),
-		).toEqual(["Stop"]);
+		const retainedTools = toolReceipts.filter((entry) => entry.hookEventName === "PostToolUse");
+		expect(store.getSummary("task-2")?.recentProviderHookOrderObservations).toEqual([
+			...retainedTools,
+			receipt(301, "Stop", "to_review"),
+		]);
 
-		// A prompt-less Stop keeps one tool receipt so replay still retires prompt-1.
+		// Claude can omit prompt identity on a later tool hook. Retain one
+		// content-free receipt per tool, including after a prompt-less Stop.
 		store.recordProviderHookReceipt("task-1", { ...receipt(301, "Stop", "to_review"), promptId: null });
 		expect(store.getSummary("task-1")?.recentProviderHookOrderObservations.map((entry) => entry.deliveryId)).toEqual([
-			toolReceipts[0]?.deliveryId,
+			...retainedTools.map((entry) => entry.deliveryId),
 			receipt(301, "Stop").deliveryId,
 		]);
 	});

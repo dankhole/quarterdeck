@@ -8,6 +8,7 @@ import { runtimeHookIngestRequestSchema } from "./core/api/task-session.js";
 import { diagnosticErrorClassOf } from "./core/diagnostic-error-class.js";
 import { createTaggedLogger } from "./core/runtime-logger.js";
 import { isNodeError } from "./fs/node-error.js";
+import { compareSameProducerHookDeliveries, getHookDeliveryProducerId } from "./hook-delivery-order.js";
 import {
 	abandonHookTransition,
 	acknowledgeHookTransition,
@@ -66,6 +67,19 @@ function isLiveReplayCandidate(record: PersistedHookTransition, now: number, min
 	// A future enqueue time (clock moved backwards) cannot prove a live writer.
 	const ageMs = now - record.enqueuedAt;
 	return ageMs < 0 || ageMs >= minRecordAgeMs;
+}
+
+function piReplayProducerKey(record: PersistedHookTransition): string | null {
+	if (record.request.metadata?.source?.trim().toLowerCase() !== "pi") return null;
+	const producer = getHookDeliveryProducerId(record.request.delivery.id);
+	return producer
+		? JSON.stringify([
+				record.request.projectId,
+				record.request.taskId,
+				record.request.metadata.sessionInstanceId,
+				producer,
+			])
+		: null;
 }
 
 async function removeInvalidRecord(path: string, reason: string): Promise<void> {
@@ -245,7 +259,27 @@ export function createHookTransitionOutboxReplayer(deps: {
 			try {
 				const records = await loadPendingHookTransitions();
 				lastPendingRecords = records.map(diagnosticIdentity);
+				// Only recognized Pi producers have capture-order evidence. Keep each
+				// producer at its earliest unacknowledged record, even if its writer
+				// is still active or a clock adjustment reversed timestamp order.
+				const producerQueues = new Map<string, { ids: string[]; next: number }>();
 				for (const record of records) {
+					const key = piReplayProducerKey(record);
+					if (!key) continue;
+					let queue = producerQueues.get(key);
+					if (!queue) {
+						queue = { ids: [], next: 0 };
+						producerQueues.set(key, queue);
+					}
+					queue.ids.push(record.request.delivery.id);
+				}
+				for (const queue of producerQueues.values()) {
+					queue.ids.sort((left, right) => compareSameProducerHookDeliveries(left, right) ?? 0);
+				}
+				for (const record of records) {
+					const key = piReplayProducerKey(record);
+					const queue = key ? producerQueues.get(key) : undefined;
+					if (queue && queue.ids[queue.next] !== record.request.delivery.id) continue;
 					// Records a live writer may still be delivering stay pending for a later pass.
 					if (!isLiveReplayCandidate(record, scanStartedAt, minRecordAgeMs)) {
 						continue;
@@ -257,6 +291,7 @@ export function createHookTransitionOutboxReplayer(deps: {
 						const response = await deps.ingest(record.request);
 						if (response.ok) {
 							await acknowledgeHookTransition(record.request.delivery.id);
+							if (queue) queue.next += 1;
 							attempt.outcome = "acknowledged";
 							lastPendingRecords = lastPendingRecords.filter(
 								(candidate) => candidate.deliveryId !== identity.deliveryId,

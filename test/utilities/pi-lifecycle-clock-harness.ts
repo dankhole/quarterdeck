@@ -1,9 +1,15 @@
 import { EventEmitter } from "node:events";
+import { realpath } from "node:fs/promises";
+import http from "node:http";
 import { isAbsolute } from "node:path";
 import { createContext, Script } from "node:vm";
 
 import { type Mock, vi } from "vitest";
 
+import { appendMetadataFlags, buildHookIngestRequest } from "../../src/commands/hook-metadata";
+import type { RuntimeHookIngestRequest } from "../../src/core/api/task-session";
+import { createHookDeliveryIdGenerator } from "../../src/hook-delivery-order";
+import { HookPublicationUnavailableError } from "../../src/hook-reliable-delivery";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
@@ -14,14 +20,23 @@ export const PI_BACKGROUND_HOLD_MS = 60 * 60_000;
 const MANAGER_KEY = Symbol.for("pi-subagents:manager");
 
 type Handler = (event: Record<string, unknown>, context: LifecycleContext) => unknown;
-interface LifecycleContext {
-	ui: { notify: Mock<(message: string, type?: string) => void> };
-	sessionManager: { getSessionId(): string; getSessionFile(): string };
-	isIdle(): boolean;
+export interface LifecycleContext {
+	cwd?: string;
+	ui: { notify(message: string, type?: string): void };
+	sessionManager: { getSessionId(): string; getSessionFile?(): string | null };
+	isIdle?(): boolean;
 }
 
 export interface PiLifecycleClockHarness {
 	calls: string[][];
+	handlers: Map<string, Handler>;
+	publications: RuntimeHookIngestRequest[];
+	deliveries: RuntimeHookIngestRequest[];
+	abandoned: RuntimeHookIngestRequest[];
+	diagnostics: {
+		error: Mock<(message: string) => void>;
+		warn: Mock<(message: string) => void>;
+	};
 	records: Map<string, unknown>;
 	manager: {
 		getRecord: Mock<(id: string) => unknown>;
@@ -59,7 +74,17 @@ export function hookFlag(args: string[], flag: string): string | undefined {
  * Each VM owns its global registry, bus, environment, clock and hook queue.
  */
 export function createPiLifecycleClockHarness(
-	options: { bus?: boolean; registry?: unknown } = {},
+	options: {
+		bus?: boolean;
+		realClock?: boolean;
+		registry?: unknown;
+		deliveryRegistry?: Map<string, unknown>;
+		launchIdentity?: { projectId: string; taskId: string; sessionInstanceId: string };
+		runIdPrefix?: string;
+		publish?: (request: RuntimeHookIngestRequest) => Promise<void>;
+		deliver?: (request: RuntimeHookIngestRequest, signal: AbortSignal) => Promise<"deferred" | undefined>;
+		abandon?: (request: RuntimeHookIngestRequest) => Promise<void>;
+	} = {},
 ): PiLifecycleClockHarness {
 	let now = 1_000_000;
 	let nextTimerId = 0;
@@ -68,6 +93,10 @@ export function createPiLifecycleClockHarness(
 	const handlers = new Map<string, Handler>();
 	const listeners = new Map<string, Set<(payload: unknown) => void>>();
 	const calls: string[][] = [];
+	const publications: RuntimeHookIngestRequest[] = [];
+	const deliveries: RuntimeHookIngestRequest[] = [];
+	const abandoned: RuntimeHookIngestRequest[] = [];
+	const diagnostics = { error: vi.fn<(message: string) => void>(), warn: vi.fn<(message: string) => void>() };
 	const records = new Map<string, unknown>();
 	const getRecord = vi.fn((id: string) => records.get(id));
 	const manager: PiLifecycleClockHarness["manager"] = {
@@ -105,31 +134,69 @@ export function createPiLifecycleClockHarness(
 	};
 	const sandbox = createContext({
 		spawn,
-		randomUUID: () => `turn-${++nextRunId}`,
-		realpath: async (path: string) => path,
-		http: {},
+		buildHookIngestRequest,
+		createHookDeliveryIdGenerator,
+		HookPublicationUnavailableError,
+		publishReliableHook: async (request: RuntimeHookIngestRequest) => {
+			publications.push(request);
+			await options.publish?.(request);
+			calls.push(appendMetadataFlags(["ingest", "--event", request.event], request.metadata));
+			return request;
+		},
+		deliverPublishedHook: async (request: RuntimeHookIngestRequest, { signal }: { signal: AbortSignal }) => {
+			deliveries.push(request);
+			const status = await options.deliver?.(request, signal);
+			return { status: status ?? "acknowledged" };
+		},
+		abandonPublishedHook: async (request: RuntimeHookIngestRequest) => {
+			abandoned.push(request);
+			await options.abandon?.(request);
+		},
+		AbortController,
+		console: diagnostics,
+		randomUUID: () => `${options.runIdPrefix ?? "turn-"}${++nextRunId}`,
+		realpath,
+		http,
 		isAbsolute,
 		URL,
+		URLSearchParams,
 		Buffer,
-		process: { env: { [QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(["synthetic-hook", "notify"]) } },
+		process: {
+			env: {
+				...process.env,
+				[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(["synthetic-hook", "notify"]),
+				QUARTERDECK_HOOK_TASK_ID:
+					options.launchIdentity?.taskId ?? process.env.QUARTERDECK_HOOK_TASK_ID ?? "pi-task",
+				QUARTERDECK_HOOK_PROJECT_ID:
+					options.launchIdentity?.projectId ?? process.env.QUARTERDECK_HOOK_PROJECT_ID ?? "pi-project",
+				QUARTERDECK_HOOK_SESSION_INSTANCE_ID:
+					options.launchIdentity?.sessionInstanceId ??
+					process.env.QUARTERDECK_HOOK_SESSION_INSTANCE_ID ??
+					"pi-launch",
+			},
+		},
 		Date: class extends Date {
 			static now() {
 				return now;
 			}
 		},
-		setTimeout: (callback: () => void, delay: number) => {
-			const id = ++nextTimerId;
-			timers.set(id, { due: now + delay, callback });
-			return { id, unref() {} };
-		},
-		clearTimeout: (timer: { id: number }) => timers.delete(timer.id),
+		setTimeout: options.realClock
+			? setTimeout
+			: (callback: () => void, delay: number) => {
+					const id = ++nextTimerId;
+					timers.set(id, { due: now + delay, callback });
+					return { id, unref() {} };
+				},
+		clearTimeout: options.realClock ? clearTimeout : (timer: { id: number }) => timers.delete(timer.id),
 	});
 	Reflect.set(sandbox, MANAGER_KEY, options.registry === undefined ? manager : options.registry);
+	if (options.deliveryRegistry)
+		Reflect.set(sandbox, Symbol.for("quarterdeck:pi-hook-delivery:v1"), options.deliveryRegistry);
 	const source = buildPiLifecycleExtensionSource()
 		.replace(/^import .+;\r?\n/gm, "")
 		.replace("export default function quarterdeckLifecycle", "function quarterdeckLifecycle");
 	new Script(
-		`${source}\nglobalThis.initialize = quarterdeckLifecycle;\nglobalThis.drainHooks = () => durableHookQueue;`,
+		`${source}\nglobalThis.initialize = quarterdeckLifecycle;\nglobalThis.drainHooks = async () => { await deliveryState.publicationQueue; await deliveryState.durableHookQueue; if (shutdownPromise) await shutdownPromise; };`,
 		{
 			filename: "quarterdeck-lifecycle.emitted.js",
 		},
@@ -170,6 +237,11 @@ export function createPiLifecycleClockHarness(
 	}
 	return {
 		calls,
+		handlers,
+		publications,
+		deliveries,
+		abandoned,
+		diagnostics,
 		records,
 		manager,
 		bus,
@@ -189,9 +261,11 @@ export function createPiLifecycleClockHarness(
 			fire("session_start");
 			await drain();
 			calls.length = 0;
+			publications.length = 0;
+			deliveries.length = 0;
 		},
 		async dispose() {
-			fire("session_shutdown");
+			await fire("session_shutdown");
 			await drain();
 			timers.clear();
 		},

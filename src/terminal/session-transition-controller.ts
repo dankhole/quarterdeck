@@ -1,6 +1,11 @@
 import { createTaggedLogger, type RuntimeTaskSessionSummary } from "../core";
 import { stopWorkspaceTrustTimers } from "./claude-workspace-trust";
-import { canApplyClaudeRenderedInterruption, retireInterruptedClaudePrompt } from "./hook-event-order";
+import {
+	canApplyClaudeRenderedInterruption,
+	evaluateForegroundInterruptOrder,
+	recordForegroundInterrupt,
+	retireInterruptedClaudePrompt,
+} from "./hook-event-order";
 import { clearInterruptRecoveryTimer } from "./session-interrupt-recovery";
 import {
 	clearInitialWorkConfirmation,
@@ -101,11 +106,20 @@ export class SessionTransitionController {
 		if ((source !== "codex" && source !== "claude" && source !== "pi") || source !== active.agentId) {
 			return false;
 		}
-		// Claude subagent hooks (agent_id) are current-launch evidence only for
-		// their own keyed waits: the reducer confines them there, so they never
-		// prove foreground work, completion, or interrupt recovery.
+		// Codex children outlive the root turn. Its Ctrl-C capture-time fence
+		// cannot reject a child's already-captured completion: the reducer
+		// confines current main-session child hooks to their own keyed waits.
+		if (source === "codex" && event.metadata?.providerAgentId?.trim()) {
+			const foregroundSessionId =
+				entry.hookEventOrder?.codexSessionId ?? this.store.getSummary(entry.taskId)?.resumeSessionId;
+			return Boolean(foregroundSessionId && event.metadata.sessionId?.trim() === foregroundSessionId);
+		}
+		// Claude children end with the root and retain its timestamp fence.
 		const interruptStartedAt = active.lastInterruptAt ?? active.interruptRecoveryStartedAt;
-		return interruptStartedAt === null || (event.occurredAt !== undefined && event.occurredAt > interruptStartedAt);
+		if (interruptStartedAt !== null && (event.occurredAt === undefined || event.occurredAt <= interruptStartedAt)) {
+			return false;
+		}
+		return evaluateForegroundInterruptOrder(entry.hookEventOrder, event).accepted;
 	}
 
 	canApplyReplayedProviderHook(
@@ -143,6 +157,7 @@ export class SessionTransitionController {
 		}
 		const source = event.metadata?.source?.trim().toLowerCase();
 		if ((source !== "codex" && source !== "claude" && source !== "pi") || source !== summary.agentId) return null;
+		if (!evaluateForegroundInterruptOrder(entry.hookEventOrder, event).accepted) return null;
 		return boundary.context === "startup" ? "startup_replay" : "exited_replay";
 	}
 
@@ -151,6 +166,13 @@ export class SessionTransitionController {
 		event: SessionTransitionEvent,
 	): (SessionTransitionResult & { summary: RuntimeTaskSessionSummary }) | null {
 		this.captureProcessExitReplayBoundary(entry, event);
+		if (event.type === "interrupt.recovery" && entry.active) {
+			recordForegroundInterrupt(
+				entry.hookEventOrder,
+				entry.active.agentId,
+				entry.active.lastInterruptAt ?? Date.now(),
+			);
+		}
 		if (
 			event.type === "agent.rendered-turn-interrupted" &&
 			event.provider === "claude" &&
@@ -232,6 +254,9 @@ export class SessionTransitionController {
 	}
 
 	private withSessionEvidence(entry: ProcessEntry, event: SessionTransitionEvent): SessionTransitionEvent {
+		if (event.type === "interrupt.recovery") {
+			return { ...event, localForegroundInterrupt: entry.hookEventOrder?.foregroundInterrupt ?? null };
+		}
 		if (event.type !== "provider.hook") {
 			return event;
 		}

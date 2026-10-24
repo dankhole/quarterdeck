@@ -1,9 +1,11 @@
 import { mkdtempSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import type { TestProject } from "vitest/node";
+
+import { createPiLifecycleEsbuildOptions } from "../scripts/esbuild-shared-options.mjs";
 
 declare module "vitest" {
 	export interface ProvidedContext {
@@ -71,10 +73,12 @@ export default function setup(project?: SetupProject): Teardown | Promise<Teardo
 				logLevel: "silent",
 			});
 			await mkdir(join(directory, "terminal"));
-			await copyFile(
-				resolve("src/terminal/pi-lifecycle-extension.runtime.js"),
-				join(directory, "terminal/pi-lifecycle-extension.runtime.js"),
-			);
+			await build({
+				...createPiLifecycleEsbuildOptions(),
+				entryPoints: [resolve("src/terminal/pi-lifecycle-extension.runtime.js")],
+				outfile: join(directory, "terminal/pi-lifecycle-extension.runtime.js"),
+				logLevel: "silent",
+			});
 			project.provide(
 				"compiledIntegrationEntrypoints",
 				Object.fromEntries(

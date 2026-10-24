@@ -6,6 +6,7 @@ import {
 	type RuntimeTaskInteractionKind,
 	type RuntimeTaskInteractionProvider,
 	type RuntimeTaskInteractionResponseKind,
+	type RuntimeTaskLocalForegroundInterrupt,
 	type RuntimeTaskNativeWorkEvidence,
 	type RuntimeTaskOutstandingInteraction,
 	type RuntimeTaskSessionReviewReason,
@@ -65,7 +66,7 @@ export type SessionTransitionEvent =
 			launchWorkConfirmed?: boolean;
 	  }
 	| { type: "launch.confirmation_timeout"; sessionInstanceId: string }
-	| { type: "interrupt.recovery" }
+	| { type: "interrupt.recovery"; localForegroundInterrupt?: RuntimeTaskLocalForegroundInterrupt | null }
 	| { type: "autorestart.denied" }
 	| { type: "resume.failed"; clearResumeSessionId: boolean; warningMessage: string }
 	| { type: "structured.owner_activated"; pid: number; sessionInstanceId: string }
@@ -1144,6 +1145,7 @@ export function reduceSessionTransition(
 			return {
 				changed: true,
 				patch: {
+					...(event.localForegroundInterrupt ? { localForegroundInterrupt: event.localForegroundInterrupt } : {}),
 					state: "awaiting_review",
 					reviewReason: "interrupted",
 					latestHookActivity: null,

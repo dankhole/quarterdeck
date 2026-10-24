@@ -3,18 +3,21 @@ import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import http from "node:http";
 import { isAbsolute } from "node:path";
+import { buildHookIngestRequest } from "../commands/hook-metadata.js";
+import { createHookDeliveryIdGenerator } from "../hook-delivery-order.js";
+import { abandonPublishedHook, deliverPublishedHook, HookPublicationUnavailableError, publishReliableHook } from "../hook-reliable-delivery.js";
 
 const HOOK_COMMAND_ENV = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
 // Published only while the runtime's loopback hook HTTP channel is active;
 // when present, best-effort activity hooks POST here in-process instead of
-// spawning `hooks notify` (see `emitQuarterdeckHook`). Durable hooks always
-// keep the CLI command above, regardless of this env var.
+// spawning `hooks notify` (see `emitQuarterdeckHook`). Reliable lifecycle
+// hooks publish through the shared in-process outbox independently.
 const HOOK_HTTP_URL_ENV = "__QUARTERDECK_PI_HOOK_HTTP_URL_ENV__";
 const WORKTREE_TRUST_SCOPE_ENV = "__QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV__";
 // Identity/credential env names and header names below must stay byte-for-byte
 // in sync with `hook-http-channel.ts` (`QUARTERDECK_HOOK_HTTP_TOKEN_ENV`,
 // `HOOK_HTTP_*_HEADER`) and `hook-runtime-context.ts` (`QUARTERDECK_HOOK_*_ENV`);
-// this plain-JS asset cannot import those TS modules, so a test asserts equality.
+// keep runtime channel/session modules out of this narrow asset; a test asserts equality.
 const HOOK_HTTP_TOKEN_ENV = "QUARTERDECK_HOOK_HTTP_TOKEN";
 const HOOK_HTTP_TASK_ID_ENV = "QUARTERDECK_HOOK_TASK_ID";
 const HOOK_HTTP_PROJECT_ID_ENV = "QUARTERDECK_HOOK_PROJECT_ID";
@@ -30,12 +33,8 @@ const HOOK_HTTP_SOURCE = "pi";
 // retried and never falls back to spawning on failure (best-effort).
 const HOOK_HTTP_TIMEOUT_MS = 1_000;
 const MAX_TEXT_LENGTH = 600;
-// Durable `hooks ingest` is `waitForExit`-blocking and can lose a to_review
-// transition if it is killed before it durably persists. 30s gives a slow CLI
-// under heavy machine load room to finish; non-durable `notify` calls never use
-// this timeout (see `selectHookCommandArgs`/`spawnHookCommand`'s `waitForExit`
-// branch) and stay fire-and-forget short.
-const DURABLE_HOOK_TIMEOUT_MS = 30_000;
+// Bound in-memory recovery intent while storage is persistently unavailable.
+const MAX_UNPUBLISHED_HOOKS = 128;
 // Optional Nico (0.80.0) and Tintinweb (0.22.0) subagent integrations use
 // different native bus contracts. Neither is a dependency of this asset.
 const SUBAGENT_ASYNC_STARTED_EVENT = "subagent:async-started";
@@ -61,7 +60,50 @@ const BACKGROUND_WAKE_GRACE_MS = 3_000;
 // is never stuck Running forever.
 const BACKGROUND_WORK_MAX_HOLD_MS = 60 * 60_000;
 const toolInputsById = new Map();
-let durableHookQueue = Promise.resolve();
+// Pi 1.4 reloads by shutting down, clearing its extension cache and importing
+// this module again. Keep only delivery continuity in process memory, never
+// native run/trust/background state. Entries are exact launch scopes, bounded
+// without eviction: silently evicting a failed publication head would lose it.
+const DELIVERY_STATE_KEY = Symbol.for("quarterdeck:pi-hook-delivery:v1");
+const MAX_DELIVERY_LAUNCH_SCOPES = 16;
+const deliveryState = resolveLaunchDeliveryState();
+
+function resolveLaunchDeliveryState() {
+	const identity = Object.freeze({
+		taskId: process.env[HOOK_HTTP_TASK_ID_ENV] ?? "",
+		projectId: process.env[HOOK_HTTP_PROJECT_ID_ENV] ?? "",
+		sessionInstanceId: process.env[HOOK_HTTP_SESSION_INSTANCE_ID_ENV],
+	});
+	const createState = () => ({
+		identity,
+		durableHookQueue: Promise.resolve(),
+		publicationQueue: Promise.resolve(),
+		unpublishedRequests: [],
+		nextDeliveryId: createHookDeliveryIdGenerator(),
+		deliveryHandedOff: false,
+		publicationOverflow: false,
+		publicationFailureReason: null,
+	});
+	if (!identity.taskId.trim() || !identity.projectId.trim() || !identity.sessionInstanceId?.trim()) {
+		// Missing authority is diagnosed by the shared publisher, not globally
+		// reused as if it were an authorized managed launch.
+		return createState();
+	}
+	const registry = globalThis[DELIVERY_STATE_KEY] ??= new Map();
+	const scope = JSON.stringify([identity.projectId, identity.taskId, identity.sessionInstanceId]);
+	const existing = registry.get(scope);
+	if (existing) return existing;
+	if (registry.size >= MAX_DELIVERY_LAUNCH_SCOPES) {
+		throw new Error("Quarterdeck Pi delivery launch-scope capacity exceeded; hooks are unprotected [CAPACITY_EXCEEDED].");
+	}
+	const state = createState();
+	registry.set(scope, state);
+	return state;
+}
+let deliveryAbortController = new AbortController();
+let shuttingDown = false;
+let shutdownComplete = false;
+let shutdownPromise = null;
 let activeRunId = null;
 let lastAssistantSummary = null;
 let lastAssistantFailed = false;
@@ -80,7 +122,7 @@ const observedTintinwebIds = new Set();
 const retiredTintinwebIds = new Set();
 let tintinwebReconcileTimer = null;
 let unsubscribeBackgroundEvents = null;
-let deferredSettlement = null; // { runId, finalMessage, sessionId } | null
+let deferredSettlement = null; // { runId, finalMessage, sessionId, transcriptPath } | null
 let backgroundWakeGraceTimer = null;
 let backgroundHoldTimer = null;
 
@@ -164,53 +206,23 @@ function appendFlag(args, flag, value) {
 	}
 }
 
-function selectHookCommandArgs(baseArgs, waitForExit) {
-	if (!waitForExit) {
-		return baseArgs;
-	}
-	const durableArgs = [...baseArgs];
-	if (durableArgs[durableArgs.length - 1] === "notify") {
-		durableArgs[durableArgs.length - 1] = "ingest";
-	}
-	return durableArgs;
-}
-
-function spawnHookCommand(binary, args, waitForExit) {
+function spawnHookCommand(binary, args) {
 	return new Promise((resolve) => {
 		let settled = false;
-		let timeout = null;
 		function finish() {
-			if (settled) {
-				return;
-			}
+			if (settled) return;
 			settled = true;
-			if (timeout) {
-				clearTimeout(timeout);
-			}
 			resolve();
 		}
 
 		try {
 			const child = spawn(binary, args, {
-				detached: !waitForExit,
+				detached: true,
 				env: process.env,
 				stdio: "ignore",
 				windowsHide: true,
 			});
 			child.on("error", finish);
-			if (waitForExit) {
-				child.on("exit", finish);
-				child.on("close", finish);
-				timeout = setTimeout(() => {
-					try {
-						child.kill("SIGTERM");
-					} catch {
-						// Best effort.
-					}
-					finish();
-				}, DURABLE_HOOK_TIMEOUT_MS);
-				return;
-			}
 			child.unref();
 			finish();
 		} catch {
@@ -329,10 +341,10 @@ function sendHookHttpNotify(metadata, ctx) {
 	});
 }
 
-function emitQuarterdeckHook(event, metadata, ctx, options = {}) {
-	const waitForExit = options.waitForExit === true;
+function emitQuarterdeckHook(event, metadata, ctx) {
+	if (shuttingDown) return Promise.resolve();
 	// The notify endpoint admits only best-effort activity.
-	if (!waitForExit && event === HOOK_HTTP_EVENT) {
+	if (event === HOOK_HTTP_EVENT) {
 		const httpDelivery = sendHookHttpNotify(metadata, ctx);
 		if (httpDelivery) {
 			return httpDelivery;
@@ -343,7 +355,7 @@ function emitQuarterdeckHook(event, metadata, ctx, options = {}) {
 		return Promise.resolve();
 	}
 	const [binary, ...baseArgs] = commandParts;
-	const args = [...selectHookCommandArgs(baseArgs, waitForExit), "--event", event, "--source", "pi"];
+	const args = [...baseArgs, "--event", event, "--source", "pi"];
 	appendFlag(args, "--activity-text", metadata.activityText);
 	appendFlag(args, "--tool-name", metadata.toolName);
 	appendFlag(args, "--tool-input-summary", metadata.toolInputSummary);
@@ -363,27 +375,156 @@ function emitQuarterdeckHook(event, metadata, ctx, options = {}) {
 		: getSessionFilePath(ctx);
 	if (transcriptPath) args.push("--transcript-path", transcriptPath);
 
-	return spawnHookCommand(binary, args, waitForExit);
+	return spawnHookCommand(binary, args);
 }
 
-function enqueueDurableHook(event, metadata, ctx) {
-	// Durable emissions may wait behind an earlier hook while Pi has already
-	// started another queued run. Freeze launch/run identity at enqueue time so
-	// an older event can never inherit the next run's activeRunId. An explicit
-	// (even null) turnId/sessionId own property - e.g. a deferred settlement's
-	// captured identity - is never overridden by the live activeRunId/ctx;
-	// only an absent property falls back to the current live run.
-	const queuedMetadata = {
-		...metadata,
-		turnId: Object.prototype.hasOwnProperty.call(metadata, "turnId") ? metadata.turnId : activeRunId,
-		sessionId: Object.prototype.hasOwnProperty.call(metadata, "sessionId") ? metadata.sessionId : getSessionId(ctx),
-		transcriptPath: getSessionFilePath(ctx),
-	};
-	durableHookQueue = durableHookQueue.then(
-		() => emitQuarterdeckHook(event, queuedMetadata, ctx, { waitForExit: true }),
-		() => emitQuarterdeckHook(event, queuedMetadata, ctx, { waitForExit: true }),
-	);
-	return durableHookQueue;
+function enqueueDurableHook(event, metadata, ctx, shutdownSettlement = false) {
+	if (shuttingDown && !shutdownSettlement) return Promise.resolve();
+	// Capture normalization, UUID, occurrence time, reply and provider identity
+	// synchronously in the native callback, before either queue can delay work.
+	const request = buildHookIngestRequest({
+		event,
+		identity: deliveryState.identity,
+		flagMetadata: {
+			...metadata,
+			activityText: truncate(metadata.activityText),
+			toolName: truncate(metadata.toolName),
+			toolInputSummary: truncate(metadata.toolInputSummary),
+			source: "pi",
+			turnId: Object.prototype.hasOwnProperty.call(metadata, "turnId") ? metadata.turnId : activeRunId,
+			sessionId: Object.prototype.hasOwnProperty.call(metadata, "sessionId") ? metadata.sessionId : getSessionId(ctx),
+			transcriptPath: Object.prototype.hasOwnProperty.call(metadata, "transcriptPath")
+				? metadata.transcriptPath : getSessionFilePath(ctx),
+		},
+		payload: null,
+	});
+	const capturedRequest = Object.freeze({
+		...request,
+		metadata: request.metadata ? Object.freeze({ ...request.metadata }) : undefined,
+		delivery: request.delivery ? Object.freeze({ ...request.delivery, id: deliveryState.nextDeliveryId() }) : undefined,
+	});
+	return publishCapturedHook(capturedRequest);
+}
+
+function publicationFailureReasonOf(error) {
+	// Error names/messages, paths and arbitrary codes are untrusted content.
+	// Retain only actionable filesystem codes or the shared typed identity
+	// failure; one fixed token is enough even when no outbox record exists.
+	try {
+		if (error instanceof HookPublicationUnavailableError) return "MISSING_REPLAY_IDENTITY";
+		const code = error?.code;
+		switch (code) {
+			case "ENOSPC":
+			case "EDQUOT":
+			case "EACCES":
+			case "EPERM":
+			case "EROFS":
+			case "EMFILE":
+			case "ENFILE":
+			case "EIO":
+			case "ENOENT":
+			case "ENOTDIR":
+			case "EEXIST":
+				return code;
+		}
+	} catch {
+		// Even a thrown getter/proxy must not escape this diagnostic boundary.
+	}
+	return "UNKNOWN_PUBLICATION_FAILURE";
+}
+
+function publishCapturedHook(request) {
+	if (deliveryState.unpublishedRequests.length >= MAX_UNPUBLISHED_HOOKS) {
+		deliveryState.publicationOverflow = true;
+		console.error("Quarterdeck Pi lifecycle publication capacity exceeded [CAPACITY_EXCEEDED]; this hook is unprotected.");
+		const failure = Promise.reject(new Error("Pi lifecycle hook publication capacity exceeded; hook is unprotected [CAPACITY_EXCEEDED]."));
+		failure.catch(() => {});
+		return failure;
+	}
+	deliveryState.unpublishedRequests.push(request);
+	// Disk writes, unlike network delivery, must preserve capture order. A
+	// failed head remains here; the next callback retries it before its own
+	// publication. Never publish a successor across an unpublished gap.
+	const localPublication = deliveryState.publicationQueue.then(() => publishThrough(request)).catch(() => {
+		// Pi reports handler errors and may still exit normally. Keep both its
+		// error surface and ours content-free; retain the frozen intent, not a
+		// raw filesystem error that could expose private paths or other input.
+		const reason = deliveryState.publicationFailureReason ?? "UNKNOWN_PUBLICATION_FAILURE";
+		console.error("Quarterdeck could not publish a Pi lifecycle hook for replay. [" + reason + "]");
+		throw new Error("Quarterdeck could not publish a Pi lifecycle hook for replay; hook is unprotected [" + reason + "].");
+	});
+	deliveryState.publicationQueue = localPublication.catch(() => {});
+	return localPublication;
+}
+
+async function publishThrough(target) {
+	while (deliveryState.unpublishedRequests.length > 0) {
+		const request = deliveryState.unpublishedRequests[0];
+		let handle;
+		try {
+			handle = await publishReliableHook(request);
+		} catch (error) {
+			deliveryState.publicationFailureReason = publicationFailureReasonOf(error);
+			throw error;
+		}
+		deliveryState.unpublishedRequests.shift();
+		deliveryState.publicationFailureReason = null;
+		const deliver = async () => {
+			if (shuttingDown || deliveryState.deliveryHandedOff) {
+				deliveryState.deliveryHandedOff = true;
+				await abandonPublishedHook(handle);
+				return;
+			}
+			try {
+				const result = await deliverPublishedHook(handle, { signal: deliveryAbortController.signal });
+				if (result.status === "deferred") {
+					deliveryState.deliveryHandedOff = true;
+					console.warn("Quarterdeck deferred Pi lifecycle hook delivery to runtime replay.");
+				}
+			} catch (error) {
+				deliveryState.deliveryHandedOff = true;
+				throw error;
+			}
+		};
+		deliveryState.durableHookQueue = deliveryState.durableHookQueue.then(deliver, deliver);
+		deliveryState.durableHookQueue.catch(() => {});
+		if (request === target) return;
+	}
+}
+
+function shutdownLifecycle() {
+	if (shutdownPromise) return shutdownPromise;
+	// Fence bus/timer/native producers before flushing the one settlement owed.
+	shuttingDown = true;
+	unsubscribeBackgroundEvents?.();
+	unsubscribeBackgroundEvents = null;
+	const settlementPublication = flushDeferredSettlement(true);
+	clearBackgroundTracking();
+	toolInputsById.clear();
+	lastCtx = null;
+	// One launch-scoped abort bounds all network work; queued published handles
+	// are abandoned for replay instead of spending a retry budget per event.
+	deliveryAbortController.abort();
+	hookHttpAgent?.destroy();
+	hookHttpAgent = null;
+	// Append the final publication pass to the shared queue as a reload barrier.
+	// A replacement module cannot race this pass even if its host starts loading
+	// it before old shutdown cleanup has completely settled.
+	const retryTarget = deliveryState.unpublishedRequests.at(-1);
+	const retryPublication = deliveryState.publicationQueue.then(() => publishThrough(retryTarget));
+	deliveryState.publicationQueue = retryPublication.catch(() => {});
+	shutdownPromise = (async () => {
+		await Promise.allSettled([retryPublication, settlementPublication]);
+		await deliveryState.durableHookQueue.catch(() => {
+			throw new Error("Quarterdeck could not finish Pi lifecycle replay handoff.");
+		});
+		if (deliveryState.unpublishedRequests.length > 0 || deliveryState.publicationOverflow) {
+			const reason = deliveryState.publicationFailureReason ?? (deliveryState.publicationOverflow ? "CAPACITY_EXCEEDED" : "UNKNOWN_PUBLICATION_FAILURE");
+			throw new Error("Quarterdeck could not publish every Pi lifecycle hook for replay; some hooks are unprotected [" + reason + "].");
+		}
+	})();
+	shutdownPromise.then(() => { shutdownComplete = true; }, () => {});
+	return shutdownPromise;
 }
 
 function getToolCallId(event) {
@@ -601,7 +742,7 @@ function armBackgroundWakeGraceTimer() {
 	backgroundWakeGraceTimer.unref?.();
 }
 
-function flushDeferredSettlement() {
+function flushDeferredSettlement(shutdownSettlement = false) {
 	const deferred = deferredSettlement;
 	if (!deferred) {
 		return;
@@ -609,7 +750,7 @@ function flushDeferredSettlement() {
 	deferredSettlement = null;
 	clearBackgroundWakeGraceTimer();
 	clearBackgroundHoldTimer();
-	void enqueueDurableHook(
+	return enqueueDurableHook(
 		"to_review",
 		{
 			hookEventName: "AgentSettled",
@@ -617,8 +758,10 @@ function flushDeferredSettlement() {
 			finalMessage: deferred.finalMessage,
 			turnId: deferred.runId,
 			sessionId: deferred.sessionId,
+			transcriptPath: deferred.transcriptPath,
 		},
 		undefined,
+		shutdownSettlement,
 	);
 }
 
@@ -914,6 +1057,17 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
+		// A completed shutdown may be followed by Pi's explicit replacement
+		// session_start. Nothing can reopen producers while cleanup is pending.
+		if (shuttingDown) {
+			if (!shutdownComplete) return;
+			shuttingDown = false;
+			shutdownComplete = false;
+			shutdownPromise = null;
+			deliveryAbortController = new AbortController();
+			// This launch's producer may still have replay-owned predecessors.
+			// Reload/reimport never resets its process-global replay handoff.
+		}
 		lastCtx = ctx;
 		activeRunId = null;
 		lastAssistantSummary = null;
@@ -926,31 +1080,24 @@ export default function quarterdeckLifecycle(pi) {
 		// before dropping tracking, so a reload cannot strand the previous
 		// turn's deferred settlement in Running forever; falls back to
 		// today's Review behavior for the new session.
-		flushDeferredSettlement();
+		const previousSettlement = flushDeferredSettlement();
 		unsubscribeBackgroundEvents?.();
 		clearBackgroundTracking();
 		unsubscribeBackgroundEvents = subscribeToBackgroundSubagentEvents(pi);
-		void enqueueDurableHook(
+		return Promise.all([previousSettlement, enqueueDurableHook(
 			"activity",
 			{
 				hookEventName: "session_meta",
 				sessionId: currentSessionId,
 			},
 			ctx,
-		);
+		)]);
 	});
 
-	pi.on("session_shutdown", () => {
-		// Same reload-safety rationale as session_start: flush before
-		// clearing so a pending deferred settlement is not silently lost.
-		flushDeferredSettlement();
-		unsubscribeBackgroundEvents?.();
-		unsubscribeBackgroundEvents = null;
-		clearBackgroundTracking();
-		lastCtx = null;
-	});
+	pi.on("session_shutdown", shutdownLifecycle);
 
 	pi.on("agent_start", (_event, ctx) => {
+		if (shuttingDown) return;
 		lastCtx = ctx;
 		activeRunId = randomUUID();
 		lastAssistantSummary = null;
@@ -962,7 +1109,7 @@ export default function quarterdeckLifecycle(pi) {
 		deferredSettlement = null;
 		clearBackgroundWakeGraceTimer();
 		if (backgroundRuns.size === 0) clearBackgroundHoldTimer();
-		void enqueueDurableHook(
+		return enqueueDurableHook(
 			"to_in_progress",
 			{
 				hookEventName: "AgentStart",
@@ -973,13 +1120,14 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("agent_end", (event, ctx) => {
+		if (shuttingDown) return;
 		lastCtx = ctx;
 		const assistantMessage = lastAssistantMessage(event.messages);
 		lastAssistantFailed = assistantMessage?.stopReason === "error";
 		lastAssistantSummary = lastAssistantFailed
 			? null
 			: truncateReply(textFromContent(assistantMessage?.content)) ?? lastAssistantSummary;
-		void enqueueDurableHook(
+		return enqueueDurableHook(
 			"activity",
 			{
 				hookEventName: "AgentEnd",
@@ -990,6 +1138,7 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("agent_settled", (event, ctx) => {
+		if (shuttingDown) return;
 		lastCtx = ctx;
 		const settledRunId = activeRunId;
 		const aborted = event.aborted === true;
@@ -1004,13 +1153,14 @@ export default function quarterdeckLifecycle(pi) {
 		// work pending; only a clean settle can be deferred.
 		if (!aborted && !failed && backgroundRuns.size > 0) {
 			const pendingCount = countDisplayableBackgroundRuns();
-			deferredSettlement = { runId: settledRunId, finalMessage, sessionId: currentSessionId };
+			deferredSettlement = { runId: settledRunId, finalMessage, sessionId: currentSessionId,
+				transcriptPath: getSessionFilePath(ctx) };
 			// The deferred record owns the run identity now; reset synchronously so a
 			// completion arriving before this hook is delivered still sees Pi idle.
 			activeRunId = null;
 			lastAssistantSummary = null;
 			lastAssistantFailed = false;
-			void enqueueDurableHook(
+			return enqueueDurableHook(
 				"activity",
 				{
 					hookEventName: "AgentSettledBackgroundPending",
@@ -1020,7 +1170,6 @@ export default function quarterdeckLifecycle(pi) {
 				},
 				ctx,
 			);
-			return;
 		}
 		// An abort before the next run's agent_start settles with no active run;
 		// it then ends the run still awaiting a deferred Review.
@@ -1028,7 +1177,11 @@ export default function quarterdeckLifecycle(pi) {
 		deferredSettlement = null;
 		clearBackgroundWakeGraceTimer();
 		if (backgroundRuns.size === 0) clearBackgroundHoldTimer();
-		void enqueueDurableHook(
+		// Retire this run before a queued next run can begin.
+		activeRunId = null;
+		lastAssistantSummary = null;
+		lastAssistantFailed = false;
+		return enqueueDurableHook(
 			"to_review",
 			{
 				hookEventName: aborted ? "Interrupt" : failed ? "StopFailure" : "AgentSettled",
@@ -1041,13 +1194,7 @@ export default function quarterdeckLifecycle(pi) {
 				turnId: reviewRunId,
 			},
 			ctx,
-		).finally(() => {
-			if (activeRunId === settledRunId) {
-				activeRunId = null;
-				lastAssistantSummary = null;
-				lastAssistantFailed = false;
-			}
-		});
+		);
 	});
 
 	pi.on("session_before_switch", (_event, ctx) => {
@@ -1061,6 +1208,7 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("tool_execution_start", (event, ctx) => {
+		if (shuttingDown) return;
 		lastCtx = ctx;
 		const toolInput = rememberToolInput(event);
 		const toolInputSummary = summarizeToolInput(event.toolName, toolInput);
@@ -1078,10 +1226,12 @@ export default function quarterdeckLifecycle(pi) {
 	});
 
 	pi.on("tool_execution_update", (event, _ctx) => {
+		if (shuttingDown) return;
 		rememberToolInput(event);
 	});
 
 	pi.on("tool_execution_end", (event, ctx) => {
+		if (shuttingDown) return;
 		lastCtx = ctx;
 		const toolInput = resolveToolInput(event);
 		const toolInputSummary = summarizeToolInput(event.toolName, toolInput);

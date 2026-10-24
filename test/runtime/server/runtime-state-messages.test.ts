@@ -16,6 +16,14 @@ function createSummaryWithReceipts(): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
 		taskId: "task-1",
 		lastProviderHookOccurredAt: 200,
+		localForegroundInterrupt: {
+			sessionInstanceId: "codex-process-1",
+			provider: "codex",
+			scopeId: "turn-1",
+			occurredAt: 150,
+			toolUseIds: ["tool"],
+			awaitingNativeStart: true,
+		},
 		recentProviderHookDeliveryIds: ["00000000-0000-4000-8000-000000000001"],
 		recentProviderHookOrderObservations: [
 			{
@@ -48,6 +56,7 @@ function createProjectState(summary: RuntimeTaskSessionSummary): RuntimeProjectS
 }
 
 function expectStripped(summary: RuntimeTaskSessionSummary | undefined): void {
+	expect(summary).not.toHaveProperty("localForegroundInterrupt");
 	expect(summary).toMatchObject({
 		taskId: "task-1",
 		lastProviderHookOccurredAt: 200,
@@ -80,6 +89,16 @@ describe("browser-facing session summaries", () => {
 		expect(summary.recentProviderHookOrderObservations).toHaveLength(1);
 	});
 
+	it("omits the local negative boundary even when there are no provider receipts", () => {
+		const summary = {
+			...createSummaryWithReceipts(),
+			recentProviderHookDeliveryIds: [],
+			recentProviderHookOrderObservations: [],
+		};
+		expectStripped(toBrowserSessionResponse({ summary }).summary);
+		expect(summary.localForegroundInterrupt?.scopeId).toBe("turn-1");
+	});
+
 	it("leaves the authoritative state untouched for persistence", () => {
 		const summary = createSummaryWithReceipts();
 		const projectState = createProjectState(summary);
@@ -90,5 +109,6 @@ describe("browser-facing session summaries", () => {
 		expect(browserState.revision).toBe(3);
 		expect(projectState.sessions["task-1"]?.recentProviderHookOrderObservations).toHaveLength(1);
 		expect(summary.recentProviderHookDeliveryIds).toHaveLength(1);
+		expect(summary.localForegroundInterrupt?.scopeId).toBe("turn-1");
 	});
 });

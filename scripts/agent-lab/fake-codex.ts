@@ -115,7 +115,10 @@ async function emitHook(
 		writeLine("[agent-lab] Hook environment is incomplete.");
 		return;
 	}
-	const reliableActivity = options.hookEventName === "SessionStart" || options.hookEventName === "PermissionDenied";
+	const reliableActivity =
+		options.hookEventName === "SessionStart" ||
+		options.hookEventName === "PermissionDenied" ||
+		options.hookEventName === "SubagentStop";
 	const delivery = event === "activity" && !reliableActivity ? "notify" : "ingest";
 	const hookArgs = [tsxCliPath, cliEntrypointPath, "hooks", delivery, "--event", event, "--source", provider];
 	const claudePayload =
@@ -705,7 +708,7 @@ async function assertClaudeLaunchContract(): Promise<void> {
 		PermissionRequest: ["ingest", "to_review"],
 		Notification: ["notify", "activity"],
 		PostToolUse: ["ingest", "to_in_progress"],
-		SubagentStop: ["notify", "activity"],
+		SubagentStop: ["ingest", "activity"],
 		Elicitation: ["ingest", "to_review"],
 		ElicitationResult: ["ingest", "to_in_progress"],
 		Stop: ["ingest", "to_review"],

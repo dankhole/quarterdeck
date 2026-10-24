@@ -187,6 +187,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					providerSessionId: summary.agentId === "codex" ? summary.resumeSessionId : null,
 					recentDeliveryIds: summary.recentProviderHookDeliveryIds,
 					outstandingInteraction: summary.outstandingInteraction,
+					localForegroundInterrupt: summary.localForegroundInterrupt,
 				});
 				entry.providerHookReplayBoundary = {
 					context: "startup",
