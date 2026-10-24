@@ -1687,7 +1687,10 @@ describe("Claude rendered interruption launch hooks", () => {
 });
 
 describe("Pi starting options", () => {
-	it("replaces conflicting model/provider/scope args only on fresh launches before the separator", async () => {
+	it.each([
+		{ provider: "local", id: "qwen:7b" },
+		{ provider: "anthropic", id: "global.anthropic.claude-opus-5-5" },
+	])("preserves exact starting identity $provider/$id while replacing conflicting args", async (model) => {
 		const launch = await prepareAgentLaunch({
 			taskId: "pi-task",
 			agentId: "pi",
@@ -1708,15 +1711,15 @@ describe("Pi starting options", () => {
 				"--",
 				"custom positional",
 			],
-			piOptions: { model: { provider: "local", id: "qwen:7b" } },
+			piOptions: { model },
 		});
 		expect(launch.args).toEqual([
 			"--thinking",
 			"high",
 			"--provider",
-			"local",
+			model.provider,
 			"--model",
-			"qwen:7b",
+			model.id,
 			"--",
 			"custom positional",
 			"-task prompt",
