@@ -106,7 +106,7 @@ export interface CreateRuntimeServerDependencies {
 	runtimeStateHub: RuntimeStateHub;
 	runtimeSessionPersistence: Pick<
 		RuntimeSessionPersistence,
-		"persistRuntimeSessions" | "awaitRuntimeSessionsDurable" | "disposeProject" | "close"
+		"persistRuntimeSessions" | "awaitRuntimeSessionsDurable" | "disposeProject" | "stopForShutdown"
 	>;
 	initializeProjectsForStartup?: () => Promise<void>;
 	boardCommands: ProjectBoardCommandService;
@@ -137,6 +137,8 @@ export interface RuntimeServer {
 	/** Internal structured interaction boundary; intentionally not exposed through HTTP or tRPC. */
 	taskInteractions: TaskInteractionService;
 	prepareForShutdown: (options?: { skipSessionCleanup?: boolean; persistenceAllowed?: boolean }) => Promise<void>;
+	/** Fence and drain durable writers without disposing or signaling process owners. */
+	stopPersistenceForShutdown: (options?: { persistenceAllowed?: boolean }) => Promise<void>;
 	/** Signals owners only after the caller has captured exact-owned process trees. */
 	stopTaskOwnersForShutdown: (options?: {
 		skipSessionCleanup?: boolean;
@@ -191,6 +193,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	let shuttingDown = false;
 	let startupStructuredOwners: StructuredOwnerRegistry | undefined;
 	let startupCodeNavigation: LanguageNavigationManager | undefined;
+	let startupProcessesConfirmed = false;
 	try {
 		startupCleanup.push(() => deps.clientAccess?.clear());
 		const webUiDir = getWebUiDir();
@@ -266,6 +269,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		const structuredOwners = new StructuredOwnerRegistry(codexStructuredOwners, claudeStructuredOwners);
 		startupStructuredOwners = structuredOwners;
 		startupCleanup.push(async () => {
+			if (!startupProcessesConfirmed) return;
 			const unconfirmed = await structuredOwners.stopAll();
 			if (unconfirmed > 0) throw new Error("Structured provider shutdown remained unconfirmed.");
 		});
@@ -277,7 +281,9 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		}
 		const codeNavigation = new LanguageNavigationManager({ diagnostics: deps.diagnostics });
 		startupCodeNavigation = codeNavigation;
-		startupCleanup.push(() => codeNavigation.close());
+		startupCleanup.push(async () => {
+			if (startupProcessesConfirmed) await codeNavigation.close();
+		});
 		const codeNavigationApi = createCodeNavigationApi(codeNavigation, deps.projectRegistry);
 		const disposeCodeNavigationDiagnostics = deps.diagnostics.registerSnapshotProvider({
 			name: "code_navigation",
@@ -1121,12 +1127,31 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			})();
 			return preparation;
 		};
+		let persistenceStop: Promise<void> | null = null;
+		const stopPersistenceForShutdown: RuntimeServer["stopPersistenceForShutdown"] = (options) => {
+			persistenceStop ??= (async () => {
+				const results = await Promise.allSettled([
+					deps.runtimeSessionPersistence.stopForShutdown({
+						skipPersistence: options?.persistenceAllowed === false || deps.persistenceAllowed?.() === false,
+					}),
+					deps.projectStatePublications?.close(),
+				]);
+				const failures = results.filter((result) => result.status === "rejected");
+				if (failures.length > 0)
+					throw new AggregateError(
+						failures.map((result) => result.reason),
+						"Runtime persistence shutdown failed.",
+					);
+			})();
+			return persistenceStop;
+		};
 		let ownerStop: Promise<void> | null = null;
 		const stopTaskOwnersForShutdown: RuntimeServer["stopTaskOwnersForShutdown"] = (options) => {
 			ownerStop ??= (async () => {
 				const prepared = await Promise.allSettled([prepareForShutdown(options)]);
 				const policy = shutdownPolicy ?? options;
-				const persistenceAllowed = policy?.persistenceAllowed !== false && deps.persistenceAllowed?.() !== false;
+				const persistenceAllowed =
+					!persistenceStop && policy?.persistenceAllowed !== false && deps.persistenceAllowed?.() !== false;
 				const ownerResults = await Promise.allSettled([
 					codeNavigation.close(),
 					prepareTaskOwnersForShutdown({ skipSessionCleanup: policy?.skipSessionCleanup || !persistenceAllowed }),
@@ -1167,6 +1192,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			executionOwnership,
 			taskInteractions,
 			prepareForShutdown,
+			stopPersistenceForShutdown,
 			stopTaskOwnersForShutdown,
 			close: async (options) => {
 				const closeErrors: unknown[] = [];
@@ -1189,12 +1215,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				await runCloseStep(() => disposeHookOutboxDiagnosticProvider());
 				await runCloseStep(() => disposePiSupportDiagnosticProvider());
 				await runCloseStep(() => disposeCodeNavigationDiagnostics());
-				await runCloseStep(
-					async () =>
-						await deps.runtimeSessionPersistence.close({
-							skipPersistence: options?.persistenceAllowed === false,
-						}),
-				);
+				await runCloseStep(async () => await stopPersistenceForShutdown(options));
 				await runCloseStep(() => deps.clientAccess?.clear());
 				await runCloseStep(async () => await deps.projectStatePublications?.close());
 				await runCloseStep(async () => await deps.runtimeStateHub.close());
@@ -1254,17 +1275,17 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 					failures.push(cleanupError);
 				}
 			}
-			let ownerStop: Promise<PromiseSettledResult<unknown>[]> | undefined;
-			const stopStartupOwners = () => {
-				if (ownerStop) return;
+			let sessionsPrepared = false;
+			const prepareStartupSessions = () => {
+				if (sessionsPrepared) return;
+				sessionsPrepared = true;
 				for (const manager of managers) {
 					try {
-						manager.markInterruptedAndStopAll();
+						manager.markInterruptedAndStopAll({ signalProcesses: false });
 					} catch (cleanupError) {
 						failures.push(cleanupError);
 					}
 				}
-				ownerStop = Promise.allSettled([startupStructuredOwners?.stopAll(), startupCodeNavigation?.close()]);
 			};
 			try {
 				const stopped = await stopRuntimeOwnedProcessTrees({
@@ -1276,19 +1297,15 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 						(startupStructuredOwners?.hasPendingLaunches() ?? false) ||
 						managers.some((manager) => manager.hasPendingOwnedProcessLaunches()),
 					includeRuntimeChildren: true,
-					stopSessions: stopStartupOwners,
+					stopSessions: prepareStartupSessions,
 				});
-				if (stopped.status !== "stopped")
+				startupProcessesConfirmed = stopped.status === "stopped";
+				if (!startupProcessesConfirmed)
 					failures.push(new Error("Startup-owned process shutdown remained unconfirmed."));
 			} catch (cleanupError) {
 				failures.push(cleanupError);
 			} finally {
-				stopStartupOwners();
-			}
-			for (const result of (await ownerStop) ?? []) {
-				if (result.status === "rejected") failures.push(result.reason);
-				else if (typeof result.value === "number" && result.value > 0)
-					failures.push(new Error("Startup structured owner shutdown remained unconfirmed."));
+				prepareStartupSessions();
 			}
 			for (const dispose of startupCleanup.reverse()) {
 				try {

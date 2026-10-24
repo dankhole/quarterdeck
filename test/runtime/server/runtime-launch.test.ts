@@ -31,7 +31,12 @@ const mocks = vi.hoisted(() => {
 		markStopping: vi.fn(async () => undefined),
 		release: vi.fn(async () => undefined),
 	};
-	const shutdown = vi.fn(async () => ({ outcome: clean, completion: Promise.resolve(clean) }));
+	const shutdown = vi.fn(
+		async (): Promise<{
+			outcome: RuntimeShutdownOutcome;
+			completion: Promise<RuntimeShutdownOutcome>;
+		}> => ({ outcome: clean, completion: Promise.resolve(clean) }),
+	);
 	return {
 		clean,
 		state,
@@ -124,6 +129,88 @@ describe("admitted runtime shutdown composition", () => {
 		vi.unstubAllEnvs();
 		process.exitCode = exitCode;
 	});
+	it("shares deadline cleanup until settlement, then retries an incomplete result", async () => {
+		const incomplete: RuntimeShutdownOutcome = {
+			status: "incomplete",
+			safeToExit: false,
+			safeToReleaseOwnership: false,
+			reasons: ["processes_unconfirmed"],
+		};
+		let complete!: (outcome: RuntimeShutdownOutcome) => void;
+		const completion = new Promise<RuntimeShutdownOutcome>((resolve) => {
+			complete = resolve;
+		});
+		mocks.shutdown.mockResolvedValueOnce({
+			outcome: { ...incomplete, reasons: ["deadline"] },
+			completion,
+		});
+		const runtime = await launch();
+		expect(await runtime.shutdown()).toMatchObject({ reasons: ["deadline"] });
+		expect(await runtime.shutdown()).toMatchObject({ reasons: ["deadline"] });
+		expect(mocks.shutdown).toHaveBeenCalledOnce();
+		expect(mocks.lease.release).not.toHaveBeenCalled();
+		let settled = false;
+		const waiting = runtime.shutdown(true).then((outcome) => {
+			settled = true;
+			return outcome;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		complete(incomplete);
+		expect(await waiting).toEqual(incomplete);
+		expect(await runtime.shutdown(true)).toEqual(mocks.clean);
+		expect(await runtime.shutdown(true)).toEqual(mocks.clean);
+		expect(mocks.shutdown).toHaveBeenCalledTimes(2);
+		expect(mocks.lease.release).toHaveBeenCalledOnce();
+	});
+
+	it("fences and drains admitted writes on incomplete completion without releasing ownership", async () => {
+		const incomplete: RuntimeShutdownOutcome = {
+			status: "incomplete",
+			safeToExit: false,
+			safeToReleaseOwnership: false,
+			reasons: ["quiescence_failed", "processes_unconfirmed"],
+		};
+		mocks.shutdown.mockResolvedValueOnce({ outcome: incomplete, completion: Promise.resolve(incomplete) });
+		const runtime = await launch();
+		let releaseWriter!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			releaseWriter = resolve;
+		});
+		const writing = writeAdmission.withRuntimeWriteOperation(
+			["/synthetic/quarterdeck/sessions.json"],
+			async () => await gate,
+		);
+		let settled = false;
+		const stopping = runtime.shutdown(true).then((outcome) => {
+			settled = true;
+			return outcome;
+		});
+		try {
+			await vi.waitFor(() => expect(mocks.waitForWrites).toHaveBeenCalledOnce());
+			expect(settled).toBe(false);
+			expect(mocks.lease.release).not.toHaveBeenCalled();
+			await expect(
+				writeAdmission.withRuntimeWriteOperation(["/synthetic/quarterdeck/board.json"], async () => {}),
+			).rejects.toBeInstanceOf(writeAdmission.RuntimeWriteAdmissionError);
+			releaseWriter();
+			await writing;
+			expect(await stopping).toEqual(incomplete);
+			expect(mocks.lease.release).not.toHaveBeenCalled();
+		} finally {
+			releaseWriter();
+			await writing;
+		}
+	});
+
+	it("retries a rejected shutdown rather than caching the rejection", async () => {
+		mocks.shutdown.mockRejectedValueOnce(new Error("synthetic failure"));
+		const runtime = await launch();
+		await expect(runtime.shutdown(true)).rejects.toThrow("synthetic failure");
+		await expect(runtime.shutdown(true)).resolves.toEqual(mocks.clean);
+		expect(mocks.shutdown).toHaveBeenCalledTimes(2);
+	});
+
 	it("rejects a new write queued after observing quiescence and before releasing custody", async () => {
 		const write = vi.fn(async () => undefined);
 		mocks.waitForWrites.mockImplementation(async (stateHome) => {
@@ -183,7 +270,6 @@ describe("admitted runtime shutdown composition", () => {
 			safeToReleaseOwnership: false,
 			reasons: ["ownership_lost"],
 		});
-		await runtime.shutdown(true);
 		expect(mocks.shutdown).toHaveBeenCalledExactlyOnceWith({
 			skipSessionCleanup: false,
 			persistenceAllowed: false,

@@ -33,12 +33,12 @@ export class DesktopDialogs {
 		return (
 			(await this.message({
 				type: "warning",
-				buttons: ["Keep Open", "Quit Anyway"],
+				buttons: ["Keep Open", "Force Quit"],
 				defaultId: 0,
 				cancelId: 0,
 				message: "Runtime cleanup is unconfirmed",
 				detail:
-					"The owned runtime helper exited before confirming that its sessions stopped. Some processes may still be running, and unsaved window edits may be lost. Quit Anyway closes this app without confirming cleanup. If restart remains blocked, check that prior agents and background commands have stopped, then choose Recover sessions. Restart the Mac if you cannot confirm cleanup.",
+					"Quarterdeck could not confirm a clean runtime shutdown. Some agents or background commands may still be running. Force Quit closes this app without confirming cleanup and preserves the unclean shutdown record; it does not authorize an update or restart. If reopening remains blocked, check that prior agents and background commands have stopped, then choose Recover sessions. Restart the Mac if you cannot confirm cleanup.",
 			})) === 1
 		);
 	}

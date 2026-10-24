@@ -229,10 +229,12 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	if (desktop) {
 		const diagnostics = launch.runtime ? createDesktopRuntimeDiagnosticsIngestor(launch.runtime.diagnostics) : null;
 		if (diagnostics) desktop.setDiagnosticsHandler(diagnostics.ingest);
-		desktop.setShutdownHandler(async (waitForCompletion) => {
-			const outcome = await launch.shutdown(waitForCompletion);
+		desktop.setShutdownHandler(async () => {
+			// Only the admitted runtime's full completion fences and drains writes;
+			// a bounded shutdown response must never authorize app abandonment.
+			const outcome = await launch.shutdown(true);
 			if (outcome.safeToExit) diagnostics?.dispose();
-			return outcome;
+			return { outcome, persistenceSettled: true };
 		});
 		desktop.setControlHandler(async (method) =>
 			method === "create-browser-launch"

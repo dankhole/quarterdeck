@@ -202,6 +202,48 @@ describe("markInterruptedAndStopAll", () => {
 		});
 	});
 
+	it("preserves exact resume state through externally owned shutdown preparation, retry, and exit", async () => {
+		let session: ReturnType<typeof createMockPtySession> | undefined;
+		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {
+			session = createMockPtySession(111, request);
+			return session;
+		});
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "synthetic task",
+		});
+		applyCurrentProviderHook(manager, "activity", {
+			hookEventName: "SessionStart",
+			metadata: { sessionId: "exact-resume" },
+		});
+		manager.markInterruptedAndStopAll({ signalProcesses: false });
+		expect(manager.getOwnedProcessRootPids()).toEqual([111]);
+		manager.markInterruptedAndStopAll({ signalProcesses: false });
+		expect(session?.stop).toHaveBeenCalledWith({ interrupted: true, signalProcess: false });
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+			pid: null,
+			resumeSessionId: "exact-resume",
+			startupRecoveryRequired: true,
+		});
+		session?.triggerExit(1);
+		await manager.waitForShutdownQuiescence();
+		expect(ptySessionSpawnMock).toHaveBeenCalledOnce();
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "awaiting_review",
+			reviewReason: "interrupted",
+			pid: null,
+			resumeSessionId: "exact-resume",
+			startupRecoveryRequired: true,
+		});
+	});
+
 	it("suppresses a synchronous shutdown exit before it can restart and erase the captured session id", async () => {
 		const spawnedSessions: Array<ReturnType<typeof createMockPtySession>> = [];
 		ptySessionSpawnMock.mockImplementation((request: MockSpawnRequest) => {

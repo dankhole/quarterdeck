@@ -43,6 +43,17 @@ describe("runtime diagnostics coordination", () => {
 		await rm(stateHome, { recursive: true, force: true });
 	});
 
+	it("records evidence closure without claiming runtime shutdown completed", async () => {
+		await diagnostics.close();
+		await diagnostics.close();
+
+		const names = diagnostics.getRecords().map((record) => record.name);
+		expect(names.filter((name) => name === "runtime.recorder_closing")).toHaveLength(1);
+		expect(names.filter((name) => name === "runtime.recorder_closed")).toHaveLength(1);
+		expect(names).not.toContain("runtime.shutdown_requested");
+		expect(names).not.toContain("runtime.shutdown_completed");
+	});
+
 	it("coalesces concurrent browser snapshot requests", async () => {
 		const clientId = "client-1";
 		diagnostics.issueBrowserCapability(clientId);

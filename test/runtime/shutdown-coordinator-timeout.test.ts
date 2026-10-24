@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeBoardData, RuntimeOwnedProcessShutdownOutcome, RuntimeTaskSessionSummary } from "../../src/core";
 import { shutdownRuntimeServer } from "../../src/server";
-import type { TerminalSessionManager } from "../../src/terminal";
+import { RuntimeSessionPersistence } from "../../src/server/runtime-session-persistence";
+import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../src/terminal";
 import { createTestTaskSessionSummary } from "../utilities/task-session-factory";
 
 vi.mock("../../src/state/project-state.js", () => ({
@@ -85,6 +86,83 @@ describe("shutdown coordinator timeout", () => {
 		vi.clearAllMocks();
 	});
 
+	it("awaits a stalled automatic writer despite preparation failure and unconfirmed processes", async () => {
+		vi.useFakeTimers();
+		let releaseWriter!: () => void;
+		const writer = new Promise<void>((resolve) => {
+			releaseWriter = resolve;
+		});
+		const reconcileRuntimeSessions = vi.fn(async () => {
+			await writer;
+			return {
+				state: {
+					repoPath: "/synthetic/project",
+					statePath: "/synthetic/state",
+					git: { currentBranch: "main", defaultBranch: "main", branches: [] },
+					board: createBoard([]),
+					sessions: {},
+					revision: 0,
+				},
+				changed: false,
+				acceptedChange: false,
+				replayed: false,
+			};
+		});
+		const persistence = new RuntimeSessionPersistence({
+			projectRegistry: { getProjectPathById: () => "/synthetic/project" },
+			boardCommands: { reconcileRuntimeSessions },
+		});
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({
+			task: createTestTaskSessionSummary({ taskId: "task", resumeSessionId: "exact-resume" }),
+		});
+		const manager = new TerminalSessionManager(store);
+		persistence.trackTerminalManager("project", manager);
+		const closeRuntimeServer = vi.fn(async () => {});
+		const stopPersistenceForShutdown = vi.fn(async () => await persistence.stopForShutdown());
+		try {
+			await vi.advanceTimersByTimeAsync(1);
+			expect(reconcileRuntimeSessions).toHaveBeenCalledOnce();
+			const stopping = shutdownRuntimeServer({
+				projectRegistry: {
+					listManagedProjects: () => [{ projectId: "project", projectPath: "", terminalManager: manager }],
+				},
+				warn: vi.fn(),
+				closeRuntimeServer,
+				cleanupTimeoutMs: 10,
+				prepareForShutdown: async () => {
+					throw new Error("synthetic preparation failure");
+				},
+				stopOwnedProcesses: async (prepare) => {
+					prepare();
+					return { status: "unconfirmed" };
+				},
+				stopPersistenceForShutdown,
+			});
+			await vi.advanceTimersByTimeAsync(11);
+			const report = await stopping;
+			let settled = false;
+			void report.completion.then(() => {
+				settled = true;
+			});
+			expect(stopPersistenceForShutdown).toHaveBeenCalledOnce();
+			expect(settled).toBe(false);
+			expect(closeRuntimeServer).not.toHaveBeenCalled();
+			await expect(persistence.persistRuntimeSessions("project")).rejects.toThrow("persistence is closed");
+			releaseWriter();
+			expect(await report.completion).toMatchObject({
+				status: "incomplete",
+				safeToReleaseOwnership: false,
+				reasons: expect.arrayContaining(["quiescence_failed", "processes_unconfirmed"]),
+			});
+			expect(store.getSummary("task")?.resumeSessionId).toBe("exact-resume");
+			expect(settled).toBe(true);
+		} finally {
+			releaseWriter();
+			await persistence.close({ skipPersistence: true });
+		}
+	});
+
 	it("allows an admitted producer to spawn while draining, then fences and snapshots its settled owners", async () => {
 		vi.useFakeTimers();
 		let finishProducer!: () => void;
@@ -138,6 +216,25 @@ describe("shutdown coordinator timeout", () => {
 		expect(await result.completion).toMatchObject({ status: "clean" });
 		expect(terminalManager.markInterruptedAndStopAll).toHaveBeenCalledOnce();
 		expect(events).toEqual(["ingress-fenced", "producer-spawn", "spawn-fenced", "snapshot", "close"]);
+	});
+
+	it("does not dispose runtime owners after unconfirmed process cleanup", async () => {
+		const terminalManager = createTerminalManagerStub([]);
+		const closeRuntimeServer = vi.fn();
+		const result = await shutdownRuntimeServer({
+			projectRegistry: {
+				listManagedProjects: () => [{ projectId: "test-project", projectPath: "", terminalManager }],
+			},
+			warn: vi.fn(),
+			closeRuntimeServer,
+			stopOwnedProcesses: async (prepare) => {
+				prepare();
+				return { status: "unconfirmed" };
+			},
+		});
+		expect(await result.completion).toMatchObject({ status: "incomplete", reasons: ["processes_unconfirmed"] });
+		expect(terminalManager.markInterruptedAndStopAll).toHaveBeenCalledExactlyOnceWith({ signalProcesses: false });
+		expect(closeRuntimeServer).not.toHaveBeenCalled();
 	});
 
 	it("captures exact-owned roots before signals and awaits confirmed process cleanup", async () => {

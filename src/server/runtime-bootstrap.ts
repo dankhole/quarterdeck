@@ -38,7 +38,7 @@ import {
 import { createHooksApi } from "../trpc/hooks-api";
 import { getGitProcessLimiterSnapshot } from "../workdir/git-utils";
 import { deferredTaskWorkspaceDeletes } from "../workdir/task-worktree-deferred-delete";
-import { stopRuntimeOwnedProcessTrees } from "./owned-process-shutdown";
+import { createRuntimeOwnedProcessShutdown } from "./owned-process-shutdown";
 import {
 	createCoalescingGitRepositoryProbe,
 	ProjectGitValidationDiagnostics,
@@ -58,7 +58,11 @@ import { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
 import { assertPathIsDirectory, pathIsDirectory } from "./runtime-startup-paths";
 import { createRuntimeStateHub, type RuntimeStateHub } from "./runtime-state-hub";
 import { resolveInteractiveShellCommand } from "./shell";
-import { type RuntimeShutdownCoordinatorDependencies, shutdownRuntimeServer } from "./shutdown-coordinator";
+import {
+	type RuntimeFinalizedPersistenceFailure,
+	type RuntimeShutdownCoordinatorDependencies,
+	shutdownRuntimeServer,
+} from "./shutdown-coordinator";
 
 export { RuntimeStartupCleanupError } from "./runtime-startup-cleanup";
 
@@ -373,21 +377,27 @@ async function createRuntimeBootstrapState(
 function ownedProcessShutdown(
 	projectRegistry: ProjectRegistry,
 	hasAdditionalPendingLaunches?: () => boolean,
+	diagnostics?: Pick<RuntimeDiagnostics, "recordEvent">,
 ): NonNullable<RuntimeBootstrapOptions["stopOwnedProcesses"]> {
-	return async (stopSessions) =>
-		await stopRuntimeOwnedProcessTrees({
-			getRootPids: () =>
-				projectRegistry
-					.listManagedProjects()
-					.flatMap(({ terminalManager }) => terminalManager.getOwnedProcessRootPids()),
-			hasPendingLaunches: () =>
-				(hasAdditionalPendingLaunches?.() ?? false) ||
-				projectRegistry
-					.listManagedProjects()
-					.some(({ terminalManager }) => terminalManager.hasPendingOwnedProcessLaunches()),
-			stopSessions,
-			includeRuntimeChildren: true,
-		});
+	return createRuntimeOwnedProcessShutdown({
+		getRootPids: () =>
+			projectRegistry
+				.listManagedProjects()
+				.flatMap(({ terminalManager }) => terminalManager.getOwnedProcessRootPids()),
+		hasPendingLaunches: () =>
+			(hasAdditionalPendingLaunches?.() ?? false) ||
+			projectRegistry
+				.listManagedProjects()
+				.some(({ terminalManager }) => terminalManager.hasPendingOwnedProcessLaunches()),
+		includeRuntimeChildren: true,
+		onUnconfirmed: (report) =>
+			diagnostics?.recordEvent(
+				"runtime.shutdown_processes_unconfirmed",
+				report,
+				{},
+				{ level: "warn", essential: true },
+			),
+	});
 }
 
 async function createRuntimeServerHandle(
@@ -437,25 +447,34 @@ async function createRuntimeServerHandle(
 		}
 	};
 
+	const stopProcesses =
+		hostLaunch.stopOwnedProcesses ??
+		ownedProcessShutdown(
+			bootstrap.projectRegistry,
+			() => runtimeServer.getQuitSummary().pendingLaunches,
+			bootstrap.diagnostics,
+		);
 	let shutdownPromise: ReturnType<typeof shutdownRuntimeServer> | null = null;
-	let persistenceDiscard: Promise<void> | undefined;
+	let persistenceStopped = false;
+	const finalizedPersistenceFailures = new Set<RuntimeFinalizedPersistenceFailure>();
 	const shutdown: RuntimeHandle["shutdown"] = (options) => {
 		if (options?.persistenceAllowed === false) {
 			allowPersistence = false;
-			persistenceDiscard ??= bootstrap.runtimeSessionPersistence.close({ skipPersistence: true });
 		}
 		shutdownPromise ??= (async () => {
 			bootstrap.stopPeriodicBackups();
-			const stopProcesses =
-				hostLaunch.stopOwnedProcesses ??
-				ownedProcessShutdown(bootstrap.projectRegistry, () => runtimeServer.getQuitSummary().pendingLaunches);
 			return await shutdownRuntimeServer({
 				projectRegistry: bootstrap.projectRegistry,
 				warn: bootstrap.warn,
 				closeRuntimeServer: close,
+				persistenceAlreadyStopped: persistenceStopped,
+				finalizedPersistenceFailures: Array.from(finalizedPersistenceFailures),
+				stopPersistenceForShutdown: () => {
+					persistenceStopped = true;
+					return runtimeServer.stopPersistenceForShutdown({ persistenceAllowed: persistenceAllowed() });
+				},
 				prepareForShutdown: async () => {
 					const prepared = await Promise.allSettled([
-						persistenceDiscard,
 						waitForPendingBackups(),
 						runtimeServer.prepareForShutdown({
 							skipSessionCleanup: options?.skipSessionCleanup ?? false,
@@ -471,30 +490,48 @@ async function createRuntimeServerHandle(
 					}
 				},
 				stopOwnedProcesses: async (stopSessions) => {
-					let ownerStop: Promise<void> | undefined;
-					const stopAll = () => {
-						stopSessions();
-						ownerStop ??= runtimeServer.stopTaskOwnersForShutdown({
+					const result = await stopProcesses(stopSessions);
+					// Process termination has one owner. Dispose provider/LSP owners only
+					// after every captured descendant is confirmed stopped.
+					if (result.status === "stopped") {
+						await runtimeServer.stopTaskOwnersForShutdown({
 							skipSessionCleanup: options?.skipSessionCleanup ?? false,
 							persistenceAllowed: persistenceAllowed(),
 						});
-						void ownerStop.catch(() => undefined);
-					};
-					try {
-						return await stopProcesses(stopAll);
-					} finally {
-						// A failing snapshot still fences/stops owners; their full settlement
-						// remains inside the coordinator's process attempt before persistence.
-						stopAll();
-						await ownerStop;
 					}
+					return result;
 				},
 				beforeProcessSnapshot: hostLaunch.beforeProcessSnapshot,
 				persistenceAllowed,
 				skipSessionCleanup: options?.skipSessionCleanup ?? false,
 				skipOrphanProcessCleanup: process.env.QUARTERDECK_AGENT_LAB === "1",
 			});
-		})();
+		})().then(
+			(result) => {
+				void result.completion.then(
+					(outcome) => {
+						if (persistenceStopped && outcome.status === "incomplete") {
+							for (const reason of outcome.reasons) {
+								if (reason === "persistence_failed" || reason === "quiescence_failed") {
+									finalizedPersistenceFailures.add(reason);
+								}
+							}
+						}
+						if (!outcome.safeToExit) shutdownPromise = null;
+					},
+					() => {
+						if (persistenceStopped) finalizedPersistenceFailures.add("persistence_failed");
+						shutdownPromise = null;
+					},
+				);
+				return result;
+			},
+			(error: unknown) => {
+				if (persistenceStopped) finalizedPersistenceFailures.add("persistence_failed");
+				shutdownPromise = null;
+				throw error;
+			},
+		);
 		return shutdownPromise;
 	};
 
@@ -578,18 +615,30 @@ export async function startRuntime(options: RuntimeBootstrapOptions): Promise<Ru
 				const cleanup = await shutdownRuntimeServer({
 					projectRegistry: resources.projectRegistry,
 					warn,
+					stopPersistenceForShutdown: async () => {
+						const results = await Promise.allSettled([
+							resources.runtimeSessionPersistence?.stopForShutdown({
+								skipPersistence: options.persistenceAllowed?.() === false,
+							}),
+							resources.projectStatePublications?.close(),
+						]);
+						const failures = results.filter((result) => result.status === "rejected");
+						if (failures.length > 0)
+							throw new AggregateError(
+								failures.map((result) => result.reason),
+								"Partial runtime persistence shutdown failed.",
+							);
+					},
 					prepareForShutdown: async () => {
 						await Promise.all([waitForPendingBackups(), resources.projectRegistry?.waitForMaintenance?.()]);
 						await waitForPendingAgentAvailabilityProbes();
 					},
-					stopOwnedProcesses: options.stopOwnedProcesses ?? ownedProcessShutdown(resources.projectRegistry),
+					stopOwnedProcesses:
+						options.stopOwnedProcesses ?? ownedProcessShutdown(resources.projectRegistry, undefined, diagnostics),
 					beforeProcessSnapshot: options.beforeProcessSnapshot,
 					persistenceAllowed: options.persistenceAllowed,
 					closeRuntimeServer: async () => {
 						const closed = await Promise.allSettled([
-							resources.runtimeSessionPersistence?.close({
-								skipPersistence: options.persistenceAllowed?.() === false,
-							}),
 							resources.projectStatePublications?.close(),
 							resources.runtimeHub?.close(),
 						]);

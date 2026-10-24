@@ -88,6 +88,67 @@ function createExplicitlyStoppedSession(taskId: string): RuntimeTaskSessionSumma
 }
 
 describe("shutdown coordinator integration", { concurrent: false }, () => {
+	it("persists exact provider resume identity across incomplete cleanup and retry", async () => {
+		await withTemporaryHome(async () => {
+			const sandbox = createTempDir("quarterdeck-shutdown-retry-");
+			try {
+				const projectPath = join(sandbox.path, "retry-project");
+				mkdirSync(projectPath, { recursive: true });
+				initGitRepository(projectPath);
+				const initial = await loadProjectState(projectPath);
+				const running = { ...createSession("retry-task", "running"), resumeSessionId: "exact-synthetic-resume" };
+				await saveProjectState(projectPath, {
+					board: createBoard({ inProgress: ["retry-task"] }),
+					sessions: { "retry-task": running },
+					expectedRevision: initial.revision,
+				});
+				const interrupted: RuntimeTaskSessionSummary = {
+					...running,
+					state: "awaiting_review",
+					reviewReason: "interrupted",
+					pid: null,
+					startupRecoveryRequired: true,
+					latestHookActivity: null,
+				};
+				const terminalManager = {
+					stopReconciliation: () => {},
+					markInterruptedAndStopAll: vi.fn(() => [interrupted]),
+					waitForShutdownQuiescence: async () => {},
+					store: { listSummaries: () => [interrupted], getSummary: () => interrupted },
+				} as unknown as TerminalSessionManager;
+				let attempts = 0;
+				const closeRuntimeServer = vi.fn(async () => {});
+				const deps = {
+					projectRegistry: {
+						listManagedProjects: () => [{ projectId: "retry-project", projectPath, terminalManager }],
+					},
+					warn: vi.fn(),
+					closeRuntimeServer,
+					stopOwnedProcesses: async (prepare: () => void) => {
+						prepare();
+						return ++attempts === 1 ? { status: "unconfirmed" as const } : { status: "stopped" as const };
+					},
+				};
+				expect((await shutdownRuntimeServer(deps)).outcome).toMatchObject({ status: "incomplete" });
+				expect(closeRuntimeServer).not.toHaveBeenCalled();
+				expect((await loadProjectState(projectPath)).sessions["retry-task"]).toMatchObject({
+					resumeSessionId: "exact-synthetic-resume",
+					reviewReason: "interrupted",
+					startupRecoveryRequired: true,
+				});
+				expect((await shutdownRuntimeServer(deps)).outcome).toMatchObject({ status: "clean" });
+				expect(closeRuntimeServer).toHaveBeenCalledOnce();
+				expect((await loadProjectState(projectPath)).sessions["retry-task"]).toMatchObject({
+					resumeSessionId: "exact-synthetic-resume",
+					reviewReason: "interrupted",
+					startupRecoveryRequired: true,
+				});
+			} finally {
+				sandbox.cleanup();
+			}
+		});
+	}, 30_000);
+
 	it("preserves cards in their columns and marks sessions interrupted on shutdown", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("quarterdeck-shutdown-scope-");

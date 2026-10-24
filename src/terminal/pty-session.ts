@@ -173,6 +173,7 @@ export class PtySession {
 	private readonly ptyProcess: NodePty.IPty;
 	private interrupted = false;
 	private exited = false;
+	private externalTerminationOwner = false;
 	private managedProcessOwnership: ManagedProcessOwnershipHandle | null = null;
 	private managedProcessOwnershipRegistrationStarted = false;
 
@@ -335,11 +336,14 @@ export class PtySession {
 		this.ptyProcess.resume();
 	}
 
-	stop(options?: { interrupted?: boolean }): void {
+	stop(options?: { interrupted?: boolean; signalProcess?: boolean }): void {
 		if (options?.interrupted) {
 			this.interrupted = true;
 		}
-		terminatePtyProcess(this.ptyProcess);
+		// Once the runtime tree owner takes custody, later generic disposal must
+		// not signal the root again (or a recycled PID after its observed exit).
+		if (options?.signalProcess === false) this.externalTerminationOwner = true;
+		if (!this.externalTerminationOwner && !this.exited) terminatePtyProcess(this.ptyProcess);
 	}
 
 	wasInterrupted(): boolean {

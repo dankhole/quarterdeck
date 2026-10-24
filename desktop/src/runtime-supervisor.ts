@@ -53,6 +53,7 @@ interface ChildGeneration {
 	exit: Promise<number | null>;
 	shutdown: Promise<RuntimeShutdownOutcome> | null;
 	shutdownOutcome: RuntimeShutdownOutcome | null;
+	persistenceSettled: boolean;
 	diagnosticsSending: boolean;
 	diagnosticsQueued: DesktopDiagnosticsPayload | null;
 }
@@ -153,6 +154,7 @@ export class RuntimeSupervisor {
 			}),
 			shutdown: null,
 			shutdownOutcome: null,
+			persistenceSettled: false,
 			diagnosticsSending: false,
 			diagnosticsQueued: null,
 		};
@@ -248,6 +250,9 @@ export class RuntimeSupervisor {
 		if (current.exited)
 			return Promise.resolve(!current.child.pid || current.ready?.ownership === "attached" ? CLEAN : UNCONFIRMED);
 		this.evidence(current, "stopping");
+		// A new attempt may perform persistence again; an earlier receipt cannot
+		// authorize force exit while the retry is in flight.
+		current.persistenceSettled = false;
 		current.shutdown = this.requestShutdown(current).then((outcome) => {
 			current.shutdownOutcome = outcome;
 			if (outcome.status === "incomplete" && !current.exited) current.shutdown = null;
@@ -256,13 +261,26 @@ export class RuntimeSupervisor {
 		return current.shutdown;
 	}
 
-	exitCleanupState(): "not_started" | "running" | "clean" | "unconfirmed" {
+	exitCleanupState(): "not_started" | "running" | "stopping" | "clean" | "unconfirmed" {
 		const current = this.active;
 		if (!current) return "not_started";
-		if (!current.exited) return "running";
+		if (!current.exited) return current.shutdown || current.shutdownOutcome ? "stopping" : "running";
 		if (!current.child.pid || current.ready?.ownership === "attached" || current.shutdownOutcome?.status === "clean")
 			return "clean";
 		return "unconfirmed";
+	}
+
+	/** Deliberate app abandonment is not proof of process cleanup or ownership release. */
+	canForceQuit(): boolean {
+		const current = this.active;
+		if (!current) return false;
+		if (current.exited) return this.exitCleanupState() === "unconfirmed";
+		return (
+			current.ready?.ownership === "owned" &&
+			current.shutdown === null &&
+			current.shutdownOutcome?.status === "incomplete" &&
+			current.persistenceSettled
+		);
 	}
 
 	hostEffectIdentity(): DesktopHostEffectIdentity | null {
@@ -387,6 +405,7 @@ export class RuntimeSupervisor {
 				)
 					return;
 				result = parsed.data.outcome;
+				current.persistenceSettled = parsed.data.persistenceSettled === true;
 				if (result.status === "incomplete") finish(result);
 			};
 			const timer = setTimeout(() => finish(DEADLINE), this.options.shutdownDeadlineMs ?? 15_000);

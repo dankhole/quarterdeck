@@ -3,8 +3,9 @@ import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/runtime-protocol.js";
+import { DesktopQuitCoordinator } from "../src/quit-coordinator.js";
 import {
 	RuntimeSupervisor,
 	type RuntimeSupervisorEvidence,
@@ -65,7 +66,7 @@ function supervisor(
 		},
 		installationAdmission,
 		startupDeadlineMs: 500,
-		shutdownDeadlineMs: 1000,
+		shutdownDeadlineMs: mode === "shutdown-timeout" ? 20 : 1000,
 		spawnChild: (executable, args, options) => {
 			expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(labConfigPath);
 			expect(executable).toBe("/synthetic/bin/node");
@@ -158,6 +159,7 @@ describe("private bundled runtime supervision", () => {
 		expect(await owner.stop()).toEqual({ status: "clean", safeToExit: true, safeToReleaseOwnership: true });
 		expect(owner.isRunning()).toBe(false);
 		expect(owner.exitCleanupState()).toBe("clean");
+		expect(owner.canForceQuit()).toBe(false);
 		expect(evidence.map((value) => value.phase)).toEqual(["starting", "ready", "stopping", "stopped"]);
 	});
 
@@ -176,6 +178,85 @@ describe("private bundled runtime supervision", () => {
 		await owner.start();
 		expect(await owner.stop()).toMatchObject({ status: "incomplete", reasons: ["persistence_failed"] });
 		expect(owner.isRunning()).toBe(true);
+		expect(owner.exitCleanupState()).toBe("stopping");
+		expect(owner.canForceQuit()).toBe(false);
+	});
+
+	it("permits explicit app abandonment only with a matching settled-persistence receipt", async () => {
+		const { owner } = supervisor("incomplete-settled");
+		await owner.start();
+		expect(owner.canForceQuit()).toBe(false);
+		expect(await owner.stop()).toMatchObject({
+			status: "incomplete",
+			safeToExit: false,
+			safeToReleaseOwnership: false,
+		});
+		expect(owner.isRunning()).toBe(true);
+		expect(owner.exitCleanupState()).toBe("stopping");
+		expect(owner.canForceQuit()).toBe(true);
+	});
+
+	it.each(["incomplete-unsettled", "incomplete-wrong-identity", "shutdown-timeout"])(
+		"does not permit app abandonment for %s",
+		async (mode) => {
+			const { owner } = supervisor(mode);
+			await owner.start();
+			expect(await owner.stop()).toMatchObject({ status: "incomplete" });
+			expect(owner.isRunning()).toBe(true);
+			expect(owner.canForceQuit()).toBe(false);
+		},
+	);
+
+	it("revokes settled proof during retry and still accepts a later clean shutdown", async () => {
+		const { owner } = supervisor("retry-clean");
+		await owner.start();
+		expect(await owner.stop()).toMatchObject({ status: "incomplete" });
+		expect(owner.canForceQuit()).toBe(true);
+		const retry = owner.stop();
+		expect(owner.canForceQuit()).toBe(false);
+		expect(await retry).toMatchObject({ status: "clean", safeToReleaseOwnership: true });
+		expect(owner.exitCleanupState()).toBe("clean");
+		expect(owner.canForceQuit()).toBe(false);
+	});
+
+	it("keeps normal Quit retry usable across the live helper and frontend lease", async () => {
+		const { owner } = supervisor("retry-clean");
+		const runtime = await owner.start();
+		const getSummary = vi.fn(async () => {
+			const result = await owner.control("get-quit-summary");
+			return result?.method === "get-quit-summary" ? result : null;
+		});
+		const confirmForce = vi.fn(async () => false);
+		const quit = new DesktopQuitCoordinator({
+			needsFrontendPreflight: () => true,
+			cleanupState: () => owner.exitCleanupState(),
+			canForceQuit: () => owner.canForceQuit(),
+			preflight: async () => ({
+				requestId: "synthetic-seal",
+				runtimeGeneration: runtime.generation,
+				decision: "ready",
+				status: {
+					dirtyEditorCount: 0,
+					activeSessionCount: 0,
+					needsInputSessionCount: 0,
+					runtimeConnected: owner.exitCleanupState() === "running",
+				},
+			}),
+			isSealValid: () => true,
+			releasePreflight: vi.fn(),
+			getSummary,
+			stop: () => owner.stop(),
+			confirmSessions: async () => true,
+			confirmUnconfirmedExit: confirmForce,
+			inform: async () => undefined,
+			onStopping: vi.fn(),
+		});
+		expect(await quit.request("quit")).toEqual({ kind: "cancelled" });
+		expect(owner.isRunning()).toBe(true);
+		expect(confirmForce).toHaveBeenCalledOnce();
+		expect(await quit.request("quit")).toEqual({ kind: "clean" });
+		expect(getSummary).toHaveBeenCalledOnce();
+		expect(owner.isRunning()).toBe(false);
 	});
 
 	it("rejects readiness from another launch and shuts down its actual helper", async () => {
@@ -192,6 +273,7 @@ describe("private bundled runtime supervision", () => {
 		expect(owner.isRunning()).toBe(false);
 		expect(await owner.stop()).toMatchObject({ status: "incomplete", reasons: ["processes_unconfirmed"] });
 		expect(owner.exitCleanupState()).toBe("unconfirmed");
+		expect(owner.canForceQuit()).toBe(true);
 	});
 	it("accepts only matching private control replies and bounds unavailable controls", async () => {
 		const { owner } = supervisor();

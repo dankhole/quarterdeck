@@ -108,6 +108,26 @@ function createMockPtyProcess(writeStream?: MockNodePtyWriteStream) {
 }
 
 describe("PtySession", () => {
+	it("prepares interruption without node-pty or process-group signals under external termination ownership", () => {
+		setPlatform("darwin");
+		const ptyProcess = createMockPtyProcess();
+		ptyMocks.spawn.mockReturnValue(ptyProcess);
+		const killSpy = vi.spyOn(process, "kill").mockReturnValue(true);
+		try {
+			const session = PtySession.spawn({ binary: "synthetic-agent", cwd: "/tmp", cols: 80, rows: 24 });
+			session.stop({ interrupted: true, signalProcess: false });
+			// Generic disposal cannot take signal ownership back, even before the
+			// delayed node-pty exit callback has run.
+			session.stop();
+			session.stop({ interrupted: true, signalProcess: true });
+			expect(session.wasInterrupted()).toBe(true);
+			expect(ptyProcess.kill).not.toHaveBeenCalled();
+			expect(killSpy).not.toHaveBeenCalled();
+		} finally {
+			killSpy.mockRestore();
+		}
+	});
+
 	beforeEach(() => {
 		ptyMocks.spawn.mockReset();
 		ptySessionTesting.setNodePtySpawnOverride(ptyMocks.spawn);

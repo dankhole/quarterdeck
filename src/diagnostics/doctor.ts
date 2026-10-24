@@ -190,7 +190,11 @@ export function evaluateDiagnosticSnapshot(
 					"The recorded runtime instance is not reachable",
 					"Crash-surviving journal records remain usable, but current in-memory state and live subsystem snapshots are unavailable.",
 					{},
-					evidenceIds(records, ["runtime.shutdown_failed", "runtime.shutdown_requested"]),
+					evidenceIds(records, [
+						"runtime.shutdown_failed",
+						"runtime.recorder_closing",
+						"runtime.shutdown_requested",
+					]),
 					["The runtime may have exited normally after its last journal flush."],
 				),
 			);

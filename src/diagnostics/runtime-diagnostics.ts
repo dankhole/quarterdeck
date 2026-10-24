@@ -352,14 +352,9 @@ export class RuntimeDiagnostics {
 		if (this.closed) return;
 		this.closed = true;
 		const desktop = this.instance.getDescriptor().processKind === "desktop";
-		this.recordEvent(
-			desktop ? "desktop.recorder_closing" : "runtime.shutdown_requested",
-			{},
-			{},
-			{ essential: true },
-		);
+		this.recordEvent(desktop ? "desktop.recorder_closing" : "runtime.recorder_closing", {}, {}, { essential: true });
 		await this.instance.markStopping().catch(() => undefined);
-		this.recordEvent(desktop ? "desktop.recorder_closed" : "runtime.shutdown_completed", {}, {}, { essential: true });
+		this.recordEvent(desktop ? "desktop.recorder_closed" : "runtime.recorder_closed", {}, {}, { essential: true });
 		this.disposeProvidersAndCapabilities();
 		await this.recorder.close();
 		if (!this.failed) await this.instance.markStopped();

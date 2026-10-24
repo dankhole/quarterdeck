@@ -42,6 +42,7 @@ export interface AdmittedRuntimeLaunch {
 	capabilities: RuntimeCapabilities;
 	ready: Omit<DesktopReadyMessage, "type" | "protocolVersion" | "startupId">;
 	createBrowserUrl: () => Promise<string>;
+	/** A resolved full completion also proves writes are fenced and drained, even when cleanup is incomplete. */
 	shutdown: (waitForCompletion?: boolean) => Promise<RuntimeShutdownOutcome>;
 }
 
@@ -180,17 +181,20 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 					reasons: ["ownership_lost"],
 				}
 			: result;
+		// Settled incomplete shutdown must be safe for parent disconnect too:
+		// fence future mutations and drain admitted filesystem work independently
+		// of process cleanup success. Retries never reopen this admission.
+		writesAllowed = false;
+		deferredTaskWorkspaceDeletes.abort();
+		await waitForRuntimeWriteQuiescence(lease.canonicalStateHome);
 		if (outcome.safeToReleaseOwnership && !ownershipLost) {
-			// Close admission before awaiting the counter: a zero count is not a
-			// fence against a new writer entering on the following microtask.
-			writesAllowed = false;
-			// Staged workspace deletes resume on the next start rather than delay release.
-			deferredTaskWorkspaceDeletes.abort();
-			await waitForRuntimeWriteQuiescence(lease.canonicalStateHome);
-			releasePromise ??= lease.release();
+			releasePromise ??= lease.release().catch((error: unknown) => {
+				releasePromise = null;
+				throw error;
+			});
 			await releasePromise;
 		}
-		finalOutcome = outcome;
+		if (outcome.safeToExit) finalOutcome = outcome;
 		return outcome;
 	};
 	const shutdown = async (waitForCompletion = false): Promise<RuntimeShutdownOutcome> => {
@@ -198,33 +202,43 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 		if (!shutdownPromise) {
 			// Publish the shared promise before calling lease code: discovering a
 			// lost lease may synchronously re-enter this path through its callback.
-			shutdownPromise = Promise.resolve().then(async () => {
-				access.clear();
-				if (!ownershipLost) {
-					try {
-						await lease.markStopping();
-					} catch {
-						// Descriptor publication is observation, not cleanup authority.
-						// I/O failure or lease loss must still drain the runtime.
-						running.diagnostics.recordEvent(
-							"runtime.ownership_stopping_publication_failed",
-							{},
-							{},
-							{ level: "warn", essential: true },
-						);
+			shutdownPromise = Promise.resolve()
+				.then(async () => {
+					access.clear();
+					if (!ownershipLost) {
+						try {
+							await lease.markStopping();
+						} catch {
+							// Descriptor publication is observation, not cleanup authority.
+							// I/O failure or lease loss must still drain the runtime.
+							running.diagnostics.recordEvent(
+								"runtime.ownership_stopping_publication_failed",
+								{},
+								{},
+								{ level: "warn", essential: true },
+							);
+						}
 					}
-				}
-				const result = await running.shutdown({
-					skipSessionCleanup: options.skipShutdownCleanup,
-					persistenceAllowed: !ownershipLost,
+					const result = await running.shutdown({
+						skipSessionCleanup: options.skipShutdownCleanup,
+						persistenceAllowed: !ownershipLost,
+					});
+					const completion = result.completion.then(finish).finally(() => {
+						// A bounded deadline is still in flight; only settled failures
+						// may start another attempt against the same process owner.
+						if (!finalOutcome) shutdownPromise = null;
+					});
+					void completion.catch(() => undefined);
+					return { outcome: result.outcome, completion };
+				})
+				.catch((error: unknown) => {
+					shutdownPromise = null;
+					throw error;
 				});
-				void result.completion.then(finish).catch(() => undefined);
-				return result;
-			});
 		}
 		const result = await shutdownPromise;
-		if (result.outcome.safeToExit) return await finish(result.outcome);
-		return waitForCompletion ? await finish(await result.completion) : (finalOutcome ?? result.outcome);
+		if (result.outcome.safeToExit || waitForCompletion) return await result.completion;
+		return finalOutcome ?? result.outcome;
 	};
 	stopOnLoss = () => shutdown(true);
 	if (ownershipLost) {

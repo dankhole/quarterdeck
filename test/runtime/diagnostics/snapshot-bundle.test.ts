@@ -515,10 +515,11 @@ describe("diagnostic snapshots, doctor, and bundles", () => {
 					},
 				],
 			},
-			[],
+			[record("runtime.recorder_closing", 1), record("runtime.shutdown_requested", 2)],
 		);
 
 		expect(findings.map((finding) => finding.code)).toEqual(["RUNTIME_DESCRIPTOR_UNREACHABLE"]);
+		expect(findings[0]?.evidenceRecordIds).toEqual(["runtime-test:1", "runtime-test:2"]);
 	});
 
 	it("writes an atomic checksummed bundle with stable evidence files", async () => {

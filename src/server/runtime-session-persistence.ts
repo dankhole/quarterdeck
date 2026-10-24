@@ -61,7 +61,8 @@ export class RuntimeSessionPersistence {
 		// Presentation-only changes (progress previews) ride along with the next
 		// durable write instead of scheduling one.
 		const persist = (_summary: unknown, change: SessionSummaryChange) => {
-			if (!change.presentationOnly) this.scheduleRuntimeSessionPersistence(projectId);
+			if (!this.sessionPersistenceClosed && !change.presentationOnly)
+				this.scheduleRuntimeSessionPersistence(projectId);
 		};
 		this.sessionPersistenceSubscriptions.set(projectId, { manager, unsubscribe: manager.store.onChange(persist) });
 		if (existing || manager.store.listSummaries().length > 0) {
@@ -117,6 +118,12 @@ export class RuntimeSessionPersistence {
 		}
 	};
 
+	/** Terminal runtime fence; unlike a draining close, refuses late producer barriers immediately. */
+	stopForShutdown = (options?: { skipPersistence?: boolean }): Promise<void> => {
+		this.sessionPersistenceClosed = true;
+		return this.close(options);
+	};
+
 	close = async (options?: { skipPersistence?: boolean }): Promise<void> => {
 		const trackedProjectIds = Array.from(this.sessionPersistenceSubscriptions.keys());
 		for (const projectId of trackedProjectIds) {
@@ -146,8 +153,10 @@ export class RuntimeSessionPersistence {
 		// reporting durability after its writer has been disposed.
 		this.sessionPersistenceClosed = true;
 		const persistenceProjectIds = Array.from(this.sessionPersistenceStates.keys());
-		await Promise.all(persistenceProjectIds.map(async (projectId) => await this.disposeProject(projectId)));
-		const persistenceFailures = [...persistenceResults, ...barrierResults].flatMap((result) =>
+		const disposalResults = await Promise.allSettled(
+			persistenceProjectIds.map(async (projectId) => await this.disposeProject(projectId)),
+		);
+		const persistenceFailures = [...persistenceResults, ...barrierResults, ...disposalResults].flatMap((result) =>
 			result.status === "rejected" ? [result.reason] : [],
 		);
 		if (persistenceFailures.length > 0) {

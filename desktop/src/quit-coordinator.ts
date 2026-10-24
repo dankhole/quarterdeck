@@ -8,7 +8,9 @@ export type DesktopQuitSummary = Extract<DesktopControlResultMessage["result"], 
 
 export interface DesktopQuitOptions {
 	needsFrontendPreflight: () => boolean;
-	cleanupState: () => "not_started" | "running" | "clean" | "unconfirmed";
+	cleanupState: () => "not_started" | "running" | "stopping" | "clean" | "unconfirmed";
+	/** Requires fenced/drained persistence (or helper death), never just shutdown completion. */
+	canForceQuit?: () => boolean;
 	preflight: (reason: DesktopQuitReason, seal?: boolean) => Promise<DesktopQuitPreflightResponse | null>;
 	isSealValid: (response: DesktopQuitPreflightResponse) => boolean;
 	releasePreflight: () => void;
@@ -106,11 +108,7 @@ export class DesktopQuitCoordinator {
 				await this.options.inform("frontend_unavailable");
 				return { kind: "cancelled" };
 			}
-			if (
-				frontend.decision !== "ready" &&
-				!(cleanup === "unconfirmed" && reason === "quit" && frontend.status.dirtyEditorCount === 0)
-			)
-				return { kind: "cancelled" };
+			if (frontend.decision !== "ready") return { kind: "cancelled" };
 		}
 		if (cleanup === "unconfirmed") {
 			if (reason === "quit") return await this.forceQuit();
@@ -143,15 +141,20 @@ export class DesktopQuitCoordinator {
 				return { kind: "cancelled" };
 			return { kind: "clean" };
 		}
-		// An explicit normal-quit escape is available only after the owned helper is gone.
-		if (reason === "quit" && this.options.cleanupState() === "unconfirmed") return await this.forceQuit();
+		// A live helper may deliberately retain custody after incomplete cleanup. Only
+		// authenticated persistence fence/drain proof permits abandoning it.
+		if (reason === "quit" && this.canForceQuit()) return await this.forceQuit();
 		await this.options.inform("shutdown_incomplete");
 		return { kind: "cancelled" };
 	}
 
+	private canForceQuit(): boolean {
+		return this.options.canForceQuit?.() ?? this.options.cleanupState() === "unconfirmed";
+	}
+
 	private async forceQuit(): Promise<DesktopQuitResult> {
-		if (!(await this.options.confirmUnconfirmedExit())) return { kind: "cancelled" };
-		if (!(await this.sealFrontend("quit"))) return { kind: "cancelled" };
+		if (!this.canForceQuit() || !(await this.options.confirmUnconfirmedExit())) return { kind: "cancelled" };
+		if (!(await this.sealFrontend("quit")) || !this.canForceQuit()) return { kind: "cancelled" };
 		return { kind: "forced", cleanup: "unconfirmed" };
 	}
 

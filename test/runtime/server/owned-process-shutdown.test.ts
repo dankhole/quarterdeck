@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { stopRuntimeOwnedProcessTrees } from "../../../src/server/owned-process-shutdown.js";
+import {
+	createRuntimeOwnedProcessShutdown,
+	stopRuntimeOwnedProcessTrees,
+} from "../../../src/server/owned-process-shutdown.js";
 import type { OwnedProcessSnapshot } from "../../../src/server/owned-process-snapshot.js";
 
 function row(pid: number, parentPid: number, creationIdentity = String(pid)): OwnedProcessSnapshot {
@@ -7,6 +10,180 @@ function row(pid: number, parentPid: number, creationIdentity = String(pid)): Ow
 }
 
 describe("exact-owned process shutdown", () => {
+	it("shares in-flight cleanup and caches only confirmed termination", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const snapshot = vi.fn(async () => {
+			await gate;
+			return [];
+		});
+		const stopSessions = vi.fn();
+		const shutdown = createRuntimeOwnedProcessShutdown({ getRootPids: () => [], snapshot });
+		const first = shutdown(stopSessions);
+		expect(shutdown(stopSessions)).toBe(first);
+		release();
+		expect(await first).toEqual({ status: "stopped" });
+		expect(await shutdown(stopSessions)).toEqual({ status: "stopped" });
+		expect(snapshot).toHaveBeenCalledTimes(2);
+		expect(stopSessions).toHaveBeenCalledOnce();
+	});
+
+	it("keeps BSD parents alive until TERM-resistant descendants are confirmed stopped", async () => {
+		vi.useFakeTimers();
+		try {
+			let rows = [row(11, 10), row(10, 1)].map((entry) => ({ ...entry, preciseIdentity: false }));
+			const signals: Array<[number, string]> = [];
+			const stopping = stopRuntimeOwnedProcessTrees({
+				runtimePid: 1,
+				getRootPids: () => [10],
+				stopSessions: () => {},
+				snapshot: async () => [...rows],
+				graceMs: 1,
+				signal: (pid, name) => {
+					signals.push([pid, name]);
+					if (pid === 10) expect(rows.some((entry) => entry.pid === 11)).toBe(false);
+					if (pid === 10 || name === "SIGKILL") rows = rows.filter((entry) => entry.pid !== pid);
+				},
+			});
+			await vi.runAllTimersAsync();
+			expect(await stopping).toEqual({ status: "stopped" });
+			expect(signals).toEqual([
+				[11, "SIGTERM"],
+				[11, "SIGKILL"],
+				[10, "SIGKILL"],
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([false, true])(
+		"retains orphaned identities across settled retries (precise=%s)",
+		async (preciseIdentity) => {
+			let rows = [row(10, 1), row(11, 10)].map((entry) => ({ ...entry, preciseIdentity }));
+			let roots = [10];
+			const signal = vi.fn();
+			const shutdown = createRuntimeOwnedProcessShutdown({
+				runtimePid: 1,
+				getRootPids: () => roots,
+				snapshot: async () => [...rows],
+				signal,
+				timeoutMs: 0,
+			});
+			expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+			// The parent exits independently and live session enumeration loses its root.
+			roots = [];
+			rows = [{ ...row(11, 99), preciseIdentity }];
+			expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+			expect(signal.mock.calls.filter(([pid]) => pid === 11)).toHaveLength(preciseIdentity ? 2 : 1);
+			rows = [];
+			expect(await shutdown(() => {})).toEqual({ status: "stopped" });
+		},
+	);
+
+	it("retains failed initial coverage with no terminal roots and a live orphaned helper", async () => {
+		let fail = true;
+		const signal = vi.fn();
+		const shutdown = createRuntimeOwnedProcessShutdown({
+			runtimePid: 1,
+			getRootPids: () => [],
+			includeRuntimeChildren: true,
+			signal,
+			snapshot: async () => {
+				if (fail) throw new Error("synthetic snapshot failure");
+				return [row(51, 99)];
+			},
+		});
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		fail = false;
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		expect(signal).not.toHaveBeenCalled();
+	});
+
+	it("cannot forget vanished original roots after initial snapshot failure", async () => {
+		let roots = [10];
+		let fail = true;
+		const signal = vi.fn();
+		const shutdown = createRuntimeOwnedProcessShutdown({
+			runtimePid: 1,
+			getRootPids: () => roots,
+			signal,
+			snapshot: async () => {
+				if (fail) throw new Error("synthetic metadata failure");
+				return [row(11, 99)];
+			},
+		});
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		fail = false;
+		roots = [];
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		expect(signal).not.toHaveBeenCalled();
+	});
+
+	it("retains coverage gaps across retries instead of re-snapshotting an empty forest", async () => {
+		let rows = [row(10, 99)];
+		let roots = [10];
+		const shutdown = createRuntimeOwnedProcessShutdown({
+			runtimePid: 1,
+			getRootPids: () => roots,
+			snapshot: async () => rows,
+			signal: vi.fn(),
+		});
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		rows = [];
+		roots = [];
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+	});
+
+	it("retries metadata failure against captured targets and refuses recycled identities", async () => {
+		let queries = 0;
+		let failObservation = true;
+		const signal = vi.fn();
+		const shutdown = createRuntimeOwnedProcessShutdown({
+			runtimePid: 1,
+			getRootPids: () => [10],
+			signal,
+			snapshot: async () => {
+				if (++queries === 1) return [row(10, 1, "original")];
+				if (failObservation) throw new Error("synthetic snapshot error");
+				return [row(10, 1, "replacement")];
+			},
+		});
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		failObservation = false;
+		expect(await shutdown(() => {})).toEqual({ status: "stopped" });
+		expect(signal).not.toHaveBeenCalled();
+	});
+
+	it("reports bounded content-free blockers once per incomplete attempt", async () => {
+		const onUnconfirmed = vi.fn();
+		const rows = Array.from({ length: 25 }, (_, index) => row(index + 10, 1, "private-birth-identity"));
+		const shutdown = createRuntimeOwnedProcessShutdown({
+			runtimePid: 1,
+			getRootPids: () => rows.map((entry) => entry.pid),
+			snapshot: async () => rows,
+			signal: vi.fn(),
+			timeoutMs: 0,
+			onUnconfirmed,
+		});
+		expect(await shutdown(() => {})).toEqual({ status: "unconfirmed" });
+		expect(onUnconfirmed).toHaveBeenCalledOnce();
+		const report = onUnconfirmed.mock.calls[0]?.[0];
+		expect(report).toMatchObject({ reason: "deadline", targetCount: 25, blockerCount: 25, coverageUncertain: false });
+		expect(report.blockers).toHaveLength(20);
+		expect(report.blockers[0]).toEqual({
+			pid: 10,
+			parentPid: 1,
+			observedParentPid: 1,
+			identityPresent: true,
+			preciseIdentity: true,
+			reason: "still_live",
+		});
+		expect(JSON.stringify(report)).not.toContain("private-birth-identity");
+	});
+
 	it("captures descendants before lifecycle signalling and leaves unrelated roots untouched", async () => {
 		let rows = [row(10, 1), row(11, 10), row(20, 1)];
 		const stopSessions = vi.fn(() => {

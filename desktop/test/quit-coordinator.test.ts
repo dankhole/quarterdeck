@@ -36,6 +36,103 @@ function fixture(overrides: Partial<DesktopQuitOptions> = {}) {
 }
 
 describe("native quit and runtime restart lease", () => {
+	it("offers explicit Force Quit for a live helper only after persistence settles", async () => {
+		let settled = false;
+		const { owner, options } = fixture({
+			canForceQuit: () => settled,
+			stop: async () => {
+				settled = true;
+				return {
+					status: "incomplete",
+					safeToExit: false,
+					safeToReleaseOwnership: false,
+					reasons: ["processes_unconfirmed"],
+				};
+			},
+		});
+		expect(await owner.request("quit")).toEqual({ kind: "forced", cleanup: "unconfirmed" });
+		expect(options.confirmUnconfirmedExit).toHaveBeenCalledOnce();
+		expect(options.preflight).toHaveBeenLastCalledWith("quit", true);
+	});
+	it.each(["quit", "restart", "update"] as const)(
+		"never treats a bounded shutdown timeout as settled persistence for %s",
+		async (reason) => {
+			const { owner, options } = fixture({
+				canForceQuit: () => false,
+				stop: async () => ({
+					status: "incomplete",
+					safeToExit: false,
+					safeToReleaseOwnership: false,
+					reasons: ["deadline"],
+				}),
+			});
+			const commit = vi.fn(async () => undefined);
+			expect(await owner.request(reason, commit)).toEqual({ kind: "cancelled" });
+			expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
+			expect(commit).not.toHaveBeenCalled();
+		},
+	);
+	it.each(["restart", "update"] as const)("never offers a settled incomplete helper to %s", async (reason) => {
+		const { owner, options } = fixture({
+			cleanupState: () => "stopping",
+			canForceQuit: () => true,
+			getSummary: async () => null,
+			stop: async () => ({
+				status: "incomplete",
+				safeToExit: false,
+				safeToReleaseOwnership: false,
+				reasons: ["processes_unconfirmed"],
+			}),
+		});
+		const commit = vi.fn(async () => undefined);
+		expect(await owner.request(reason, commit)).toEqual({ kind: "cancelled" });
+		expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
+		expect(commit).not.toHaveBeenCalled();
+	});
+	it("retries a live helper after Keep Open without requiring its fenced session summary", async () => {
+		let attempt = 0;
+		const { owner, options } = fixture({
+			cleanupState: () => "stopping",
+			canForceQuit: () => true,
+			getSummary: vi.fn(async () => null),
+			confirmUnconfirmedExit: vi.fn(async () => false),
+			stop: vi.fn(async () =>
+				++attempt === 1
+					? {
+							status: "incomplete" as const,
+							safeToExit: false as const,
+							safeToReleaseOwnership: false as const,
+							reasons: ["processes_unconfirmed" as const],
+						}
+					: { status: "clean" as const, safeToExit: true as const, safeToReleaseOwnership: true as const },
+			),
+		});
+		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
+		expect(await owner.request("quit")).toEqual({ kind: "clean" });
+		expect(options.stop).toHaveBeenCalledTimes(2);
+		expect(options.getSummary).not.toHaveBeenCalled();
+		expect(options.confirmUnconfirmedExit).toHaveBeenCalledOnce();
+	});
+	it("cannot force quit if settled proof is invalidated during native confirmation", async () => {
+		let settled = true;
+		const { owner } = fixture({
+			cleanupState: () => "unconfirmed",
+			canForceQuit: () => settled,
+			confirmUnconfirmedExit: async () => {
+				settled = false;
+				return true;
+			},
+		});
+		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
+	});
+	it("preserves recovery-storage vetoes even when cleanup is unconfirmed", async () => {
+		const { owner, options } = fixture({
+			cleanupState: () => "unconfirmed",
+			preflight: async () => ({ ...READY, decision: "blocked" }),
+		});
+		expect(await owner.request("quit")).toEqual({ kind: "cancelled" });
+		expect(options.confirmUnconfirmedExit).not.toHaveBeenCalled();
+	});
 	it("never offers unconfirmed cleanup to an update or calls its commit", async () => {
 		const { owner, options } = fixture({ cleanupState: () => "unconfirmed" });
 		const commit = vi.fn(async () => undefined);

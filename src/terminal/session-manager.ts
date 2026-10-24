@@ -739,14 +739,14 @@ export class TerminalSessionManager implements TerminalSessionService {
 		return result;
 	}
 
-	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
+	markInterruptedAndStopAll(options?: { signalProcesses?: boolean }): RuntimeTaskSessionSummary[] {
 		// A relocation holds exclusive project admission while stopping this
 		// manager. Queued launches must settle without waiting for that same lock;
 		// admitted launches remain owned and drained by the lifecycle controller.
 		this.launchAdmissionClosed = true;
 		for (const cancel of this.pendingLaunchAdmissions) cancel();
 		this.pendingLaunchAdmissions.clear();
-		return this.lifecycle.markInterruptedAndStopAll();
+		return this.lifecycle.markInterruptedAndStopAll(options);
 	}
 
 	/** Live in-memory PTY roots only; retained session PIDs are never process ownership. */

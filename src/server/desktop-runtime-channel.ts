@@ -5,6 +5,7 @@ import {
 	type DesktopHostEffectAction,
 	type DesktopHostEffectResult,
 	type DesktopReadyMessage,
+	type DesktopShutdownCompletion,
 	type DesktopShutdownMessage,
 	type DesktopStartupFailureMessage,
 	type DesktopStartupMessage,
@@ -17,7 +18,8 @@ import { DesktopHostEffectClient } from "./desktop-host-effect-client.js";
 export class DesktopRuntimeChannel {
 	readonly startup: Promise<DesktopStartupMessage>;
 	private startupId: string | null = null;
-	private shutdownHandler: ((waitForCompletion: boolean) => Promise<RuntimeShutdownOutcome>) | null = null;
+	private shutdownHandler: (() => Promise<DesktopShutdownCompletion>) | null = null;
+	private unconfirmedCustodyHold: NodeJS.Timeout | null = null;
 	private readonly pendingShutdown = new Map<string, DesktopShutdownMessage>();
 	private disconnected = false;
 	private stopping = false;
@@ -71,6 +73,9 @@ export class DesktopRuntimeChannel {
 			});
 			process.once("disconnect", () => {
 				this.disconnected = true;
+				// An awaited promise alone does not keep Node alive while custody
+				// still includes unfenced automatic writers or unconfirmed drains.
+				this.unconfirmedCustodyHold ??= setInterval(() => undefined, 60_000);
 				this.hostEffects.dispose();
 				clearTimeout(timer);
 				if (!this.startupId) reject(new Error("Desktop parent disconnected before startup."));
@@ -79,7 +84,7 @@ export class DesktopRuntimeChannel {
 		});
 	}
 
-	setShutdownHandler(handler: (waitForCompletion: boolean) => Promise<RuntimeShutdownOutcome>): void {
+	setShutdownHandler(handler: () => Promise<DesktopShutdownCompletion>): void {
 		this.shutdownHandler = handler;
 		if (this.disconnected || this.pendingShutdown.size > 0) void this.stop();
 	}
@@ -143,10 +148,22 @@ export class DesktopRuntimeChannel {
 		if (this.stopping || !this.shutdownHandler) return;
 		this.stopping = true;
 		this.hostEffects.dispose();
-		const waitForCompletion = this.disconnected;
 		let outcome: RuntimeShutdownOutcome;
+		let persistenceSettled = false;
 		try {
-			outcome = await this.shutdownHandler(waitForCompletion);
+			// Only the runtime owner can prove that automatic writers were fenced
+			// and drained. Promise resolution alone is not that proof.
+			const completion = await this.shutdownHandler();
+			outcome = completion.outcome;
+			persistenceSettled = completion.persistenceSettled === true;
+			if (outcome.safeToExit && !persistenceSettled) {
+				outcome = {
+					status: "incomplete",
+					safeToExit: false,
+					safeToReleaseOwnership: false,
+					reasons: ["quiescence_failed"],
+				};
+			}
 		} catch {
 			outcome = {
 				status: "incomplete",
@@ -165,16 +182,19 @@ export class DesktopRuntimeChannel {
 				startupId: request.startupId,
 				requestId: request.requestId,
 				outcome,
+				persistenceSettled,
 			}).catch(() => undefined);
+		}
+		if (persistenceSettled && this.unconfirmedCustodyHold) {
+			clearInterval(this.unconfirmedCustodyHold);
+			this.unconfirmedCustodyHold = null;
 		}
 		if (outcome.safeToExit) process.exit(0);
 		this.stopping = false;
 		if (this.disconnected) {
-			// A bounded response is not completion. After losing the parent, finish
-			// draining before exiting; an incomplete final result keeps the claim
-			// unreleased and exits unsuccessfully for startup recovery to inspect.
-			if (waitForCompletion) process.exit(1);
-			void this.stop();
+			// Parent death is not permission to interrupt automatic persistence.
+			// Without proof, retain custody even if the remaining handles are unref'd.
+			if (persistenceSettled) process.exit(1);
 		} else if (this.pendingShutdown.size > 0) {
 			void this.stop();
 		}

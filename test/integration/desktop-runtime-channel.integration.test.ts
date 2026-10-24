@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { desktopChildMessageSchema } from "../../src/core/api/desktop-runtime-protocol.js";
 import { resolveIntegrationEntrypoint } from "../utilities/integration-server";
 
@@ -62,30 +62,79 @@ describe("private desktop runtime shutdown channel", () => {
 		return { child, requestStop, exit, evidencePath };
 	}
 
-	it("finishes pending cleanup after the parent disconnects following a bounded timeout", async () => {
-		const fixture = await launch();
+	it("publishes settled proof only after actual completion while the parent remains connected", async () => {
+		const fixture = await launch("incomplete");
+		const messages: unknown[] = [];
+		fixture.child.on("message", (message: unknown) => messages.push(message));
 		const result = new Promise<unknown>((done) => fixture.child.once("message", done));
-		fixture.requestStop();
-		expect(await result).toMatchObject({ outcome: { status: "incomplete", safeToExit: false } });
+		const requestId = fixture.requestStop();
+		await vi.waitFor(async () => {
+			expect(await readFile(fixture.evidencePath, "utf8")).toBe("completion_started\n");
+		});
+		expect(messages).toEqual([]);
+		expect(fixture.child.exitCode).toBeNull();
+		fixture.child.send({ type: "test:release-completion" });
+		expect(await result).toMatchObject({
+			requestId,
+			persistenceSettled: true,
+			outcome: { status: "incomplete", safeToExit: false, safeToReleaseOwnership: false },
+		});
+		expect(await readFile(fixture.evidencePath, "utf8")).toBe("completion_started\ncompletion_settled\n");
 		expect(fixture.child.exitCode).toBeNull();
 		fixture.child.disconnect();
-		expect(await fixture.exit).toBe(0);
-		expect(await readFile(fixture.evidencePath, "utf8")).toBe("bounded\ncompletion\n");
+		expect(await fixture.exit).toBe(1);
 	});
 
-	it("drains completion when disconnection races the bounded shutdown", async () => {
+	it("never publishes settled proof when the completion callback rejects", async () => {
+		const fixture = await launch("reject");
+		const result = new Promise<unknown>((done) => fixture.child.once("message", done));
+		fixture.requestStop();
+		fixture.child.send({ type: "test:release-completion" });
+		expect(await result).toMatchObject({
+			persistenceSettled: false,
+			outcome: { status: "incomplete", safeToExit: false, reasons: ["quiescence_failed"] },
+		});
+		expect(fixture.child.exitCode).toBeNull();
+	});
+
+	it.each(["unsettled", "clean-unsettled"])("never infers drain proof from a resolved %s callback", async (mode) => {
+		const fixture = await launch(mode);
+		const result = new Promise<unknown>((done) => fixture.child.once("message", done));
+		fixture.requestStop();
+		fixture.child.send({ type: "test:release-completion" });
+		expect(await result).toMatchObject({
+			persistenceSettled: false,
+			outcome: { status: "incomplete", safeToExit: false, safeToReleaseOwnership: false },
+		});
+		expect(fixture.child.exitCode).toBeNull();
+	});
+
+	it.each(["reject", "unsettled", "clean-unsettled"])(
+		"retains disconnected custody without explicit drain proof: %s",
+		async (mode) => {
+			const fixture = await launch(mode);
+			fixture.child.disconnect();
+			await vi.waitFor(async () => {
+				expect(await readFile(fixture.evidencePath, "utf8")).toContain("automatic_write_settled\n");
+			});
+			expect(fixture.child.exitCode).toBeNull();
+			expect(fixture.child.signalCode).toBeNull();
+		},
+	);
+
+	it("drains completion when disconnection races shutdown", async () => {
 		const fixture = await launch();
 		fixture.requestStop();
 		fixture.child.disconnect();
 		expect(await fixture.exit).toBe(0);
-		expect(await readFile(fixture.evidencePath, "utf8")).toBe("bounded\ncompletion\n");
+		expect(await readFile(fixture.evidencePath, "utf8")).toBe("completion_started\ncompletion_settled\n");
 	});
 
 	it("exits unsuccessfully after disconnected cleanup completes with an unconfirmed result", async () => {
 		const fixture = await launch("incomplete");
 		fixture.child.disconnect();
 		expect(await fixture.exit).toBe(1);
-		expect(await readFile(fixture.evidencePath, "utf8")).toBe("completion\n");
+		expect(await readFile(fixture.evidencePath, "utf8")).toBe("completion_started\ncompletion_settled\n");
 	});
 
 	it("answers concurrent shutdown requests instead of dropping an earlier request", async () => {
@@ -100,6 +149,7 @@ describe("private desktop runtime shutdown channel", () => {
 			}),
 		);
 		const ids = [fixture.requestStop(), fixture.requestStop()];
+		fixture.child.send({ type: "test:release-completion" });
 		await both;
 		expect(messages.sort()).toEqual(ids.sort());
 		fixture.child.disconnect();

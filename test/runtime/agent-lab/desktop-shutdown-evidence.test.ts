@@ -180,6 +180,8 @@ describe("desktop shutdown evidence preservation", () => {
 				prompt: "private-prompt-content",
 			}),
 			record(HELPER_ID, 2, "runtime.shutdown_completed", { ignored: TOKEN }),
+			record(HELPER_ID, 3, "runtime.recorder_closing", { ignored: TOKEN }),
+			record(HELPER_ID, 4, "runtime.recorder_closed", { ignored: TOKEN }),
 		]);
 		await instance(OTHER_ID, 999, "runtime", [record(OTHER_ID, 1, "runtime.shutdown_completed", {})]);
 		const proof = await captureDesktopShutdownEvidence(fixture, options);
@@ -191,7 +193,12 @@ describe("desktop shutdown evidence preservation", () => {
 			"desktop.generation",
 			"desktop.shutdown",
 		]);
-		expect(proof.instances.find((value) => value.pid === 101)?.records).toHaveLength(2);
+		expect(proof.instances.find((value) => value.pid === 101)?.records.map((value) => value.name)).toEqual([
+			"desktop.shutdown",
+			"runtime.shutdown_completed",
+			"runtime.recorder_closing",
+			"runtime.recorder_closed",
+		]);
 		const artifact = await fs.readFile(join(fixture.manifest.artifactDir, "shutdown-timeout.json"), "utf8");
 		expect(JSON.parse(artifact)).toEqual(proof);
 		expect(artifact).not.toContain("private-");

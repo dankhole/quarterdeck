@@ -59,6 +59,9 @@ const UUID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu;
 const FIXED_EVENTS = new Set([
 	"desktop.recorder_closing",
 	"desktop.recorder_closed",
+	"runtime.recorder_closing",
+	"runtime.recorder_closed",
+	// Retain older recorder names when reading historical journals.
 	"runtime.shutdown_requested",
 	"runtime.shutdown_completed",
 ]);

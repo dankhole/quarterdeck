@@ -393,7 +393,7 @@ export class SessionLifecycleController {
 		};
 	}
 
-	markInterruptedAndStopAll(): RuntimeTaskSessionSummary[] {
+	markInterruptedAndStopAll(options?: { signalProcesses?: boolean }): RuntimeTaskSessionSummary[] {
 		this.shuttingDown = true;
 		this.lifecycleGeneration += 1;
 		// The store preserves durable review semantics while clearing process
@@ -434,7 +434,10 @@ export class SessionLifecycleController {
 			}
 			stopWorkspaceTrustTimers(active);
 			clearInterruptRecoveryTimer(active);
-			active.session.stop({ interrupted: true });
+			active.session.stop({
+				interrupted: true,
+				...(options?.signalProcesses === false ? { signalProcess: false } : {}),
+			});
 		}
 		return interrupted;
 	}

@@ -56,6 +56,61 @@ describe("exact-owned synthetic process shutdown", () => {
 		}
 	}, 10_000);
 
+	it("keeps a real parent alive until its TERM-resistant descendant is confirmed gone", async () => {
+		const owned = startProcess(`
+			const { spawn } = require("node:child_process");
+			const child = spawn(process.execPath, ["-e", "process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)"],
+				{ stdio: ["ignore", "pipe", "ignore"] });
+			child.stdout.once("data", () => console.log(child.pid));
+			setInterval(() => {}, 1000);
+		`);
+		let descendantPid: number | undefined;
+		try {
+			if (!owned.stdout || !owned.pid) throw new Error("Synthetic parent did not start.");
+			const [ready] = await once(owned.stdout, "data");
+			descendantPid = Number(String(ready).trim());
+			expect(Number.isSafeInteger(descendantPid) && descendantPid > 0).toBe(true);
+			const rootPid = owned.pid;
+			let lastSnapshot: Awaited<ReturnType<typeof queryOwnedProcessSnapshot>> = [];
+			const signals: Array<[number, string]> = [];
+			const result = await stopRuntimeOwnedProcessTrees({
+				getRootPids: () => [rootPid],
+				stopSessions: () => {},
+				graceMs: 500,
+				timeoutMs: 3_000,
+				snapshot: async () => {
+					lastSnapshot = await queryOwnedProcessSnapshot();
+					if (lastSnapshot.some((row) => row.pid === descendantPid && !row.zombie)) {
+						expect(lastSnapshot.some((row) => row.pid === rootPid && !row.zombie)).toBe(true);
+					}
+					return lastSnapshot;
+				},
+				signal: (pid, name) => {
+					if (pid === rootPid)
+						expect(lastSnapshot.some((row) => row.pid === descendantPid && !row.zombie)).toBe(false);
+					signals.push([pid, name]);
+					process.kill(pid, name);
+				},
+			});
+			expect(result).toEqual({ status: "stopped" });
+			expect(signals.slice(0, 2)).toEqual([
+				[descendantPid, "SIGTERM"],
+				[descendantPid, "SIGKILL"],
+			]);
+			expect(signals[2]?.[0]).toBe(rootPid);
+		} finally {
+			if (descendantPid !== undefined) {
+				try {
+					process.kill(descendantPid, "SIGKILL");
+				} catch {
+					/* Already stopped. */
+				}
+				await waitForPidExit(descendantPid);
+			}
+			await dispose(owned);
+		}
+	}, 10_000);
+
 	it("escalates an exact-owned root that ignores TERM", async () => {
 		const owned = startProcess("process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)");
 		try {

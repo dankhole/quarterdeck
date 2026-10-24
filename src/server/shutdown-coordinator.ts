@@ -11,17 +11,28 @@ import { listProjectIndexEntries, loadSavedProjectStateById, saveProjectSessions
 import type { TerminalSessionManager } from "../terminal";
 import type { ProjectRegistry } from "./project-registry";
 
+export type RuntimeFinalizedPersistenceFailure = Extract<
+	RuntimeShutdownIncompleteReason,
+	"persistence_failed" | "quiescence_failed"
+>;
+
 export interface RuntimeShutdownCoordinatorDependencies {
 	projectRegistry: Pick<ProjectRegistry, "listManagedProjects"> & {
 		stopMaintenance?: () => void;
 	};
 	warn: (message: string) => void;
 	closeRuntimeServer: () => Promise<void>;
+	/** Non-signaling terminal fence/drain; always awaited, including failed preparation. */
+	stopPersistenceForShutdown?: () => Promise<void>;
+	/** A prior attempt finalized persistence; retries must not reopen durable writers. */
+	persistenceAlreadyStopped?: boolean;
+	/** Finalized state cannot be repaired by a later process-only cleanup attempt. */
+	finalizedPersistenceFailures?: readonly RuntimeFinalizedPersistenceFailure[];
 	/** Reject new mutations and drain runtime producers before the final session snapshot. */
 	prepareForShutdown?: () => Promise<void>;
 	/** Close process launch admission only after admitted producer drains have settled. */
 	beforeProcessSnapshot?: () => void;
-	/** Capture exact-owned roots, call stopSessions, then confirm descendants stopped. */
+	/** Capture exact-owned roots, prepare lifecycle without signals, then confirm descendants stopped. */
 	stopOwnedProcesses?: (stopSessions: () => void) => Promise<RuntimeOwnedProcessShutdownOutcome>;
 	/** State writers must also enforce this fence at their own mutation boundary. */
 	persistenceAllowed?: () => boolean;
@@ -248,7 +259,7 @@ function shutdownOutcome(reasons: Set<RuntimeShutdownIncompleteReason>): Runtime
 export async function shutdownRuntimeServer(
 	deps: RuntimeShutdownCoordinatorDependencies,
 ): Promise<RuntimeShutdownResult> {
-	const reasons = new Set<RuntimeShutdownIncompleteReason>();
+	const reasons = new Set<RuntimeShutdownIncompleteReason>(deps.finalizedPersistenceFailures);
 	const recordFailure = (reason: RuntimeShutdownIncompleteReason, message: string) => {
 		reasons.add(reason);
 		deps.warn(message);
@@ -278,7 +289,10 @@ export async function shutdownRuntimeServer(
 			try {
 				terminalManager.stopReconciliation();
 				if (!deps.skipSessionCleanup) {
-					interruptedSummaries.set(terminalManager, terminalManager.markInterruptedAndStopAll());
+					interruptedSummaries.set(
+						terminalManager,
+						terminalManager.markInterruptedAndStopAll({ signalProcesses: false }),
+					);
 					quiescence.push(
 						terminalManager.waitForShutdownQuiescence().catch((error) => {
 							recordFailure(
@@ -337,17 +351,28 @@ export async function shutdownRuntimeServer(
 			reasons.add("session_cleanup_skipped");
 			return;
 		}
-		if (!checkOwnership() || reasons.has("quiescence_failed")) return;
+		if (!checkOwnership() || reasons.has("quiescence_failed") || deps.persistenceAlreadyStopped) return;
 		await persistShutdownSessions(deps, managedProjects, interruptedSummaries, recordFailure);
 		checkOwnership();
 	})().catch((error) => {
 		recordFailure("persistence_failed", `Runtime shutdown cleanup failed. ${String(error)}`);
 	});
+	const persistenceStop = (async () => {
+		await cleanup;
+		try {
+			await deps.stopPersistenceForShutdown?.();
+		} catch (error) {
+			recordFailure("persistence_failed", `Runtime persistence shutdown failed. ${String(error)}`);
+		}
+	})();
 	// Preparation fences ingress synchronously. A deadline reports incomplete
 	// while cleanup continues; it must never trigger owner signals before the
 	// admitted producer drain and exact process snapshot have completed.
 	const close = (async () => {
-		await cleanup;
+		await persistenceStop;
+		// Owner disposal may signal roots. Never race it against unconfirmed
+		// descendants or discard the live owners needed by a later retry.
+		if (reasons.has("processes_unconfirmed")) return;
 		try {
 			await deps.closeRuntimeServer();
 		} catch (error) {
@@ -355,7 +380,7 @@ export async function shutdownRuntimeServer(
 		}
 	})();
 	const completion = (async () => {
-		await Promise.allSettled([cleanup, ownedProcesses, close]);
+		await Promise.allSettled([cleanup, ownedProcesses, persistenceStop, close]);
 		checkOwnership();
 		if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
 		return shutdownOutcome(reasons);

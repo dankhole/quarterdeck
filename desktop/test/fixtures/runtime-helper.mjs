@@ -9,6 +9,7 @@ function assertInstallationAdmission() {
 }
 
 assertInstallationAdmission();
+let shutdownAttempts = 0;
 
 process.on("message", (message) => {
 	if (message.type === "quarterdeck:desktop-startup") {
@@ -58,6 +59,8 @@ process.on("message", (message) => {
 	}
 	if (message.type === "quarterdeck:desktop-shutdown") {
 		assertInstallationAdmission();
+		shutdownAttempts += 1;
+		if (process.env.DESKTOP_FIXTURE_MODE === "shutdown-timeout") return;
 		if (process.env.DESKTOP_FIXTURE_MODE === "no-ack") {
 			process.exit(0);
 			return;
@@ -69,13 +72,25 @@ process.on("message", (message) => {
 			requestId: message.requestId,
 			outcome: { status: "clean", safeToExit: true, safeToReleaseOwnership: true },
 		};
-		if (process.env.DESKTOP_FIXTURE_MODE === "incomplete") {
+		if (
+			["incomplete", "incomplete-settled", "incomplete-unsettled", "incomplete-wrong-identity"].includes(
+				process.env.DESKTOP_FIXTURE_MODE,
+			) ||
+			(process.env.DESKTOP_FIXTURE_MODE === "retry-clean" && shutdownAttempts === 1)
+		) {
 			result.outcome = {
 				status: "incomplete",
 				safeToExit: false,
 				safeToReleaseOwnership: false,
 				reasons: ["persistence_failed"],
 			};
+			if (["incomplete-settled", "retry-clean"].includes(process.env.DESKTOP_FIXTURE_MODE))
+				result.persistenceSettled = true;
+			if (process.env.DESKTOP_FIXTURE_MODE === "incomplete-unsettled") result.persistenceSettled = false;
+			if (process.env.DESKTOP_FIXTURE_MODE === "incomplete-wrong-identity") {
+				process.send({ ...result, startupId: randomUUID(), persistenceSettled: true });
+				process.send({ ...result, requestId: randomUUID(), persistenceSettled: true });
+			}
 			process.send(result);
 			return;
 		}

@@ -4,16 +4,24 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createRuntimeCapabilities, type RuntimeHookIngestRequest } from "../../../src/core";
+import {
+	createRuntimeCapabilities,
+	type RuntimeHookIngestRequest,
+	type RuntimeProjectStateResponse,
+	type RuntimeShutdownOutcome,
+} from "../../../src/core";
 import { enqueueHookTransition } from "../../../src/hook-transition-outbox";
 import { RuntimeStartupCleanupError, startRuntime } from "../../../src/server/runtime-bootstrap";
 import type { CreateRuntimeServerDependencies } from "../../../src/server/runtime-server";
 import type {
 	RuntimeShutdownCoordinatorDependencies,
 	RuntimeShutdownResult,
+	shutdownRuntimeServer,
 } from "../../../src/server/shutdown-coordinator";
+import { listProjectIndexEntries } from "../../../src/state";
 import * as relocationJournal from "../../../src/state/project-relocation-journal";
 import { createHooksApi } from "../../../src/trpc/hooks-api";
+import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const mocks = vi.hoisted(() => {
 	const calls: string[] = [];
@@ -23,10 +31,14 @@ const mocks = vi.hoisted(() => {
 		recordEvent: vi.fn(),
 		fail: vi.fn(async () => undefined),
 	};
+	const persistenceClose = vi.fn(async (_options?: { skipPersistence?: boolean }) => undefined);
 	const server = {
 		url: "http://127.0.0.1:3500",
 		getQuitSummary: vi.fn(() => ({ liveProcessCount: 2, pendingLaunches: true })),
 		prepareForShutdown: vi.fn(async () => undefined),
+		stopPersistenceForShutdown: vi.fn(async (options?: { persistenceAllowed?: boolean }) => {
+			await persistenceClose({ skipPersistence: options?.persistenceAllowed === false });
+		}),
 		stopTaskOwnersForShutdown: vi.fn(async () => undefined),
 		close: vi.fn(async () => undefined),
 	};
@@ -52,19 +64,30 @@ const mocks = vi.hoisted(() => {
 			return server;
 		}),
 		stopPeriodicBackups: vi.fn(),
-		persistenceClose: vi.fn(async () => undefined),
+		persistenceClose,
+		loadSavedProjectStateById: vi.fn(async (_projectId: string): Promise<RuntimeProjectStateResponse | null> => null),
+		saveProjectSessions: vi.fn(async () => undefined),
 		hubClose: vi.fn(async () => undefined),
 		waitForPendingBackups: vi.fn(async () => undefined),
 		shutdownRuntimeServer: vi.fn(
 			async (deps: RuntimeShutdownCoordinatorDependencies): Promise<RuntimeShutdownResult> => {
 				await deps.prepareForShutdown?.();
-				await deps.stopOwnedProcesses?.(() => undefined);
-				await deps.closeRuntimeServer();
-				const outcome = {
-					status: "clean" as const,
-					safeToExit: true as const,
-					safeToReleaseOwnership: true as const,
-				};
+				const processes = await deps.stopOwnedProcesses?.(() => undefined);
+				await deps.stopPersistenceForShutdown?.();
+				if (processes?.status !== "unconfirmed") await deps.closeRuntimeServer();
+				const outcome: RuntimeShutdownOutcome =
+					processes?.status === "unconfirmed"
+						? {
+								status: "incomplete",
+								safeToExit: false,
+								safeToReleaseOwnership: false,
+								reasons: ["processes_unconfirmed"],
+							}
+						: {
+								status: "clean",
+								safeToExit: true,
+								safeToReleaseOwnership: true,
+							};
 				return { outcome, completion: Promise.resolve(outcome) };
 			},
 		),
@@ -87,6 +110,8 @@ vi.mock("../../../src/fs/lock-cleanup", () => ({
 }));
 vi.mock("../../../src/state", () => ({
 	listProjectIndexEntries: vi.fn(async () => []),
+	loadSavedProjectStateById: mocks.loadSavedProjectStateById,
+	saveProjectSessions: mocks.saveProjectSessions,
 	ProjectBoardCommandService: class {},
 	pruneProjectSessionsForBoard: vi.fn(),
 }));
@@ -107,6 +132,7 @@ vi.mock("../../../src/server/runtime-server", () => ({
 vi.mock("../../../src/server/runtime-session-persistence", () => ({
 	RuntimeSessionPersistence: class {
 		close = mocks.persistenceClose;
+		stopForShutdown = mocks.persistenceClose;
 	},
 }));
 vi.mock("../../../src/server/runtime-state-hub", () => ({
@@ -116,7 +142,7 @@ vi.mock("../../../src/server/shutdown-coordinator", () => ({
 	shutdownRuntimeServer: mocks.shutdownRuntimeServer,
 }));
 vi.mock("../../../src/server/owned-process-shutdown", () => ({
-	stopRuntimeOwnedProcessTrees: vi.fn(async ({ stopSessions }: { stopSessions: () => void }) => {
+	createRuntimeOwnedProcessShutdown: vi.fn(() => async (stopSessions: () => void) => {
 		stopSessions();
 		return { status: "stopped" };
 	}),
@@ -131,6 +157,9 @@ vi.mock("../../../src/trpc/hooks-api", () => ({ createHooksApi: vi.fn() }));
 describe("runtime bootstrap entry points", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(listProjectIndexEntries).mockResolvedValue([]);
+		mocks.loadSavedProjectStateById.mockReset().mockResolvedValue(null);
+		mocks.saveProjectSessions.mockReset().mockResolvedValue(undefined);
 		mocks.calls.length = 0;
 		vi.stubEnv("QUARTERDECK_AGENT_LAB", "1");
 	});
@@ -212,6 +241,145 @@ describe("runtime bootstrap entry points", () => {
 			expect.objectContaining({ skipSessionCleanup: true, skipOrphanProcessCleanup: true }),
 		);
 		expect(mocks.server.close).toHaveBeenCalledTimes(1);
+	});
+
+	it("defers owner disposal on incomplete cleanup and retries after actual completion", async () => {
+		const stopOwnedProcesses = vi
+			.fn()
+			.mockImplementationOnce(async (prepare: () => void) => {
+				prepare();
+				return { status: "unconfirmed" };
+			})
+			.mockImplementationOnce(async (prepare: () => void) => {
+				prepare();
+				return { status: "stopped" };
+			});
+		const runtime = await startRuntime({
+			capabilities: createRuntimeCapabilities("unavailable"),
+			quarterdeckVersion: "test-version",
+			stopOwnedProcesses,
+		});
+		const first = await runtime.shutdown();
+		expect(await first.completion).toMatchObject({ status: "incomplete" });
+		expect(mocks.server.stopTaskOwnersForShutdown).not.toHaveBeenCalled();
+		expect(mocks.server.close).not.toHaveBeenCalled();
+		const second = await runtime.shutdown();
+		expect(await second.completion).toMatchObject({ status: "clean" });
+		expect(stopOwnedProcesses).toHaveBeenCalledTimes(2);
+		expect(mocks.shutdownRuntimeServer.mock.calls[1]?.[0].persistenceAlreadyStopped).toBe(true);
+		expect(mocks.server.stopTaskOwnersForShutdown).toHaveBeenCalledOnce();
+		expect(mocks.server.close).toHaveBeenCalledOnce();
+	});
+
+	it.each(["persistence_failed", "quiescence_failed"] as const)(
+		"retains finalized %s for an indexed project without an automatic writer on process retry",
+		async (failure) => {
+			const actual = await vi.importActual<{ shutdownRuntimeServer: typeof shutdownRuntimeServer }>(
+				"../../../src/server/shutdown-coordinator",
+			);
+			mocks.shutdownRuntimeServer
+				.mockImplementationOnce(actual.shutdownRuntimeServer)
+				.mockImplementationOnce(actual.shutdownRuntimeServer);
+			vi.mocked(listProjectIndexEntries).mockResolvedValue([
+				{ projectId: "indexed-project", repoPath: "/synthetic/indexed-project" },
+			]);
+			mocks.loadSavedProjectStateById.mockResolvedValue({
+				repoPath: "/synthetic/indexed-project",
+				statePath: "/synthetic/state",
+				revision: 1,
+				git: { currentBranch: "main", defaultBranch: "main", branches: [] },
+				board: {
+					columns: [
+						{
+							id: "in_progress",
+							title: "In Progress",
+							cards: [
+								{
+									id: "task",
+									title: null,
+									prompt: "synthetic task",
+									baseRef: "main",
+									createdAt: 1,
+									updatedAt: 1,
+								},
+							],
+						},
+					],
+				},
+				sessions: {
+					task: createTestTaskSessionSummary({
+						taskId: "task",
+						state: "running",
+						resumeSessionId: "exact-resume",
+					}),
+				},
+			});
+			if (failure === "persistence_failed")
+				mocks.saveProjectSessions.mockRejectedValueOnce(new Error("synthetic disk failure"));
+			else mocks.server.prepareForShutdown.mockRejectedValueOnce(new Error("synthetic preparation failure"));
+			let attempts = 0;
+			const stopOwnedProcesses = vi.fn(async (prepare: () => void) => {
+				prepare();
+				return ++attempts === 1 ? { status: "unconfirmed" as const } : { status: "stopped" as const };
+			});
+			const runtime = await startRuntime({
+				capabilities: createRuntimeCapabilities("unavailable"),
+				quarterdeckVersion: "test-version",
+				stopOwnedProcesses,
+				warn: vi.fn(),
+			});
+			const first = await runtime.shutdown();
+			expect(await first.completion).toMatchObject({
+				status: "incomplete",
+				reasons: expect.arrayContaining([failure, "processes_unconfirmed"]),
+			});
+			const second = await runtime.shutdown();
+			expect(await second.completion).toEqual({
+				status: "incomplete",
+				safeToExit: false,
+				safeToReleaseOwnership: false,
+				reasons: [failure],
+			});
+			expect(stopOwnedProcesses).toHaveBeenCalledTimes(2);
+			expect(mocks.shutdownRuntimeServer.mock.calls[1]?.[0]).toMatchObject({
+				persistenceAlreadyStopped: true,
+				finalizedPersistenceFailures: [failure],
+			});
+			expect(mocks.projectRegistry.listManagedProjects()).toEqual([]);
+			expect(mocks.saveProjectSessions).toHaveBeenCalledTimes(failure === "persistence_failed" ? 1 : 0);
+			expect(mocks.server.close).toHaveBeenCalledOnce();
+		},
+	);
+
+	it("does not start a second bootstrap cleanup while a bounded report is still draining", async () => {
+		const incomplete: RuntimeShutdownOutcome = {
+			status: "incomplete",
+			safeToExit: false,
+			safeToReleaseOwnership: false,
+			reasons: ["processes_unconfirmed"],
+		};
+		let settle!: (outcome: RuntimeShutdownOutcome) => void;
+		const completion = new Promise<RuntimeShutdownOutcome>((resolve) => {
+			settle = resolve;
+		});
+		mocks.shutdownRuntimeServer.mockResolvedValueOnce({
+			outcome: { ...incomplete, reasons: ["deadline"] },
+			completion,
+		});
+		const runtime = await startRuntime({
+			capabilities: createRuntimeCapabilities("unavailable"),
+			quarterdeckVersion: "test-version",
+		});
+		const first = runtime.shutdown();
+		await first;
+		expect(runtime.shutdown()).toBe(first);
+		expect(mocks.shutdownRuntimeServer).toHaveBeenCalledOnce();
+		settle(incomplete);
+		await completion;
+		const retry = runtime.shutdown();
+		expect(retry).not.toBe(first);
+		expect((await retry).outcome).toMatchObject({ status: "clean" });
+		expect(mocks.shutdownRuntimeServer).toHaveBeenCalledTimes(2);
 	});
 
 	it("captures owned processes before owner signals and drains structured stops before final close", async () => {

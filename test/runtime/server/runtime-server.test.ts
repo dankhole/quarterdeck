@@ -49,7 +49,7 @@ function createDependencies() {
 			disposeProject: vi.fn(async () => {}),
 			persistRuntimeSessions: vi.fn(async () => {}),
 			awaitRuntimeSessionsDurable: vi.fn(async () => {}),
-			close: persistenceClose,
+			stopForShutdown: persistenceClose,
 		},
 		boardCommands: {
 			setProjectOperationRunner: vi.fn(),
@@ -247,8 +247,10 @@ describe("runtime server composition", () => {
 		expect(httpClose).toHaveBeenCalledOnce();
 	});
 
-	it("drains local transports after the startup process snapshot rejects", async () => {
+	it("drains local transports without competing owner signals after the startup process snapshot rejects", async () => {
 		const { httpClose, terminalClose } = stubRuntimeBoundaries();
+		const structuredStop = vi.spyOn(StructuredOwnerRegistry.prototype, "stopAll");
+		const languageStop = vi.spyOn(LanguageNavigationManager.prototype, "close");
 		const { deps } = createDependencies();
 		deps.diagnostics.markReady = vi.fn(async () => {
 			throw new Error("Startup failed");
@@ -260,6 +262,8 @@ describe("runtime server composition", () => {
 		});
 		expect(httpClose).toHaveBeenCalledOnce();
 		expect(terminalClose).toHaveBeenCalledOnce();
+		expect(structuredStop).not.toHaveBeenCalled();
+		expect(languageStop).not.toHaveBeenCalled();
 	});
 
 	it("reports native and structured live process owners independently of displayed task state", async () => {
@@ -291,6 +295,50 @@ describe("runtime server composition", () => {
 		const server = await createRuntimeServer(deps);
 		vi.spyOn(StructuredOwnerRegistry.prototype, "stopAll").mockResolvedValue(1);
 		await expect(server.close()).rejects.toThrow("One or more runtime shutdown steps failed");
+	});
+
+	it("retains a failed finalized persistence result across process-only retries", async () => {
+		stubRuntimeBoundaries();
+		const { deps, persistenceClose } = createDependencies();
+		persistenceClose.mockRejectedValueOnce(new Error("synthetic durability failure"));
+		const server = await createRuntimeServer(deps);
+		await expect(server.stopPersistenceForShutdown()).rejects.toThrow("Runtime persistence shutdown failed");
+		await expect(server.stopPersistenceForShutdown()).rejects.toThrow("Runtime persistence shutdown failed");
+		expect(persistenceClose).toHaveBeenCalledOnce();
+		await expect(server.close()).rejects.toThrow("One or more runtime shutdown steps failed");
+	});
+
+	it("fences and drains persistence independently without signaling owners or closing transports", async () => {
+		const { httpClose, terminalClose } = stubRuntimeBoundaries();
+		const { deps, persistenceClose, hubClose } = createDependencies();
+		const gate = deferred();
+		persistenceClose.mockImplementationOnce(async () => {
+			await gate.promise;
+		});
+		const server = await createRuntimeServer(deps);
+		const structuredStop = vi.spyOn(StructuredOwnerRegistry.prototype, "stopAll");
+		const languageStop = vi.spyOn(LanguageNavigationManager.prototype, "close");
+		try {
+			let settled = false;
+			const stopping = server.stopPersistenceForShutdown().then(() => {
+				settled = true;
+			});
+			expect(persistenceClose).toHaveBeenCalledExactlyOnceWith({ skipPersistence: false });
+			await Promise.resolve();
+			expect(settled).toBe(false);
+			expect(structuredStop).not.toHaveBeenCalled();
+			expect(languageStop).not.toHaveBeenCalled();
+			expect(httpClose).not.toHaveBeenCalled();
+			expect(terminalClose).not.toHaveBeenCalled();
+			expect(hubClose).not.toHaveBeenCalled();
+			gate.resolve();
+			await stopping;
+			await server.stopPersistenceForShutdown();
+			expect(persistenceClose).toHaveBeenCalledOnce();
+		} finally {
+			gate.resolve();
+			await server.close();
+		}
 	});
 
 	it("fences producers without signaling structured or language servers before the process snapshot", async () => {
@@ -413,11 +461,13 @@ describe("runtime server composition", () => {
 			throw persistenceError;
 		});
 		const server = await createRuntimeServer(deps);
-		await expect(server.close()).rejects.toMatchObject({ errors: [persistenceError] });
+		await expect(server.close()).rejects.toMatchObject({ errors: [{ errors: [persistenceError] }] });
 		expect(hubClose).toHaveBeenCalledOnce();
 		expect(terminalClose).toHaveBeenCalledOnce();
 		expect(httpClose).toHaveBeenCalledOnce();
-		expect(markFailed).toHaveBeenCalledWith(expect.objectContaining({ errors: [persistenceError] }));
+		expect(markFailed).toHaveBeenCalledWith(
+			expect.objectContaining({ errors: [expect.objectContaining({ errors: [persistenceError] })] }),
+		);
 		expect(diagnosticsClose).toHaveBeenCalledOnce();
 	});
 

@@ -42,6 +42,14 @@ describe("private desktop runtime protocol", () => {
 			outcome: { status: "incomplete", safeToExit: false, safeToReleaseOwnership: false, reasons: ["deadline"] },
 		};
 		expect(desktopChildMessageSchema.safeParse(message).success).toBe(true);
+		for (const persistenceSettled of [true, false]) {
+			const parsed = desktopChildMessageSchema.parse({ ...message, persistenceSettled });
+			expect(parsed).toMatchObject({
+				persistenceSettled,
+				outcome: { safeToExit: false, safeToReleaseOwnership: false },
+			});
+		}
+		expect(desktopChildMessageSchema.safeParse({ ...message, persistenceSettled: "true" }).success).toBe(false);
 		expect(
 			desktopChildMessageSchema.safeParse({ ...message, outcome: { ...message.outcome, safeToExit: true } }).success,
 		).toBe(false);

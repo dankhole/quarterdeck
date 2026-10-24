@@ -920,11 +920,15 @@ async function launchDesktop(
 		cleanupState: () =>
 			supervisor?.isRunning()
 				? runtimeIdentity
-					? "running"
+					? supervisor.exitCleanupState()
 					: "not_started"
 				: environmentCleanupUnconfirmed
 					? "unconfirmed"
 					: (supervisor?.exitCleanupState() ?? "not_started"),
+		canForceQuit: () =>
+			supervisor?.isRunning()
+				? supervisor.canForceQuit()
+				: environmentCleanupUnconfirmed || (supervisor?.canForceQuit() ?? false),
 		preflight: async (reason, seal) =>
 			(await commands?.requestPreflight(reason === "restart" ? "reload" : reason, seal)) ?? null,
 		isSealValid: (response) => commands?.isSealValid(response) ?? false,

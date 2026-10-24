@@ -2,7 +2,7 @@ import { z } from "zod";
 import { QUARTERDECK_DESKTOP_BRIDGE_VERSION } from "../../shared/desktop-bridge-contract.js";
 import { desktopDiagnosticsPayloadSchema } from "./desktop-diagnostics.js";
 import { runtimeOpenTargetIdSchema } from "./host-integrations.js";
-import { runtimeShutdownOutcomeSchema } from "./runtime-shutdown.js";
+import { type RuntimeShutdownOutcome, runtimeShutdownOutcomeSchema } from "./runtime-shutdown.js";
 
 /** Private parent/Node-helper channel. These messages never enter a renderer. */
 export const QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION = 1;
@@ -74,9 +74,19 @@ export const desktopShutdownResultMessageSchema = z
 		...channelIdentity,
 		requestId: z.string().uuid(),
 		outcome: runtimeShutdownOutcomeSchema,
+		// Runtime-owned proof that automatic writers are fenced and admitted writes
+		// have settled. Shutdown completion alone never authorizes Force Quit.
+		persistenceSettled: z.boolean().optional(),
 	})
 	.strict();
 export type DesktopShutdownResultMessage = z.infer<typeof desktopShutdownResultMessageSchema>;
+
+/** Runtime-owned proof, not inferred from completion of a bounded shutdown call. */
+export interface DesktopShutdownCompletion {
+	outcome: RuntimeShutdownOutcome;
+	/** Automatic writers are fenced/unsubscribed and all admitted writes have settled. */
+	persistenceSettled: boolean;
+}
 
 export const desktopStartupFailureMessageSchema = z
 	.object({

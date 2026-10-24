@@ -61,6 +61,36 @@ function createDependencies() {
 }
 
 describe("RuntimeSessionPersistence", () => {
+	it("terminally fences late barriers while draining an already-admitted automatic writer", async () => {
+		vi.useFakeTimers();
+		const writing = createDeferred<ReturnType<typeof createBoardCommandResult>>();
+		const dependencies = createDependencies();
+		dependencies.boardCommands.reconcileRuntimeSessions.mockImplementationOnce(async () => await writing.promise);
+		const persistence = new RuntimeSessionPersistence(dependencies);
+		const store = new InMemorySessionSummaryStore();
+		store.hydrateFromRecord({ "task-1": createTestTaskSessionSummary({ taskId: "task-1" }) });
+		persistence.trackTerminalManager("project-1", new TerminalSessionManager(store));
+		try {
+			await vi.advanceTimersByTimeAsync(1);
+			let settled = false;
+			const closing = persistence.stopForShutdown().then(() => {
+				settled = true;
+			});
+			await expect(persistence.persistRuntimeSessions("project-1")).rejects.toThrow("persistence is closed");
+			await expect(persistence.awaitRuntimeSessionsDurable("project-1")).rejects.toThrow("persistence is closed");
+			store.update("task-1", { warningMessage: "late producer" });
+			expect(settled).toBe(false);
+			writing.resolve(createBoardCommandResult());
+			await closing;
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(dependencies.boardCommands.reconcileRuntimeSessions).toHaveBeenCalledOnce();
+		} finally {
+			writing.resolve(createBoardCommandResult());
+			await persistence.close({ skipPersistence: true });
+			vi.useRealTimers();
+		}
+	});
+
 	it("discards dirty queued projections after ownership loss while draining a started write", async () => {
 		vi.useFakeTimers();
 		const writing = createDeferred<ReturnType<typeof createBoardCommandResult>>();
