@@ -231,7 +231,11 @@ The same terminal provider exists in production, but visible terminal lines are 
 
 The default fake mode provides seeded `idle`, `needs-input`, `review`, `failure`, `git-dirty`, and `terminal-stress` scenarios plus an interactive protocol for authoritative work, review, approval, interruption, Git, clipboard, and terminal behavior. Fake-Claude adds only `claude-lifecycle` and `claude-failure`, plus Claude-specific notification, elicitation, background-stop, and failed-stop commands. The canonical command list and semantics live in [the skill protocol reference](../.agents/skills/quarterdeck-functional-testing/references/protocol.md); run `/help` inside the fake terminal for the exact syntax available in that checkout.
 
-These commands exist only in deterministic fake modes. Real Codex uses ordinary synthetic prompts and its actual rendered controls. Run only the scenario needed for the changed invariant rather than treating the protocol as a checklist.
+The fake enters the alternate screen only when its received invocation requests the managed renderer: Claude's fullscreen environment, all three Codex renderer config overrides, or Pi's native `--tui-mode fullscreen`. Provider identity alone must not supply a missing launch policy. The fixtures report Claude 2.1.198 and Codex 0.157.0 (minimum supported versions), and Pi exactly 1.4.0. Prompt-less Pi starts and resumes must not interpret the inserted mode value as prompt text.
+
+Use `/alt-off` to exercise normal-buffer fallback after automatic fullscreen entry, and `/alt-on` to return. This tests buffer transitions and restoration, not supported regular-mode agent UX. Managed launches request fullscreen, but do not force existing processes to restart or prohibit native in-session settings. Explicit task restart applies changed launch arguments; reload/reattach alone does not. Claude's saved `axScreenReader` setting remains a fullscreen caveat and is never silently disabled; any change must be the user's deliberate native preference change followed by restart. See [the launch contract](./conventions/session-lifecycle.md#managed-agent-fullscreen-launch-policy).
+
+These commands exist only in deterministic fake modes. Real providers use ordinary synthetic prompts and their actual rendered controls. Fake coverage does not establish real-provider TUI compatibility, validate Pi releases beyond 1.4.0, or prove Pi compacted-history rendering is fixed. Run only the scenario needed for the changed invariant rather than treating the protocol as a checklist.
 
 ## Automated regression suite
 

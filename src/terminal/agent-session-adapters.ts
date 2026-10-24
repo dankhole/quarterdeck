@@ -535,10 +535,68 @@ const codexAdapter: AgentSessionAdapter = {
 	},
 };
 
+// Pi 1.4.0 consumes the next token for these native options even if it starts with
+// "--". Do not mistake a literal value (notably a system prompt) for a TUI option.
+const PI_VALUE_OPTIONS = new Set([
+	"--provider",
+	"--model",
+	"--api-key",
+	"--system-prompt",
+	"--append-system-prompt",
+	"--name",
+	"-n",
+	"--session",
+	"--session-id",
+	"--fork",
+	"--session-dir",
+	"--models",
+	"--tools",
+	"-t",
+	"--exclude-tools",
+	"-xt",
+	"--thinking",
+	"--export",
+	"--extension",
+	"-e",
+	"--skill",
+	"--prompt-template",
+	"--theme",
+]);
+
+function findPiOptionTerminatorIndex(args: string[]): number {
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--") return index;
+		if (arg && PI_VALUE_OPTIONS.has(arg)) index += 1;
+	}
+	return -1;
+}
+
+function applyManagedPiTuiMode(args: string[]): void {
+	let hasTuiMode = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg && PI_VALUE_OPTIONS.has(arg)) {
+			index += 1;
+			continue;
+		}
+		if (arg === "--tui-mode" && (args[index + 1] === "regular" || args[index + 1] === "fullscreen")) {
+			// Keep the option boundary: removing it could make a preceding extension
+			// flag consume a positional message as its optional value.
+			args[index + 1] = "fullscreen";
+			hasTuiMode = true;
+			index += 1;
+		}
+	}
+	// Only the separate value syntax is native Pi syntax. Leave unsupported
+	// forms and invalid values to Pi rather than swallowing unrelated positionals.
+	if (!hasTuiMode) args.push("--tui-mode", "fullscreen");
+}
+
 const piAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
-		const separatorIndex = args.indexOf("--");
+		const separatorIndex = findPiOptionTerminatorIndex(args);
 		const positionalArgs = separatorIndex < 0 ? [] : args.splice(separatorIndex + 1);
 		if (separatorIndex >= 0) args.pop();
 		// Starting choices must not override model/thinking changes recorded in a resumed Pi session.
@@ -613,6 +671,7 @@ const piAdapter: AgentSessionAdapter = {
 			}
 		}
 
+		applyManagedPiTuiMode(args);
 		if (separatorIndex >= 0 || input.prompt.trim()) args.push("--", ...positionalArgs);
 		const launch = withPrompt(args, input.prompt, "append");
 		log.debug("pi adapter prepared launch", {

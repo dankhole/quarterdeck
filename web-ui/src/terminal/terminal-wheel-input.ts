@@ -1,4 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
+import type { IDisposable, Terminal } from "@xterm/xterm";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { TerminalWheelAccumulator } from "@/terminal/terminal-wheel-policy";
 
@@ -8,7 +8,7 @@ export class TerminalWheelInput {
 	private forwarding = false;
 	private sessionKey: string | null = null;
 	private agentId: RuntimeAgentId | null = null;
-	private buffer: Terminal["buffer"]["active"] | null = null;
+	private readonly bufferChangeSubscription: IDisposable;
 
 	constructor(
 		private readonly terminal: Terminal,
@@ -17,6 +17,8 @@ export class TerminalWheelInput {
 			getConnectedTaskId: () => string | null;
 		},
 	) {
+		// A subprocess may leave and re-enter the same alternate buffer between wheel events.
+		this.bufferChangeSubscription = terminal.buffer.onBufferChange(() => this.accumulator.reset());
 		terminal.attachCustomWheelEventHandler(this.onWheel);
 	}
 
@@ -25,11 +27,9 @@ export class TerminalWheelInput {
 		const { terminal } = this;
 		const sessionKey = this.callbacks.getConnectedTaskId();
 		const agentId = this.callbacks.getSessionAgentId();
-		if (this.sessionKey !== sessionKey || this.agentId !== agentId || this.buffer !== terminal.buffer.active)
-			this.accumulator.reset();
+		if (this.sessionKey !== sessionKey || this.agentId !== agentId) this.accumulator.reset();
 		this.sessionKey = sessionKey;
 		this.agentId = agentId;
-		this.buffer = terminal.buffer.active;
 		if (
 			(agentId !== "codex" && agentId !== "pi") ||
 			terminal.buffer.active.type !== "alternate" ||
@@ -84,6 +84,7 @@ export class TerminalWheelInput {
 	};
 
 	dispose(): void {
+		this.bufferChangeSubscription.dispose();
 		this.terminal.attachCustomWheelEventHandler(() => true);
 		this.accumulator.reset();
 	}

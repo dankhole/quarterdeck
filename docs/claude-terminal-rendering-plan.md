@@ -6,7 +6,7 @@ Current contract: fullscreen is the only supported Claude renderer. This documen
 
 Use Claude Code's fullscreen renderer as the durable fix for redraw noise and scrollback presentation. Do not try to infer and remove redraw frames from the raw PTY byte stream.
 
-Quarterdeck always launches Claude in fullscreen. The classic renderer and its Settings toggle have been removed; existing classic sessions must be restarted to adopt the supported renderer.
+Quarterdeck requests Claude's fullscreen renderer on every managed start, resume, restart, and recovery. The Quarterdeck classic-renderer toggle has been removed. This is a launch-only policy: existing processes are not forcibly restarted, and browser reload or reattachment does not change their renderer. Explicitly restart a task to adopt updated launch settings; saved accessibility preferences can still prevent fullscreen as described below.
 
 ## Why the classic renderer cannot provide both clean redraws and native scrollback
 
@@ -20,15 +20,15 @@ Claude's fullscreen renderer uses the terminal alternate screen and owns a virtu
 
 Quarterdeck's existing restore model is compatible with that boundary: the server mirror serializes the normal and alternate buffers plus active terminal modes, while the browser applies the serialized snapshot before replaying buffered live output. The pre-restore forced resize should remain so Claude renders the alternate viewport at the attached browser geometry before the snapshot is requested.
 
-The separate `--ax-screen-reader` mode is not the primary presentation fix. It deliberately flattens decorations and animation for assistive technology; it requires the classic renderer and is not supported in Quarterdeck. Such launches fail with a clear configuration error rather than silently changing renderers.
+The separate screen-reader mode is not the primary presentation fix. It deliberately flattens decorations and animation for assistive technology and requires the classic renderer, outside Quarterdeck's supported managed-agent UX. Explicit `--ax-screen-reader` or enabled `CLAUDE_AX_SCREEN_READER` requests fail with a configuration error. Claude's saved native `axScreenReader` preference can also prevent fullscreen; Quarterdeck does not silently disable it or claim to detect every saved settings source. A user who deliberately chooses fullscreen instead must change that native preference themselves and explicitly restart the task. Do not change an accessibility preference on their behalf.
 
 ## Launch and geometry contract
 
-1. Every Claude launch receives `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`, overriding inherited classic preferences. `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving explicit user values. Codex, Pi, and shell environments remain unchanged.
+1. Every managed Claude launch receives `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`, overriding inherited classic renderer environment preferences, not saved accessibility settings. `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving explicit user values. That scroll default is Claude-only. Codex and exact-version Pi have their own fullscreen launch arguments; see [the shared launch policy](./conventions/session-lifecycle.md#managed-agent-fullscreen-launch-policy). Shell launches are unchanged.
 2. `--ax-screen-reader` or an enabled `CLAUDE_AX_SCREEN_READER` is rejected before spawning because Claude requires the classic renderer for that mode. `CLAUDE_CODE_ACCESSIBILITY` is only a screen-magnifier cursor aid and remains supported.
 3. All terminals use their actual viewport rows. There is no renderer-mode state, detached row multiplier, or attach/detach-triggered geometry change. Explicit browser resize and pre-restore forced redraw remain.
-4. The retired `claudeFullscreenEnabled` config field is ignored on load and omitted on the next save. No persisted session-state migration is needed. Do not switch managed Claude sessions to `/tui default`; Quarterdeck supports fullscreen only.
-5. Terminal snapshots, normal/alternate-buffer serialization, restore ordering, and shared xterm scrollback options remain necessary for restore and other terminal surfaces. They are not classic-mode policy.
+4. The retired `claudeFullscreenEnabled` config field is ignored on load and omitted on the next save. No persisted session-state migration is needed. Native in-session settings such as `/tui default` remain available; choosing classic rendering is outside the supported managed-agent UX, not prohibited or continuously overridden.
+5. Terminal snapshots, normal/alternate-buffer serialization, restore ordering, and shared xterm scrollback options remain necessary for shells, startup errors, subprocesses, and providers that leave fullscreen. Keeping normal-buffer fallback is not a promise to support regular-mode agent UX.
 
 ## Validation boundaries
 
@@ -36,7 +36,7 @@ The separate `--ax-screen-reader` mode is not the primary presentation fix. It d
 - Trackpad and mouse-wheel scrolling, Page Up/Down, Ctrl+Home/End, and Claude's transcript search work through xterm mouse reporting.
 - Text selection, copy/paste, links, and permission prompts work in both short and tall terminals.
 - Resizing while output is active, switching task terminals, detaching and reattaching, and restoring while the alternate screen is active do not lose visible output.
-- Codex, Pi, home shell, and detail shell terminal behavior remains unchanged.
+- Home and detail shells retain normal-buffer behavior. Shared restore must preserve both buffers for Claude, Codex, and Pi without assuming a provider is permanently fullscreen.
 - Linux/macOS are dogfooded separately; Windows ConPTY keeps its existing same-size-resize caveat until native validation is available.
 
 ## Historical evidence

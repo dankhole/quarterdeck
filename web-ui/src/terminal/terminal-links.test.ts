@@ -185,6 +185,25 @@ describe.each<RuntimeAgentId>(["codex", "pi"])("%s terminal link gestures", (ses
 		);
 	}
 
+	it("returns link gestures to xterm during a normal-buffer subprocess and recaptures them on fullscreen return", async () => {
+		await write(`\u001b[?1049l${uri}`);
+		await hover("detected");
+		pointer("mousedown");
+		pointer("mouseup");
+		expect(downstreamDown).toHaveBeenCalledOnce();
+		expect(downstreamUp).toHaveBeenCalledOnce();
+		expect(open).toHaveBeenCalledOnce();
+
+		vi.clearAllMocks();
+		await write(`\u001b[?1049h${uri}`);
+		await hover("detected");
+		pointer("mousedown");
+		pointer("mouseup");
+		expect(downstreamDown).not.toHaveBeenCalled();
+		expect(downstreamUp).not.toHaveBeenCalled();
+		expect(open).toHaveBeenCalledExactlyOnceWith(uri, "_blank", "noopener,noreferrer");
+	});
+
 	it("preserves OSC hyperlink confirmation cancellation in fullscreen", async () => {
 		await hover("osc");
 		confirm.mockReturnValueOnce(false);

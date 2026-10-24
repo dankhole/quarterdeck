@@ -101,6 +101,18 @@ Process recovery eligibility is separate from user-visible task meaning:
 - Restoring a completed `hook` review never fabricates `attention`; only a structured question or permission signal creates Needs Input.
 - A legacy `attention` record without that proof remains ineligible even with `startupRecoveryRequired: true`, and hydration clears the stale handoff so it is not persisted again.
 
+## Managed agent fullscreen launch policy
+
+Managed Claude, Codex, and Pi task launches request fullscreen on every fresh start, resume, restart, and recovery. This is a launch contract, not a permanent terminal mode or a rewrite of provider settings. Existing processes are not forced to restart; explicitly restart a task to receive updated launch arguments. Browser reload or terminal reattachment alone does not apply them.
+
+- Claude (minimum 2.1.198) receives `CLAUDE_CODE_NO_FLICKER=1` and `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=0`.
+- Codex (minimum 0.157.0) receives `tui.fullscreen_transcript=true`, `tui.alternate_screen="always"`, and `tui.raw_output_mode=false`; conflicting renderer overrides and `--no-alt-screen` are removed.
+- Pi (exactly 1.4.0) receives native `--tui-mode fullscreen`, replacing conflicting native mode arguments without editing its saved TUI setting. Do not infer compatibility with newer Pi versions or a fix for Pi's compacted-history rendering from this policy.
+
+Fullscreen is the supported managed-agent UX. Native in-session settings remain available: choosing regular/classic rendering is outside that supported UX, not prohibited or continuously overridden. Shells, startup errors, subprocesses, and providers that leave fullscreen still need normal-buffer output, scrollback, and deterministic normal/alternate snapshot restoration. Never disable those capabilities globally or infer the active buffer from the provider name.
+
+Claude accessibility is a specific limitation: explicit `--ax-screen-reader` or enabled `CLAUDE_AX_SCREEN_READER` remains a pre-spawn configuration error because that mode requires classic rendering. A saved native `axScreenReader` preference can also prevent fullscreen; Quarterdeck does not silently disable it or claim to detect every saved settings source. To adopt fullscreen instead, the user must deliberately change that native preference and explicitly restart the task; never make that accessibility choice on their behalf. `CLAUDE_CODE_ACCESSIBILITY` is a separate screen-magnifier cursor aid and remains supported.
+
 ## PTY and terminal restore identity
 
 Task PTY exit callbacks bind to the exact spawned `PtySession`, not only the task ID. A delayed exit from an old wrapper or PTY must not finalize and clear a replacement session for the same task.
@@ -180,7 +192,7 @@ Image paste captures files and the exact task/project/session writer synchronous
 
 Managed Claude tasks retain automatic startup folder-trust confirmation with the same guards as Codex. The dialog is read from the rendered viewport: both trust options must be contiguous rows of one select (a wrapped label may continue onto following rows), and duplicated or ambiguous option text is never selected. Keys require the current launch, Claude's input guard, and the newest rendered frame; any new output cancels a pending key before the mirror applies it. Direct keyboard input or a mouse click while the dialog is visible owns it until it disappears; input before the dialog renders, terminal protocol replies (focus, cursor, device-attribute, keyboard-flag, OSC, and DCS replies), and passive wheel or motion mouse reports do not. The observer stops after an interrupted stop and retires once native work is confirmed. Confirming trust never establishes Running.
 
-Claude launches always use fullscreen, overriding classic renderer environment preferences. Screen-reader launches that require classic rendering fail before PTY creation. Scrolling is application-owned rather than xterm scrollback; `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving an explicit user override. Do not apply that default to Codex, Pi, or shell terminals. Terminal geometry always uses real viewport rows; attaching or detaching a viewer must not resize the PTY.
+Claude launches request fullscreen as described in the managed launch policy above, overriding classic renderer environment preferences but not saved accessibility settings. Explicit screen-reader CLI/environment requests fail before PTY creation. In fullscreen, scrolling is application-owned rather than xterm scrollback; `CLAUDE_CODE_SCROLL_SPEED` defaults to `3` while preserving an explicit user override. Do not apply that default to Codex, Pi, or shell terminals. Terminal geometry always uses real viewport rows; attaching or detaching a viewer must not resize the PTY.
 
 ### Codex hooks and launch arguments
 
@@ -214,6 +226,7 @@ A visible canonical Codex approval overlay never coexists with a Running task ca
 
 ### Pi lifecycle extension
 
+- Managed Pi launches pass `--tui-mode fullscreen` on fresh starts and all resume paths, including recovery. The native setting remains launch-scoped; see the shared fullscreen policy above.
 - Managed Pi task launches advertise OSC 8 hyperlink support through `PI_HYPERLINKS=1`, including fresh starts, resume, and recovery. This launch-scoped capability overrides inherited/request environment hints without spoofing `TERM_PROGRAM` or changing global configuration; Pi’s native `terminal.hyperlinks: false` setting still wins. Restart existing Pi task processes to receive the new environment; browser reload alone is insufficient. Claude already receives `FORCE_HYPERLINK=1`, and supported Codex renders OSC 8 without a capability override. Shell launches are unchanged.
 - Quarterdeck-managed Pi sessions always load the launch-scoped lifecycle extension. It owns exact session/run/tool identity, lifecycle delivery, and managed-session replacement guards.
 - Pi task `piOptions` may select a starting provider/model and an independent `thinkingLevel` (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Omitted choices inherit native configuration and custom arguments; explicit thinking replaces custom `--thinking` arguments on fresh launches, and Pi clamps it to the selected model's capabilities. Resume never reapplies these starting choices. Exact-session resume also removes custom `--provider`, `--model`, `--models`, and `--thinking` arguments so Pi restores its recorded model and thinking instead.

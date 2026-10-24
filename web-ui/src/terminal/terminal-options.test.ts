@@ -17,7 +17,12 @@ describe("createQuarterdeckTerminalOptions", () => {
 		expect(options.cursorBlink).toBe(false);
 		expect(options.cursorInactiveStyle).toBe("outline");
 		expect(options.cursorStyle).toBe("block");
+		// Fullscreen task launches must not remove normal-buffer shell/error output support.
 		expect(options.scrollback).toBe(1_500);
+		expect(options.scrollOnEraseInDisplay).toBe(true);
+		expect(options.scrollOnUserInput).toBe(true);
+		expect(options.convertEol).toBe(false);
+		expect(options.disableStdin).toBe(false);
 		expect(options.macOptionIsMeta).toBe(true);
 		expect(options.windowOptions).toEqual({
 			getCellSizePixels: true,

@@ -160,6 +160,32 @@ describe("TerminalStateMirror", () => {
 		expect(snapshot?.snapshot).toContain("world");
 	});
 
+	it("restores normal shell/error output and fullscreen state across subprocess transitions", async () => {
+		const mirror = createMirror(40, 8);
+		mirror.applyOutput(Buffer.from("shell$ pi\r\nStartup error: invalid option\r\n"));
+		const startupViewer = await restoreViewer(mirror);
+		expect(startupViewer.buffer.active.type).toBe("normal");
+		expect(startupViewer.buffer.normal.getLine(0)?.translateToString(true)).toBe("shell$ pi");
+		expect(startupViewer.buffer.normal.getLine(1)?.translateToString(true)).toBe("Startup error: invalid option");
+
+		mirror.applyOutput(Buffer.from("\u001b[?1049h\u001b[H\u001b[?1003;1006hfirst fullscreen frame"));
+		mirror.applyOutput(Buffer.from("\u001b[?1003l\u001b[?1049lsubprocess output\r\n"));
+		const normalViewer = await restoreViewer(mirror);
+		expect(normalViewer.buffer.active.type).toBe("normal");
+		expect(normalViewer.modes.mouseTrackingMode).toBe("none");
+		expect(normalViewer.buffer.normal.getLine(1)?.translateToString(true)).toBe("Startup error: invalid option");
+		expect(normalViewer.buffer.normal.getLine(2)?.translateToString(true)).toBe("subprocess output");
+
+		// Encoding survives while tracking is off; resuming fullscreen only needs to re-enable tracking.
+		mirror.applyOutput(Buffer.from("\u001b[?1049h\u001b[H\u001b[?1003hsecond fullscreen frame"));
+		const fullscreenViewer = await restoreViewer(mirror);
+		expect(fullscreenViewer.buffer.active.type).toBe("alternate");
+		expect(fullscreenViewer.modes.mouseTrackingMode).toBe("any");
+		expect(fullscreenViewer.buffer.active.getLine(0)?.translateToString(true)).toBe("second fullscreen frame");
+		expect(fullscreenViewer.buffer.normal.getLine(2)?.translateToString(true)).toBe("subprocess output");
+		expect((await mirror.getSnapshot())?.snapshot).toContain("\u001b[?1006h");
+	});
+
 	it("preserves alternate-screen state across the pre-restore resize", async () => {
 		const mirror = createMirror();
 

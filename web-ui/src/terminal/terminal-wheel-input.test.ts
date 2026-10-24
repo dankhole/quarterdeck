@@ -90,6 +90,24 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
 		expect(reports).not.toHaveBeenCalled();
 	});
+	it("does not carry fractional motion through a normal-buffer subprocess without wheel input", async () => {
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
+		await write("\u001b[?1049lsubprocess output\r\n");
+		expect(terminal.buffer.active.type).toBe("normal");
+		await write("\u001b[?1049h");
+		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
+		expect(reports).not.toHaveBeenCalled();
+	});
+	it("resets fractional motion when mouse-disabled input falls back to xterm", async () => {
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
+		await write("\u001b[?1002l");
+		expect(wheel()).toBe(true);
+		await write("\u001b[?1002h");
+		expect(wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 })).toBe(false);
+		expect(reports).not.toHaveBeenCalled();
+		wheel();
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
+	});
 	it("preserves equivalent distance for coalesced and fine-grained deltas", () => {
 		wheel();
 		const coalescedCount = reports.mock.calls.length;
@@ -109,6 +127,14 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		reports.mockClear();
 		wheel();
 		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
+	});
+	it("unsubscribes from buffer changes on disposal", () => {
+		input.dispose();
+		const subscription = { dispose: vi.fn() };
+		vi.spyOn(terminal.buffer, "onBufferChange").mockReturnValue(subscription);
+		input = new TerminalWheelInput(terminal, { getSessionAgentId: () => agentId, getConnectedTaskId: () => taskId });
+		input.dispose();
+		expect(subscription.dispose).toHaveBeenCalledOnce();
 	});
 	it("restores ordinary xterm handling on disposal", () => {
 		input.dispose();

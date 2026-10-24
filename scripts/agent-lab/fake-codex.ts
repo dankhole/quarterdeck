@@ -16,7 +16,7 @@ import {
 	parseFakeAgentProvider,
 	resolveFakeAgentInvocation,
 	resolveFakeAgentScenario,
-	shouldFakeClaudeUseFullscreen,
+	shouldFakeAgentUseFullscreen,
 } from "./fake-agent-protocol";
 import { readFakeCodexHistory } from "./fake-codex-history";
 import {
@@ -923,7 +923,7 @@ async function main(): Promise<void> {
 	const fallbackScenario = AgentLabScenarioSchema.parse(process.env.QUARTERDECK_AGENT_LAB_SCENARIO ?? "idle");
 	const scenario = resolveFakeAgentScenario(prompt, fallbackScenario);
 	const providerLabel = provider === "pi" ? "Pi" : provider === "claude" ? "Claude" : "Codex";
-	if (shouldFakeClaudeUseFullscreen(provider, process.env)) {
+	if (shouldFakeAgentUseFullscreen(provider, args, process.env)) {
 		process.stdout.write("\u001b[?1049h\u001b[2J\u001b[H");
 	}
 	writeLine(`Quarterdeck Agent Lab — deterministic fake ${providerLabel}`);

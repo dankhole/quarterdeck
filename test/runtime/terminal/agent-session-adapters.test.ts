@@ -1169,6 +1169,189 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(claudeLaunch.args).toContain("--continue");
 	});
 
+	it.each([
+		{ name: "fresh", resumeConversation: false, resumeSessionId: undefined, prompt: "Start" },
+		{ name: "exact resume", resumeConversation: true, resumeSessionId: "stored-session", prompt: "Continue" },
+		{ name: "recovery", resumeConversation: true, resumeSessionId: "stored-session", prompt: "" },
+		{ name: "best-effort resume", resumeConversation: true, resumeSessionId: undefined, prompt: "" },
+	])("enforces Pi fullscreen for $name without changing launch inputs", async (mode) => {
+		const tempHomePath = setupTempHome();
+		const args = [
+			"--tui-mode",
+			"regular",
+			"--approve",
+			"--model",
+			"configured-model",
+			"--thinking",
+			"high",
+			"--tui-mode",
+			"fullscreen",
+			"--tui-mode",
+			"regular",
+		];
+		const originalArgs = [...args];
+		const env = { PI_HYPERLINKS: "0", TERM_PROGRAM: "test-terminal" };
+		Object.freeze(args);
+		Object.freeze(env);
+		const processEnv = { ...process.env };
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-fullscreen",
+			agentId: "pi",
+			binary: "pi",
+			args,
+			env,
+			cwd: "/tmp",
+			projectId: "project-1",
+			hookSessionInstanceId: "instance-1",
+			resumeConversation: mode.resumeConversation,
+			resumeSessionId: mode.resumeSessionId,
+			prompt: mode.prompt,
+		});
+		expect(launch.args).toEqual([
+			"--tui-mode",
+			"fullscreen",
+			"--approve",
+			...(!mode.resumeSessionId ? ["--model", "configured-model", "--thinking", "high"] : []),
+			"--tui-mode",
+			"fullscreen",
+			"--tui-mode",
+			"fullscreen",
+			...(mode.resumeSessionId ? ["--session", mode.resumeSessionId] : []),
+			...(mode.resumeConversation && !mode.resumeSessionId ? ["--continue"] : []),
+			"--extension",
+			join(tempHomePath, ".quarterdeck", "hooks", "pi", "quarterdeck-lifecycle.js"),
+			...(mode.prompt ? ["--", mode.prompt] : []),
+		]);
+		expect(launch.env).toMatchObject({
+			PI_HYPERLINKS: "1",
+			QUARTERDECK_HOOK_TASK_ID: "task-pi-fullscreen",
+			QUARTERDECK_HOOK_SESSION_INSTANCE_ID: "instance-1",
+		});
+		expect(args).toEqual(originalArgs);
+		expect(env).toEqual({ PI_HYPERLINKS: "0", TERM_PROGRAM: "test-terminal" });
+		expect(process.env).toEqual(processEnv);
+	});
+
+	it.each(["", "--tui-mode regular"])("preserves Pi prompt separator literals (task prompt=%j)", async (prompt) => {
+		const args = [
+			"@context.md",
+			"--tui-mode",
+			"regular",
+			"positional message",
+			"--",
+			"--tui-mode",
+			"regular",
+			"--tui-mode=regular",
+			"--",
+		];
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-literals",
+			agentId: "pi",
+			args,
+			cwd: "/tmp",
+			prompt,
+		});
+		expect(launch.args).toEqual([
+			"@context.md",
+			"--tui-mode",
+			"fullscreen",
+			"positional message",
+			...args.slice(args.indexOf("--")),
+			...(prompt ? [prompt] : []),
+		]);
+	});
+
+	it.each([
+		{ name: "fresh", resumeConversation: false, resumeSessionId: undefined, prompt: "Start" },
+		{ name: "exact recovery", resumeConversation: true, resumeSessionId: "stored-session", prompt: "" },
+		{ name: "best-effort resume", resumeConversation: true, resumeSessionId: undefined, prompt: "Continue" },
+	])("does not mistake a Pi option's literal -- value for the separator during $name", async (mode) => {
+		const args = ["--append-system-prompt", "--", "--tui-mode", "regular"];
+		Object.freeze(args);
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-literal-terminator",
+			agentId: "pi",
+			args,
+			cwd: "/tmp",
+			...mode,
+		});
+		expect(launch.args).toEqual([
+			"--append-system-prompt",
+			"--",
+			"--tui-mode",
+			"fullscreen",
+			...(mode.resumeSessionId ? ["--session", mode.resumeSessionId] : []),
+			...(mode.resumeConversation && !mode.resumeSessionId ? ["--continue"] : []),
+			...(mode.prompt ? ["--", mode.prompt] : []),
+		]);
+		expect(args).toEqual(["--append-system-prompt", "--", "--tui-mode", "regular"]);
+	});
+
+	it.each(["--system-prompt", "--append-system-prompt", "--extension", "--session", "--model", "-n"])(
+		"finds the actual Pi separator after %s consumes a literal -- value",
+		async (option) => {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-pi-actual-terminator",
+				agentId: "pi",
+				args: [option, "--", "--tui-mode", "regular", "--", "--tui-mode", "regular"],
+				cwd: "/tmp",
+				prompt: "--tui-mode regular",
+			});
+			expect(launch.args).toEqual([
+				option,
+				"--",
+				"--tui-mode",
+				"fullscreen",
+				"--",
+				"--tui-mode",
+				"regular",
+				"--tui-mode regular",
+			]);
+		},
+	);
+
+	it.each(["--system-prompt", "--append-system-prompt", "--extension", "--session"])(
+		"preserves literal Pi TUI option text used as the value of %s",
+		async (option) => {
+			const launch = await prepareAgentLaunch({
+				taskId: "task-pi-option-literal",
+				agentId: "pi",
+				args: [option, "--tui-mode", "regular", "--tui-mode", "regular", "trailing message"],
+				cwd: "/tmp",
+				prompt: "",
+			});
+			expect(launch.args).toEqual([option, "--tui-mode", "regular", "--tui-mode", "fullscreen", "trailing message"]);
+		},
+	);
+
+	it.each([
+		["--plan", "--tui-mode", "regular", "review this"],
+		["--plan", "--tui-mode", "regular", "review this", "--other-flag", "--tui-mode", "regular", "keep this too"],
+	])("preserves unknown Pi extension flag boundaries and positional messages in %j", async (...args) => {
+		const originalArgs = [...args];
+		Object.freeze(args);
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-extension-boundary",
+			agentId: "pi",
+			args,
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(launch.args).toEqual(originalArgs.map((arg) => (arg === "regular" ? "fullscreen" : arg)));
+		expect(args).toEqual(originalArgs);
+	});
+
+	it("does not treat Pi's unsupported equals-form TUI flag as native syntax", async () => {
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-unsupported-tui-syntax",
+			agentId: "pi",
+			args: ["--tui-mode=regular", "positional message"],
+			cwd: "/tmp",
+			prompt: "",
+		});
+		expect(launch.args).toEqual(["--tui-mode=regular", "positional message", "--tui-mode", "fullscreen"]);
+	});
+
 	it("launches Pi through the configured system CLI without bundled environment aliases", async () => {
 		setupTempHome();
 		process.env.ANTHROPIC_BEDROCK_BASE_URL = "https://bedrock.example.test";
@@ -1187,7 +1370,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		expect(launch.binary).toBe("pi");
-		expect(launch.args).toEqual(["--", "Try the Pi TUI"]);
+		expect(launch.args).toEqual(["--tui-mode", "fullscreen", "--", "Try the Pi TUI"]);
 		expect(launch.env.PI_HYPERLINKS).toBe("1");
 		expect(launch.env.PI_OFFLINE).toBeUndefined();
 		expect(launch.env.PI_CODING_AGENT_DIR).toBeUndefined();
@@ -1265,7 +1448,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		const extensionPath = join(tempHomePath, ".quarterdeck", "hooks", "pi", "quarterdeck-lifecycle.js");
-		expect(launch.args).toEqual(["--extension", extensionPath, "--", "Try the Pi TUI"]);
+		expect(launch.args).toEqual(["--extension", extensionPath, "--tui-mode", "fullscreen", "--", "Try the Pi TUI"]);
 		expect(launch.env.QUARTERDECK_HOOK_TASK_ID).toBe("task-pi");
 		expect(launch.env.QUARTERDECK_HOOK_PROJECT_ID).toBe("project-1");
 		const hookCommand = JSON.parse(launch.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] ?? "[]") as string[];
@@ -1370,7 +1553,14 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeSessionId: "019d6fa0-db65-7f83-9531-35df54674d76",
 		});
 
-		expect(launch.args).toEqual(["--session", "019d6fa0-db65-7f83-9531-35df54674d76", "--", "Continue the task"]);
+		expect(launch.args).toEqual([
+			"--session",
+			"019d6fa0-db65-7f83-9531-35df54674d76",
+			"--tui-mode",
+			"fullscreen",
+			"--",
+			"Continue the task",
+		]);
 		expect(launch.args).not.toContain("--continue");
 	});
 
@@ -1393,7 +1583,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeConversation: true,
 			resumeSessionId: "stored-session",
 		});
-		expect(launch.args).toEqual(["--session", "stored-session"]);
+		expect(launch.args).toEqual(["--session", "stored-session", "--tui-mode", "fullscreen"]);
 	});
 
 	it("falls back to Pi --continue when no stored session id is available", async () => {
@@ -1409,7 +1599,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			resumeConversation: true,
 		});
 
-		expect(launch.args).toEqual(["--continue"]);
+		expect(launch.args).toEqual(["--continue", "--tui-mode", "fullscreen"]);
 	});
 
 	it("inserts managed Pi options before a custom argument separator", async () => {
@@ -1430,6 +1620,8 @@ describe("prepareAgentLaunch hook strategies", () => {
 			"stored-session",
 			"--extension",
 			join(tempHomePath, ".quarterdeck", "hooks", "pi", "quarterdeck-lifecycle.js"),
+			"--tui-mode",
+			"fullscreen",
 			"--",
 			"--literal",
 			"Continue",
@@ -1446,7 +1638,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 			cwd: "/tmp",
 			prompt: "--version is failing; investigate",
 		});
-		expect(launch.args).toEqual(["--", "--version is failing; investigate"]);
+		expect(launch.args).toEqual(["--tui-mode", "fullscreen", "--", "--version is failing; investigate"]);
 	});
 
 	it("preserves custom Pi args without forcing extension suppression", async () => {
@@ -1462,7 +1654,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 
 		expect(launch.binary).toBe("pi");
-		expect(launch.args).toEqual(["--model", "sonnet"]);
+		expect(launch.args).toEqual(["--model", "sonnet", "--tui-mode", "fullscreen"]);
 	});
 });
 
@@ -1777,6 +1969,8 @@ describe("Pi starting options", () => {
 			model.provider,
 			"--model",
 			model.id,
+			"--tui-mode",
+			"fullscreen",
 			"--",
 			"custom positional",
 			"-task prompt",
@@ -1799,6 +1993,8 @@ describe("Pi starting options", () => {
 				"configured:high",
 				"--thinking",
 				thinkingLevel,
+				"--tui-mode",
+				"fullscreen",
 				"--",
 				"--thinking",
 				"-task prompt",
@@ -1815,7 +2011,16 @@ describe("Pi starting options", () => {
 			args: ["--models", "scope*", "--thinking", "low"],
 			piOptions: { model: { provider: "alpha", id: "chosen" }, thinkingLevel: "xhigh" },
 		});
-		expect(launch.args).toEqual(["--provider", "alpha", "--model", "chosen", "--thinking", "xhigh"]);
+		expect(launch.args).toEqual([
+			"--provider",
+			"alpha",
+			"--model",
+			"chosen",
+			"--thinking",
+			"xhigh",
+			"--tui-mode",
+			"fullscreen",
+		]);
 	});
 	it("restores exact-session model and thinking instead of custom defaults, preserving positionals", async () => {
 		const launch = await prepareAgentLaunch({
@@ -1841,7 +2046,15 @@ describe("Pi starting options", () => {
 			resumeSessionId: "exact-session-id",
 			piOptions: { model: { provider: "alpha", id: "original" }, thinkingLevel: "off" },
 		});
-		expect(launch.args).toEqual(["--verbose", "--session", "exact-session-id", "--", "--thinking"]);
+		expect(launch.args).toEqual([
+			"--verbose",
+			"--session",
+			"exact-session-id",
+			"--tui-mode",
+			"fullscreen",
+			"--",
+			"--thinking",
+		]);
 	});
 	it.each([undefined, {}])("inherits custom arguments when starting options are %j", async (piOptions) => {
 		const launch = await prepareAgentLaunch({
@@ -1853,7 +2066,16 @@ describe("Pi starting options", () => {
 			args: ["--provider", "configured", "--model", "configured-model", "--thinking", "medium"],
 			piOptions,
 		});
-		expect(launch.args).toEqual(["--provider", "configured", "--model", "configured-model", "--thinking", "medium"]);
+		expect(launch.args).toEqual([
+			"--provider",
+			"configured",
+			"--model",
+			"configured-model",
+			"--thinking",
+			"medium",
+			"--tui-mode",
+			"fullscreen",
+		]);
 	});
 	it.each([undefined, "exact-session-id"])(
 		"does not reapply starting choices on resume (id=%s)",
@@ -1869,7 +2091,11 @@ describe("Pi starting options", () => {
 				resumeSessionId,
 				piOptions: { model: { provider: "alpha", id: "original-starting-model" }, thinkingLevel: "xhigh" },
 			});
-			expect(launch.args).toEqual(resumeSessionId ? ["--session", resumeSessionId] : ["--continue"]);
+			expect(launch.args).toEqual([
+				...(resumeSessionId ? ["--session", resumeSessionId] : ["--continue"]),
+				"--tui-mode",
+				"fullscreen",
+			]);
 		},
 	);
 });

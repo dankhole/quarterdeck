@@ -25,6 +25,18 @@ describe("terminal key policy", () => {
 		).toEqual({ kind: "pass" });
 	});
 
+	it("preserves ordinary shell input and Shift+Enter before a provider enters fullscreen", () => {
+		const shellContext = { ...context, agentId: null, alternateScreen: false, mouseTracking: false };
+		for (const key of ["Enter", "ArrowUp", "Backspace"]) {
+			expect(resolveTerminalKey(new KeyboardEvent("keydown", { key }), shellContext)).toEqual({ kind: "pass" });
+		}
+		for (const type of ["keydown", "keypress", "keyup"]) {
+			expect(resolveTerminalKey(new KeyboardEvent(type, { key: "Enter", shiftKey: true }), shellContext)).toEqual(
+				type === "keydown" ? { kind: "send", data: "\n" } : { kind: "consume" },
+			);
+		}
+	});
+
 	it.each<KeyboardEventInit>([
 		{ key: "Enter", shiftKey: true, ctrlKey: true },
 		{ key: "Enter", shiftKey: true, altKey: true },
