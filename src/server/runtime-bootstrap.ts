@@ -242,7 +242,11 @@ async function createRuntimeBootstrapState(
 	let projectStatePublications: ProjectStatePublicationScheduler | undefined;
 	const boardCommands = new ProjectBoardCommandService({
 		getAuthoritativeSessions: async ({ projectId, projectPath }) => {
-			const manager = await projectRegistry.ensureTerminalManagerForProject(projectId, projectPath);
+			// Final persistence reads the owned store after tracking is fenced. Ensuring
+			// an existing manager would notify readiness and try to register its writer again.
+			const manager =
+				projectRegistry.getTerminalManagerForProject(projectId) ??
+				(await projectRegistry.ensureTerminalManagerForProject(projectId, projectPath));
 			return Object.fromEntries(manager.store.listSummaries().map((summary) => [summary.taskId, summary]));
 		},
 		// Returns at once: enrichment and broadcast run in the per-project scheduler,
