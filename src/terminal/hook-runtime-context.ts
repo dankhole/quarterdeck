@@ -1,6 +1,8 @@
 export const QUARTERDECK_HOOK_TASK_ID_ENV = "QUARTERDECK_HOOK_TASK_ID";
 export const QUARTERDECK_HOOK_PROJECT_ID_ENV = "QUARTERDECK_HOOK_PROJECT_ID";
 export const QUARTERDECK_HOOK_SESSION_INSTANCE_ID_ENV = "QUARTERDECK_HOOK_SESSION_INSTANCE_ID";
+/** Runtime-prepared Windows outbox identity; never inherit this from another launch. */
+export const QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV = "QUARTERDECK_HOOK_PRIVATE_OUTBOX";
 
 export interface HookRuntimeContext {
 	taskId: string;
@@ -16,10 +18,16 @@ function requireTrimmedEnv(env: NodeJS.ProcessEnv, key: string): string {
 	return value;
 }
 
-export function createHookRuntimeEnv(context: HookRuntimeContext): Record<string, string> {
+export function createHookRuntimeEnv(
+	context: HookRuntimeContext,
+	privateOutboxCapability?: string,
+): Record<string, string | undefined> {
 	const env = {
 		[QUARTERDECK_HOOK_TASK_ID_ENV]: context.taskId,
 		[QUARTERDECK_HOOK_PROJECT_ID_ENV]: context.projectId,
+		// Keep an explicit invalid value through every Windows merge, including
+		// the final PTY spawn, so process.env cannot resurrect an inherited proof.
+		[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: privateOutboxCapability ?? "",
 	};
 	const sessionInstanceId = context.sessionInstanceId?.trim();
 	return sessionInstanceId

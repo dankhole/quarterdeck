@@ -64,7 +64,7 @@ beforeEach(() => {
 	temp = createTempDir("quarterdeck-api-file-tree-");
 	// Git reports canonical worktree paths. Alias snapshots intentionally retain
 	// the cache's existing normalized-lexical identity and bounded TTL.
-	const root = realpathSync(temp.path);
+	const root = realpathSync.native(temp.path);
 	home = join(root, "home");
 	task = join(root, "task");
 	mkdirSync(home);
@@ -220,7 +220,7 @@ describe("project Git operations invalidate warm file listings", () => {
 	});
 
 	it("refreshes the home listing after pulling the checked-out branch", async () => {
-		const remote = join(realpathSync(temp.path), "origin.git");
+		const remote = join(realpathSync.native(temp.path), "origin.git");
 		runGit(home, ["init", "--bare", remote]);
 		runGit(home, ["remote", "add", "origin", remote]);
 		runGit(home, ["push", "-u", "origin", "main", "feature"]);

@@ -193,7 +193,7 @@ console.log(identity.appAsarSha256);
 		expect(exposed).toEqual([]);
 	});
 
-	it("exposes optional updates separately while preserving the original version-one preload shape", async () => {
+	it("exposes optional environment and updates separately while preserving the original version-one preload shape", async () => {
 		const result = await build({ ...preloadBuildOptions, write: false, sourcemap: false });
 		const exposed = new Map();
 		runInNewContext(result.outputFiles[0].text, {
@@ -215,7 +215,11 @@ console.log(identity.appAsarSha256);
 				};
 			},
 		});
-		expect([...exposed.keys()]).toEqual(["quarterdeckDesktop", "quarterdeckDesktopUpdates"]);
+		expect([...exposed.keys()]).toEqual([
+			"quarterdeckDesktop",
+			"quarterdeckDesktopEnvironment",
+			"quarterdeckDesktopUpdates",
+		]);
 		const original = exposed.get("quarterdeckDesktop");
 		expect(original.version).toBe(1);
 		// This is the exact allowlist used by older compatible runtime UIs.
@@ -230,6 +234,11 @@ console.log(identity.appAsarSha256);
 			"reportNotificationContext",
 			"respondQuitPreflight",
 			"saveEditorDraft",
+			"version",
+		]);
+		expect(Object.keys(exposed.get("quarterdeckDesktopEnvironment")).sort()).toEqual([
+			"getSnapshot",
+			"request",
 			"version",
 		]);
 		expect(Object.keys(exposed.get("quarterdeckDesktopUpdates")).sort()).toEqual([

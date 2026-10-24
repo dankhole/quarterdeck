@@ -15,6 +15,7 @@ import {
 	enqueueHookTransition,
 	getOutboxDirectoryPath,
 	HOOK_TRANSITION_OUTBOX_TTL_MS,
+	normalizeHookTransitionReplayMetadata,
 	OUTBOX_RECORD_VERSION,
 	type PersistedHookTransition,
 } from "./hook-transition-outbox-core.js";
@@ -42,8 +43,8 @@ export const HOOK_TRANSITION_REPLAY_INTERVAL_MS = 2_000;
  * (`HOOK_INGEST_TOTAL_TIMEOUT_MS`, 3.25s, in hooks-runtime-client.ts) plus slack
  * for a CPU-starved writer under load, which also bounds the delay when the
  * writer died without marking it (for example, killed by a provider hook
- * timeout). Replaying sooner would race the live delivery, whose full metadata
- * the minimal replay copy could pre-empt.
+ * timeout). Replaying sooner would race the live delivery. Replay preserves the
+ * bounded supported foreground reply, but intentionally omits other live content.
  */
 export const HOOK_TRANSITION_LIVE_REPLAY_MIN_AGE_MS = 6_000;
 
@@ -134,6 +135,7 @@ export async function loadPendingHookTransitions(now: number = Date.now()): Prom
 			...(parsed.data.abandonedAt !== undefined ? { abandonedAt: parsed.data.abandonedAt } : {}),
 			request: {
 				...parsed.data.request,
+				metadata: normalizeHookTransitionReplayMetadata(parsed.data.request.event, parsed.data.request.metadata),
 				delivery: parsed.data.request.delivery,
 			},
 		});
