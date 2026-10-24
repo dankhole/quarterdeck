@@ -29,7 +29,7 @@ export function ProjectRow({
 	striped = false,
 	removingProjectId,
 	needsInputCount = 0,
-	showDragHandle = false,
+	dragDisabled = false,
 	dragHandleProps,
 	isDragging = false,
 	onSelect,
@@ -44,7 +44,7 @@ export function ProjectRow({
 	striped?: boolean;
 	removingProjectId: string | null;
 	needsInputCount?: number;
-	showDragHandle?: boolean;
+	dragDisabled?: boolean;
 	dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> | null;
 	groupActions?: ReactNode;
 	management?: ProjectManagementMenuActions | null;
@@ -122,21 +122,20 @@ export function ProjectRow({
 					isDragging && "shadow-lg bg-surface-2 rounded-md",
 				)}
 			>
-				{showDragHandle ? (
-					<button
-						type="button"
-						aria-label={`Drag ${project.name}`}
-						{...dragHandleProps}
-						className={cn(
-							"shrink-0 cursor-grab opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity touch-none",
-							isCurrent ? "text-white/50 hover:text-white/80" : "text-text-tertiary hover:text-text-secondary",
-							isDragging && "opacity-100 cursor-grabbing",
-						)}
-						onClick={(event) => event.stopPropagation()}
-					>
-						<GripVertical size={14} />
-					</button>
-				) : null}
+				<button
+					type="button"
+					aria-label={`Drag ${project.name}`}
+					{...dragHandleProps}
+					disabled={dragDisabled}
+					className={cn(
+						"shrink-0 cursor-grab opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity touch-none disabled:cursor-default",
+						isCurrent ? "text-white/50 hover:text-white/80" : "text-text-tertiary hover:text-text-secondary",
+						isDragging && "opacity-100 cursor-grabbing",
+					)}
+					onClick={(event) => event.stopPropagation()}
+				>
+					<GripVertical size={14} />
+				</button>
 				<button
 					title={`${project.name} — ${displayPath}`}
 					type="button"
