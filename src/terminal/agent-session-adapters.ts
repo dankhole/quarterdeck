@@ -20,13 +20,14 @@ import {
 	toRuntimeClaudeOptions,
 } from "../core";
 import { lockedFileSystem } from "../fs";
+import { prepareHookTransitionOutboxDirectoryCapability } from "../hook-transition-outbox-private-directory";
 import { getRuntimeHomePath } from "../state";
 import { createClaudeRendererEnvironment } from "./claude-renderer-policy";
 import { createClaudeOutputTransitionHooks } from "./claude-turn-interruption";
 import { createCodexApprovalPromptDetector } from "./codex-approval-prompt";
 import { createCodexTurnInterruptionDetector } from "./codex-turn-interruption";
 import { getActiveHookHttpChannel } from "./hook-http-channel";
-import { createHookRuntimeEnv } from "./hook-runtime-context";
+import { createHookRuntimeEnv, QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV } from "./hook-runtime-context";
 import {
 	buildPiLifecycleExtensionSource,
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
@@ -292,6 +293,7 @@ const claudeAdapter: AgentSessionAdapter = {
 		}
 		applyClaudeTaskOptions(args, input.claudeOptions);
 		const env: Record<string, string | undefined> = {
+			[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "",
 			FORCE_HYPERLINK: "1",
 			...createClaudeRendererEnvironment({ args, envOverrides: input.env }),
 		};
@@ -335,7 +337,11 @@ const claudeAdapter: AgentSessionAdapter = {
 				: buildClaudeHooksSettings();
 			await ensureTextFile(settingsPath, JSON.stringify(hooksSettings, null, 2));
 			args.push("--settings", settingsPath);
-			Object.assign(env, createHookRuntimeEnv(hooks), httpNotify?.env);
+			Object.assign(
+				env,
+				createHookRuntimeEnv(hooks, await prepareHookTransitionOutboxDirectoryCapability()),
+				httpNotify?.env,
+			);
 		}
 
 		// Inject worktree context so the agent knows it's in an isolated worktree,
@@ -379,7 +385,7 @@ export async function prepareCodexLaunchConfiguration(
 	input: AgentAdapterLaunchInput,
 ): Promise<{ args: string[]; env: Record<string, string | undefined> }> {
 	const codexArgs = [...input.args];
-	const env: Record<string, string | undefined> = {};
+	const env: Record<string, string | undefined> = { [QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "" };
 
 	// Starting choices must not overwrite model changes made inside an existing session.
 	if (!input.resumeConversation && !codexArgs.includes("resume") && !codexArgs.includes("fork")) {
@@ -442,14 +448,7 @@ export async function prepareCodexLaunchConfiguration(
 
 	const hooks = resolveHookContext(input);
 	if (hooks) {
-		Object.assign(
-			env,
-			createHookRuntimeEnv({
-				taskId: hooks.taskId,
-				projectId: hooks.projectId,
-				sessionInstanceId: hooks.sessionInstanceId,
-			}),
-		);
+		Object.assign(env, createHookRuntimeEnv(hooks, await prepareHookTransitionOutboxDirectoryCapability()));
 	}
 	if (!hasCodexFeatureEnabled(codexArgs, CODEX_HOOKS_FEATURE_NAME)) {
 		insertCodexGlobalArgs(codexArgs, ["--enable", CODEX_HOOKS_FEATURE_NAME]);
@@ -580,6 +579,7 @@ const piAdapter: AgentSessionAdapter = {
 			}
 		}
 		const env: Record<string, string | undefined> = {
+			[QUARTERDECK_HOOK_PRIVATE_OUTBOX_ENV]: "",
 			// Always override process/request inheritance, including unmanaged launches.
 			[QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV]: undefined,
 		};
@@ -593,17 +593,9 @@ const piAdapter: AgentSessionAdapter = {
 			if (!args.includes(extensionPath)) {
 				args.push("--extension", extensionPath);
 			}
-			Object.assign(
-				env,
-				createHookRuntimeEnv({
-					taskId: hooks.taskId,
-					projectId: hooks.projectId,
-					sessionInstanceId: hooks.sessionInstanceId,
-				}),
-				{
-					[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckHookCommandParts(["hooks", "notify"])),
-				},
-			);
+			Object.assign(env, createHookRuntimeEnv(hooks, await prepareHookTransitionOutboxDirectoryCapability()), {
+				[QUARTERDECK_PI_HOOK_COMMAND_ENV]: JSON.stringify(buildQuarterdeckHookCommandParts(["hooks", "notify"])),
+			});
 			// Best-effort activity hooks POST to this runtime's published loopback
 			// endpoint in-process instead of spawning `hooks notify`, mirroring
 			// Claude's `type: "http"` hooks; without a published channel, the

@@ -146,12 +146,27 @@ describe("board card conversation", () => {
 		expect(trigger?.getAttribute("aria-expanded")).toBe("false");
 		expect(container.textContent).not.toContain("The updated layout is ready.");
 	});
-	it("keeps the retained completed response visible when the next turn starts", async () => {
-		const response = "The latest completed response has more detail than a short synopsis. ".repeat(10).trim();
-		const summary = {
+	it("keeps the latest Pi-shortcuts answer preview when the next turn clears transient final output", async () => {
+		const response = [
+			"While Pi is working:",
+			"",
+			"| What you want | Keys |",
+			"|---|---|",
+			"| Redirect it as soon as possible | Type your message and press Enter. It receives it after the current response and tool calls finish. |",
+			"| Stop immediately, then give new instructions | Press Esc, then type/send your message with Enter. |",
+			"| Queue something for after the whole task finishes | Option+Enter on Mac (Alt+Enter). |",
+			"| Bring queued messages back to edit | Option+↑. |",
+			"",
+			"So for “stop what you’re doing and listen to this,” use Esc → message → Enter.",
+			"",
+			"For a Tintinweb subagent, open /agents, select the worker, press Enter to compose guidance, then Enter to send. To stop that worker, press x, then x again to confirm.",
+		].join("\n");
+		expect(response.length).toBeGreaterThan(500);
+		const summary: RuntimeTaskSessionSummary = {
 			...ready,
+			agentId: "pi",
 			completedResponses: [
-				{ text: "Older response", capturedAt: 100, sessionIndex: 0 },
+				{ text: "The installed Tintinweb extension is available.", capturedAt: 100, sessionIndex: 0 },
 				{ text: response, capturedAt: 200, sessionIndex: 1 },
 			],
 		};
@@ -174,16 +189,48 @@ describe("board card conversation", () => {
 						...summary,
 						state: "running",
 						reviewReason: null,
-						nativeWorkEvidence: running.nativeWorkEvidence,
+						nativeWorkEvidence: { ...running.nativeWorkEvidence!, provider: "pi" },
 						latestHookActivity: null,
 					}}
 				/>,
 			),
 		);
 		expect(container.querySelector("p")?.textContent).toBe(response.slice(0, 500));
+		expect(container.querySelector("p")?.classList.contains("line-clamp-6")).toBe(true);
 		expect(container.querySelector("[aria-expanded]")).toBeNull();
-		expect(container.textContent).not.toContain("Older response");
+		expect(container.textContent).not.toContain("The installed Tintinweb extension is available.");
+		expect(container.textContent).not.toContain(response.slice(500));
 	});
+	it.each(["codex", "claude", "pi"] as const)(
+		"selects the latest retained %s answer when transient output is absent",
+		async (agentId) => {
+			await act(async () =>
+				root.render(
+					<BoardCardConversation
+						card={card}
+						columnId="review"
+						summary={{
+							...ready,
+							agentId,
+							latestHookActivity: {
+								...ready.latestHookActivity!,
+								hookEventName: "PostToolUse",
+								finalMessage: null,
+							},
+							completedResponses: [
+								{ text: "The installed Tintinweb extension is available.", capturedAt: 100, sessionIndex: 0 },
+								{ text: "An intermediate completed answer.", capturedAt: 200, sessionIndex: 1 },
+								{ text: "The newest answer explains Pi shortcuts.", capturedAt: 300, sessionIndex: 2 },
+							],
+						}}
+					/>,
+				),
+			);
+			expect(container.querySelector("p")?.textContent).toBe("The newest answer explains Pi shortcuts.");
+			expect(container.textContent).not.toContain("The installed Tintinweb extension is available.");
+			expect(container.textContent).not.toContain("An intermediate completed answer.");
+		},
+	);
 	it("shows the original prompt without a disclosure when there is no previous response", async () => {
 		await act(async () =>
 			root.render(

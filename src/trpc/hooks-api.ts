@@ -9,6 +9,7 @@ import type {
 	RuntimeTaskSessionSummary,
 } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass, parseHookIngestRequest } from "../core";
+import { isForegroundCompletionHook } from "../core/foreground-completion.js";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import { loadProjectScopeById } from "../state";
 import {
@@ -59,34 +60,28 @@ function buildHookLogData(input: {
 	};
 }
 
+type CompletionCaptureOutcome = "retained" | "deduplicated" | "missing";
+
 function applyCompletedResponseFromMetadata(
 	store: SessionSummaryStore,
 	taskId: string,
 	metadata: { conversationSummaryText?: string | null; finalMessage?: string | null } | undefined,
-): void {
+): CompletionCaptureOutcome | null {
 	// Retain the response independently of latestHookActivity: subsequent hooks
 	// clear its finalMessage. The legacy hook field remains an input fallback.
 	const text = metadata?.finalMessage?.trim() || metadata?.conversationSummaryText?.trim();
-	if (text) {
-		store.appendCompletedResponse(taskId, {
-			text,
-			capturedAt: Date.now(),
-		});
-	}
-}
-
-function isForegroundCompletionMetadata(metadata: RuntimeHookMetadata | undefined): boolean {
-	const source = metadata?.source?.trim().toLowerCase();
-	const hookEventName = metadata?.hookEventName?.trim().toLowerCase();
-	return (
-		(source === "codex" || source === "claude" || source === "pi") &&
-		(hookEventName === "stop" ||
-			hookEventName === "agentsettled" ||
-			// Pi's clean settle deferred behind background subagents still completed
-			// this turn's reply; a superseding wake turn would otherwise drop it.
-			(source === "pi" && hookEventName === "agentsettledbackgroundpending")) &&
-		!metadata?.providerAgentId?.trim()
-	);
+	if (!text) return "missing";
+	const previousResponse = store.getSummary(taskId)?.completedResponses.at(-1);
+	const summary = store.appendCompletedResponse(taskId, {
+		text,
+		capturedAt: Date.now(),
+	});
+	if (!summary) return null;
+	// Observe the canonical store result rather than duplicating its text
+	// normalization, retention limits, or deduplication policy here.
+	return summary.completedResponses.at(-1)?.sessionIndex === previousResponse?.sessionIndex
+		? "deduplicated"
+		: "retained";
 }
 
 /**
@@ -189,6 +184,8 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 						hasPromptId: Boolean(body.metadata?.promptId),
 						hasToolUseId: Boolean(body.metadata?.toolUseId),
 						hasSessionId: Boolean(body.metadata?.sessionId),
+						hasFinalMessage: Boolean(body.metadata?.finalMessage),
+						hasConversationSummaryText: Boolean(body.metadata?.conversationSummaryText),
 					},
 					diagnosticContext,
 					{ essential: true },
@@ -321,10 +318,10 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				}
 				const nextSummary = transitionResult.summary;
 				const hasForegroundCompletionMetadata =
-					transitionResult.hookMetadataMode === "apply" && isForegroundCompletionMetadata(body.metadata);
-				if (hasForegroundCompletionMetadata) {
-					applyCompletedResponseFromMetadata(store, taskId, body.metadata);
-				}
+					transitionResult.hookMetadataMode === "apply" && isForegroundCompletionHook(body.event, body.metadata);
+				const completionCaptureOutcome = hasForegroundCompletionMetadata
+					? applyCompletedResponseFromMetadata(store, taskId, body.metadata)
+					: null;
 				if (transitionResult.hookMetadataMode === "apply") {
 					deps.observeProgress?.({ projectId, taskId, store, previous: previousSummary });
 				}
@@ -336,6 +333,14 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				const response = await completeHookIngest(
 					transitionResult.hookMetadataMode === "apply" || transitionResult.hookOrderingMode === "advance",
 				);
+				if (completionCaptureOutcome) {
+					deps.diagnostics?.recordEvent(
+						"hook.completion_capture",
+						{ outcome: completionCaptureOutcome },
+						diagnosticContext,
+						{ essential: true },
+					);
+				}
 				log.info(
 					transitionResult.changed ? "Hook transition applied" : "Hook accepted without semantic transition",
 					{
