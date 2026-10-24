@@ -62,6 +62,10 @@ async function choose(label: string): Promise<void> {
 	if (!item) throw new Error(`Missing choice ${label}`);
 	await act(async () => {
 		item.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+	});
+	// Radix schedules focus restoration when React commits the closed menu.
+	// Wait after that commit so it cannot dismiss the next menu we open.
+	await act(async () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
 }
