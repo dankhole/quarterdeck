@@ -83,6 +83,12 @@ describe("search preview", () => {
 			expect.objectContaining({ path: "new.ts", scrollToLine: 42, readOnly: true }),
 		);
 	});
+	it("detects a preview grammar from its filename rather than a coarse runtime hint", async () => {
+		getContent.mockResolvedValueOnce({ ...content("$color: red;"), language: "css" });
+		await act(async () => root.render(<SearchResultPreview projectId="p" searchScope={scope} path="theme.scss" />));
+		expect(editor).toHaveBeenLastCalledWith(expect.objectContaining({ path: "theme.scss", language: "" }));
+	});
+
 	it("shows bounded, binary, and failed preview states", async () => {
 		getContent.mockResolvedValueOnce({ ...content("partial"), truncated: true });
 		await act(async () => root.render(<SearchResultPreview projectId="p" searchScope={scope} path="big.ts" />));

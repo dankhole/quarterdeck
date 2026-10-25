@@ -1,51 +1,8 @@
-import { cpp } from "@codemirror/lang-cpp";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { java } from "@codemirror/lang-java";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { sql } from "@codemirror/lang-sql";
-import { HighlightStyle, type LanguageSupport } from "@codemirror/language";
+import { HighlightStyle } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-export function languageExtension(language: string, path: string): LanguageSupport | null {
-	const aliases: Record<string, string> = {
-		ts: "typescript",
-		js: "javascript",
-		py: "python",
-		md: "markdown",
-		rs: "rust",
-		html: "markup",
-		xml: "markup",
-	};
-	language = aliases[language] ?? language;
-	const lowerPath = path.toLowerCase();
-	if (language === "typescript") return javascript({ typescript: true });
-	if (language === "tsx") return javascript({ typescript: true, jsx: true });
-	if (language === "jsx") return javascript({ jsx: true });
-	if (language === "javascript") return javascript();
-	if (language === "json") return json();
-	if (language === "css") return css();
-	if (language === "markdown") return markdown();
-	if (language === "python") return python();
-	if (language === "java") return java();
-	if (language === "cpp" || language === "c") return cpp();
-	if (language === "rust") return rust();
-	if (language === "sql") return sql();
-	if (
-		language === "markup" ||
-		lowerPath.endsWith(".html") ||
-		lowerPath.endsWith(".xml") ||
-		lowerPath.endsWith(".svg")
-	) {
-		return html();
-	}
-	return null;
-}
+export { languageExtension } from "./source-language-registry";
 
 export const quarterdeckEditorTheme = EditorView.theme(
 	{

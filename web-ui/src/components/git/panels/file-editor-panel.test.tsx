@@ -158,6 +158,14 @@ describe("FileEditorPanel", () => {
 		});
 	}
 
+	it.each([
+		{ path: "Dockerfile", language: "bash" },
+		{ path: "styles/theme.scss", language: "css" },
+	])("uses filename detection instead of the coarse $language hint for $path", async ({ path, language }) => {
+		await renderPanel({ activeTab: { ...createTab(path, "example"), language } });
+		expect(sourceEditorRenderMock).toHaveBeenLastCalledWith(expect.objectContaining({ path, language: "" }));
+	});
+
 	it("copies the active tab content from the toolbar", async () => {
 		const content = "const one = 1;\n";
 

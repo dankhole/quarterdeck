@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { ReviewDocumentDiff } from "@/components/editor/review-document-diff";
 import { SourceEditor } from "@/components/editor/source-editor";
-import { resolvePrismLanguage } from "@/components/shared/syntax-highlighting";
 import { Button } from "@/components/ui/button";
 import { type FileBrowserScopeOptions, resolveFileBrowserScope } from "@/hooks/git/file-browser-scope";
 import { guardFileEditorScopes } from "@/hooks/git/file-editor-cache";
@@ -103,7 +102,7 @@ export function ConflictResultEditor({
 					<SourceEditor
 						key={`${review.key}:${source}`}
 						path={file.path}
-						language={resolvePrismLanguage(file.path) ?? ""}
+						language=""
 						value={
 							source === "base"
 								? (file.baseContent ?? "")

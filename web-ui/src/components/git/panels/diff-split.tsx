@@ -1,7 +1,6 @@
 import { memo, useMemo } from "react";
 import { createSourceLineCache } from "@/components/editor/source-line-highlighting";
 import { quarterdeckHighlightStyle } from "@/components/editor/source-presentation";
-
 import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
 import { DiffContextRows } from "@/components/shared/diff-context-rows";
 import {
@@ -12,6 +11,7 @@ import {
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
+import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
 import {
@@ -117,7 +117,11 @@ export const SplitDiff = memo(function SplitDiff({
 	comments: Map<string, DiffLineComment>;
 } & DiffCommentCallbacks): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
-	const highlightCache = useMemo(() => createSourceLineCache(path), [path, oldText, newText]);
+	const languageSupport = useSourceLanguage("", path);
+	const highlightCache = useMemo(
+		() => createSourceLineCache(path, languageSupport),
+		[path, oldText, newText, languageSupport],
+	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(
 		() =>
