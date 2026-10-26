@@ -21,6 +21,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 } from "@/components/ui/dialog";
+import { SettingsSwitch } from "@/components/ui/settings-controls";
 import { useDesktopDraftProtection } from "@/hooks/app";
 import { useSettingsForm } from "@/hooks/settings/use-settings-form";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
@@ -205,6 +206,15 @@ export function RuntimeSettingsDialog({
 							: "<project>/.quarterdeck/config.json"}
 						{config?.projectConfigPath ? <ExternalLink size={12} className="inline ml-1.5 align-middle" /> : null}
 					</p>
+
+					<h6 className="font-semibold text-text-primary mt-4 mb-2">Task creation</h6>
+					<SettingsSwitch
+						checked={fields.defaultUseWorktree}
+						onCheckedChange={(value) => setField("defaultUseWorktree", value)}
+						disabled={controlsDisabled || !config?.projectConfigPath}
+						label="Use isolated worktree by default"
+						description="Sets the initial toggle for new tasks in this project. You can override it per task. Folder projects always run directly in their folder. Without isolation, concurrent tasks may cause file conflicts in your main checkout."
+					/>
 
 					<div className="settings-row mt-4">
 						<label

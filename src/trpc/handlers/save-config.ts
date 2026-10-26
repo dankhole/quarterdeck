@@ -40,7 +40,7 @@ export async function handleSaveConfig(
 		const activeProjectId = deps.getActiveProjectId();
 		// Publish globals while the persistence lock still orders this save. An
 		// inactive project may save global settings, but cannot replace the active
-		// project's shortcuts, branches, or worktree setup.
+		// project's shortcuts, branches, or worktree settings.
 		deps.config.setActiveRuntimeConfig(
 			!activeProjectId
 				? toGlobalRuntimeConfigState(next)
@@ -52,6 +52,7 @@ export async function handleSaveConfig(
 							shortcuts: active.shortcuts,
 							pinnedBranches: active.pinnedBranches,
 							defaultBaseRef: active.defaultBaseRef,
+							defaultUseWorktree: active.defaultUseWorktree,
 							worktreeSetupScript: active.worktreeSetupScript,
 						},
 		);

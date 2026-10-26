@@ -43,6 +43,7 @@ import {
 	waitForPendingAgentAvailabilityProbes,
 } from "../../../src/config";
 import { getRuntimeAgentCatalogEntry } from "../../../src/core";
+import { runtimeConfigResponseSchema, runtimeConfigSaveRequestSchema } from "../../../src/core/api/config";
 import { installRuntimeProcessLaunchAdmission } from "../../../src/core/runtime-process-launch-admission.js";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
 
@@ -925,6 +926,19 @@ describe("agent-registry", () => {
 });
 
 describe("buildRuntimeConfigResponse", () => {
+	it.each([true, false])("projects the project worktree default (%s) as an optional API field", async (value) => {
+		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ defaultUseWorktree: value }));
+		expect(response.defaultUseWorktree).toBe(value);
+		expect(runtimeConfigResponseSchema.parse(response).defaultUseWorktree).toBe(value);
+		expect(runtimeConfigSaveRequestSchema.parse({ defaultUseWorktree: value })).toEqual({
+			defaultUseWorktree: value,
+		});
+		const { defaultUseWorktree: _defaultUseWorktree, ...legacyResponse } = response;
+		expect(runtimeConfigResponseSchema.parse(legacyResponse).defaultUseWorktree).toBeUndefined();
+		expect(runtimeConfigSaveRequestSchema.parse({}).defaultUseWorktree).toBeUndefined();
+		expect(runtimeConfigSaveRequestSchema.safeParse({ defaultUseWorktree: "false" }).success).toBe(false);
+	});
+
 	it("reports launch-config-derived native UI availability", async () => {
 		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState(), {
 			nativeUiAvailable: false,

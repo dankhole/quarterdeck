@@ -26,6 +26,7 @@ interface UseTaskEditorInput {
 	readOnly?: boolean;
 	createTaskBranchOptions: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef: string;
+	defaultUseWorktree?: boolean;
 	folderOnly?: boolean;
 	fallbackTaskAgentId: RuntimeAgentId;
 	availableTaskAgentIds?: readonly RuntimeAgentId[] | null;
@@ -126,6 +127,7 @@ export function useTaskEditor({
 	readOnly = false,
 	createTaskBranchOptions,
 	defaultTaskBranchRef,
+	defaultUseWorktree = true,
 	folderOnly = false,
 	fallbackTaskAgentId,
 	availableTaskAgentIds,
@@ -154,7 +156,7 @@ export function useTaskEditor({
 	const [newTaskCodexOptions, setNewTaskCodexOptions] = useState<RuntimeCodexOptions>();
 	const [newTaskPiOptions, setNewTaskPiOptions] = useState<RuntimePiOptions>();
 	const [newTaskClaudeOptions, setNewTaskClaudeOptions] = useState<RuntimeClaudeOptions>();
-	const [draftUseWorktree, setNewTaskUseWorktree] = useState(true);
+	const [draftUseWorktree, setNewTaskUseWorktree] = useState(!folderOnly && defaultUseWorktree);
 	const newTaskUseWorktree = !folderOnly && draftUseWorktree;
 	const [createFeatureBranch, setCreateFeatureBranch] = useState(false);
 	const [branchName, setBranchName] = useState("");
@@ -165,6 +167,7 @@ export function useTaskEditor({
 	const [editTaskBranchRef, setEditTaskBranchRef] = useState("");
 
 	const resolvedDefaultTaskBranchRef = folderOnly ? "" : defaultTaskBranchRef;
+	const resolvedDefaultUseWorktree = !folderOnly && defaultUseWorktree;
 	const newTaskAgentIdRef = useRef(newTaskAgentId);
 	newTaskAgentIdRef.current = newTaskAgentId;
 
@@ -276,7 +279,12 @@ export function useTaskEditor({
 		setEditingTaskId(null);
 		setEditTaskPrompt("");
 		setEditTaskImages([]);
-		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
+		const resetCreateDraft = createResetTaskCreateDraft(
+			resolvedDefaultTaskBranchRef,
+			getDefaultTaskAgentId(),
+			resolvedDefaultUseWorktree,
+		);
+		setNewTaskUseWorktree(resetCreateDraft.useWorktree);
 		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
 		setBranchName(resetCreateDraft.branchName);
 		setNewTaskBranchRef(resetCreateDraft.branchRef);
@@ -285,10 +293,14 @@ export function useTaskEditor({
 		setNewTaskPiOptions(undefined);
 		setNewTaskClaudeOptions(undefined);
 		setIsInlineTaskCreateOpen(true);
-	}, [getDefaultTaskAgentId, readOnly, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, readOnly, resetNewTaskAgentId, resolvedDefaultTaskBranchRef, resolvedDefaultUseWorktree]);
 
 	const handleCancelCreateTask = useCallback(() => {
-		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
+		const resetCreateDraft = createResetTaskCreateDraft(
+			resolvedDefaultTaskBranchRef,
+			getDefaultTaskAgentId(),
+			resolvedDefaultUseWorktree,
+		);
 		setNewTaskCodexOptions(undefined);
 		setNewTaskPiOptions(undefined);
 		setNewTaskClaudeOptions(undefined);
@@ -300,7 +312,7 @@ export function useTaskEditor({
 		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
 		setBranchName(resetCreateDraft.branchName);
 		setNewTaskBranchRef(resetCreateDraft.branchRef);
-	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef, resolvedDefaultUseWorktree]);
 
 	const handleOpenEditTask = useCallback(
 		(task: BoardCard, options?: OpenEditTaskOptions) => {
@@ -376,7 +388,11 @@ export function useTaskEditor({
 
 	const resetCreateEditorAfterSubmit = useCallback(
 		(options?: CreateTaskOptions) => {
-			const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
+			const resetCreateDraft = createResetTaskCreateDraft(
+				resolvedDefaultTaskBranchRef,
+				getDefaultTaskAgentId(),
+				resolvedDefaultUseWorktree,
+			);
 			setNewTaskPrompt(resetCreateDraft.prompt);
 			setNewTaskImages(resetCreateDraft.images);
 			resetNewTaskAgentId(resetCreateDraft.agentId);
@@ -391,7 +407,7 @@ export function useTaskEditor({
 				setIsInlineTaskCreateOpen(false);
 			}
 		},
-		[getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef],
+		[getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef, resolvedDefaultUseWorktree],
 	);
 
 	const handleCreateTask = useCallback(
@@ -522,16 +538,21 @@ export function useTaskEditor({
 		setNewTaskClaudeOptions(undefined);
 		setIsInlineTaskCreateOpen(false);
 		const emptyEditDraft = createEmptyTaskEditDraft();
-		const resetCreateDraft = createResetTaskCreateDraft(resolvedDefaultTaskBranchRef, getDefaultTaskAgentId());
+		const resetCreateDraft = createResetTaskCreateDraft(
+			resolvedDefaultTaskBranchRef,
+			getDefaultTaskAgentId(),
+			resolvedDefaultUseWorktree,
+		);
 		setEditingTaskId(emptyEditDraft.editingTaskId);
 		setEditTaskPrompt(emptyEditDraft.prompt);
 		setEditTaskImages(emptyEditDraft.images);
 		setEditTaskBranchRef(emptyEditDraft.branchRef);
 		setNewTaskImages(resetCreateDraft.images);
 		resetNewTaskAgentId(resetCreateDraft.agentId);
+		setNewTaskUseWorktree(resetCreateDraft.useWorktree);
 		setCreateFeatureBranch(resetCreateDraft.createFeatureBranch);
 		setBranchName(resetCreateDraft.branchName);
-	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef]);
+	}, [getDefaultTaskAgentId, resetNewTaskAgentId, resolvedDefaultTaskBranchRef, resolvedDefaultUseWorktree]);
 
 	return {
 		isInlineTaskCreateOpen: !readOnly && isInlineTaskCreateOpen,

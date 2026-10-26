@@ -120,6 +120,8 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
    Add cards manually or paste prompts into the sidebar. You can split a list into multiple unstarted cards, then start each task individually.
 
+   In **Settings → Project → Task creation**, set **Use isolated worktree by default** for this project. It starts enabled and seeds new tasks only; override **Use isolated worktree** on an individual task without changing the project default. Existing tasks are unchanged, and folder projects always run directly in their folder. Without isolation, concurrent tasks share the main checkout and may cause file conflicts.
+
 3. Start agents.
 
    Starting a card launches the configured agent. New Git-project tasks use isolated worktrees by default: Quarterdeck copies ignored files selected by `.worktreeinclude`, runs the project’s optional setup script, and injects worktree context. Configure **Worktree setup script** in project Settings to install task-local dependencies automatically. Tasks using the project folder directly skip that preparation. See [worktree setup](./worktree-setup.md) for include patterns, script behavior, and failure recovery.

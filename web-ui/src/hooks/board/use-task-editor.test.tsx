@@ -2,7 +2,7 @@ import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useTaskEditor } from "@/hooks/board/use-task-editor";
+import { type PreparedTaskCreation, useTaskEditor } from "@/hooks/board/use-task-editor";
 import type { RuntimeCodexOptions, RuntimePiOptions } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { BoardCard, BoardData, TaskImage } from "@/types";
@@ -42,6 +42,11 @@ interface HookSnapshot {
 	setNewTaskCodexOptions: (value: RuntimeCodexOptions | undefined) => void;
 	setNewTaskPiOptions: (value: RuntimePiOptions | undefined) => void;
 	newTaskBranchRef: string;
+	newTaskUseWorktree: boolean;
+	setNewTaskUseWorktree: (value: boolean) => void;
+	handleCancelCreateTask: () => void;
+	resetTaskEditorState: () => void;
+	prepareCreateTaskForLifecycle: (options?: { keepDialogOpen?: boolean }) => PreparedTaskCreation | null;
 	editingTaskId: string | null;
 	editTaskPrompt: string;
 	handleOpenCreateTask: () => void;
@@ -70,6 +75,8 @@ function HookHarness({
 	queueTaskStartAfterEdit,
 	branchOptions = [{ value: "main", label: "main" }],
 	defaultTaskBranchRef = "main",
+	defaultUseWorktree,
+	currentProjectId = "project-1",
 	folderOnly = false,
 	readOnly = false,
 	fallbackTaskAgentId = "claude",
@@ -80,6 +87,8 @@ function HookHarness({
 	queueTaskStartAfterEdit?: (taskId: string) => void;
 	branchOptions?: Array<{ value: string; label: string }>;
 	defaultTaskBranchRef?: string;
+	defaultUseWorktree?: boolean;
+	currentProjectId?: string;
 	folderOnly?: boolean;
 	readOnly?: boolean;
 	fallbackTaskAgentId?: "claude" | "codex" | "pi";
@@ -90,9 +99,10 @@ function HookHarness({
 	const editor = useTaskEditor({
 		board,
 		setBoard,
-		currentProjectId: "project-1",
+		currentProjectId,
 		createTaskBranchOptions: branchOptions,
 		defaultTaskBranchRef,
+		defaultUseWorktree,
 		folderOnly,
 		readOnly,
 		fallbackTaskAgentId,
@@ -113,6 +123,11 @@ function HookHarness({
 			setNewTaskCodexOptions: editor.setNewTaskCodexOptions,
 			setNewTaskPiOptions: editor.setNewTaskPiOptions,
 			newTaskBranchRef: editor.newTaskBranchRef,
+			newTaskUseWorktree: editor.newTaskUseWorktree,
+			setNewTaskUseWorktree: editor.setNewTaskUseWorktree,
+			handleCancelCreateTask: editor.handleCancelCreateTask,
+			resetTaskEditorState: editor.resetTaskEditorState,
+			prepareCreateTaskForLifecycle: editor.prepareCreateTaskForLifecycle,
 			editingTaskId: editor.editingTaskId,
 			editTaskPrompt: editor.editTaskPrompt,
 			handleOpenCreateTask: editor.handleOpenCreateTask,
@@ -146,6 +161,11 @@ function HookHarness({
 		editor.setNewTaskCodexOptions,
 		editor.setNewTaskPiOptions,
 		editor.newTaskBranchRef,
+		editor.newTaskUseWorktree,
+		editor.setNewTaskUseWorktree,
+		editor.handleCancelCreateTask,
+		editor.resetTaskEditorState,
+		editor.prepareCreateTaskForLifecycle,
 		editor.setEditTaskPrompt,
 		editor.setNewTaskAgentId,
 		editor.setNewTaskBranchRef,
@@ -185,6 +205,181 @@ describe("useTaskEditor", () => {
 		}
 		window.localStorage.clear();
 	});
+
+	it.each([false, true, undefined])(
+		"seeds the worktree default %s at initialization and open",
+		async (defaultUseWorktree) => {
+			let snapshot: HookSnapshot | null = null;
+			await act(async () =>
+				root.render(
+					<HookHarness
+						initialBoard={createBoard()}
+						defaultUseWorktree={defaultUseWorktree}
+						onSnapshot={(next) => {
+							snapshot = next;
+						}}
+					/>,
+				),
+			);
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(defaultUseWorktree ?? true);
+			await act(async () => requireSnapshot(snapshot).setNewTaskUseWorktree(!(defaultUseWorktree ?? true)));
+			await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(defaultUseWorktree ?? true);
+		},
+	);
+
+	it("keeps a manual worktree choice on config refresh and uses the latest default on cancel and reopen", async () => {
+		let snapshot: HookSnapshot | null = null;
+		const render = async (defaultUseWorktree: boolean) =>
+			act(async () =>
+				root.render(
+					<HookHarness
+						initialBoard={createBoard()}
+						defaultUseWorktree={defaultUseWorktree}
+						onSnapshot={(next) => {
+							snapshot = next;
+						}}
+					/>,
+				),
+			);
+		await render(false);
+		await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+		await act(async () => requireSnapshot(snapshot).setNewTaskUseWorktree(true));
+		await render(false);
+		expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(true);
+		await render(true);
+		await act(async () => requireSnapshot(snapshot).setNewTaskUseWorktree(false));
+		await render(true);
+		expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+		await act(async () => requireSnapshot(snapshot).handleCancelCreateTask());
+		expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(true);
+		await render(false);
+		await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+		expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+	});
+
+	it.each(["single", "bulk", "lifecycle"] as const)(
+		"uses draft overrides for %s creation and resets to the latest default",
+		async (mode) => {
+			let snapshot: HookSnapshot | null = null;
+			const render = async (defaultUseWorktree: boolean) =>
+				act(async () =>
+					root.render(
+						<HookHarness
+							initialBoard={createBoard()}
+							defaultUseWorktree={defaultUseWorktree}
+							onSnapshot={(next) => {
+								snapshot = next;
+							}}
+						/>,
+					),
+				);
+			await render(false);
+			await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+			const submit = async (keepDialogOpen: boolean) => {
+				await act(async () => requireSnapshot(snapshot).setNewTaskPrompt("New task"));
+				let tasks: BoardCard[] = [];
+				let createdTaskIds: Array<string | null> = [];
+				await act(async () => {
+					const editor = requireSnapshot(snapshot);
+					if (mode === "lifecycle") {
+						const prepared = editor.prepareCreateTaskForLifecycle({ keepDialogOpen });
+						tasks = prepared ? [prepared.task] : [];
+					} else {
+						createdTaskIds =
+							mode === "single"
+								? [editor.handleCreateTask({ keepDialogOpen })]
+								: editor.handleCreateTasks(["One", "Two"], { keepDialogOpen });
+					}
+				});
+				if (mode !== "lifecycle") {
+					const createdIds = new Set(createdTaskIds);
+					tasks = requireSnapshot(snapshot)
+						.board.columns.flatMap((column) => column.cards)
+						.filter((task) => createdIds.has(task.id));
+				}
+				expect(tasks).toHaveLength(mode === "bulk" ? 2 : 1);
+				return tasks;
+			};
+			// An untouched draft submits the false project default through every creation path.
+			expect((await submit(true)).every((task) => task.useWorktree === false)).toBe(true);
+			expect(requireSnapshot(snapshot).isInlineTaskCreateOpen).toBe(true);
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+			await act(async () => requireSnapshot(snapshot).setNewTaskUseWorktree(true));
+			expect((await submit(true)).every((task) => task.useWorktree === true)).toBe(true);
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+			await render(true);
+			// Config changes do not replace the current draft, but seed the next one after submission.
+			expect((await submit(false)).every((task) => task.useWorktree === false)).toBe(true);
+			expect(requireSnapshot(snapshot).isInlineTaskCreateOpen).toBe(false);
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(true);
+		},
+	);
+
+	it("seeds the new project's default on workflow reset without changing existing tasks", async () => {
+		let snapshot: HookSnapshot | null = null;
+		const isolatedTask = createTask("isolated", "Isolated", 1, { useWorktree: true });
+		const tasks = [isolatedTask, createTask("shared", "Shared", 2, { useWorktree: false })];
+		const render = async (currentProjectId: string, defaultUseWorktree: boolean) =>
+			act(async () =>
+				root.render(
+					<HookHarness
+						initialBoard={createBoard(tasks)}
+						currentProjectId={currentProjectId}
+						defaultUseWorktree={defaultUseWorktree}
+						onSnapshot={(next) => {
+							snapshot = next;
+						}}
+					/>,
+				),
+			);
+		await render("project-1", true);
+		await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+		await render("project-2", false);
+		await act(async () => requireSnapshot(snapshot).resetTaskEditorState());
+		expect(requireSnapshot(snapshot).isInlineTaskCreateOpen).toBe(false);
+		expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+		await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+		expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+		await act(async () => requireSnapshot(snapshot).handleOpenEditTask(isolatedTask));
+		await act(async () => requireSnapshot(snapshot).setEditTaskPrompt("Updated isolated"));
+		await act(async () => requireSnapshot(snapshot).handleSaveEditedTask());
+		expect(requireSnapshot(snapshot).board.columns[0]?.cards).toMatchObject([
+			{ id: "isolated", prompt: "Updated isolated", useWorktree: true },
+			{ id: "shared", useWorktree: false },
+		]);
+	});
+
+	it.each([false, true, undefined])(
+		"forces folder-only creation off for default %s and manual overrides",
+		async (defaultUseWorktree) => {
+			let snapshot: HookSnapshot | null = null;
+			await act(async () =>
+				root.render(
+					<HookHarness
+						initialBoard={createBoard()}
+						defaultUseWorktree={defaultUseWorktree}
+						folderOnly
+						branchOptions={[]}
+						defaultTaskBranchRef=""
+						onSnapshot={(next) => {
+							snapshot = next;
+						}}
+					/>,
+				),
+			);
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+			await act(async () => requireSnapshot(snapshot).handleOpenCreateTask());
+			await act(async () => {
+				requireSnapshot(snapshot).setNewTaskUseWorktree(true);
+				requireSnapshot(snapshot).setNewTaskPrompt("Folder task");
+			});
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+			await act(async () => requireSnapshot(snapshot).handleCreateTask({ keepDialogOpen: true }));
+			expect(requireSnapshot(snapshot).board.columns[0]?.cards[0]?.useWorktree).toBe(false);
+			expect(requireSnapshot(snapshot).newTaskUseWorktree).toBe(false);
+		},
+	);
 
 	it("saves and queues an older isolated task in folder mode after branch options disappear", async () => {
 		let snapshot: HookSnapshot | null = null;

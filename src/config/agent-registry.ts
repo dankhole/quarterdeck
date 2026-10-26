@@ -1065,6 +1065,7 @@ export async function buildRuntimeConfigResponse(
 		shortcuts: runtimeConfig.shortcuts,
 		pinnedBranches: runtimeConfig.pinnedBranches,
 		defaultBaseRef: runtimeConfig.defaultBaseRef,
+		defaultUseWorktree: runtimeConfig.defaultUseWorktree,
 		worktreeSetupScript: runtimeConfig.worktreeSetupScript,
 		promptShortcuts: runtimeConfig.promptShortcuts,
 		hiddenDefaultPromptShortcuts: runtimeConfig.hiddenDefaultPromptShortcuts,
