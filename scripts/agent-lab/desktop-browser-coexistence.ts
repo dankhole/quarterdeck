@@ -23,48 +23,110 @@ import {
 import { DesktopProcessEvidenceSchema } from "./desktop-types";
 import { AGENT_LAB_REPO_ROOT, writeJsonAtomic } from "./paths";
 
-class DesktopBrowserWrapperCommandUnconfirmedError extends Error {
-	constructor() {
-		super("Desktop/browser wrapper command is unconfirmed; retain the synthetic fixture.");
+interface DesktopBrowserStartupFailure {
+	outcome: "exit" | "timeout" | "output_limit" | "spawn_error";
+	exitCode: number | null;
+	signal: NodeJS.Signals | null;
+	reason:
+		| "executable_missing"
+		| "module_missing"
+		| "socket_path_too_long"
+		| "browser_closed"
+		| "launch_failed"
+		| "unclassified";
+	osErrorCode: string | null;
+}
+
+class DesktopBrowserWrapperCommandError extends Error {
+	constructor(
+		readonly unconfirmed: boolean,
+		readonly startupFailure?: DesktopBrowserStartupFailure,
+	) {
+		super(
+			unconfirmed
+				? "Desktop/browser wrapper command is unconfirmed; retain the synthetic fixture."
+				: "Desktop/browser wrapper command failed; private output withheld.",
+		);
 	}
+}
+
+/** Classify in memory; never retain raw output, arguments, URLs, or arbitrary error messages. */
+function startupFailureReason(output: string): Pick<DesktopBrowserStartupFailure, "reason" | "osErrorCode"> {
+	const reasons = [
+		["executable_missing", /Executable doesn't exist|browser executable.*not found/iu],
+		["module_missing", /Cannot find (?:package|module)|ERR_MODULE_NOT_FOUND/iu],
+		["socket_path_too_long", /Socket directory path is too long|ENAMETOOLONG/u],
+		["browser_closed", /Target (?:page, context or browser has been closed|closed)|Browser context was closed/iu],
+		["launch_failed", /Failed to launch|browserType\.launch/iu],
+	] as const;
+	return {
+		reason: reasons.find(([, pattern]) => pattern.test(output))?.[0] ?? "unclassified",
+		osErrorCode:
+			/\b(?:ENOENT|EACCES|EPERM|ECONNREFUSED|ENAMETOOLONG|EADDRINUSE|ETIMEDOUT)\b/u.exec(output)?.[0] ?? null,
+	};
 }
 
 function runBoundedBrowserCommand(
 	createChild: () => ChildProcess,
 	timeoutMs = 30_000,
 	maxBytes = 512 * 1024,
+	captureStartupFailure = false,
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const child = createChild();
 		const chunks: Buffer[] = [];
+		const startupChunks: Buffer[] = [];
 		let bytes = 0;
 		let settled = false;
-		const finish = (unconfirmed: boolean, failed = false) => {
+		let spawnErrorCode: string | null = null;
+		const finish = (
+			outcome: DesktopBrowserStartupFailure["outcome"],
+			exitCode: number | null = null,
+			signal: NodeJS.Signals | null = null,
+		) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timeout);
+			const unconfirmed = outcome !== "exit";
 			if (unconfirmed) {
 				// Do not signal the wrapper: its signal handler invokes legacy process-tree kills.
 				child.unref();
 				if (child.stdout instanceof Socket) child.stdout.unref();
 				if (child.stderr instanceof Socket) child.stderr.unref();
-				reject(new DesktopBrowserWrapperCommandUnconfirmedError());
-			} else if (failed) reject(new Error("Desktop/browser wrapper command failed; private output withheld."));
-			else resolve(Buffer.concat(chunks).toString("utf8"));
+			}
+			if (unconfirmed || exitCode !== 0) {
+				const classification = startupFailureReason(Buffer.concat(startupChunks).toString("utf8"));
+				const startupFailure = captureStartupFailure
+					? {
+							outcome,
+							exitCode,
+							signal,
+							...classification,
+							osErrorCode: spawnErrorCode ?? classification.osErrorCode,
+						}
+					: undefined;
+				reject(new DesktopBrowserWrapperCommandError(unconfirmed, startupFailure));
+			} else resolve(Buffer.concat(chunks).toString("utf8"));
 			chunks.length = 0;
+			startupChunks.length = 0;
 		};
-		const timeout = setTimeout(() => finish(true), timeoutMs);
+		const timeout = setTimeout(() => finish("timeout"), timeoutMs);
 		timeout.unref();
 		const collect = (stdout: boolean) => (chunk: Buffer) => {
 			if (settled) return;
 			bytes += chunk.length;
-			if (bytes > maxBytes) return finish(true);
+			if (bytes > maxBytes) return finish("output_limit");
 			if (stdout) chunks.push(chunk);
+			if (captureStartupFailure) startupChunks.push(chunk);
 		};
 		child.stdout?.on("data", collect(true));
 		child.stderr?.on("data", collect(false));
-		child.once("error", () => finish(true));
-		child.once("close", (exitCode) => finish(false, exitCode !== 0));
+		child.once("error", (error) => {
+			if ("code" in error && typeof error.code === "string")
+				spawnErrorCode = startupFailureReason(error.code).osErrorCode;
+			finish("spawn_error");
+		});
+		child.once("close", (exitCode, signal) => finish("exit", exitCode, signal));
 	});
 }
 const sizes = [
@@ -121,6 +183,7 @@ export class DesktopBrowserCoexistenceError extends Error {
 		readonly owner: DesktopBrowserOwnerEvidence,
 		readonly cleanupConfirmed: boolean,
 		readonly failureStage: DesktopBrowserCoexistenceFailureStage,
+		readonly startupFailure?: DesktopBrowserStartupFailure,
 	) {
 		super(
 			cleanupConfirmed
@@ -165,6 +228,7 @@ async function proveCoexistence(session: string, ports: DesktopBrowserCoexistenc
 	const checkpoints: Array<{ desktop: DesktopBrowserClientEvidence; browser: DesktopBrowserClientEvidence }> = [];
 	let stage: DesktopBrowserCoexistenceFailureStage = "read_desktop";
 	let failureStage: DesktopBrowserCoexistenceFailureStage | null = null;
+	let startupFailure: DesktopBrowserStartupFailure | undefined;
 	let browserAttempted = false;
 	let cleanupConfirmed = false;
 	let performance: DesktopPerformanceScenarioEvidence | undefined;
@@ -208,8 +272,9 @@ async function proveCoexistence(session: string, ports: DesktopBrowserCoexistenc
 			assertClient(before, await ports.readDesktop());
 			assertClient(before, await ports.readBrowser());
 		}
-	} catch {
+	} catch (error) {
 		failureStage = stage;
+		if (error instanceof DesktopBrowserWrapperCommandError) startupFailure = error.startupFailure;
 	} finally {
 		try {
 			if (browserAttempted) await ports.closeBrowser();
@@ -227,7 +292,13 @@ async function proveCoexistence(session: string, ports: DesktopBrowserCoexistenc
 		}
 	}
 	if (failureStage || !before)
-		throw new DesktopBrowserCoexistenceError(session, owner, cleanupConfirmed, failureStage ?? "read_desktop");
+		throw new DesktopBrowserCoexistenceError(
+			session,
+			owner,
+			cleanupConfirmed,
+			failureStage ?? "read_desktop",
+			startupFailure,
+		);
 	return { owner, browserSession: session, before, checkpoints, cleanupConfirmed: true as const, performance };
 }
 
@@ -506,18 +577,31 @@ export async function exerciseDesktopBrowserCoexistence(
 	const session = `qd-desktop-browser-${fixture.manifest.runId}`;
 	const browserConfig = join(fixture.manifest.artifactDir, "playwright-cli.config.json");
 	let commandUnconfirmed = false;
-	const run = async (args: string[], silent = false): Promise<string> => {
+	const run = async (args: string[], silent = false, captureStartupFailure = false): Promise<string> => {
 		try {
-			const stdout = await runBoundedBrowserCommand(() =>
-				spawn(
-					process.execPath,
-					["--import", "tsx", join(AGENT_LAB_REPO_ROOT, "scripts", "agent-browser.ts"), `-s=${session}`, ...args],
-					{ cwd: AGENT_LAB_REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
-				),
+			const stdout = await runBoundedBrowserCommand(
+				() =>
+					spawn(
+						process.execPath,
+						[
+							"--import",
+							"tsx",
+							join(AGENT_LAB_REPO_ROOT, "scripts", "agent-browser.ts"),
+							`-s=${session}`,
+							...args,
+						],
+						{ cwd: AGENT_LAB_REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+					),
+				undefined,
+				undefined,
+				captureStartupFailure,
 			);
 			return silent ? "" : stdout;
 		} catch (error) {
-			if (error instanceof DesktopBrowserWrapperCommandUnconfirmedError) commandUnconfirmed = true;
+			if (error instanceof DesktopBrowserWrapperCommandError) {
+				if (error.unconfirmed) commandUnconfirmed = true;
+				throw error;
+			}
 			throw new Error("Desktop/browser wrapper command failed; private output withheld.");
 		}
 	};
@@ -549,7 +633,8 @@ export async function exerciseDesktopBrowserCoexistence(
 			},
 			readDesktop: async () => projectClient(await page.evaluate(readClient, scope), taskId),
 			openBrowser: async () => {
-				await run(["--config", browserConfig, "open", "about:blank"], true);
+				// Only initial startup is classified, before any browser admission credential is supplied.
+				await run(["--config", browserConfig, "open", "about:blank"], true, true);
 				const evidence = DesktopProcessEvidenceSchema.parse(
 					JSON.parse(await readFile(config.processEvidencePath, "utf8")) as unknown,
 				);
@@ -608,7 +693,7 @@ export async function exerciseDesktopBrowserCoexistence(
 			},
 			closeBrowser: async () => {
 				await closeAgentLabBrowserSession(AGENT_LAB_REPO_ROOT, session, { mode: "named-session-only" });
-				if (commandUnconfirmed) throw new DesktopBrowserWrapperCommandUnconfirmedError();
+				if (commandUnconfirmed) throw new DesktopBrowserWrapperCommandError(true);
 			},
 		};
 		if (options.performance) {

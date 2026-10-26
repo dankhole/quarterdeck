@@ -1,3 +1,5 @@
+import { buildShellCommandLine } from "../../src/core/shell";
+import { buildWindowsProcessArgsCommandLine } from "../../src/core/windows-cmd-launch";
 import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
 
 export type FakeAgentProvider = "claude" | "codex" | "pi";
@@ -262,6 +264,46 @@ export function resolveFakeAgentInvocation(provider: FakeAgentProvider, args: re
 		requestedSessionId,
 		settingsPath: provider === "claude" ? findOptionValue(args, "--settings") : null,
 	};
+}
+
+/** Recognize Quarterdeck's generated hook commands, not arbitrary shell/PowerShell programs. */
+export function hasFakeClaudeHookCommand(groups: unknown, delivery: "ingest" | "notify", event: string): boolean {
+	if (!Array.isArray(groups)) return false;
+	const args = ["hooks", delivery, "--event", event, "--source", "claude"];
+	const posixTail = ` ${buildShellCommandLine("hooks", args.slice(1), "linux")}`;
+	const windowsTail = ` ${buildWindowsProcessArgsCommandLine(args)}`;
+	return groups.some((group: unknown) => {
+		if (!group || typeof group !== "object" || !("hooks" in group) || !Array.isArray(group.hooks)) return false;
+		return group.hooks.some((handler: unknown) => {
+			if (!handler || typeof handler !== "object" || !("type" in handler) || handler.type !== "command")
+				return false;
+			if (!("command" in handler) || typeof handler.command !== "string") return false;
+			if (handler.command.endsWith(posixTail)) return true;
+			// Windows shell commands encode a PowerShell bootstrap; the hook argv
+			// lives in its JSON launch record, not in the outer command string.
+			const encoded = handler.command.match(
+				/^""[^"\r\n]+" -NoLogo -NoProfile -NonInteractive -EncodedCommand ([A-Za-z0-9+/]+={0,2})"$/u,
+			)?.[1];
+			if (!encoded) return false;
+			const script = Buffer.from(encoded, "base64").toString("utf16le");
+			const launchJson = script.match(/^\$launch = ConvertFrom-Json -InputObject '((?:[^']|'')*)'; /u)?.[1];
+			if (!launchJson) return false;
+			try {
+				const launch: unknown = JSON.parse(launchJson.replaceAll("''", "'"));
+				return (
+					launch !== null &&
+					typeof launch === "object" &&
+					"fileName" in launch &&
+					typeof launch.fileName === "string" &&
+					"arguments" in launch &&
+					typeof launch.arguments === "string" &&
+					launch.arguments.endsWith(windowsTail)
+				);
+			} catch {
+				return false;
+			}
+		});
+	});
 }
 
 export function buildClaudeHookPayload(

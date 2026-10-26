@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { build } from "esbuild";
@@ -107,9 +107,7 @@ describe("Pi static asset resolution and process-exit publication", () => {
 			const fixture = join(launch, "exit.fixture.mjs");
 			await copyFile(resolve("test/utilities/pi-lifecycle-exit.fixture.mjs"), fixture);
 			const args =
-				layout === "source"
-					? ["--import", fileURLToPath(import.meta.resolve("tsx")), fixture, scenario]
-					: [fixture, scenario];
+				layout === "source" ? ["--import", import.meta.resolve("tsx"), fixture, scenario] : [fixture, scenario];
 			const started = Date.now();
 			const { stdout, stderr } = await run(process.execPath, args, {
 				timeout: 8_000,
@@ -201,8 +199,7 @@ describe("Pi static asset resolution and process-exit publication", () => {
 			await once(server, "listening");
 			try {
 				const port = (server.address() as AddressInfo).port;
-				const args =
-					layout === "source" ? ["--import", fileURLToPath(import.meta.resolve("tsx")), fixture] : [fixture];
+				const args = layout === "source" ? ["--import", import.meta.resolve("tsx"), fixture] : [fixture];
 				const { stdout, stderr } = await run(process.execPath, args, {
 					timeout: 8_000,
 					env: {

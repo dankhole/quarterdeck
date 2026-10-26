@@ -260,6 +260,7 @@ async function exerciseFakeAgentCoexistence(
 				browserSession: error.browserSession,
 				owner: error.owner,
 				cleanupConfirmed: error.cleanupConfirmed,
+				startupFailure: error.startupFailure,
 			});
 		}
 		throw error;

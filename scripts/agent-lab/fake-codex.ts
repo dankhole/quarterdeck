@@ -12,6 +12,7 @@ import {
 	buildClaudeHookPayload,
 	type FakeAgentCommand,
 	getFakeAgentVersionOutput,
+	hasFakeClaudeHookCommand,
 	parseFakeAgentCommand,
 	parseFakeAgentProvider,
 	resolveFakeAgentInvocation,
@@ -740,9 +741,7 @@ async function assertClaudeLaunchContract(): Promise<void> {
 			}
 			continue;
 		}
-		const serializedHook = JSON.stringify(parsed.hooks?.[hookName]);
-		const expectedCommand = `'hooks' '${delivery}' '--event' '${event}' '--source' 'claude'`;
-		if (!serializedHook.includes(expectedCommand)) {
+		if (!hasFakeClaudeHookCommand(parsed.hooks?.[hookName], delivery, event)) {
 			throw new Error(`Fake Claude settings do not map ${hookName} to ${delivery}:${event}.`);
 		}
 	}

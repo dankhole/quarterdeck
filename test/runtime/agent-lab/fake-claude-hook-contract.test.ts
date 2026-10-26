@@ -3,12 +3,72 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { hasFakeClaudeHookCommand } from "../../../scripts/agent-lab/fake-agent-protocol";
 import { buildClaudeHooksSettings } from "../../../src/claude-hooks";
+import { buildQuarterdeckHookCommandLine } from "../../../src/core/quarterdeck-command";
 import { useProcessTestBudget } from "../../utilities/process-test-budget";
 
 useProcessTestBudget();
 const execFileAsync = promisify(execFile);
+
+describe.each(["linux", "win32"] as const)("fake Claude command validation on %s", (platform) => {
+	const expected = ["hooks", "ingest", "--event", "activity", "--source", "claude"];
+	const commandFor = (args: string[]) =>
+		buildQuarterdeckHookCommandLine(
+			args,
+			{
+				execPath:
+					platform === "win32" ? "C:\\Program Files\\Quarterdeck's #1%\\node.exe" : "/opt/Quarterdeck's #1%/node",
+				argv: ["node", "launch path #1%/cli.mjs"],
+			},
+			platform,
+			{},
+			"/synthetic/not-bundled.ts",
+		);
+	const groupsFor = (command: string) => [{ hooks: [{ type: "command", command }] }];
+
+	it("accepts the production launcher with quoted paths", () => {
+		expect(hasFakeClaudeHookCommand(groupsFor(commandFor(expected)), "ingest", "activity")).toBe(true);
+		const notify = expected.map((arg) => (arg === "ingest" ? "notify" : arg));
+		expect(hasFakeClaudeHookCommand(groupsFor(commandFor(notify)), "notify", "activity")).toBe(true);
+	});
+
+	it.each([
+		["wrong delivery", ["hooks", "notify", "--event", "activity", "--source", "claude"]],
+		["wrong event", ["hooks", "ingest", "--event", "to_review", "--source", "claude"]],
+		["wrong source", ["hooks", "ingest", "--event", "activity", "--source", "codex"]],
+		["extra arguments", [...expected, "--unexpected"]],
+		["quoted POSIX decoy argument", [expected.map((arg) => `'${arg}'`).join(" ")]],
+		["quoted Windows decoy argument", [expected.map((arg) => `"${arg}"`).join(" ")]],
+	])("rejects %s", (_name, args) => {
+		expect(hasFakeClaudeHookCommand(groupsFor(commandFor(args)), "ingest", "activity")).toBe(false);
+	});
+
+	it("does not mistake matcher text or non-command handlers for a command", () => {
+		const command = commandFor(expected);
+		for (const groups of [
+			undefined,
+			[{ matcher: command, hooks: [] }],
+			[{ hooks: [{ type: "http", command }] }],
+			[{ hooks: [{ type: "command", command: 1 }] }],
+			groupsFor('""powershell.exe" -NoLogo -NoProfile -NonInteractive -EncodedCommand YQ=="'),
+		]) {
+			expect(hasFakeClaudeHookCommand(groups, "ingest", "activity")).toBe(false);
+		}
+	});
+});
+
+it.each(["not-json", "null", '{"fileName":"node.exe","arguments":1}'])(
+	"rejects malformed Windows launch records: %s",
+	(launch) => {
+		const encoded = Buffer.from(`$launch = ConvertFrom-Json -InputObject '${launch}'; `, "utf16le").toString(
+			"base64",
+		);
+		const command = `""powershell.exe" -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}"`;
+		expect(hasFakeClaudeHookCommand([{ hooks: [{ type: "command", command }] }], "ingest", "activity")).toBe(false);
+	},
+);
 
 it("accepts production Claude settings and delivers SubagentStop reliably", async () => {
 	const root = await mkdtemp(join(tmpdir(), "quarterdeck-fake-claude-hooks-"));
