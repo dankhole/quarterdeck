@@ -7,6 +7,7 @@ import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/git/
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { createFileBrowserContentScopeKey } from "@/hooks/git/file-browser-scope";
 import { createReviewDocument, type ReviewScope } from "@/hooks/git/review-document";
 import { useDiffComments } from "@/hooks/git/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/git/use-diff-scroll-sync";
@@ -15,6 +16,7 @@ import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
 import { isMacPlatform } from "@/utils/platform";
+import { DiffScrollPreserver } from "./diff-scroll-preserver";
 import {
 	type DiffLineComment,
 	type DiffViewMode,
@@ -75,8 +77,8 @@ export function DiffViewerPanel({
 	}, [projectFiles]);
 
 	const diffEntries = useMemo(() => {
-		return (projectFiles ?? []).map((file, index) => ({
-			id: `project-${file.path}-${index}`,
+		return (projectFiles ?? []).map((file) => ({
+			id: `project-${file.path}`,
 			path: file.path,
 			isBinary: isBinaryFilePath(file.path),
 			oldText: file.oldText,
@@ -235,146 +237,164 @@ export function DiffViewerPanel({
 				</div>
 			) : (
 				<>
-					<div
-						ref={scrollContainerRef}
-						data-diff-scroll-container
-						onScroll={handlePanelScroll}
-						style={{
-							flex: "1 1 0",
-							minHeight: 0,
-							overflowY: "auto",
-							overscrollBehavior: "contain",
-							padding: "0 12px 12px",
-						}}
+					<DiffScrollPreserver
+						containerRef={scrollContainerRef}
+						groups={groupedByPath}
+						selectedPath={selectedPath}
+						scopeKey={JSON.stringify([
+							createFileBrowserContentScopeKey(reviewScope.repository),
+							reviewScope.revisions.kind,
+							reviewScope.revisions.base,
+							reviewScope.revisions.head,
+							reviewScope.revisions.mode,
+						])}
 					>
-						{groupedByPath.map((group) => {
-							const isExpanded = expandedPaths[group.path] ?? true;
-							const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
-							const file = fileByPath.get(group.path);
-							if (!file) return null;
-							const fileStatus = file.status;
-							const canRollback = fileStatus !== "renamed" && fileStatus !== "copied";
-							return (
-								<section
-									key={group.path}
-									ref={(node) => {
-										sectionElementsRef.current[group.path] = node;
-									}}
-									style={{ marginTop: 12 }}
-								>
-									<ContextMenu.Root>
-										<ContextMenu.Trigger asChild>
-											<button
-												type="button"
-												className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-left text-[12px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
-												aria-expanded={isExpanded}
-												aria-current={selectedPath === group.path ? "true" : undefined}
-												onClick={() => {
-													const container = scrollContainerRef.current;
-													const sectionEl = sectionElementsRef.current[group.path];
-													const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
-													const nextExpanded = !(expandedPaths[group.path] ?? true);
-													suppressScrollSyncUntilRef.current = Date.now() + 250;
-													setExpandedPaths((prev) => ({
-														...prev,
-														[group.path]: nextExpanded,
-													}));
-													requestAnimationFrame(() => {
-														if (previousTop == null || !container || !sectionEl) {
-															return;
-														}
-														const nextTop = sectionEl.getBoundingClientRect().top;
-														container.scrollTop += nextTop - previousTop;
-													});
-												}}
-											>
-												{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-												<span
-													className="truncate"
-													title={group.path}
-													style={{ flex: "1 1 auto", minWidth: 0 }}
+						<div
+							ref={scrollContainerRef}
+							data-diff-scroll-container
+							onScroll={handlePanelScroll}
+							style={{
+								flex: "1 1 0",
+								minHeight: 0,
+								overflowY: "auto",
+								overscrollBehavior: "contain",
+								padding: "0 12px 12px",
+							}}
+						>
+							{groupedByPath.map((group) => {
+								const isExpanded = expandedPaths[group.path] ?? true;
+								const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
+								const file = fileByPath.get(group.path);
+								if (!file) return null;
+								const fileStatus = file.status;
+								const canRollback = fileStatus !== "renamed" && fileStatus !== "copied";
+								return (
+									<section
+										key={group.path}
+										data-diff-path={group.path}
+										ref={(node) => {
+											sectionElementsRef.current[group.path] = node;
+										}}
+										style={{ marginTop: 12 }}
+									>
+										<ContextMenu.Root>
+											<ContextMenu.Trigger asChild>
+												<button
+													type="button"
+													className="kb-diff-file-header flex w-full items-center gap-2 rounded-t-md border border-border bg-surface-1 px-2 py-1.5 text-left text-[12px] text-text-primary hover:bg-surface-3 active:bg-surface-4 cursor-pointer"
+													aria-expanded={isExpanded}
+													aria-current={selectedPath === group.path ? "true" : undefined}
+													onClick={() => {
+														const container = scrollContainerRef.current;
+														const sectionEl = sectionElementsRef.current[group.path];
+														const previousTop = sectionEl?.getBoundingClientRect().top ?? null;
+														const nextExpanded = !(expandedPaths[group.path] ?? true);
+														suppressScrollSyncUntilRef.current = Date.now() + 250;
+														setExpandedPaths((prev) => ({
+															...prev,
+															[group.path]: nextExpanded,
+														}));
+														requestAnimationFrame(() => {
+															if (previousTop == null || !container || !sectionEl) {
+																return;
+															}
+															const nextTop = sectionEl.getBoundingClientRect().top;
+															container.scrollTop += nextTop - previousTop;
+														});
+													}}
 												>
-													{truncatePathMiddle(group.path)}
-												</span>
-												<span style={{ flexShrink: 0 }}>
-													<span className="text-status-green">+{group.added}</span>{" "}
-													<span className="text-status-red">-{group.removed}</span>
-													{group.added === 0 && group.removed === 0 && hasBinaryEntry ? (
-														<span className="ml-2 text-text-tertiary">Binary</span>
+													{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+													<span
+														className="truncate"
+														title={group.path}
+														style={{ flex: "1 1 auto", minWidth: 0 }}
+													>
+														{truncatePathMiddle(group.path)}
+													</span>
+													<span style={{ flexShrink: 0 }}>
+														<span className="text-status-green">+{group.added}</span>{" "}
+														<span className="text-status-red">-{group.removed}</span>
+														{group.added === 0 && group.removed === 0 && hasBinaryEntry ? (
+															<span className="ml-2 text-text-tertiary">Binary</span>
+														) : null}
+													</span>
+												</button>
+											</ContextMenu.Trigger>
+											<ContextMenu.Portal>
+												<FileContextMenuItems
+													fileName={group.path.split("/").pop() ?? group.path}
+													filePath={group.path}
+													navigateToFile={navigateToFile}
+												>
+													{onRollbackFile ? (
+														<>
+															<ContextMenu.Separator className="h-px bg-border my-1" />
+															<ContextMenu.Item
+																className={cn(
+																	CONTEXT_MENU_ITEM_CLASS,
+																	canRollback ? "text-status-red" : "opacity-50",
+																)}
+																disabled={!canRollback}
+																onSelect={canRollback ? () => onRollbackFile(group.path) : undefined}
+															>
+																<Undo2
+																	size={14}
+																	className={canRollback ? "text-status-red" : "text-text-tertiary"}
+																/>
+																{canRollback ? "Rollback" : "Cannot rollback renamed/copied"}
+															</ContextMenu.Item>
+														</>
 													) : null}
-												</span>
-											</button>
-										</ContextMenu.Trigger>
-										<ContextMenu.Portal>
-											<FileContextMenuItems
-												fileName={group.path.split("/").pop() ?? group.path}
-												filePath={group.path}
-												navigateToFile={navigateToFile}
+												</FileContextMenuItems>
+											</ContextMenu.Portal>
+										</ContextMenu.Root>
+										{isExpanded ? (
+											<div
+												className="rounded-b-md border-x border-b border-border bg-surface-1"
+												style={{ overflow: "hidden" }}
 											>
-												{onRollbackFile ? (
-													<>
-														<ContextMenu.Separator className="h-px bg-border my-1" />
-														<ContextMenu.Item
-															className={cn(
-																CONTEXT_MENU_ITEM_CLASS,
-																canRollback ? "text-status-red" : "opacity-50",
-															)}
-															disabled={!canRollback}
-															onSelect={canRollback ? () => onRollbackFile(group.path) : undefined}
-														>
-															<Undo2
-																size={14}
-																className={canRollback ? "text-status-red" : "text-text-tertiary"}
-															/>
-															{canRollback ? "Rollback" : "Cannot rollback renamed/copied"}
-														</ContextMenu.Item>
-													</>
-												) : null}
-											</FileContextMenuItems>
-										</ContextMenu.Portal>
-									</ContextMenu.Root>
-									{isExpanded ? (
-										<div
-											className="rounded-b-md border-x border-b border-border bg-surface-1"
-											style={{ overflow: "hidden" }}
-										>
-											{isFileLoading(group.path) ? (
-												<div className="px-4 py-6">
-													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "95%" }} />
-													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "82%" }} />
-													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "90%" }} />
-													<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "78%" }} />
-													<div className="kb-skeleton h-3 rounded-sm" style={{ width: "85%" }} />
-												</div>
-											) : (
-												group.entries.map((entry) => (
-													<div key={entry.id} className="kb-diff-entry">
-														<ReviewDocumentDiff
-															document={createReviewDocument(
-																reviewScope,
-																file,
-																entry.isBinary
-																	? { kind: "binary" }
-																	: { kind: "text", oldText: entry.oldText, newText: entry.newText },
-															)}
-															viewMode={viewMode}
-															interactions={{
-																agentContextSource,
-																comments,
-																onAddComment: handleAddComment,
-																onUpdateComment: handleUpdateComment,
-																onDeleteComment: handleDeleteComment,
-															}}
-														/>
+												{isFileLoading(group.path) ? (
+													<div className="px-4 py-6">
+														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "95%" }} />
+														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "82%" }} />
+														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "90%" }} />
+														<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "78%" }} />
+														<div className="kb-skeleton h-3 rounded-sm" style={{ width: "85%" }} />
 													</div>
-												))
-											)}
-										</div>
-									) : null}
-								</section>
-							);
-						})}
-					</div>
+												) : (
+													group.entries.map((entry) => (
+														<div key={entry.id} className="kb-diff-entry">
+															<ReviewDocumentDiff
+																document={createReviewDocument(
+																	reviewScope,
+																	file,
+																	entry.isBinary
+																		? { kind: "binary" }
+																		: {
+																				kind: "text",
+																				oldText: entry.oldText,
+																				newText: entry.newText,
+																			},
+																)}
+																viewMode={viewMode}
+																interactions={{
+																	agentContextSource,
+																	comments,
+																	onAddComment: handleAddComment,
+																	onUpdateComment: handleUpdateComment,
+																	onDeleteComment: handleDeleteComment,
+																}}
+															/>
+														</div>
+													))
+												)}
+											</div>
+										) : null}
+									</section>
+								);
+							})}
+						</div>
+					</DiffScrollPreserver>
 					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
 						<div className="kb-diff-comments-footer">
 							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>

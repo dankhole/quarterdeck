@@ -11,6 +11,7 @@ import {
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
+import { getDiffScrollLines } from "@/components/shared/diff-scroll-target";
 import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
@@ -159,6 +160,8 @@ export const SplitDiff = memo(function SplitDiff({
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
 				<div
 					className={rowClass}
+					data-diff-line={rowLineNumber}
+					data-diff-side={row.variant === "removed" ? "removed" : "current"}
 					style={canClickRow ? undefined : { cursor: "default" }}
 					onClick={
 						canClickRow
@@ -216,7 +219,15 @@ export const SplitDiff = memo(function SplitDiff({
 					item.type === "rows" ? (
 						<div key={item.pairs[0]!.key}>
 							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
-							<DeferredDiffRows rows={item.pairs} getRowKey={(pair) => pair.key} renderRow={renderPair} />
+							<DeferredDiffRows
+								rows={item.pairs}
+								getRowKey={(pair) => pair.key}
+								getScrollLines={(pair) => [
+									...(pair.left ? getDiffScrollLines(path, pair.left) : []),
+									...(pair.right ? getDiffScrollLines(path, pair.right) : []),
+								]}
+								renderRow={renderPair}
+							/>
 						</div>
 					) : (
 						<div key={item.block.id}>

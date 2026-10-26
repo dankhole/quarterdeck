@@ -36,6 +36,8 @@ Complete editors retain multiline tokenizer state. Review rows and inline diff s
 
 `DiffViewerPanel` supplies complete old/new content to the same presenter. Split/unified mode, comments, context expansion, hunk prompts, selected-file priority, and visible-file reporting retain their existing owners. Compare option changes clear comments tied to the previous comparison. Working-copy review stays immutable; writable content enters the existing live Files scope explicitly.
 
+Live refreshes preserve the visible code line and its intra-line viewport offset in unified and split review, rather than reusing scroll pixels. Line anchors relocate through content edits; a deleted anchor uses the nearest surviving source line, and hidden/collapsed content falls back to a nearby visible line. File headers and footers retain their relative offsets, and disappearing files use a neighboring file when available. Deferred chunks reveal a relocated reading line before settling the anchor. Explicit file navigation and repository/comparison changes take precedence; review anchors are transient presentation state, not durable review history or comment identity.
+
 This migration makes no performance improvement claim. Track remaining performance work in the primary checkout's local `docs/qDeck.yaml`. Measure first-open and selected-file latency with bounded diagnostic marks before further changes to calculation, transfer, prefetch, or virtualization. Highlighting remains limited to rendered rows and bounded line lengths.
 
 ## Conflict results

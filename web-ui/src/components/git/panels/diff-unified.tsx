@@ -11,6 +11,7 @@ import {
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
+import { getDiffScrollLines } from "@/components/shared/diff-scroll-target";
 import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
@@ -70,7 +71,13 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 
 		return (
 			<div key={row.key}>
-				<div className={rowClass} style={canClickRow ? undefined : { cursor: "default" }} onClick={handleRowClick}>
+				<div
+					className={rowClass}
+					data-diff-line={row.lineNumber ?? undefined}
+					data-diff-side={row.variant === "removed" ? "removed" : "current"}
+					style={canClickRow ? undefined : { cursor: "default" }}
+					onClick={handleRowClick}
+				>
 					<DiffLineGutter
 						lineNumber={row.lineNumber}
 						hasComment={hasComment}
@@ -99,7 +106,12 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 					return (
 						<div key={item.rows[0]!.key}>
 							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
-							<DeferredDiffRows rows={item.rows} getRowKey={(row) => row.key} renderRow={renderRow} />
+							<DeferredDiffRows
+								rows={item.rows}
+								getRowKey={(row) => row.key}
+								getScrollLines={(row) => getDiffScrollLines(path, row)}
+								renderRow={renderRow}
+							/>
 						</div>
 					);
 				}
