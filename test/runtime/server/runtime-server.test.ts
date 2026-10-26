@@ -360,78 +360,88 @@ describe("runtime server composition", () => {
 		}
 	});
 
-	it("drains an active progress read during shutdown without publishing or rearming its late result", async () => {
-		vi.useFakeTimers();
-		stubRuntimeBoundaries();
-		const { deps } = createDependencies();
-		const store = new terminal.InMemorySessionSummaryStore();
-		const previous = store.ensureEntry("task");
-		store.update(
-			"task",
-			createTestTaskSessionSummary({
-				taskId: "task",
-				agentId: "codex",
-				state: "running",
-				pid: 123,
-				sessionInstanceId: "native-a",
-				resumeSessionId: "session-a",
-				nativeWorkEvidence: createTestTaskNativeWorkEvidence({
+	it.each(["codex", "pi"] as const)(
+		"drains an active %s progress read during shutdown without publishing or rearming its late result",
+		async (provider) => {
+			vi.useFakeTimers();
+			stubRuntimeBoundaries();
+			const { deps } = createDependencies();
+			const store = new terminal.InMemorySessionSummaryStore();
+			const previous = store.ensureEntry("task");
+			store.update(
+				"task",
+				createTestTaskSessionSummary({
+					taskId: "task",
+					agentId: provider,
+					state: "running",
+					pid: 123,
 					sessionInstanceId: "native-a",
-					providerSessionId: "session-a",
+					sessionLaunchPath: "/synthetic/project",
+					resumeSessionId: "session-a",
+					nativeWorkEvidence: createTestTaskNativeWorkEvidence({
+						provider,
+						sessionInstanceId: "native-a",
+						providerSessionId: "session-a",
+					}),
 				}),
-			}),
-		);
-		deps.projectRegistry.listManagedProjects = () => [
-			{
-				projectId: "project",
-				projectPath: "/synthetic/project",
-				terminalManager: { store } as unknown as terminal.TerminalSessionManager,
-			},
-		];
-		let resolveRead!: (result: ConversationProgressReadResult) => void;
-		const result = new Promise<ConversationProgressReadResult>((resolve) => {
-			resolveRead = resolve;
-		});
-		const read = vi.fn(() => result);
-		const cursor: ConversationProgressCursor = { read, beginEpoch: vi.fn(), pause: vi.fn() };
-		const createPreview = taskProgress.createTaskProgressPreview;
-		vi.spyOn(taskProgress, "createTaskProgressPreview").mockImplementation((input) =>
-			createPreview({ ...input, createCursor: () => cursor }),
-		);
-		const createHooksApi = vi.spyOn(trpc, "createHooksApi");
-		const server = await createRuntimeServer(deps);
-		try {
-			const hooks = createHooksApi.mock.calls[0][0];
-			if (!hooks.conversationSourceHints || !hooks.observeProgress)
-				throw new Error("Runtime must wire progress hints and observation into hook ingest.");
-			hooks.conversationSourceHints.recordProviderHookHint({
-				projectId: "project",
-				taskId: "task",
-				expectedProviderSessionId: "session-a",
-				metadata: { source: "codex", sessionId: "session-a", transcriptPath: "/synthetic/session-a.jsonl" },
+			);
+			deps.projectRegistry.listManagedProjects = () => [
+				{
+					projectId: "project",
+					projectPath: "/synthetic/project",
+					terminalManager: { store } as unknown as terminal.TerminalSessionManager,
+				},
+			];
+			let resolveRead!: (result: ConversationProgressReadResult) => void;
+			const result = new Promise<ConversationProgressReadResult>((resolve) => {
+				resolveRead = resolve;
 			});
-			hooks.observeProgress({ projectId: "project", taskId: "task", store, previous });
-			expect(read).toHaveBeenCalledOnce();
-			let prepared = false;
-			const preparation = server.prepareForShutdown().then(() => {
-				prepared = true;
-			});
-			await vi.advanceTimersByTimeAsync(0);
-			expect(prepared).toBe(false);
-			expect(cursor.pause).toHaveBeenCalledOnce();
-			resolveRead({ text: "late", hasMore: true, sourceBytesExamined: 100 });
-			await preparation;
-			expect(prepared).toBe(true);
-			expect(store.getSummary("task")?.progressMessage).toBeFalsy();
-			expect(vi.getTimerCount()).toBe(0);
-			await vi.advanceTimersByTimeAsync(taskProgress.PROGRESS_PREVIEW_INTERVAL_MS * 2);
-			expect(read).toHaveBeenCalledOnce();
-			expect(vi.getTimerCount()).toBe(0);
-		} finally {
-			resolveRead({ text: null, hasMore: false, sourceBytesExamined: 0 });
-			await server.close();
-		}
-	});
+			const read = vi.fn(() => result);
+			const cursor: ConversationProgressCursor = { read, beginEpoch: vi.fn(), pause: vi.fn() };
+			const createPreview = taskProgress.createTaskProgressPreview;
+			vi.spyOn(taskProgress, "createTaskProgressPreview").mockImplementation((input) =>
+				createPreview({ ...input, createCursor: () => cursor }),
+			);
+			const createHooksApi = vi.spyOn(trpc, "createHooksApi");
+			const server = await createRuntimeServer(deps);
+			try {
+				const hooks = createHooksApi.mock.calls[0][0];
+				if (!hooks.conversationSourceHints || !hooks.observeProgress)
+					throw new Error("Runtime must wire progress hints and observation into hook ingest.");
+				hooks.conversationSourceHints.recordProviderHookHint({
+					projectId: "project",
+					taskId: "task",
+					expectedProviderSessionId: "session-a",
+					metadata: {
+						source: provider,
+						sessionId: "session-a",
+						sessionInstanceId: "native-a",
+						transcriptPath: "/synthetic/session-a.jsonl",
+					},
+				});
+				hooks.observeProgress({ projectId: "project", taskId: "task", store, previous });
+				expect(read).toHaveBeenCalledOnce();
+				let prepared = false;
+				const preparation = server.prepareForShutdown().then(() => {
+					prepared = true;
+				});
+				await vi.advanceTimersByTimeAsync(0);
+				expect(prepared).toBe(false);
+				expect(cursor.pause).toHaveBeenCalledOnce();
+				resolveRead({ text: "late", hasMore: true, sourceBytesExamined: 100 });
+				await preparation;
+				expect(prepared).toBe(true);
+				expect(store.getSummary("task")?.progressMessage).toBeFalsy();
+				expect(vi.getTimerCount()).toBe(0);
+				await vi.advanceTimersByTimeAsync(taskProgress.PROGRESS_PREVIEW_INTERVAL_MS * 2);
+				expect(read).toHaveBeenCalledOnce();
+				expect(vi.getTimerCount()).toBe(0);
+			} finally {
+				resolveRead({ text: null, hasMore: false, sourceBytesExamined: 0 });
+				await server.close();
+			}
+		},
+	);
 
 	it("passes the independent persistence owner to hook ingest", async () => {
 		stubRuntimeBoundaries();

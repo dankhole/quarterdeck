@@ -3,7 +3,7 @@ import { TextDecoder } from "node:util";
 
 export type JsonlHeadRecord =
 	| { kind: "empty"; bytesExamined: number; recordsExamined: number }
-	| { kind: "parsed"; value: unknown; bytesExamined: number; recordsExamined: number }
+	| { kind: "parsed"; value: unknown; bytes: Buffer; bytesExamined: number; recordsExamined: number }
 	| {
 			kind: "incomplete" | "invalid_unicode" | "malformed" | "oversized" | "source_changed";
 			bytesExamined: number;
@@ -65,7 +65,7 @@ export async function readJsonlHeadRecord(input: {
 		return { kind: "invalid_unicode", bytesExamined, recordsExamined: 1 };
 	}
 	try {
-		return { kind: "parsed", value: JSON.parse(text) as unknown, bytesExamined, recordsExamined: 1 };
+		return { kind: "parsed", value: JSON.parse(text) as unknown, bytes, bytesExamined, recordsExamined: 1 };
 	} catch {
 		return {
 			kind: terminated ? "malformed" : "incomplete",

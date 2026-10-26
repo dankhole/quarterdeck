@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { ConversationSourceHintStore } from "../../../../src/conversation";
+
 import { createMockManager, createSummary, createTestApi } from "./_helpers";
 
 describe("createHooksApi — agent session persistence", () => {
@@ -33,6 +35,48 @@ describe("createHooksApi — agent session persistence", () => {
 				expectedProviderSessionId: "claude-session-123",
 				metadata: expect.objectContaining(metadata),
 			});
+		},
+	);
+
+	it.each(["previous-launch", undefined])(
+		"does not replace a current Pi source with an ordering-admitted %s launch",
+		async (sessionInstanceId) => {
+			const manager = createMockManager({
+				getSummary: vi.fn(() =>
+					createSummary({
+						agentId: "pi",
+						state: "running",
+						sessionInstanceId: "launch-1",
+						resumeSessionId: "pi-session-1",
+					}),
+				),
+			});
+			const hints = new ConversationSourceHintStore();
+			const record = vi.spyOn(hints, "recordProviderHookHint");
+			const api = createTestApi(manager, { conversationSourceHints: hints });
+			const metadata = {
+				source: "pi",
+				hookEventName: "AgentStart",
+				sessionId: "pi-session-1",
+				sessionInstanceId: "launch-1",
+				transcriptPath: "/current/pi-session-1.jsonl",
+			};
+			await expect(
+				api.ingest({ taskId: "task-1", projectId: "project-1", event: "to_in_progress", metadata }),
+			).resolves.toEqual({ ok: true });
+			const current = hints.getHint("project-1", "task-1", "pi-session-1");
+			expect(current?.sourcePath).toBe(metadata.transcriptPath);
+			await expect(
+				api.ingest({
+					taskId: "task-1",
+					projectId: "project-1",
+					event: "activity",
+					metadata: { ...metadata, sessionInstanceId, transcriptPath: "/previous/pi-session-1.jsonl" },
+				}),
+			).resolves.toEqual({ ok: true });
+			expect(manager.evaluateHookEventOrder).toHaveLastReturnedWith({ accepted: true });
+			expect(record).toHaveBeenCalledOnce();
+			expect(hints.getHint("project-1", "task-1", "pi-session-1")).toEqual(current);
 		},
 	);
 

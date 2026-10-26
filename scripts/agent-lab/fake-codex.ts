@@ -25,6 +25,7 @@ import {
 	resolveFakeCodexHistoryPath,
 	writeFakeInvocationReceipt,
 } from "./fake-invocation-receipt";
+import { appendFakePiMessage, type FakePiHistory, initializeFakePiHistory } from "./fake-pi-history";
 import { AgentLabScenarioSchema } from "./types";
 
 const args = process.argv.slice(2);
@@ -35,6 +36,7 @@ const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
 const requestedSessionId = invocation.requestedSessionId;
 const sessionId = requestedSessionId || `agent-lab-${taskId}`;
 let historyPath = "";
+let piHistory: FakePiHistory | null = null;
 let turn = 0;
 let currentTurnId: string | null = null;
 let nativeInterruptedTurn = false;
@@ -148,7 +150,7 @@ async function emitHook(
 		await postClaudeHttpHook(claudeHttpHook, claudePayload);
 		return;
 	}
-	if (provider === "codex") hookArgs.push("--transcript-path", historyPath);
+	if (provider === "codex" || provider === "pi") hookArgs.push("--transcript-path", historyPath);
 	if (!claudePayload) {
 		hookArgs.push("--hook-event-name", options.hookEventName, "--session-id", sessionId);
 		if (options.includeTurnId !== false) {
@@ -244,7 +246,7 @@ function printHelp(): void {
 	writeLine("  /queued-follow-up [message]  emit agent_end followed by a queued agent_start");
 	writeLine("  /stale-run                   replay the last completed Pi run identity");
 	writeLine("  /fail-next-resume            crash now and fail the next targeted Pi resume");
-	writeLine("  /progress [message]          append a synthetic Codex assistant progress message");
+	writeLine("  /progress [message]          append a synthetic Codex/Pi assistant progress message");
 	writeLine("  /working [message]           transition back to running");
 	writeLine("  /review [message]            finish the turn for review");
 	writeLine("  /write <path> <contents>     write inside the disposable checkout");
@@ -483,6 +485,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			writeLine(`AGENT LAB REVIEW READY: ${command.message}`);
 			if (provider === "pi") {
 				const settledTurnId = ensureTurnId();
+				if (piHistory) await appendFakePiMessage(piHistory, "assistant", command.message);
 				await emitHook("activity", {
 					hookEventName: "AgentEnd",
 					activityText: "Pi agent loop ended; waiting for settlement",
@@ -509,11 +512,15 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			pendingToolUseId = null;
 			return;
 		case "progress": {
-			if (provider !== "codex") return;
-			await appendFile(
-				historyPath,
-				`${JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: command.message }] } })}\n`,
-			);
+			if (provider !== "codex" && provider !== "pi") return;
+			if (piHistory) {
+				await appendFakePiMessage(piHistory, "assistant", command.message);
+			} else {
+				await appendFile(
+					historyPath,
+					`${JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: command.message }] } })}\n`,
+				);
+			}
 			writeLine(`AGENT LAB PROGRESS: ${command.message}`);
 			await emitHook("activity", { hookEventName: "PostToolUse", activityText: "Progress available" });
 			return;
@@ -923,6 +930,10 @@ async function main(): Promise<void> {
 		return;
 	}
 	const prompt = invocation.prompt;
+	if (provider === "pi") {
+		piHistory = await initializeFakePiHistory({ environment: process.env, sessionId, cwd: process.cwd(), prompt });
+		historyPath = piHistory.path;
+	}
 	const fallbackScenario = AgentLabScenarioSchema.parse(process.env.QUARTERDECK_AGENT_LAB_SCENARIO ?? "idle");
 	const scenario = resolveFakeAgentScenario(prompt, fallbackScenario);
 	const providerLabel = provider === "pi" ? "Pi" : provider === "claude" ? "Claude" : "Codex";

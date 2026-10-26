@@ -11,6 +11,12 @@ export const PROGRESS_PREVIEW_INTERVAL_MS = 1_000;
 const MAX_ACTIVE_PREVIEWS = 128;
 const MAX_RETAINED_CURSORS = 1_024;
 
+interface PreviewEpoch {
+	identity: string;
+	since: number;
+	foregroundComplete: boolean;
+}
+
 interface PreviewTarget {
 	projectId: string;
 	taskId: string;
@@ -27,6 +33,7 @@ function runningIdentity(summary: RuntimeTaskSessionSummary): string | null {
 		summary.agentId,
 		summary.sessionInstanceId,
 		summary.resumeSessionId,
+		summary.sessionLaunchPath,
 		summary.nativeWorkEvidence.turnId,
 		summary.nativeWorkEvidence.promptId,
 	]);
@@ -36,11 +43,16 @@ function runningIdentity(summary: RuntimeTaskSessionSummary): string | null {
 export function createTaskProgressPreview(deps: {
 	hints: ConversationSourceHintReader;
 	isCurrentStore: (projectId: string, store: SessionSummaryStore) => boolean;
-	createCursor?: (input: { hint: ConversationSourceHint; since: number }) => ConversationProgressCursor;
+	createCursor?: (input: {
+		hint: ConversationSourceHint;
+		since: number;
+		sessionInstanceId?: string;
+		launchPath?: string;
+	}) => ConversationProgressCursor;
 	now?: () => number;
 }) {
 	const targets = new WeakMap<SessionSummaryStore, Map<string, PreviewTarget>>();
-	const epochs = new WeakMap<SessionSummaryStore, Map<string, { identity: string; since: number }>>();
+	const epochs = new WeakMap<SessionSummaryStore, Map<string, PreviewEpoch>>();
 	const retained = new Set<PreviewTarget>();
 	const active = new Set<PreviewTarget>();
 	let pending: Promise<void> | null = null;
@@ -74,7 +86,9 @@ export function createTaskProgressPreview(deps: {
 		const summary = store.getSummary(target.taskId);
 		if (!summary || runningIdentity(summary) !== target.identity || !summary.resumeSessionId) return null;
 		const hint = deps.hints.getHint(target.projectId, target.taskId, summary.resumeSessionId);
-		return hint && JSON.stringify(hint) === target.hintIdentity ? { store, summary } : null;
+		return hint && JSON.stringify([hint, summary.sessionLaunchPath]) === target.hintIdentity
+			? { store, summary }
+			: null;
 	}
 
 	function schedule(delay: number): void {
@@ -132,6 +146,7 @@ export function createTaskProgressPreview(deps: {
 		taskId: string;
 		store: SessionSummaryStore;
 		previous: RuntimeTaskSessionSummary;
+		foregroundSettled?: boolean;
 	}): void {
 		if (closed) return;
 		discardObsoleteStores();
@@ -141,7 +156,7 @@ export function createTaskProgressPreview(deps: {
 		const summary = store.getSummary(taskId);
 		const identity = summary && runningIdentity(summary);
 		let target = tasks.get(taskId);
-		const taskEpochs = epochs.get(store) ?? new Map<string, { identity: string; since: number }>();
+		const taskEpochs = epochs.get(store) ?? new Map<string, PreviewEpoch>();
 		epochs.set(store, taskEpochs);
 		if (!summary || !identity || !deps.isCurrentStore(projectId, store)) {
 			if (target) retire(target);
@@ -150,7 +165,7 @@ export function createTaskProgressPreview(deps: {
 		}
 		let epoch = taskEpochs.get(taskId);
 		if (!epoch || epoch.identity !== identity || runningIdentity(previous) !== identity) {
-			epoch = { identity, since: now() };
+			epoch = { identity, since: now(), foregroundComplete: false };
 			taskEpochs.set(taskId, epoch);
 			if (target) retire(target);
 			if (summary.progressMessage) store.updatePresentation(taskId, { progressMessage: null });
@@ -159,10 +174,29 @@ export function createTaskProgressPreview(deps: {
 			const oldest = taskEpochs.keys().next().value;
 			if (oldest) taskEpochs.delete(oldest);
 		}
-		if ((summary.agentId !== "codex" && summary.agentId !== "claude") || !summary.resumeSessionId) return;
+		// Foreground settlement may omit reply text while background work keeps
+		// Running. Retire this preview epoch independently of response capture.
+		if (input.foregroundSettled) epoch.foregroundComplete = true;
+		if (epoch.foregroundComplete) {
+			if (target) retire(target);
+			if (summary.progressMessage) store.updatePresentation(taskId, { progressMessage: null });
+			return;
+		}
+		if (
+			(summary.agentId !== "codex" && summary.agentId !== "claude" && summary.agentId !== "pi") ||
+			!summary.resumeSessionId
+		)
+			return;
 		const hint = deps.hints.getHint(projectId, taskId, summary.resumeSessionId);
 		if (!hint || hint.providerId !== summary.agentId) return;
-		const hintIdentity = JSON.stringify(hint);
+		// Pi's source path is trusted only when an admitted hook from this exact
+		// native launch supplied it; a resumed provider session alone is insufficient.
+		if (
+			summary.agentId === "pi" &&
+			(!summary.sessionLaunchPath || !hint.sessionInstanceId || hint.sessionInstanceId !== summary.sessionInstanceId)
+		)
+			return;
+		const hintIdentity = JSON.stringify([hint, summary.sessionLaunchPath]);
 		if ((!target || !active.has(target)) && active.size >= MAX_ACTIVE_PREVIEWS) return;
 		if (!target || target.hintIdentity !== hintIdentity) {
 			if (target) {
@@ -176,7 +210,12 @@ export function createTaskProgressPreview(deps: {
 				identity,
 				since: epoch.since,
 				hintIdentity,
-				cursor: (deps.createCursor ?? createConversationProgressCursor)({ hint, since: epoch.since }),
+				cursor: (deps.createCursor ?? createConversationProgressCursor)({
+					hint,
+					since: epoch.since,
+					sessionInstanceId: summary.sessionInstanceId ?? undefined,
+					launchPath: summary.sessionLaunchPath ?? undefined,
+				}),
 			};
 			tasks.set(taskId, target);
 			retained.add(target);
