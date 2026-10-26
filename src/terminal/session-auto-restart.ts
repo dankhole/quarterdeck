@@ -141,7 +141,7 @@ export function scheduleAutoRestart(
 			});
 			const output = Buffer.from(`\r\n[quarterdeck] ${message}\r\n`, "utf8");
 			for (const listener of entry.listeners.values()) {
-				listener.onOutput?.(output);
+				listener.onOutput?.(output, null);
 				if (summary) {
 					listener.onState?.(cloneSummary(summary));
 				}

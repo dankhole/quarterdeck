@@ -15,7 +15,7 @@ import {
 	processWorkspaceTrustOutput,
 } from "./session-workspace-trust";
 import { disableOscColorQueryIntercept, filterTerminalProtocolOutput } from "./terminal-protocol-filter";
-import type { TerminalStateMirror } from "./terminal-state-mirror";
+import type { TerminalOutputCursor, TerminalStateMirror } from "./terminal-state-mirror";
 
 const OSC_FOREGROUND_QUERY_REPLY = "\u001b]10;rgb:e6e6/eded/f3f3\u001b\\";
 const OSC_BACKGROUND_QUERY_REPLY = "\u001b]11;rgb:1717/1717/2121\u001b\\";
@@ -58,6 +58,9 @@ export function processTaskSessionOutput(
 		onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
 	});
 	if (filteredChunk.byteLength === 0) {
+		entry.terminalStateMirror?.applyOutput(filteredChunk, undefined, {
+			restoreSnapshotSafe: entry.active.terminalProtocolFilter.framing.isSnapshotSafe,
+		});
 		return;
 	}
 
@@ -83,9 +86,11 @@ export function processTaskSessionOutput(
 	//    When inspection is required, transition before the same chunk becomes
 	//    visible to listeners so the card cannot briefly claim it is Running.
 	//    Claude and modern Codex workspace trust also use the rendered screen.
+	let outputCursor: TerminalOutputCursor | null = null;
+	let broadcastFromMirror = deferBroadcast;
 	if (mirror) {
 		if (deferBroadcast) pendingDeferredBroadcasts.set(mirror, (pendingDeferredBroadcasts.get(mirror) ?? 0) + 1);
-		mirror.applyOutput(
+		outputCursor = mirror.applyOutput(
 			filteredChunk,
 			deferBroadcast || claudeTrustRevision !== null || codexTrustRevision !== null
 				? (screen) => {
@@ -116,7 +121,7 @@ export function processTaskSessionOutput(
 							}
 							for (const [listenerId, listener] of outputListeners) {
 								if (entry.listeners.get(listenerId) === listener) {
-									listener.onOutput?.(filteredChunk);
+									listener.onOutput?.(filteredChunk, outputCursor);
 								}
 							}
 						} finally {
@@ -129,7 +134,14 @@ export function processTaskSessionOutput(
 						}
 					}
 				: undefined,
+			{ restoreSnapshotSafe: activeAtWrite.terminalProtocolFilter.framing.isSnapshotSafe },
 		);
+		if (outputCursor === null && deferBroadcast) {
+			// A disposed mirror cannot run its applied callback. Preserve the
+			// output as explicitly untracked instead of waiting on that callback.
+			pendingDeferredBroadcasts.set(mirror, Math.max(0, (pendingDeferredBroadcasts.get(mirror) ?? 1) - 1));
+			broadcastFromMirror = false;
+		}
 	}
 
 	// 4. Decode only for Codex workspace trust, which still consumes raw output.
@@ -150,9 +162,9 @@ export function processTaskSessionOutput(
 	// 6. Listener broadcast. Render-inspected output, and any output queued
 	//    behind it, is broadcast from the mirror callback in arrival order after
 	//    any state transition has been applied.
-	if (!deferBroadcast) {
+	if (!broadcastFromMirror) {
 		for (const taskListener of entry.listeners.values()) {
-			taskListener.onOutput?.(filteredChunk);
+			taskListener.onOutput?.(filteredChunk, outputCursor);
 		}
 	}
 }
@@ -172,12 +184,16 @@ export function processShellSessionOutput(entry: ProcessEntry, _taskId: string, 
 		onOsc11BackgroundQuery: () => entry.active?.session.write(OSC_BACKGROUND_QUERY_REPLY),
 	});
 	if (filteredChunk.byteLength === 0) {
+		entry.terminalStateMirror?.applyOutput(filteredChunk, undefined, {
+			restoreSnapshotSafe: entry.active.terminalProtocolFilter.framing.isSnapshotSafe,
+		});
 		return;
 	}
 
-	if (entry.terminalStateMirror) {
-		entry.terminalStateMirror.applyOutput(filteredChunk);
-	}
+	const outputCursor =
+		entry.terminalStateMirror?.applyOutput(filteredChunk, undefined, {
+			restoreSnapshotSafe: entry.active.terminalProtocolFilter.framing.isSnapshotSafe,
+		}) ?? null;
 
 	if (entry.active.workspaceTrustBuffer !== null) {
 		entry.active.workspaceTrustBuffer += filteredChunk.toString("utf8");
@@ -187,7 +203,7 @@ export function processShellSessionOutput(entry: ProcessEntry, _taskId: string, 
 	}
 
 	for (const taskListener of entry.listeners.values()) {
-		taskListener.onOutput?.(filteredChunk);
+		taskListener.onOutput?.(filteredChunk, outputCursor);
 	}
 }
 

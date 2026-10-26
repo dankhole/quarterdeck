@@ -7,8 +7,9 @@
  * https://github.com/xtermjs/xterm.js/tree/f447274f430fd22513f6adbf9862d19524471c04/addons/addon-serialize
  *
  * HTML serialization is omitted. Traversal, wrap repair, SGR diffing, cursor
- * restoration and buffer/mode composition remain upstream. Quarterdeck adds
- * OSC 8 runs and restores the active hyperlink for subsequent live output.
+ * restoration and buffer/mode composition follow upstream. Quarterdeck also
+ * preserves OSC 8, charset selection and per-buffer scrolling margins so a
+ * snapshot can be followed by live output without replaying covered controls.
  * The checked private boundary below is specific to pinned xterm 6.0.0.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -46,9 +47,106 @@ const CLOSE_HYPERLINK = "\u001b]8;;\u001b\\";
 // biome-ignore lint/suspicious/noControlCharactersInRegex: OSC payloads must not introduce terminal controls.
 const UNSAFE_OSC_PAYLOAD = /[\u0000-\u001f\u007f-\u009f]/u;
 
+/** Canonical maps from pinned xterm 6 common/data/Charsets.ts; aliases share a map. */
+const CHARSET_MAPS = {
+	"0": {
+		"`": "◆",
+		a: "▒",
+		b: "␉",
+		c: "␌",
+		d: "␍",
+		e: "␊",
+		f: "°",
+		g: "±",
+		h: "␤",
+		i: "␋",
+		j: "┘",
+		k: "┐",
+		l: "┌",
+		m: "└",
+		n: "┼",
+		o: "⎺",
+		p: "⎻",
+		q: "─",
+		r: "⎼",
+		s: "⎽",
+		t: "├",
+		u: "┤",
+		v: "┴",
+		w: "┬",
+		x: "│",
+		y: "≤",
+		z: "≥",
+		"{": "π",
+		"|": "≠",
+		"}": "£",
+		"~": "·",
+	},
+	A: { "#": "£" },
+	"4": { "#": "£", "@": "¾", "[": "ij", "\\": "½", "]": "|", "{": "¨", "|": "f", "}": "¼", "~": "´" },
+	C: { "[": "Ä", "\\": "Ö", "]": "Å", "^": "Ü", "`": "é", "{": "ä", "|": "ö", "}": "å", "~": "ü" },
+	R: { "#": "£", "@": "à", "[": "°", "\\": "ç", "]": "§", "{": "é", "|": "ù", "}": "è", "~": "¨" },
+	Q: { "@": "à", "[": "â", "\\": "ç", "]": "ê", "^": "î", "`": "ô", "{": "é", "|": "ù", "}": "è", "~": "û" },
+	K: { "@": "§", "[": "Ä", "\\": "Ö", "]": "Ü", "{": "ä", "|": "ö", "}": "ü", "~": "ß" },
+	Y: { "#": "£", "@": "§", "[": "°", "\\": "ç", "]": "é", "`": "ù", "{": "à", "|": "ò", "}": "è", "~": "ì" },
+	E: { "@": "Ä", "[": "Æ", "\\": "Ø", "]": "Å", "^": "Ü", "`": "ä", "{": "æ", "|": "ø", "}": "å", "~": "ü" },
+	Z: { "#": "£", "@": "§", "[": "¡", "\\": "Ñ", "]": "¿", "{": "°", "|": "ñ", "}": "ç" },
+	H: { "@": "É", "[": "Ä", "\\": "Ö", "]": "Å", "^": "Ü", "`": "é", "{": "ä", "|": "ö", "}": "å", "~": "ü" },
+	"=": {
+		"#": "ù",
+		"@": "à",
+		"[": "é",
+		"\\": "ç",
+		"]": "ê",
+		"^": "î",
+		_: "è",
+		"`": "ô",
+		"{": "ä",
+		"|": "ö",
+		"}": "ü",
+		"~": "û",
+	},
+} as const;
+
+type CharsetDesignation = "B" | keyof typeof CHARSET_MAPS;
+
+interface CharsetState {
+	designations: CharsetDesignation[];
+	level: number;
+	active: CharsetDesignation;
+}
+
+interface BufferContinuationState {
+	scrollTop: number;
+	scrollBottom: number;
+	savedCharset: CharsetDesignation;
+	savedX: number;
+	savedY: number;
+	savedAttributes: IAttributeData;
+}
+
+interface BufferRestoreState {
+	buffer: BufferContinuationState;
+	originMode: boolean;
+	charsets?: CharsetState;
+}
+
 function record(value: unknown): Record<string, unknown> {
 	if (typeof value !== "object" || value === null) throw new Error("Unsupported xterm 6 serialization internals");
 	return value as Record<string, unknown>;
+}
+
+function charsetDesignation(value: unknown): CharsetDesignation {
+	if (value === undefined) return "B";
+	const charset = record(value);
+	const keys = Object.keys(charset);
+	for (const [designation, mapping] of Object.entries(CHARSET_MAPS)) {
+		const entries = Object.entries(mapping);
+		if (keys.length === entries.length && entries.every(([key, character]) => charset[key] === character)) {
+			return designation as keyof typeof CHARSET_MAPS;
+		}
+	}
+	throw new Error("Unsupported xterm 6 charset map");
 }
 
 /** The only private xterm boundary. Fail explicitly on incompatible shapes. */
@@ -56,6 +154,8 @@ function getSerializationInternals(terminal: Terminal): {
 	attributes: IAttributeData;
 	hyperlink: (cell: unknown) => Hyperlink | undefined;
 	style: (attributes: IAttributeData, target?: "cell" | "cursor") => IAttributeData;
+	charsets: CharsetState;
+	buffers: { normal: BufferContinuationState; alternate: BufferContinuationState };
 } {
 	const core = record(record(terminal)._core);
 	const attributes = record(record(core._inputHandler)._curAttrData);
@@ -87,11 +187,74 @@ function getSerializationInternals(terminal: Terminal): {
 			throw new Error("Unsupported xterm 6 cursor attributes");
 		}
 	}
+	const charsetService = record(core._charsetService);
+	const designations: unknown = charsetService._charsets;
+	const level = charsetService.glevel;
+	if (
+		!Array.isArray(designations) ||
+		designations.length > 4 ||
+		!Number.isInteger(level) ||
+		typeof level !== "number" ||
+		level < 0 ||
+		level > 3
+	) {
+		throw new Error("Unsupported xterm 6 charset service");
+	}
+	const charsets: CharsetState = {
+		designations: Array.from({ length: 4 }, (_, index) => charsetDesignation(designations[index])),
+		level,
+		active: charsetDesignation(charsetService.charset),
+	};
+	const buffers = record(record(core._bufferService).buffers);
+	const bufferState = (value: unknown): BufferContinuationState => {
+		const buffer = record(value);
+		const { scrollTop, scrollBottom } = buffer;
+		if (
+			typeof scrollTop !== "number" ||
+			typeof scrollBottom !== "number" ||
+			!Number.isInteger(scrollTop) ||
+			!Number.isInteger(scrollBottom) ||
+			scrollTop < 0 ||
+			scrollTop > scrollBottom ||
+			(scrollTop === scrollBottom && terminal.rows !== 1) ||
+			scrollBottom >= terminal.rows
+		) {
+			throw new Error("Unsupported xterm 6 scrolling margins");
+		}
+		const { savedX, savedY, ybase } = buffer;
+		if (
+			typeof savedX !== "number" ||
+			!Number.isInteger(savedX) ||
+			savedX < 0 ||
+			savedX > terminal.cols ||
+			typeof savedY !== "number" ||
+			!Number.isInteger(savedY) ||
+			typeof ybase !== "number" ||
+			!Number.isInteger(ybase)
+		) {
+			throw new Error("Unsupported xterm 6 saved cursor");
+		}
+		const savedAttributes = record(buffer.savedCurAttrData);
+		if (methods.some((method) => typeof savedAttributes[method] !== "function")) {
+			throw new Error("Unsupported xterm 6 saved attributes");
+		}
+		return {
+			scrollTop,
+			scrollBottom,
+			savedCharset: charsetDesignation(buffer.savedCharset),
+			savedX: Math.min(savedX, terminal.cols - 1),
+			savedY: constrain(savedY - ybase, 0, terminal.rows - 1),
+			savedAttributes: savedAttributes as unknown as IAttributeData,
+		};
+	};
+	const bufferStates = { normal: bufferState(buffers.normal), alternate: bufferState(buffers.alt) };
 	const links = record(core._oscLinkService);
 	const lookup = links.getLinkData;
 	if (typeof lookup !== "function") throw new Error("Unsupported xterm 6 OSC link service");
 	return {
 		attributes: attributes as unknown as IAttributeData,
+		charsets,
+		buffers: bufferStates,
 		style(value, target = "cell") {
 			const source = record(value);
 			const hasExtendedAttrs = source.hasExtendedAttrs;
@@ -147,6 +310,15 @@ function getSerializationInternals(terminal: Terminal): {
 			return { uri: data.uri, ...(typeof data.id === "string" ? { id: data.id } : {}) };
 		},
 	};
+}
+
+function serializeCharsets({ designations, level }: CharsetState): string {
+	const selectors = ["(", ")", "*", "+"];
+	let content = designations
+		.map((designation, index) => (designation === "B" ? "" : `\u001b${selectors[index]}${designation}`))
+		.join("");
+	content += ["", "\u000e", "\u001bn", "\u001bo"][level];
+	return content;
 }
 
 function openHyperlink(link: Hyperlink): string {
@@ -266,6 +438,7 @@ class StringSerializeHandler extends BaseSerializeHandler {
 	constructor(
 		buffer: IBuffer,
 		private readonly _terminal: Terminal,
+		private readonly _continuation?: BufferRestoreState,
 	) {
 		super(buffer);
 		this._internals = getSerializationInternals(_terminal);
@@ -540,6 +713,51 @@ class StringSerializeHandler extends BaseSerializeHandler {
 		}
 	}
 
+	/** DECSTBM and DECOM both home the cursor, so restore it after either. */
+	private _restoreContinuationCursor(
+		originTop: number,
+		currentStyle: IAttributeData,
+		charset: CharsetDesignation = "B",
+	): string {
+		let column = Math.min(this._buffer.cursorX, this._terminal.cols - 1);
+		let lastCell: IBufferCell | undefined;
+		if (this._buffer.cursorX === this._terminal.cols) {
+			const line = this._buffer.getLine(this._buffer.baseY + this._buffer.cursorY);
+			lastCell = line?.getCell(column);
+			if (lastCell?.getWidth() === 0) lastCell = line?.getCell(--column);
+			if (!lastCell?.getChars() || lastCell.getWidth() !== this._terminal.cols - column) {
+				throw new Error("Unsupported xterm 6 pending-wrap cursor");
+			}
+		}
+		let content = `\u001b[${this._buffer.cursorY - originTop + 1};${column + 1}H`;
+		if (lastCell) {
+			// CUP cannot address x === cols (pending wrap). Reprint only the
+			// existing final cell, in its own style/link, to recover that state.
+			// Insert mode is restored later. Invert any detached charset mapping
+			// below so it cannot translate the existing cell a second time.
+			const style = this._diffStyle(lastCell, currentStyle);
+			if (style.length) content += `\u001b[${style.join(";")}m`;
+			const hyperlink = this._internals.hyperlink(lastCell);
+			if (hyperlink) content += openHyperlink(hyperlink);
+			let characters = lastCell.getChars();
+			if (charset !== "B") {
+				const mapping: Readonly<Record<string, string>> = CHARSET_MAPS[charset];
+				if (mapping[characters.charAt(0)]) {
+					const input = Object.entries(mapping).find(
+						([, output]) => output.charAt(0) === characters.charAt(0),
+					)?.[0];
+					if (!input) throw new Error("Unsupported xterm 6 pending-wrap charset");
+					characters = input + characters.slice(1);
+				}
+			}
+			content += characters;
+			if (hyperlink) content += CLOSE_HYPERLINK;
+			const resetStyle = this._diffStyle(currentStyle, lastCell);
+			if (resetStyle.length) content += `\u001b[${resetStyle.join(";")}m`;
+		}
+		return content;
+	}
+
 	protected _serializeString(excludeFinalCursorPosition?: boolean): string {
 		let rowEnd = this._allRows.length;
 
@@ -603,6 +821,42 @@ class StringSerializeHandler extends BaseSerializeHandler {
 			content += `\u001b[${sgrSeq.join(";")}m`;
 		}
 
+		if (this._continuation) {
+			const { buffer, originMode, charsets } = this._continuation;
+			const changedMargins = buffer.scrollTop !== 0 || buffer.scrollBottom !== this._terminal.rows - 1;
+			if (changedMargins) content += `\u001b[${buffer.scrollTop + 1};${buffer.scrollBottom + 1}r`;
+			if (originMode) content += "\u001b[?6h";
+			const detachedCharset = charsets && charsets.active !== charsets.designations[charsets.level];
+			if ((changedMargins || originMode) && !detachedCharset) {
+				content += this._restoreContinuationCursor(originMode ? buffer.scrollTop : 0, curAttrData);
+			}
+			if (charsets) {
+				content += serializeCharsets(charsets);
+				if (detachedCharset) {
+					// DECRC can detach the current charset from its designated GL
+					// slot. Recreate it with the source saved cursor, not a new save
+					// at the current position, which would corrupt subsequent DECRC.
+					if (buffer.savedCharset !== charsets.active) {
+						throw new Error("Unsupported xterm 6 inherited detached charset");
+					}
+					if (originMode) content += "\u001b[?6l";
+					content += `\u001b[${buffer.savedY + 1};${buffer.savedX + 1}H`;
+					const savedStyle = this._internals.style(buffer.savedAttributes, "cursor");
+					const setStyle = this._diffStyle(savedStyle, curAttrData);
+					if (setStyle.length) content += `\u001b[${setStyle.join(";")}m`;
+					const selector = ["(", ")", "*", "+"][charsets.level];
+					content += `\u001b${selector}${charsets.active}\u001b7\u001b${selector}${charsets.designations[charsets.level]}\u001b8`;
+					const resetStyle = this._diffStyle(curAttrData, savedStyle);
+					if (resetStyle.length) content += `\u001b[${resetStyle.join(";")}m`;
+					if (originMode) content += "\u001b[?6h";
+					content += this._restoreContinuationCursor(
+						originMode ? buffer.scrollTop : 0,
+						curAttrData,
+						charsets.active,
+					);
+				}
+			}
+		}
 		return content;
 	}
 }
@@ -614,7 +868,12 @@ export class SerializeAddon implements ITerminalAddon {
 		this._terminal = terminal;
 	}
 
-	private _serializeBufferByScrollback(terminal: Terminal, buffer: IBuffer, scrollback?: number): string {
+	private _serializeBufferByScrollback(
+		terminal: Terminal,
+		buffer: IBuffer,
+		scrollback?: number,
+		continuation?: BufferRestoreState,
+	): string {
 		const maxRows = buffer.length;
 		const correctRows = scrollback === undefined ? maxRows : constrain(scrollback + terminal.rows, 0, maxRows);
 		return this._serializeBufferByRange(
@@ -625,6 +884,7 @@ export class SerializeAddon implements ITerminalAddon {
 				end: maxRows - 1,
 			},
 			false,
+			continuation,
 		);
 	}
 
@@ -633,8 +893,9 @@ export class SerializeAddon implements ITerminalAddon {
 		buffer: IBuffer,
 		range: ISerializeRange,
 		excludeFinalCursorPosition: boolean,
+		continuation?: BufferRestoreState,
 	): string {
-		const handler = new StringSerializeHandler(buffer, terminal);
+		const handler = new StringSerializeHandler(buffer, terminal, continuation);
 		return handler.serialize(
 			{
 				start: { x: 0, y: typeof range.start === "number" ? range.start : range.start.line },
@@ -653,7 +914,6 @@ export class SerializeAddon implements ITerminalAddon {
 		if (modes.applicationKeypadMode) content += "\x1b[?66h";
 		if (modes.bracketedPasteMode) content += "\x1b[?2004h";
 		if (modes.insertMode) content += "\x1b[4h";
-		if (modes.originMode) content += "\x1b[?6h";
 		if (modes.reverseWraparoundMode) content += "\x1b[?45h";
 		if (modes.sendFocusMode) content += "\x1b[?1004h";
 		// synchronizedOutputMode doesn't need to be serialized as it's a temporary mode
@@ -688,10 +948,26 @@ export class SerializeAddon implements ITerminalAddon {
 			throw new Error("Cannot use addon until it has been loaded");
 		}
 
-		// Normal buffer
+		const internals = getSerializationInternals(this._terminal);
+		const continuation = !options?.range && !options?.excludeModes;
+		const alternate = !options?.excludeAltBuffer && this._terminal.buffer.active.type === "alternate";
+
+		// Paint with default charsets/full margins. Only then restore the
+		// buffer-local margins and the final active buffer's origin/cursor.
 		let content = options?.range
 			? this._serializeBufferByRange(this._terminal, this._terminal.buffer.normal, options.range, true)
-			: this._serializeBufferByScrollback(this._terminal, this._terminal.buffer.normal, options?.scrollback);
+			: this._serializeBufferByScrollback(
+					this._terminal,
+					this._terminal.buffer.normal,
+					options?.scrollback,
+					continuation
+						? {
+								buffer: internals.buffers.normal,
+								originMode: !alternate && this._terminal.modes.originMode,
+								...(!alternate ? { charsets: internals.charsets } : {}),
+							}
+						: undefined,
+				);
 
 		// Alternate buffer
 		if (!options?.excludeAltBuffer) {
@@ -700,20 +976,31 @@ export class SerializeAddon implements ITerminalAddon {
 					this._terminal,
 					this._terminal.buffer.alternate,
 					undefined,
+					continuation
+						? {
+								buffer: internals.buffers.alternate,
+								originMode: this._terminal.modes.originMode,
+								charsets: internals.charsets,
+							}
+						: undefined,
 				);
-				content += `\u001b[?1049h\u001b[H${alternativeScreenContent}`;
+				// 1049 saves the normal charset for the eventual return. Do not
+				// save the alternate screen's current charset in its place, and
+				// return to ASCII before painting already translated cells.
+				const normalCharset = continuation ? internals.buffers.normal.savedCharset : "B";
+				content += `${normalCharset === "B" ? "" : `\u001b(${normalCharset}`}\u001b[?1049h${normalCharset === "B" ? "" : "\u001b(B"}\u001b[H${alternativeScreenContent}`;
 			}
 		}
 
 		// Modes
 		if (!options?.excludeModes) {
+			if (!continuation && this._terminal.modes.originMode) content += "\u001b[?6h";
 			content += this._serializeModes(this._terminal);
 		}
 
 		// A snapshot may be followed by live bytes while the provider's OSC 8 run
 		// remains open. Buffer serialization closes its own runs at buffer boundaries;
 		// restore the provider's current link only after all buffers and modes.
-		const internals = getSerializationInternals(this._terminal);
 		const currentLink = internals.hyperlink(internals.attributes);
 		if (!content && !currentLink) return "";
 		return CLOSE_HYPERLINK + content + (currentLink ? openHyperlink(currentLink) : "");

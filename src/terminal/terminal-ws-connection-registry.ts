@@ -67,12 +67,13 @@ export class TerminalWsConnectionRegistry {
 		connectionId: string,
 	): WebSocket | null {
 		const previousIoSocket = viewerState.ioSocket;
-		viewerState.ioState?.dispose();
+		const previousIoState = viewerState.ioState;
 		viewerState.ioState = ioState;
 		viewerState.ioSocket = ws;
 		viewerState.ioConnectionId = connectionId;
 		viewerState.ioConnectedAt = Date.now();
 		viewerState.lastProtocolActivityAt = Date.now();
+		previousIoState?.dispose();
 		return previousIoSocket && previousIoSocket !== ws ? previousIoSocket : null;
 	}
 
@@ -86,19 +87,21 @@ export class TerminalWsConnectionRegistry {
 	}
 
 	replaceControlListener(viewerState: TerminalViewerState, detachControlListener: (() => void) | null): void {
-		viewerState.detachControlListener?.();
+		const previousDetach = viewerState.detachControlListener;
 		viewerState.detachControlListener = detachControlListener;
+		previousDetach?.();
 	}
 
 	detachIoSocket(connectionKey: string, viewerState: TerminalViewerState, ws: WebSocket): void {
 		if (viewerState.ioSocket !== ws) {
 			return;
 		}
+		const previousIoState = viewerState.ioState;
 		viewerState.ioSocket = null;
 		viewerState.ioConnectionId = null;
 		viewerState.ioConnectedAt = null;
-		viewerState.ioState?.dispose();
 		viewerState.ioState = null;
+		previousIoState?.dispose();
 		this.cleanupViewerStateIfUnused(connectionKey, viewerState);
 	}
 
@@ -106,11 +109,12 @@ export class TerminalWsConnectionRegistry {
 		if (viewerState.controlSocket !== ws) {
 			return;
 		}
+		const previousDetach = viewerState.detachControlListener;
 		viewerState.controlSocket = null;
 		viewerState.controlConnectionId = null;
 		viewerState.controlConnectedAt = null;
-		viewerState.detachControlListener?.();
 		viewerState.detachControlListener = null;
+		previousDetach?.();
 		this.cleanupViewerStateIfUnused(connectionKey, viewerState);
 	}
 
@@ -138,10 +142,7 @@ export class TerminalWsConnectionRegistry {
 					lastProtocolActivityAt: viewer.lastProtocolActivityAt,
 					restoreComplete: viewer.restore.restoreComplete,
 					restoreStartedAt: viewer.restoreStartedAt,
-					pendingRestoreBytes: viewer.restore.pendingOutputChunks.reduce(
-						(total, chunk) => total + chunk.byteLength,
-						0,
-					),
+					pendingRestoreBytes: viewer.restore.pendingOutputBytes,
 					backpressured: stream.backpressuredViewerIds.has(viewer.clientId),
 				});
 			}
@@ -163,7 +164,12 @@ export class TerminalWsConnectionRegistry {
 			clearTimeout(viewerState.restore.deferredSnapshotTimer);
 			viewerState.restore.deferredSnapshotTimer = null;
 		}
+		if (viewerState.restore.restoreTimeoutTimer !== null) {
+			clearTimeout(viewerState.restore.restoreTimeoutTimer);
+			viewerState.restore.restoreTimeoutTimer = null;
+		}
 		viewerState.restore.pendingOutputChunks = [];
+		viewerState.restore.pendingOutputBytes = 0;
 		streamState.backpressuredViewerIds.delete(viewerState.clientId);
 		streamState.viewers.delete(viewerState.clientId);
 

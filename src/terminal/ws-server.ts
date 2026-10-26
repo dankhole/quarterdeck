@@ -205,6 +205,7 @@ export function createTerminalWebSocketBridge({
 		ws.on("close", () => {
 			inputWriter?.dispose();
 			registry.detachIoSocket(connectionKey, viewerState, ws);
+			restoreCoordinator.onIoSocketDisconnected(viewerState);
 			diagnostics?.recordEvent(
 				"terminal.io_disconnected",
 				{},
@@ -272,6 +273,7 @@ export function createTerminalWebSocketBridge({
 		);
 
 		ws.on("message", (rawMessage: RawData) => {
+			if (viewerState.controlSocket !== ws) return;
 			viewerState.lastProtocolActivityAt = Date.now();
 			const message = parseTerminalControlMessage(rawMessage);
 			if (!message) {
@@ -352,7 +354,7 @@ export function createTerminalWebSocketBridge({
 			}
 
 			if (message.type === "restore_complete") {
-				restoreCoordinator.completeRestore(viewerState);
+				restoreCoordinator.completeRestore(viewerState, ws);
 				diagnostics?.recordEvent(
 					"terminal.restore_completed",
 					{},

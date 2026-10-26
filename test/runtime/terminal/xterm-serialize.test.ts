@@ -90,6 +90,180 @@ afterEach(() => {
 	for (const target of terminals.splice(0)) target.dispose();
 });
 
+function continuationState(target: HeadlessTerminal) {
+	const { _charsetService, _bufferService } = (
+		target as unknown as {
+			_core: {
+				_charsetService: { _charsets: unknown[]; glevel: number; charset: unknown };
+				_bufferService: {
+					buffers: {
+						normal: { scrollTop: number; scrollBottom: number };
+						alt: { scrollTop: number; scrollBottom: number };
+					};
+				};
+			};
+		}
+	)._core;
+	return {
+		charsets: Array.from({ length: 4 }, (_, index) => _charsetService._charsets[index]),
+		level: _charsetService.glevel,
+		active: _charsetService.charset,
+		margins: [_bufferService.buffers.normal, _bufferService.buffers.alt].map(({ scrollTop, scrollBottom }) => [
+			scrollTop,
+			scrollBottom,
+		]),
+	};
+}
+
+async function expectContinuation(source: HeadlessTerminal, restored: HeadlessTerminal, suffix: string): Promise<void> {
+	await write(source, suffix);
+	await write(restored, suffix);
+	expectSame(source, restored);
+	expect(continuationState(restored)).toEqual(continuationState(source));
+}
+
+describe("xterm 6 persistent continuation state", () => {
+	it("restores DEC line drawing selected before a snapshot without replaying that selection", async () => {
+		const source = terminal();
+		await write(source, "\u001b(0");
+		const { restored, snapshot } = await restore(source);
+		expect(snapshot).not.toBe("");
+		await expectContinuation(source, restored, "q");
+		expect(restored.buffer.active.getLine(0)?.translateToString(true)).toBe("─");
+	});
+
+	it.each(["0", "A", "B", "4", "C", "5", "R", "Q", "K", "Y", "E", "6", "Z", "H", "7", "="])(
+		"roundtrips the pinned charset map and aliases: %s",
+		async (designation) => {
+			const source = terminal(80, 4);
+			await write(source, `\u001b(${designation}`);
+			const { restored } = await restore(source);
+			expect(continuationState(restored)).toEqual(continuationState(source));
+			await expectContinuation(source, restored, "#@[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~");
+		},
+	);
+
+	it.each(["\u000f", "\u000e", "\u001bn", "\u001bo"])(
+		"preserves all designations and active GL: %j",
+		async (select) => {
+			const source = terminal(80, 4);
+			await write(source, `before\u001b(A\u001b)0\u001b*K\u001b+R${select}`);
+			const { restored } = await restore(source);
+			expect(continuationState(restored)).toEqual(continuationState(source));
+			await expectContinuation(source, restored, "#q@[\u000f#q@[\u000e#q@[\u001bn#q@[\u001bo#q@[");
+		},
+	);
+
+	it("preserves a DECRC charset distinct from its designated GL slot", async () => {
+		const source = terminal();
+		await write(source, "\u001b(0\u001b7\u001b(B\u001b8");
+		const { restored } = await restore(source);
+		expect(continuationState(restored)).toEqual(continuationState(source));
+		await expectContinuation(source, restored, "q\u000fq");
+		expect(restored.buffer.active.getLine(0)?.translateToString(true)).toBe("─q");
+	});
+
+	it("does not overwrite the saved cursor/style when restoring a detached DECRC charset", async () => {
+		const source = terminal(20, 6);
+		await write(source, "\u001b[2;3H\u001b(0\u001b[31m\u001b7\u001b(B\u001b8\u001b[3;4H\u001b[34mqq");
+		const { restored } = await restore(source);
+		await expectContinuation(source, restored, "z\u001b8q\u000fQ");
+	});
+
+	it("recovers pending wrap with a detached charset whose printed ASCII needs inverse mapping", async () => {
+		const source = terminal(12, 4);
+		await write(source, `\u001b(4\u001b7\u001b(B\u001b8${"]".repeat(12)}`);
+		expect(source.buffer.active.cursorX).toBe(12);
+		const { restored } = await restore(source);
+		await expectContinuation(source, restored, "q\u000fq");
+	});
+
+	it("rejects an inherited detached charset rather than emitting an unfaithful save slot", async () => {
+		const source = terminal();
+		await write(source, "\u001b(0\u001b7\u001b(B\u001b8\u001b[?47h");
+		const serializer = new SerializeAddon();
+		source.loadAddon(serializer);
+		expect(() => serializer.serialize()).toThrow("Unsupported xterm 6 inherited detached charset");
+	});
+
+	it.each(["\u001b%G", "\u001b%@", "\u001b[?2h", "\u001b[!p", "\u001bc"])(
+		"captures reset/default charset state: %j",
+		async (reset) => {
+			const source = terminal(40, 4);
+			await write(source, `\u001b(A\u001b)0\u001b*K\u001b+R\u001bo\u001b[2;3r${reset}`);
+			const { restored } = await restore(source);
+			expect(continuationState(restored)).toEqual(continuationState(source));
+			await expectContinuation(source, restored, "#q\u000e#q\u001bn#q\u001bo#q");
+		},
+	);
+
+	it("retains scrolling margins so subsequent linefeed does not overwrite outside rows", async () => {
+		const source = terminal(20, 4);
+		await write(source, "top\r\nmiddle\r\nbottom\r\nlast\u001b[2;3r\u001b[3;1H");
+		const { restored } = await restore(source);
+		expect(continuationState(restored)).toEqual(continuationState(source));
+		await expectContinuation(source, restored, "\nX");
+		expect(
+			Array.from({ length: 4 }, (_, index) => restored.buffer.active.getLine(index)?.translateToString(true)),
+		).toEqual(["top", "bottom", "X", "last"]);
+	});
+
+	it.each([
+		{ alternate: false, origin: false },
+		{ alternate: false, origin: true },
+		{ alternate: true, origin: false },
+		{ alternate: true, origin: true },
+	])("restores each buffer's margins, DECOM and cursor ($alternate, $origin)", async ({ alternate, origin }) => {
+		const source = terminal(20, 6);
+		await write(source, "N0\r\nN1\r\nN2\r\nN3\r\nN4\r\nN5\u001b[2;5r\u001b[3;4H\u001b(0");
+		if (alternate) await write(source, "\u001b[?1049h\u001b(B\u001b[HA0\r\nA1\r\nA2\r\nA3\r\nA4\r\nA5\u001b[3;4r");
+		await write(source, `${origin ? "\u001b[?6h" : ""}\u001b[2;7H`);
+		const { restored } = await restore(source);
+		expect(continuationState(restored)).toEqual(continuationState(source));
+		await expectContinuation(source, restored, "q\nX\u001bM");
+		if (alternate) await expectContinuation(source, restored, "\u001b[?1049lq\nN");
+	});
+
+	it.each([1, 6])("keeps an absolute cursor outside the scrolling region at row %i", async (row) => {
+		const source = terminal(20, 6);
+		await write(source, `body\u001b[2;5r\u001b[${row};7H`);
+		const { restored } = await restore(source);
+		await expectContinuation(source, restored, "X\u001bM\nY");
+	});
+
+	it.each([false, true])(
+		"preserves styled/linked pending wrap after margin/cursor restoration (origin=%s)",
+		async (origin) => {
+			const source = terminal(12, 4);
+			await write(
+				source,
+				`\u001b[2;3r${origin ? "\u001b[?6h" : ""}\u001b[${origin ? 2 : 3};1H\u001b[31m${open("https://example.test/wrap")}1234567890漢${close}\u001b[32m`,
+			);
+			expect(source.buffer.active.cursorX).toBe(12);
+			const { restored } = await restore(source);
+			await expectContinuation(source, restored, "X\r\nY");
+		},
+	);
+
+	it.each(["charset", "GL", "margins"])("rejects an incompatible private %s shape explicitly", async (field) => {
+		const source = terminal();
+		const serializer = new SerializeAddon();
+		source.loadAddon(serializer);
+		const core = (
+			source as unknown as {
+				_core: {
+					_charsetService: { charset: unknown; glevel: unknown };
+					_bufferService: { buffers: { normal: { scrollTop: unknown } } };
+				};
+			}
+		)._core;
+		if (field === "charset") core._charsetService.charset = { q: "\u001b[2J" };
+		else if (field === "GL") core._charsetService.glevel = 4;
+		else core._bufferService.buffers.normal.scrollTop = -1;
+		expect(() => serializer.serialize()).toThrow("Unsupported xterm 6");
+	});
+});
+
 describe("xterm 6 OSC 8 string serialization", () => {
 	it("preserves the untouched empty snapshot sentinel", () => {
 		const source = terminal();

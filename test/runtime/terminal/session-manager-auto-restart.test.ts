@@ -736,7 +736,10 @@ describe("TerminalSessionManager auto-restart", () => {
 			resumeSessionId: null,
 			warningMessage: STORED_PI_RESUME_FAILED_WARNING,
 		});
-		expect(onOutput).toHaveBeenCalledWith(expect.any(Buffer));
+		expect(onOutput).toHaveBeenCalledWith(expect.any(Buffer), {
+			streamId: expect.any(String),
+			sequence: expect.any(Number),
+		});
 	});
 
 	it("does not reconnect-auto-restart after bounded startup recovery is exhausted", async () => {

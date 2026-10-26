@@ -69,9 +69,9 @@ export function isTerminalReviewReason(reason: RuntimeTaskSessionReviewReason): 
 
 function writeSystemOutput(entry: ProcessEntry, message: string, summary: RuntimeTaskSessionSummary | null): void {
 	const output = Buffer.from(`\r\n[quarterdeck] ${message}\r\n`, "utf8");
-	entry.terminalStateMirror?.applyOutput(output);
+	const outputCursor = entry.terminalStateMirror?.applyOutput(output) ?? null;
 	for (const listener of entry.listeners.values()) {
-		listener.onOutput?.(output);
+		listener.onOutput?.(output, outputCursor);
 		if (summary) {
 			listener.onState?.(cloneSummary(summary));
 		}

@@ -503,9 +503,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 				warningMessage,
 			);
 			const output = Buffer.from(`\r\n[quarterdeck] ${warningMessage}\r\n`, "utf8");
-			entry.terminalStateMirror?.applyOutput(output);
+			const outputCursor = entry.terminalStateMirror?.applyOutput(output) ?? null;
 			for (const listener of entry.listeners.values()) {
-				listener.onOutput?.(output);
+				listener.onOutput?.(output, outputCursor);
 			}
 			this.record(
 				"session.resume_identity_mismatch",

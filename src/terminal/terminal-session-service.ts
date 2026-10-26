@@ -1,8 +1,8 @@
 import type { RuntimeTaskSessionSummary } from "../core";
-import type { TerminalRestoreSnapshot } from "./terminal-state-mirror";
+import type { TerminalOutputCursor, TerminalRestoreSnapshot } from "./terminal-state-mirror";
 
 export interface TerminalSessionListener {
-	onOutput?: (chunk: Buffer) => void;
+	onOutput?: (chunk: Buffer, outputCursor: TerminalOutputCursor | null) => void;
 	onState?: (summary: RuntimeTaskSessionSummary) => void;
 	onExit?: (code: number | null) => void;
 }

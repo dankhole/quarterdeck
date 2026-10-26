@@ -2,6 +2,7 @@ import headlessModule, { type Terminal as HeadlessTerminal } from "@xterm/headle
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalStateMirror } from "../../../src/terminal";
+import { TerminalRestoreSnapshotUnavailableError } from "../../../src/terminal/terminal-state-mirror";
 
 const { Terminal } = headlessModule as { Terminal: typeof HeadlessTerminal };
 const mirrors: TerminalStateMirror[] = [];
@@ -43,7 +44,12 @@ describe("TerminalStateMirror", () => {
 		const snapshot = await mirror.getSnapshot();
 		// shouldSkipEmptyRestoreSnapshot uses length === 0 to protect live output
 		// received before this snapshot. Protocol-only bytes break that sentinel.
-		expect(snapshot).toEqual({ snapshot: "", cols: 80, rows: 24 });
+		expect(snapshot).toEqual({
+			snapshot: "",
+			cols: 80,
+			rows: 24,
+			outputCursor: { streamId: expect.any(String), sequence: 0 },
+		});
 	});
 
 	it.each([false, true])("restores actual OSC 8 URI metadata from split writes (batching=%s)", async (batching) => {
@@ -145,6 +151,326 @@ describe("TerminalStateMirror", () => {
 		});
 
 		expect(widths).toEqual([10, 20]);
+	});
+
+	it("assigns immutable per-stream cursors only to nonempty output", async () => {
+		const mirror = createMirror();
+		const initial = (await mirror.getSnapshot())?.outputCursor;
+		const first = mirror.applyOutput(Buffer.from("a"));
+		const empty = mirror.applyOutput(Buffer.alloc(0));
+		const second = mirror.applyOutput(Buffer.from("b"));
+		expect(initial).toEqual({ streamId: expect.any(String), sequence: 0 });
+		expect(first).toEqual({ streamId: initial?.streamId, sequence: 1 });
+		expect(empty).toBe(first);
+		expect(second).toEqual({ streamId: initial?.streamId, sequence: 2 });
+		expect(Object.isFrozen(first)).toBe(true);
+		expect((await mirror.getSnapshot())?.outputCursor).toEqual(second);
+		expect((await createMirror().getSnapshot())?.outputCursor.streamId).not.toBe(initial?.streamId);
+	});
+
+	it.each([false, true])("captures exact FIFO barriers without later output (batching=%s)", async (batching) => {
+		const mirror = createMirror();
+		mirror.setBatching(batching);
+		const first = mirror.applyOutput(Buffer.from("first"));
+		const firstSnapshot = mirror.getSnapshot();
+		const second = mirror.applyOutput(Buffer.from("second"));
+		const secondSnapshot = mirror.getSnapshot();
+		const third = mirror.applyOutput(Buffer.from("third"));
+		const thirdSnapshot = mirror.getSnapshot();
+
+		expect(await firstSnapshot).toMatchObject({ snapshot: expect.stringMatching(/first$/), outputCursor: first });
+		expect(await secondSnapshot).toMatchObject({
+			snapshot: expect.stringMatching(/firstsecond$/),
+			outputCursor: second,
+		});
+		expect(await thirdSnapshot).toMatchObject({
+			snapshot: expect.stringMatching(/firstsecondthird$/),
+			outputCursor: third,
+		});
+	});
+
+	it.each([false, true])(
+		"renders unsafe output but refuses capture until completion (batching=%s)",
+		async (batching) => {
+			const mirror = createMirror();
+			mirror.setBatching(batching);
+			const callback = vi.fn();
+			const unsafeCursor = mirror.applyOutput(Buffer.from("visible\u001b[3"), callback, {
+				restoreSnapshotSafe: false,
+			});
+			expect(unsafeCursor?.sequence).toBe(1);
+			await expect(mirror.getSnapshot()).rejects.toBeInstanceOf(TerminalRestoreSnapshotUnavailableError);
+			expect(callback).toHaveBeenCalledOnce();
+			expect(callback.mock.calls[0]?.[0].lines[0]).toBe("visible");
+
+			const safeCursor = mirror.applyOutput(Buffer.from("1mcomplete"), undefined, { restoreSnapshotSafe: true });
+			expect(await mirror.getSnapshot()).toMatchObject({
+				snapshot: expect.stringContaining("complete"),
+				outputCursor: safeCursor,
+			});
+			const viewer = await restoreViewer(mirror);
+			expect(viewer.buffer.active.getLine(0)?.translateToString(true)).toBe("visiblecomplete");
+		},
+	);
+
+	it.each([false, true])("checks applied safety at each FIFO snapshot boundary (batching=%s)", async (batching) => {
+		const mirror = createMirror();
+		mirror.setBatching(batching);
+		const prefixCursor = mirror.applyOutput(Buffer.from("prefix"));
+		const prefixSnapshot = mirror.getSnapshot();
+		mirror.applyOutput(Buffer.from("\u001b[3"), undefined, { restoreSnapshotSafe: false });
+		const unsafeSnapshot = expect(mirror.getSnapshot()).rejects.toBeInstanceOf(
+			TerminalRestoreSnapshotUnavailableError,
+		);
+		const completeCursor = mirror.applyOutput(Buffer.from("1mcomplete"), undefined, { restoreSnapshotSafe: true });
+		const completeSnapshot = mirror.getSnapshot();
+
+		// Both flags have already been accepted before any queued write applies.
+		expect(await prefixSnapshot).toMatchObject({
+			snapshot: expect.stringMatching(/prefix$/),
+			outputCursor: prefixCursor,
+		});
+		await unsafeSnapshot;
+		expect(await completeSnapshot).toMatchObject({
+			snapshot: expect.stringContaining("complete"),
+			outputCursor: completeCursor,
+		});
+	});
+
+	it.each([false, true])(
+		"uses final safety for each fully rendered coalesced group (batching=%s)",
+		async (batching) => {
+			const mirror = createMirror();
+			mirror.setBatching(batching);
+			const screens: string[] = [];
+			const onApplied = (screen: { lines: string[] }) => screens.push(screen.lines[0] ?? "");
+			mirror.applyOutput(Buffer.from("visible\u001b[3"), onApplied, { restoreSnapshotSafe: false });
+			const completed = mirror.applyOutput(Buffer.from("1mcomplete"), onApplied, { restoreSnapshotSafe: true });
+			expect(await mirror.getSnapshot()).toMatchObject({ outputCursor: completed });
+			expect(screens).toEqual(["visiblecomplete", "visiblecomplete"]);
+
+			mirror.applyOutput(Buffer.from("next"), onApplied, { restoreSnapshotSafe: true });
+			mirror.applyOutput(Buffer.from("\u001b[3"), onApplied, { restoreSnapshotSafe: false });
+			await expect(mirror.getSnapshot()).rejects.toBeInstanceOf(TerminalRestoreSnapshotUnavailableError);
+			expect(screens.slice(2)).toEqual(["visiblecompletenext", "visiblecompletenext"]);
+		},
+	);
+
+	it.each([false, true])("preserves accepted safety for unannotated system output (batching=%s)", async (batching) => {
+		const mirror = createMirror();
+		mirror.setBatching(batching);
+		mirror.applyOutput(Buffer.from("visible"), undefined, { restoreSnapshotSafe: false });
+		// This write arrives before the unsafe group applies. The initial
+		// applied safety must not make an unannotated warning falsely safe.
+		mirror.applyOutput(Buffer.from("warning"));
+		await expect(mirror.getSnapshot()).rejects.toBeInstanceOf(TerminalRestoreSnapshotUnavailableError);
+		mirror.applyOutput(Buffer.from("complete"), undefined, { restoreSnapshotSafe: true });
+		const finalCursor = mirror.applyOutput(Buffer.from("system"));
+		expect(await mirror.getSnapshot()).toMatchObject({
+			snapshot: expect.stringMatching(/visiblewarningcompletesystem$/),
+			outputCursor: finalCursor,
+		});
+	});
+
+	it.each([false, true])(
+		"queues empty safety updates without advancing the output cursor (batching=%s)",
+		async (batching) => {
+			const mirror = createMirror();
+			mirror.setBatching(batching);
+			const cursor = mirror.applyOutput(Buffer.from("visible"), undefined, { restoreSnapshotSafe: false });
+			await expect(mirror.getSnapshot()).rejects.toBeInstanceOf(TerminalRestoreSnapshotUnavailableError);
+			const callback = vi.fn();
+			expect(mirror.applyOutput(Buffer.alloc(0), callback, { restoreSnapshotSafe: true })).toBe(cursor);
+			expect(await mirror.getSnapshot()).toMatchObject({
+				snapshot: expect.stringMatching(/visible$/),
+				outputCursor: cursor,
+			});
+			expect(callback).toHaveBeenCalledOnce();
+		},
+	);
+
+	it("uses the final represented cursor for coalesced output while preserving callback order", async () => {
+		const mirror = createMirror();
+		const screens: string[] = [];
+		const callbacks: string[] = [];
+		const first = mirror.applyOutput(Buffer.from("a"), (screen) => {
+			screens.push(screen.lines[0] ?? "");
+			callbacks.push("a");
+		});
+		const second = mirror.applyOutput(Buffer.from("b"), (screen) => {
+			screens.push(screen.lines[0] ?? "");
+			callbacks.push("b");
+		});
+		const captured = mirror.getSnapshot();
+		mirror.applyOutput(Buffer.from("c"));
+		expect(first?.sequence).toBe(1);
+		expect(second?.sequence).toBe(2);
+		expect(await captured).toMatchObject({ snapshot: expect.stringMatching(/ab$/), outputCursor: second });
+		expect(callbacks).toEqual(["a", "b"]);
+		expect(screens).toEqual(["ab", "ab"]);
+	});
+
+	it.each([
+		[120, 30],
+		[120, 24],
+		[80, 30],
+	])("returns to original geometry after a queued %ix%i resize", async (cols, rows) => {
+		const mirror = createMirror();
+		const dimensions: number[][] = [];
+		mirror.resize(cols, rows);
+		mirror.applyOutput(Buffer.from("wide"), (screen) => dimensions.push([screen.cols, screen.rows]));
+		mirror.resize(80, 24);
+		mirror.applyOutput(Buffer.from("narrow"), (screen) => dimensions.push([screen.cols, screen.rows]));
+		expect(await mirror.getSnapshot()).toMatchObject({ cols: 80, rows: 24 });
+		expect(dimensions).toEqual([
+			[cols, rows],
+			[80, 24],
+		]);
+	});
+
+	it("skips repeated resize targets only after preceding queued geometry applies", async () => {
+		const mirror = createMirror();
+		const terminal = (mirror as unknown as { terminal: HeadlessTerminal }).terminal;
+		const resize = vi.spyOn(terminal, "resize");
+		mirror.resize(120, 30);
+		mirror.resize(120, 30);
+		mirror.resize(80, 24);
+		mirror.resize(80, 24);
+		expect(await mirror.getSnapshot()).toMatchObject({ cols: 80, rows: 24 });
+		expect(resize.mock.calls).toEqual([
+			[120, 30],
+			[80, 24],
+		]);
+	});
+
+	it("flushes batched output before resize without moving later batches ahead", async () => {
+		const mirror = createMirror(10, 4);
+		const widths: number[] = [];
+		mirror.setBatching(true);
+		const first = mirror.applyOutput(Buffer.from("before"), (screen) => widths.push(screen.cols));
+		const before = mirror.getSnapshot();
+		mirror.applyOutput(Buffer.from("old"), (screen) => widths.push(screen.cols));
+		mirror.resize(20, 4);
+		const final = mirror.applyOutput(Buffer.from("new"), (screen) => widths.push(screen.cols));
+		const after = mirror.getSnapshot();
+		expect(await before).toMatchObject({ snapshot: expect.stringMatching(/before$/), cols: 10, outputCursor: first });
+		expect(await after).toMatchObject({
+			snapshot: expect.stringMatching(/beforeoldnew$/),
+			cols: 20,
+			outputCursor: final,
+		});
+		expect(widths).toEqual([10, 10, 20]);
+	});
+
+	it("keeps re-entrant callback output and snapshots behind already queued barriers", async () => {
+		const mirror = createMirror();
+		const callbacks: string[] = [];
+		let reentrantSnapshot: ReturnType<TerminalStateMirror["getSnapshot"]> | undefined;
+		mirror.applyOutput(Buffer.from("a"), () => {
+			callbacks.push("a");
+			mirror.applyOutput(Buffer.from("c"), () => callbacks.push("c"));
+			reentrantSnapshot = mirror.getSnapshot();
+			mirror.applyOutput(Buffer.from("d"), () => callbacks.push("d"));
+		});
+		const firstSnapshot = mirror.getSnapshot();
+		const second = mirror.applyOutput(Buffer.from("b"), () => callbacks.push("b"));
+		const secondSnapshot = mirror.getSnapshot();
+		expect(await firstSnapshot).toMatchObject({
+			snapshot: expect.stringMatching(/a$/),
+			outputCursor: { sequence: 1 },
+		});
+		expect(await secondSnapshot).toMatchObject({ snapshot: expect.stringMatching(/ab$/), outputCursor: second });
+		expect(await reentrantSnapshot).toMatchObject({
+			snapshot: expect.stringMatching(/abc$/),
+			outputCursor: { sequence: 3 },
+		});
+		expect(await mirror.getSnapshot()).toMatchObject({
+			snapshot: expect.stringMatching(/abcd$/),
+			outputCursor: { sequence: 4 },
+		});
+		expect(callbacks).toEqual(["a", "b", "c", "d"]);
+	});
+
+	it.each([false, true])("settles queued snapshots after disposal (batching=%s)", async (batching) => {
+		const mirror = createMirror();
+		mirror.setBatching(batching);
+		const callback = vi.fn();
+		mirror.applyOutput(Buffer.from("pending"), callback);
+		const snapshot = mirror.getSnapshot();
+		mirror.dispose();
+		expect(await snapshot).toBeNull();
+		expect(await mirror.getSnapshot()).toBeNull();
+		expect(mirror.applyOutput(Buffer.from("late"), callback)).toBeNull();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("releases in-flight writes on disposal even when xterm never calls back", async () => {
+		const mirror = createMirror();
+		const terminal = (mirror as unknown as { terminal: HeadlessTerminal }).terminal;
+		let complete: (() => void) | undefined;
+		vi.spyOn(terminal, "write").mockImplementation((_data, callback) => {
+			complete = callback;
+		});
+		const callback = vi.fn();
+		mirror.applyOutput(Buffer.from("pending"), callback);
+		const snapshot = mirror.getSnapshot();
+		await Promise.resolve();
+		expect(complete).toBeTypeOf("function");
+		mirror.dispose();
+		expect(await snapshot).toBeNull();
+		complete?.();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("allows a callback to dispose its mirror without invoking later grouped callbacks", async () => {
+		const mirror = createMirror();
+		const callback = vi.fn();
+		mirror.applyOutput(Buffer.from("a"), () => mirror.dispose());
+		mirror.applyOutput(Buffer.from("b"), callback);
+		expect(await mirror.getSnapshot()).toBeNull();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("continues after a throwing applied callback without losing the snapshot barrier", async () => {
+		const mirror = createMirror();
+		const callback = vi.fn();
+		mirror.applyOutput(Buffer.from("a"), () => {
+			throw new Error("callback failure");
+		});
+		const second = mirror.applyOutput(Buffer.from("b"), callback);
+		expect(await mirror.getSnapshot()).toMatchObject({
+			snapshot: expect.stringMatching(/ab$/),
+			outputCursor: second,
+		});
+		expect(callback).toHaveBeenCalledOnce();
+	});
+
+	it("settles a failed serialization and still runs subsequent barriers", async () => {
+		const mirror = createMirror();
+		const addon = (mirror as unknown as { serializeAddon: { serialize: () => string } }).serializeAddon;
+		const serialize = vi.spyOn(addon, "serialize").mockImplementationOnce(() => {
+			throw new Error("serialization failure");
+		});
+		await expect(mirror.getSnapshot()).rejects.toThrow("serialization failure");
+		mirror.applyOutput(Buffer.from("recovered"));
+		expect(await mirror.getSnapshot()).toMatchObject({
+			snapshot: expect.stringMatching(/recovered$/),
+			outputCursor: { sequence: 1 },
+		});
+		expect(serialize).toHaveBeenCalledTimes(2);
+	});
+
+	it("retires unknown stream coverage after a synchronous terminal write failure", async () => {
+		const mirror = createMirror();
+		const terminal = (mirror as unknown as { terminal: HeadlessTerminal }).terminal;
+		vi.spyOn(terminal, "write").mockImplementationOnce(() => {
+			throw new Error("write failure");
+		});
+		const callback = vi.fn();
+		mirror.applyOutput(Buffer.from("failed"), callback);
+		expect(await mirror.getSnapshot()).toBeNull();
+		expect(callback).not.toHaveBeenCalled();
+		expect(mirror.applyOutput(Buffer.from("later"))).toBeNull();
 	});
 
 	it("serializes inline terminal content and dimensions", async () => {

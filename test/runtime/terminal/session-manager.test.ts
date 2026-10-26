@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "../../../src/core";
 import { buildShellCommandLine } from "../../../src/core";
 import { InMemorySessionSummaryStore, TerminalSessionManager } from "../../../src/terminal";
+import { createTerminalProtocolFilterState } from "../../../src/terminal/terminal-protocol-filter";
 
 import {
 	createTestProviderHookEvent,
@@ -308,11 +309,7 @@ describe("TerminalSessionManager", () => {
 				agentId: "claude",
 				cols: 80,
 				rows: 24,
-				terminalProtocolFilter: {
-					pendingChunk: null,
-					interceptOscColorQueries: true,
-					suppressDeviceAttributeQueries: false,
-				},
+				terminalProtocolFilter: createTerminalProtocolFilterState({ interceptOscColorQueries: true }),
 			},
 			terminalStateMirror: null,
 			listenerIdCounter: 1,
@@ -443,11 +440,7 @@ describe("TerminalSessionManager", () => {
 				session: {
 					write: vi.fn(),
 				},
-				terminalProtocolFilter: {
-					pendingChunk: null,
-					interceptOscColorQueries: true,
-					suppressDeviceAttributeQueries: false,
-				},
+				terminalProtocolFilter: createTerminalProtocolFilterState({ interceptOscColorQueries: true }),
 			},
 			terminalStateMirror: null,
 			listenerIdCounter: 1,
@@ -465,7 +458,7 @@ describe("TerminalSessionManager", () => {
 		});
 
 		expect(entry.active.terminalProtocolFilter.interceptOscColorQueries).toBe(true);
-		expect(entry.active.terminalProtocolFilter.pendingChunk).toBeNull();
+		expect(entry.active.terminalProtocolFilter.framing.pendingChunk).toBeNull();
 	});
 
 	it("forwards pixel dimensions through resize when provided", () => {
@@ -619,11 +612,7 @@ describe("TerminalSessionManager", () => {
 				agentId: "claude",
 				cols: 100,
 				rows: 30,
-				terminalProtocolFilter: {
-					pendingChunk: null,
-					interceptOscColorQueries: true,
-					suppressDeviceAttributeQueries: false,
-				},
+				terminalProtocolFilter: createTerminalProtocolFilterState({ interceptOscColorQueries: true }),
 			},
 			terminalStateMirror: {
 				resize: resizeMirrorSpy,
@@ -655,6 +644,7 @@ describe("TerminalSessionManager", () => {
 			snapshot: "serialized terminal",
 			cols: 120,
 			rows: 40,
+			outputCursor: { streamId: "test-stream", sequence: 7 },
 		}));
 		const entry = {
 			taskId: "task-restore",
@@ -677,6 +667,7 @@ describe("TerminalSessionManager", () => {
 			snapshot: "serialized terminal",
 			cols: 120,
 			rows: 40,
+			outputCursor: { streamId: "test-stream", sequence: 7 },
 		});
 		expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
 	});
