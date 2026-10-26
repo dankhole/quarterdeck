@@ -201,8 +201,10 @@ describe("language navigation process and filesystem ownership", () => {
 			await manager.close();
 			const recorded = await readEvents();
 			expect(recorded[0]?.pid).toEqual(expect.any(Number));
-			expect(processExists(Number(recorded[0]?.pid))).toBe(false);
 			expect(manager.getSnapshot().processCount).toBe(0);
+			// Windows job termination can finish after the supervisor's close event;
+			// require the server PID to disappear, as in the worker-cleanup cases above.
+			await expect.poll(() => processExists(Number(recorded[0]?.pid))).toBe(false);
 		},
 	);
 
