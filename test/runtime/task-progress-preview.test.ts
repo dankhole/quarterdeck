@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationProgressCursor, ConversationProgressReadResult } from "../../src/conversation";
+import type {
+	ConversationProgressCursor,
+	ConversationProgressReadResult,
+	ConversationSourceHint,
+} from "../../src/conversation";
 import { createTaskProgressPreview, PROGRESS_PREVIEW_INTERVAL_MS } from "../../src/server/task-progress-preview";
 import { InMemorySessionSummaryStore } from "../../src/terminal";
 import { createTestTaskNativeWorkEvidence, createTestTaskSessionSummary } from "../utilities/task-session-factory";
@@ -11,7 +15,7 @@ function response(
 	return { text, hasMore, sourceBytesExamined: 100 };
 }
 
-function setup() {
+function setup(provider: "codex" | "pi" = "codex") {
 	let time = 100;
 	const store = new InMemorySessionSummaryStore();
 	store.ensureEntry("task-1");
@@ -19,12 +23,14 @@ function setup() {
 		"task-1",
 		createTestTaskSessionSummary({
 			taskId: "task-1",
-			agentId: "codex",
+			agentId: provider,
 			state: "running",
 			pid: 123,
 			sessionInstanceId: "launch-1",
+			sessionLaunchPath: "/synthetic/worktree",
 			resumeSessionId: "session-1",
 			nativeWorkEvidence: createTestTaskNativeWorkEvidence({
+				provider,
 				sessionInstanceId: "launch-1",
 				providerSessionId: "session-1",
 				turnId: "turn-1",
@@ -33,10 +39,11 @@ function setup() {
 	);
 	const read = vi.fn(async () => response());
 	const cursor: ConversationProgressCursor = { read, beginEpoch: vi.fn(), pause: vi.fn() };
-	const getHint = vi.fn(() => ({
-		providerId: "codex" as const,
+	const getHint = vi.fn((): ConversationSourceHint | null => ({
+		providerId: provider,
 		providerSessionId: "session-1",
 		sourcePath: "/synthetic/session-1.jsonl",
+		...(provider === "pi" ? { sessionInstanceId: "launch-1" } : {}),
 	}));
 	const isCurrentStore = vi.fn(() => true);
 	const createCursor = vi.fn(() => cursor);
@@ -105,10 +112,10 @@ describe("incremental task progress preview delivery", () => {
 		}
 	});
 
-	it("does not read unsupported, idle, or unhinted tasks", async () => {
+	it("does not read wrong-provider, idle, or unhinted tasks", async () => {
 		const { store, service, observe, read, getHint } = setup();
 		try {
-			getHint.mockReturnValueOnce(null as never);
+			getHint.mockReturnValueOnce(null);
 			observe();
 			store.update("task-1", { agentId: "pi" });
 			observe();
@@ -121,47 +128,163 @@ describe("incremental task progress preview delivery", () => {
 		}
 	});
 
-	it("retains the first running epoch while waiting for a supplied hint", async () => {
-		const { service, observe, getHint, createCursor, setTime } = setup();
+	it.each(["codex", "pi"] as const)(
+		"retains the first %s running epoch while waiting for a supplied hint",
+		async (provider) => {
+			const { service, observe, getHint, createCursor, setTime } = setup(provider);
+			try {
+				getHint.mockReturnValueOnce(null);
+				observe();
+				setTime(500);
+				observe();
+				await service.refresh();
+				expect(createCursor).toHaveBeenCalledWith(expect.objectContaining({ since: 100 }));
+			} finally {
+				await service.close();
+			}
+		},
+	);
+
+	it.each(
+		(["codex", "pi"] as const).flatMap((provider) =>
+			(["completion", "session", "launch", "launch-path", "turn", "hint", "store", "close"] as const).map(
+				(reason) => ({
+					provider,
+					reason,
+				}),
+			),
+		),
+	)("fences a pending $provider read after $reason changes", async ({ provider, reason }) => {
+		const { store, service, observe, read, getHint, isCurrentStore } = setup(provider);
+		let resolve!: (value: ConversationProgressReadResult) => void;
+		read.mockImplementationOnce(
+			() =>
+				new Promise((done) => {
+					resolve = done;
+				}),
+		);
+		observe();
+		if (reason === "completion") store.update("task-1", { state: "awaiting_review", nativeWorkEvidence: null });
+		if (reason === "session") store.update("task-1", { resumeSessionId: "replacement" });
+		if (reason === "launch") store.update("task-1", { sessionInstanceId: "replacement" });
+		if (reason === "launch-path") store.update("task-1", { sessionLaunchPath: "/replacement/worktree" });
+		if (reason === "hint") getHint.mockReturnValue(null);
+		if (reason === "turn") {
+			const evidence = store.getSummary("task-1")?.nativeWorkEvidence;
+			if (!evidence) throw new Error("Missing work evidence");
+			store.update("task-1", { nativeWorkEvidence: { ...evidence, turnId: "turn-2" } });
+		}
+		if (reason === "store") isCurrentStore.mockReturnValue(false);
+		const closing = reason === "close" ? service.close() : null;
+		resolve(response("Delayed old message"));
+		await (closing ?? service.refresh());
+		expect(store.getSummary("task-1")?.progressMessage).toBeFalsy();
+		await service.close();
+	});
+
+	it.each([undefined, "previous-launch"])("rejects a Pi hint from launch %s", async (sessionInstanceId) => {
+		const { service, observe, read, getHint, createCursor } = setup("pi");
+		getHint.mockReturnValue({
+			providerId: "pi",
+			providerSessionId: "session-1",
+			sourcePath: "/synthetic/session-1.jsonl",
+			sessionInstanceId,
+		});
 		try {
-			getHint.mockReturnValueOnce(null as never);
-			observe();
-			setTime(500);
 			observe();
 			await service.refresh();
-			expect(createCursor).toHaveBeenCalledWith(expect.objectContaining({ since: 100 }));
+			expect(createCursor).not.toHaveBeenCalled();
+			expect(read).not.toHaveBeenCalled();
 		} finally {
 			await service.close();
 		}
 	});
 
-	it.each(["completion", "session", "turn", "store", "close"] as const)(
-		"fences a pending read after %s changes",
-		async (reason) => {
-			const { store, service, observe, read, isCurrentStore } = setup();
-			let resolve!: (value: ConversationProgressReadResult) => void;
-			read.mockImplementationOnce(
-				() =>
-					new Promise((done) => {
-						resolve = done;
-					}),
-			);
+	it("does not create a Pi cursor without the authoritative launch directory", async () => {
+		const { store, service, observe, createCursor } = setup("pi");
+		try {
+			store.update("task-1", { sessionLaunchPath: null });
 			observe();
-			if (reason === "completion") store.update("task-1", { state: "awaiting_review", nativeWorkEvidence: null });
-			if (reason === "session") store.update("task-1", { resumeSessionId: "replacement" });
-			if (reason === "turn") {
-				const evidence = store.getSummary("task-1")?.nativeWorkEvidence;
-				if (!evidence) throw new Error("Missing work evidence");
-				store.update("task-1", { nativeWorkEvidence: { ...evidence, turnId: "turn-2" } });
-			}
-			if (reason === "store") isCurrentStore.mockReturnValue(false);
-			const closing = reason === "close" ? service.close() : null;
-			resolve(response("Delayed old message"));
-			await (closing ?? service.refresh());
-			expect(store.getSummary("task-1")?.progressMessage).toBeFalsy();
+			await service.refresh();
+			expect(createCursor).not.toHaveBeenCalled();
+		} finally {
 			await service.close();
-		},
-	);
+		}
+	});
+
+	it("fences an in-flight Pi preview after foreground reply capture until a new native epoch", async () => {
+		const { store, service, observe, read, cursor } = setup("pi");
+		let resolve!: (value: ConversationProgressReadResult) => void;
+		read.mockImplementationOnce(
+			() =>
+				new Promise((done) => {
+					resolve = done;
+				}),
+		);
+		try {
+			observe();
+			const previous = store.getSummary("task-1");
+			if (!previous?.nativeWorkEvidence) throw new Error("Missing work evidence");
+			store.appendCompletedResponse("task-1", { text: "Foreground final", capturedAt: 150 });
+			service.observe({
+				projectId: "project-1",
+				taskId: "task-1",
+				store,
+				previous,
+				foregroundSettled: true,
+			});
+			resolve(response("Foreground final"));
+			await service.refresh();
+			observe();
+			await service.refresh();
+			expect(read).toHaveBeenCalledOnce();
+			expect(cursor.pause).toHaveBeenCalled();
+			expect(store.getSummary("task-1")).toMatchObject({ state: "running" });
+			expect(store.getSummary("task-1")?.progressMessage).toBeFalsy();
+			expect(store.getSummary("task-1")?.completedResponses.at(-1)?.text).toBe("Foreground final");
+			store.update("task-1", { nativeWorkEvidence: { ...previous.nativeWorkEvidence, turnId: "turn-2" } });
+			observe();
+			await service.refresh();
+			expect(read).toHaveBeenCalledTimes(2);
+			expect(store.getSummary("task-1")?.progressMessage).toBe("Checking keyboard navigation");
+		} finally {
+			await service.close();
+		}
+	});
+
+	it("passes the admitted current-launch Pi source unchanged to its cursor", async () => {
+		const { store, service, observe, getHint, createCursor } = setup("pi");
+		try {
+			observe();
+			await service.refresh();
+			expect(createCursor).toHaveBeenCalledWith({
+				hint: getHint(),
+				since: 100,
+				sessionInstanceId: "launch-1",
+				launchPath: "/synthetic/worktree",
+			});
+			expect(store.getSummary("task-1")?.progressMessage).toBe("Checking keyboard navigation");
+		} finally {
+			await service.close();
+		}
+	});
+
+	it("recreates a Pi cursor when its caller-owned launch directory changes", async () => {
+		const { store, service, observe, createCursor } = setup("pi");
+		try {
+			observe();
+			await service.refresh();
+			store.update("task-1", { sessionLaunchPath: "/replacement/worktree" });
+			observe();
+			await service.refresh();
+			expect(createCursor).toHaveBeenCalledTimes(2);
+			expect(createCursor).toHaveBeenLastCalledWith(
+				expect.objectContaining({ launchPath: "/replacement/worktree" }),
+			);
+		} finally {
+			await service.close();
+		}
+	});
 
 	it("gives each target one chunk per pass even while the first has unread output", async () => {
 		const { store, service, observe, createCursor, read } = setup();

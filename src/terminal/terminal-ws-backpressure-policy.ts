@@ -30,6 +30,8 @@ export function createTerminalWsIoOutputState({
 	terminalManager,
 	onBackpressureChanged,
 }: CreateIoOutputStateRequest): IoOutputState {
+	let disposed = false;
+	const drainWaiters = new Set<(drained: boolean) => void>();
 	let pendingOutputChunks: Buffer[] = [];
 	let outputFlushTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastOutputSentAt = 0;
@@ -91,11 +93,10 @@ export function createTerminalWsIoOutputState({
 		scheduleResumeCheck();
 	};
 
-	const checkBackpressureAfterSend = (chunk: Buffer) => {
-		if (outputPaused || ws.readyState !== ws.OPEN) {
+	const checkBackpressureAfterSend = () => {
+		if (disposed || outputPaused || ws.readyState !== ws.OPEN) {
 			return;
 		}
-		unacknowledgedOutputBytes += chunk.byteLength;
 		if (shouldPauseOutput()) {
 			outputPaused = true;
 			onBackpressureChanged?.(true, {
@@ -112,12 +113,15 @@ export function createTerminalWsIoOutputState({
 	};
 
 	const sendOutputChunk = (chunk: Buffer) => {
-		if (ws.readyState !== ws.OPEN) {
+		if (disposed || ws.readyState !== ws.OPEN) {
 			return;
 		}
+		// Count every frame, including output emitted while already paused.
+		// Reserve before send so a synchronous ack/disposal cannot race it.
+		unacknowledgedOutputBytes += chunk.byteLength;
 		ws.send(chunk);
 		lastOutputSentAt = Date.now();
-		checkBackpressureAfterSend(chunk);
+		checkBackpressureAfterSend();
 	};
 
 	const flushOutputBatch = () => {
@@ -126,12 +130,20 @@ export function createTerminalWsIoOutputState({
 			pendingOutputChunks = [];
 			return;
 		}
-		sendOutputChunk(Buffer.concat(pendingOutputChunks));
+		const chunks = pendingOutputChunks;
 		pendingOutputChunks = [];
+		sendOutputChunk(Buffer.concat(chunks));
+	};
+
+	const settleDrainWaiters = (drained: boolean) => {
+		const waiters = [...drainWaiters];
+		drainWaiters.clear();
+		for (const settle of waiters) settle(drained);
 	};
 
 	return {
 		enqueueOutput: (chunk: Buffer) => {
+			if (disposed) return;
 			const now = Date.now();
 			const shouldSendImmediately =
 				pendingOutputChunks.length === 0 &&
@@ -150,8 +162,23 @@ export function createTerminalWsIoOutputState({
 		acknowledgeOutput: (bytes: number) => {
 			unacknowledgedOutputBytes = Math.max(0, unacknowledgedOutputBytes - Math.max(0, Math.floor(bytes)));
 			checkResumeAfterBackpressure();
+			if (unacknowledgedOutputBytes === 0 && pendingOutputChunks.length === 0) settleDrainWaiters(true);
+		},
+		drainOutput: () => {
+			if (disposed || ws.readyState !== ws.OPEN) return Promise.resolve(false);
+			if (outputFlushTimer !== null) {
+				clearTimeout(outputFlushTimer);
+				outputFlushTimer = null;
+			}
+			flushOutputBatch();
+			if (disposed || ws.readyState !== ws.OPEN) return Promise.resolve(false);
+			if (unacknowledgedOutputBytes === 0 && pendingOutputChunks.length === 0) return Promise.resolve(true);
+			return new Promise<boolean>((resolve) => drainWaiters.add(resolve));
 		},
 		dispose: () => {
+			if (disposed) return;
+			disposed = true;
+			settleDrainWaiters(false);
 			if (outputFlushTimer !== null) {
 				clearTimeout(outputFlushTimer);
 				outputFlushTimer = null;

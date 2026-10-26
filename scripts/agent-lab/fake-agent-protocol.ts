@@ -1,3 +1,5 @@
+import { buildShellCommandLine } from "../../src/core/shell";
+import { buildWindowsProcessArgsCommandLine } from "../../src/core/windows-cmd-launch";
 import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
 
 export type FakeAgentProvider = "claude" | "codex" | "pi";
@@ -30,14 +32,6 @@ export function getFakeAgentVersionOutput(provider: FakeAgentProvider): string {
 	return FAKE_AGENT_VERSION_OUTPUT[provider];
 }
 
-export function shouldFakeClaudeUseFullscreen(provider: FakeAgentProvider, environment: NodeJS.ProcessEnv): boolean {
-	return (
-		provider === "claude" &&
-		environment.CLAUDE_CODE_NO_FLICKER === "1" &&
-		environment.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN !== "1"
-	);
-}
-
 function findOptionValue(args: readonly string[], optionName: string): string | null {
 	const separator = args.indexOf("--");
 	const optionArgs = separator === -1 ? args : args.slice(0, separator);
@@ -53,19 +47,99 @@ function findOptionValue(args: readonly string[], optionName: string): string | 
 	return null;
 }
 
-function extractPiPromptArgument(args: readonly string[]): string {
-	for (let index = args.length - 1; index >= 0; index -= 1) {
+// Pi 1.4.0's native value-taking options consume the next token, even when it
+// looks like a flag. Keep literal system prompts out of renderer/resume detection.
+const PI_OPTIONS_WITH_VALUES = new Set([
+	"--provider",
+	"--model",
+	"--api-key",
+	"--system-prompt",
+	"--append-system-prompt",
+	"--name",
+	"-n",
+	"--session",
+	"--session-id",
+	"--fork",
+	"--session-dir",
+	"--models",
+	"--tools",
+	"-t",
+	"--exclude-tools",
+	"-xt",
+	"--thinking",
+	"--export",
+	"--extension",
+	"-e",
+	"--skill",
+	"--prompt-template",
+	"--theme",
+	"--tui-mode",
+]);
+
+const PI_BOOLEAN_OPTIONS = new Set([
+	"--help",
+	"-h",
+	"--version",
+	"-v",
+	"--continue",
+	"-c",
+	"--resume",
+	"-r",
+	"--no-session",
+	"--no-tools",
+	"-nt",
+	"--no-builtin-tools",
+	"-nbt",
+	"--print",
+	"-p",
+	"--no-extensions",
+	"-ne",
+	"--no-mcp",
+	"--no-skills",
+	"-ns",
+	"--no-prompt-templates",
+	"-np",
+	"--no-themes",
+	"--no-context-files",
+	"-nc",
+	"--verbose",
+	"--approve",
+	"-a",
+	"--no-approve",
+	"-na",
+	"--offline",
+]);
+
+function parseFakePiArguments(args: readonly string[]): {
+	options: Map<string, string>;
+	prompt: string;
+} {
+	const options = new Map<string, string>();
+	const positionals: string[] = [];
+	for (let index = 0; index < args.length; index += 1) {
 		const argument = args[index];
-		if (
-			argument &&
-			!argument.startsWith("-") &&
-			args[index - 1] !== "--extension" &&
-			args[index - 1] !== "--session"
-		) {
-			return argument;
+		if (argument === "--") {
+			positionals.push(...args.slice(index + 1).filter((value) => !value.startsWith("@")));
+			break;
+		}
+		if (argument && PI_OPTIONS_WITH_VALUES.has(argument)) {
+			options.set(argument, args[index + 1] ?? "");
+			index += 1;
+		} else if (argument && PI_BOOLEAN_OPTIONS.has(argument)) {
+			options.set(argument, "");
+		} else if (argument?.startsWith("--")) {
+			// Pi reserves unknown long flags for extensions. A bare flag owns the
+			// next non-flag/non-file token; --flag=value never consumes a sibling.
+			// Do not interpret extension flags as native renderer/resume options.
+			const next = args[index + 1];
+			if (!argument.includes("=") && next !== undefined && !next.startsWith("-") && !next.startsWith("@")) {
+				index += 1;
+			}
+		} else if (argument && !argument.startsWith("-") && !argument.startsWith("@")) {
+			positionals.push(argument);
 		}
 	}
-	return "";
+	return { options, prompt: positionals.join(" ") };
 }
 
 const CODEX_OPTIONS_WITH_VALUES = new Set([
@@ -87,6 +161,48 @@ const CODEX_OPTIONS_WITH_VALUES = new Set([
 	"--image",
 	"--add-dir",
 ]);
+
+export function shouldFakeAgentUseFullscreen(
+	provider: FakeAgentProvider,
+	args: readonly string[],
+	environment: NodeJS.ProcessEnv,
+): boolean {
+	if (provider === "claude") {
+		return environment.CLAUDE_CODE_NO_FLICKER === "1" && environment.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN !== "1";
+	}
+	if (provider === "pi") {
+		return parseFakePiArguments(args).options.get("--tui-mode") === "fullscreen";
+	}
+
+	// Require the actual managed Codex renderer policy, not merely the provider
+	// name, so a missing adapter override cannot be hidden by the fake TUI.
+	const config = new Map<string, string>();
+	let noAlternateScreen = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const argument = args[index];
+		if (argument === "--") break;
+		let override: string | undefined;
+		if (argument === "-c" || argument === "--config") {
+			override = args[++index];
+		} else if (argument?.startsWith("-c=") || argument?.startsWith("--config=")) {
+			override = argument.slice(argument.indexOf("=") + 1);
+		} else if (argument && CODEX_OPTIONS_WITH_VALUES.has(argument)) {
+			index += 1;
+		} else if (argument === "--no-alt-screen") {
+			noAlternateScreen = true;
+		}
+		if (override) {
+			const equals = override.indexOf("=");
+			if (equals > 0) config.set(override.slice(0, equals).trim(), override.slice(equals + 1).trim());
+		}
+	}
+	return (
+		!noAlternateScreen &&
+		config.get("tui.fullscreen_transcript") === "true" &&
+		['"always"', "'always'"].includes(config.get("tui.alternate_screen") ?? "") &&
+		config.get("tui.raw_output_mode") === "false"
+	);
+}
 
 function resolveFakeCodexResume(
 	args: readonly string[],
@@ -127,10 +243,15 @@ export function resolveFakeAgentInvocation(provider: FakeAgentProvider, args: re
 		return { prompt: extractPromptArgument(args), ...resolveFakeCodexResume(args), settingsPath: null };
 	}
 	if (provider === "pi") {
-		const requestedSessionId = findOptionValue(args, "--session");
+		const { options, prompt } = parseFakePiArguments(args);
+		const requestedSessionId = options.get("--session") || null;
 		return {
-			prompt: extractPiPromptArgument(args),
-			resumeKind: requestedSessionId ? "targeted" : args.includes("--continue") ? "continue" : "fresh",
+			prompt,
+			resumeKind: requestedSessionId
+				? "targeted"
+				: options.has("--continue") || options.has("-c")
+					? "continue"
+					: "fresh",
 			requestedSessionId,
 			settingsPath: null,
 		};
@@ -143,6 +264,46 @@ export function resolveFakeAgentInvocation(provider: FakeAgentProvider, args: re
 		requestedSessionId,
 		settingsPath: provider === "claude" ? findOptionValue(args, "--settings") : null,
 	};
+}
+
+/** Recognize Quarterdeck's generated hook commands, not arbitrary shell/PowerShell programs. */
+export function hasFakeClaudeHookCommand(groups: unknown, delivery: "ingest" | "notify", event: string): boolean {
+	if (!Array.isArray(groups)) return false;
+	const args = ["hooks", delivery, "--event", event, "--source", "claude"];
+	const posixTail = ` ${buildShellCommandLine("hooks", args.slice(1), "linux")}`;
+	const windowsTail = ` ${buildWindowsProcessArgsCommandLine(args)}`;
+	return groups.some((group: unknown) => {
+		if (!group || typeof group !== "object" || !("hooks" in group) || !Array.isArray(group.hooks)) return false;
+		return group.hooks.some((handler: unknown) => {
+			if (!handler || typeof handler !== "object" || !("type" in handler) || handler.type !== "command")
+				return false;
+			if (!("command" in handler) || typeof handler.command !== "string") return false;
+			if (handler.command.endsWith(posixTail)) return true;
+			// Windows shell commands encode a PowerShell bootstrap; the hook argv
+			// lives in its JSON launch record, not in the outer command string.
+			const encoded = handler.command.match(
+				/^""[^"\r\n]+" -NoLogo -NoProfile -NonInteractive -EncodedCommand ([A-Za-z0-9+/]+={0,2})"$/u,
+			)?.[1];
+			if (!encoded) return false;
+			const script = Buffer.from(encoded, "base64").toString("utf16le");
+			const launchJson = script.match(/^\$launch = ConvertFrom-Json -InputObject '((?:[^']|'')*)'; /u)?.[1];
+			if (!launchJson) return false;
+			try {
+				const launch: unknown = JSON.parse(launchJson.replaceAll("''", "'"));
+				return (
+					launch !== null &&
+					typeof launch === "object" &&
+					"fileName" in launch &&
+					typeof launch.fileName === "string" &&
+					"arguments" in launch &&
+					typeof launch.arguments === "string" &&
+					launch.arguments.endsWith(windowsTail)
+				);
+			} catch {
+				return false;
+			}
+		});
+	});
 }
 
 export function buildClaudeHookPayload(
@@ -209,6 +370,7 @@ export type FakeAgentCommand =
 	| { kind: "commit"; message: string }
 	| { kind: "status" }
 	| { kind: "clipboard-read" }
+	| { kind: "hyperlink" }
 	| { kind: "spam"; count: number }
 	| { kind: "alternate-screen"; enabled: boolean }
 	| { kind: "delay-review"; delayMs: number; message: string }
@@ -240,6 +402,9 @@ export function parseFakeAgentCommand(rawInput: string): FakeAgentCommand {
 	}
 	if (input === "/status") {
 		return { kind: "status" };
+	}
+	if (input === "/hyperlink") {
+		return { kind: "hyperlink" };
 	}
 	if (input === "/clipboard-read") {
 		return { kind: "clipboard-read" };

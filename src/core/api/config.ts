@@ -69,6 +69,7 @@ export const runtimeConfigResponseSchema = z.object({
 	codeNavigationEnabled: z.boolean(),
 	lspServers: lspServersSchema,
 	defaultBaseRef: z.string(),
+	defaultUseWorktree: z.boolean().optional(),
 	worktreeSetupScript: z.string(),
 	backupIntervalMinutes: z.number(),
 	/** The optional OpenAI-compatible gateway is configured. */
@@ -115,6 +116,7 @@ export const runtimeConfigSaveRequestSchema = z.object({
 	codeNavigationEnabled: z.boolean().optional(),
 	lspServers: lspServersSchema.optional(),
 	defaultBaseRef: z.string().optional(),
+	defaultUseWorktree: z.boolean().optional(),
 	worktreeSetupScript: z.string().optional(),
 	backupIntervalMinutes: z.number().min(0).optional(),
 });

@@ -6,9 +6,13 @@ import {
 	createProjectTaskNotificationKey,
 	flattenProjectNotificationTasks,
 } from "@/hooks/notifications/project-notifications";
-import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
+import {
+	type RuntimeProjectNotificationStateMap,
+	seedRuntimeProjectNotificationStateMapFromProjectState,
+} from "@/runtime/runtime-notification-projects";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import {
+	createTestProjectStateResponse,
 	createTestTaskHookActivity,
 	createTestTaskOutstandingInteraction,
 	createTestTaskSessionSummary,
@@ -65,6 +69,70 @@ describe("project-notifications", () => {
 		});
 		expect(projection.currentProjectHasNeedsInput).toBe(true);
 		expect(projection.otherProjectsHaveNeedsInput).toBe(true);
+	});
+
+	it.each([
+		{
+			name: "explicit error",
+			summary: createSummary("shared", { state: "awaiting_review", reviewReason: "error" }),
+			error: 1,
+			needsInput: 0,
+		},
+		{
+			name: "unknown interaction resolution without an error review reason",
+			summary: createSummary("shared", {
+				state: "awaiting_review",
+				reviewReason: "hook",
+				outstandingInteraction: createTestTaskOutstandingInteraction({ status: "resolution_unknown" }),
+			}),
+			error: 1,
+			needsInput: 0,
+		},
+		{
+			name: "waiting interaction overriding an error review reason",
+			summary: createSummary("shared", {
+				state: "awaiting_review",
+				reviewReason: "error",
+				outstandingInteraction: createTestTaskOutstandingInteraction(),
+			}),
+			error: 0,
+			needsInput: 1,
+		},
+		{
+			name: "ordinary review despite a failure notification on exit",
+			summary: createSummary("shared", { state: "awaiting_review", reviewReason: "exit", exitCode: 1 }),
+			error: 0,
+			needsInput: 0,
+		},
+	])("derives exclusive counts from the shared classifier: $name", ({ summary, error, needsInput }) => {
+		const projection = buildProjectNotificationProjection(
+			{
+				"project-a": { sessions: { shared: summary } },
+				"project-b": { sessions: { shared: createSummary("shared", { state: "awaiting_review" }) } },
+			},
+			"project-b",
+		);
+		expect(projection.errorByProject).toEqual(error ? { "project-a": error } : {});
+		expect(projection.needsInputByProject).toEqual(needsInput ? { "project-a": needsInput } : {});
+		expect(projection.currentProjectHasNeedsInput).toBe(false);
+		expect(projection.otherProjectsHaveNeedsInput).toBe(needsInput > 0);
+	});
+
+	it("uses actionable notification state without counting Trash, unstarted, or orphan errors", () => {
+		const projectState = createTestProjectStateResponse();
+		const review = projectState.board.columns.find((column) => column.id === "review")!;
+		const trash = projectState.board.columns.find((column) => column.id === "trash")!;
+		const card = (id: string) => ({ id, title: id, prompt: id, baseRef: "main", createdAt: 1, updatedAt: 1 });
+		review.cards = [card("active"), { ...card("unstarted"), unstarted: true }];
+		trash.cards = [card("trashed")];
+		projectState.sessions = Object.fromEntries(
+			["active", "unstarted", "trashed", "orphan"].map((taskId) => [
+				taskId,
+				createSummary(taskId, { state: "awaiting_review", reviewReason: "error" }),
+			]),
+		);
+		const projects = seedRuntimeProjectNotificationStateMapFromProjectState({}, "project-a", projectState);
+		expect(buildProjectNotificationProjection(projects, "project-a").errorByProject).toEqual({ "project-a": 1 });
 	});
 
 	it("flattens task ownership for notification hooks", () => {

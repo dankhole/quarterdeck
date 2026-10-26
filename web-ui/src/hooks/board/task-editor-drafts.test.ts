@@ -172,6 +172,12 @@ describe("task-editor-drafts", () => {
 		});
 	});
 
+	it("seeds reset drafts with the configured worktree choice without remembering prior overrides", () => {
+		expect(createResetTaskCreateDraft("main", "claude", false).useWorktree).toBe(false);
+		expect(createResetTaskCreateDraft("main", "claude", true).useWorktree).toBe(true);
+		expect(createResetTaskCreateDraft("main", "claude", undefined).useWorktree).toBe(true);
+	});
+
 	it("builds edit drafts and applies edited task changes to the board", () => {
 		const task = createTask("task-1", "Original prompt", {
 			images: [{ id: "img-1", data: "abc", mimeType: "image/png" }],

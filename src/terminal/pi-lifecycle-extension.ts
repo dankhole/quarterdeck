@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const QUARTERDECK_PI_HOOK_COMMAND_ENV = "QUARTERDECK_PI_HOOK_COMMAND_JSON";
 export const QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV = "QUARTERDECK_PI_WORKTREE_TRUST_SCOPE";
 // Published only when the runtime's loopback hook HTTP channel is active (see
 // `hook-http-channel.ts`); the extension POSTs best-effort activity hooks to
 // this URL in-process instead of spawning `hooks notify`, mirroring Claude's
-// `type: "http"` hooks. Durable hooks always keep the CLI command above.
+// `type: "http"` hooks. Reliable lifecycle hooks use the bundled shared client.
 export const QUARTERDECK_PI_HOOK_HTTP_URL_ENV = "QUARTERDECK_PI_HOOK_HTTP_URL";
 
 const PI_LIFECYCLE_EXTENSION_ASSET_FILENAME = "pi-lifecycle-extension.runtime.js";
@@ -34,11 +34,31 @@ export function buildPiLifecycleExtensionSource(): string {
 	requireExactlyOnePlaceholder(source, PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER);
 	requireExactlyOnePlaceholder(source, PI_LIFECYCLE_EXTENSION_HOOK_HTTP_URL_ENV_PLACEHOLDER);
 	requireExactlyOnePlaceholder(source, PI_LIFECYCLE_EXTENSION_WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER);
-	cachedPiLifecycleExtensionSource = source
+	// Production assets bundle these static imports. Source/dev execution uses
+	// Pi's TypeScript-capable loader, with file URLs preserving Windows drives,
+	// spaces and URL-reserved characters after the asset is copied for launch.
+	const linkedSource = linkPiLifecycleExtensionImports(source, pathToFileURL(resolvePiLifecycleExtensionAssetPath()));
+	cachedPiLifecycleExtensionSource = linkedSource
 		.replace(PI_LIFECYCLE_EXTENSION_HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV)
 		.replace(PI_LIFECYCLE_EXTENSION_HOOK_HTTP_URL_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_HTTP_URL_ENV)
 		.replace(PI_LIFECYCLE_EXTENSION_WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER, QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV);
 	return cachedPiLifecycleExtensionSource;
+}
+
+export function linkPiLifecycleExtensionImports(source: string, assetUrl: URL): string {
+	return source
+		.replace(
+			'from "../commands/hook-metadata.js"',
+			`from ${JSON.stringify(new URL("../commands/hook-metadata.ts", assetUrl).href)}`,
+		)
+		.replace(
+			'from "../hook-reliable-delivery.js"',
+			`from ${JSON.stringify(new URL("../hook-reliable-delivery.ts", assetUrl).href)}`,
+		)
+		.replace(
+			'from "../hook-delivery-order.js"',
+			`from ${JSON.stringify(new URL("../hook-delivery-order.ts", assetUrl).href)}`,
+		);
 }
 
 export function getPiLifecycleExtensionFingerprint(): string {

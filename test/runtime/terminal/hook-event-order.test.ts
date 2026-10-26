@@ -2077,7 +2077,7 @@ describe("durable ordering compaction", () => {
 		return compacted;
 	}
 
-	it("drops Claude tool pairs behind a completed Stop without changing replay decisions", () => {
+	it("keeps one Claude tool identity behind Stop so prompt-less replay decisions stay equivalent", () => {
 		const claude = (input: Omit<Parameters<typeof hook>[0], "source">) => hook({ source: "claude", ...input });
 		const inputs = [
 			claude({ event: "to_in_progress", hookEventName: "UserPromptSubmit", promptId: "p1", deliveryIndex: 1 }),
@@ -2174,9 +2174,23 @@ describe("durable ordering compaction", () => {
 				occurredAt: 1_000,
 			}),
 			claude({ event: "to_review", hookEventName: "Stop", deliveryIndex: 25, occurredAt: 1_000 }),
+			claude({
+				event: "activity",
+				hookEventName: "PreToolUse",
+				toolUseId: "t1",
+				deliveryIndex: 26,
+				occurredAt: 1_000,
+			}),
+			claude({
+				event: "to_in_progress",
+				hookEventName: "PostToolUse",
+				toolUseId: "t2",
+				deliveryIndex: 27,
+				occurredAt: 1_000,
+			}),
 		]);
 		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
-			[1, 6, 7, 8, 9].map((index) => delivery(index, 0).id),
+			[1, 3, 5, 6, 7, 8, 9].map((index) => delivery(index, 0).id),
 		);
 	});
 
@@ -2215,7 +2229,7 @@ describe("durable ordering compaction", () => {
 			}),
 		]);
 		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
-			[1, 3].map((index) => delivery(index, 0).id),
+			[2, 3].map((index) => delivery(index, 0).id),
 		);
 	});
 
@@ -2247,7 +2261,7 @@ describe("durable ordering compaction", () => {
 			}),
 		]);
 		expect(compacted.map((observation) => observation.deliveryId)).toEqual(
-			[1, 4, 5, 7].map((index) => delivery(index, 0).id),
+			[1, 3, 4, 6, 7].map((index) => delivery(index, 0).id),
 		);
 	});
 

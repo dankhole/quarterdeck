@@ -37,6 +37,7 @@ export interface SettingsFormValues {
 	worktreeSystemPromptTemplate: string;
 	shortcuts: RuntimeProjectShortcut[];
 	worktreeSetupScript: string;
+	defaultUseWorktree: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +66,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		worktreeSystemPromptTemplate: config?.worktreeSystemPromptTemplate ?? "",
 		shortcuts: config?.shortcuts ?? [],
 		worktreeSetupScript: config?.worktreeSetupScript ?? CONFIG_DEFAULTS.worktreeSetupScript,
+		defaultUseWorktree: config?.defaultUseWorktree ?? true,
 	};
 }
 

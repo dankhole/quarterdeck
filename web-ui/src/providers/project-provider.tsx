@@ -62,6 +62,7 @@ export interface ProjectRuntimeStreamContextValue {
 export interface ProjectNotificationContextValue {
 	notificationProjects: RuntimeProjectNotificationStateMap;
 	needsInputByProject: Record<string, number>;
+	errorByProject: Record<string, number>;
 	currentProjectHasNeedsInput: boolean;
 	otherProjectsHaveNeedsInput: boolean;
 }
@@ -326,6 +327,7 @@ export function ProjectProvider({
 		() => ({
 			notificationProjects,
 			needsInputByProject: notificationProjection.needsInputByProject,
+			errorByProject: notificationProjection.errorByProject,
 			currentProjectHasNeedsInput: notificationProjection.currentProjectHasNeedsInput,
 			otherProjectsHaveNeedsInput: notificationProjection.otherProjectsHaveNeedsInput,
 		}),

@@ -23,6 +23,7 @@ export function ProjectNavigationList({
 	currentProjectId,
 	removingProjectId,
 	needsInputByProject,
+	errorByProject,
 	onSelectProject,
 	onPreloadProject,
 	onRequestRemoveProject,
@@ -37,6 +38,7 @@ export function ProjectNavigationList({
 	currentProjectId: string | null;
 	removingProjectId: string | null;
 	needsInputByProject: Record<string, number>;
+	errorByProject: Record<string, number>;
 	onSelectProject: (projectId: string) => void;
 	onPreloadProject?: (projectId: string) => void;
 	onRequestRemoveProject: (projectId: string) => void;
@@ -85,6 +87,7 @@ export function ProjectNavigationList({
 						isCurrent={currentProjectId === project.id}
 						removingProjectId={removingProjectId}
 						needsInputCount={needsInputByProject[project.id] ?? 0}
+						errorCount={errorByProject[project.id] ?? 0}
 						onSelect={onSelectProject}
 						onPreload={onPreloadProject}
 						onRemove={onRequestRemoveProject}
@@ -232,6 +235,7 @@ export function ProjectNavigationList({
 								currentProjectId={currentProjectId}
 								collapsed={collapse.collapsed.includes(section.id)}
 								needsInputByProject={needsInputByProject}
+								errorByProject={errorByProject}
 								disabled={disabled}
 								dragging={dragId !== null}
 								onToggle={() => collapse.toggle(section.id)}

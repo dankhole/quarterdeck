@@ -1535,7 +1535,10 @@ describe("TerminalSessionManager ordering invariants", () => {
 		expect(onOutput).not.toHaveBeenCalled();
 		spawnedSessions[1]?.triggerData("current output");
 		expect(onOutput).toHaveBeenCalledOnce();
-		expect(onOutput).toHaveBeenCalledWith(Buffer.from("current output"));
+		expect(onOutput).toHaveBeenCalledWith(Buffer.from("current output"), {
+			streamId: expect.any(String),
+			sequence: 1,
+		});
 	});
 
 	it("ignores output and exit callbacks from a replaced shell PTY", async () => {
@@ -1563,7 +1566,10 @@ describe("TerminalSessionManager ordering invariants", () => {
 		expect(manager.store.getSummary(request.taskId)).toMatchObject({ state: "running", pid: 222 });
 
 		spawnedSessions[1]?.triggerData("current shell output");
-		expect(onOutput).toHaveBeenCalledWith(Buffer.from("current shell output"));
+		expect(onOutput).toHaveBeenCalledWith(Buffer.from("current shell output"), {
+			streamId: expect.any(String),
+			sequence: 1,
+		});
 	});
 
 	describe("onData transition-before-broadcast ordering", () => {

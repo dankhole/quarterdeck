@@ -1,7 +1,6 @@
 import { memo, useMemo } from "react";
 import { createSourceLineCache } from "@/components/editor/source-line-highlighting";
 import { quarterdeckHighlightStyle } from "@/components/editor/source-presentation";
-
 import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
 import { DiffContextRows } from "@/components/shared/diff-context-rows";
 import {
@@ -12,6 +11,8 @@ import {
 	type UnifiedDiffRow,
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
+import { getDiffScrollLines } from "@/components/shared/diff-scroll-target";
+import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
 import {
@@ -117,7 +118,11 @@ export const SplitDiff = memo(function SplitDiff({
 	comments: Map<string, DiffLineComment>;
 } & DiffCommentCallbacks): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
-	const highlightCache = useMemo(() => createSourceLineCache(path), [path, oldText, newText]);
+	const languageSupport = useSourceLanguage("", path);
+	const highlightCache = useMemo(
+		() => createSourceLineCache(path, languageSupport),
+		[path, oldText, newText, languageSupport],
+	);
 	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
 	const displayItems = useMemo(
 		() =>
@@ -155,6 +160,8 @@ export const SplitDiff = memo(function SplitDiff({
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
 				<div
 					className={rowClass}
+					data-diff-line={rowLineNumber}
+					data-diff-side={row.variant === "removed" ? "removed" : "current"}
 					style={canClickRow ? undefined : { cursor: "default" }}
 					onClick={
 						canClickRow
@@ -212,7 +219,15 @@ export const SplitDiff = memo(function SplitDiff({
 					item.type === "rows" ? (
 						<div key={item.pairs[0]!.key}>
 							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
-							<DeferredDiffRows rows={item.pairs} getRowKey={(pair) => pair.key} renderRow={renderPair} />
+							<DeferredDiffRows
+								rows={item.pairs}
+								getRowKey={(pair) => pair.key}
+								getScrollLines={(pair) => [
+									...(pair.left ? getDiffScrollLines(path, pair.left) : []),
+									...(pair.right ? getDiffScrollLines(path, pair.right) : []),
+								]}
+								renderRow={renderPair}
+							/>
 						</div>
 					) : (
 						<div key={item.block.id}>

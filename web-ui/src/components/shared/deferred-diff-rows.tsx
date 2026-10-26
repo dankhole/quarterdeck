@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type DiffScrollLine, DiffScrollTargetContext } from "./diff-scroll-target";
 
 export const DEFERRED_ROW_THRESHOLD = 200;
 const ROWS_PER_CHUNK = 80;
@@ -9,10 +10,12 @@ export function DeferredDiffRows<T>({
 	rows,
 	getRowKey,
 	renderRow,
+	getScrollLines,
 }: {
 	rows: readonly T[];
 	getRowKey: (row: T) => string;
 	renderRow: (row: T) => React.ReactElement;
+	getScrollLines?: (row: T) => DiffScrollLine[];
 }): React.ReactElement {
 	const chunks = useMemo(() => {
 		const result: T[][] = [];
@@ -29,6 +32,7 @@ export function DeferredDiffRows<T>({
 					key={getRowKey(chunk[0]!)}
 					rows={chunk}
 					renderRow={renderRow}
+					getScrollLines={getScrollLines}
 					defer={rows.length > DEFERRED_ROW_THRESHOLD}
 				/>
 			))}
@@ -40,14 +44,37 @@ export function DeferredDiffChunk<T>({
 	rows,
 	renderRow,
 	defer,
+	getScrollLines,
 }: {
 	rows: readonly T[];
 	renderRow: (row: T) => React.ReactElement;
 	defer: boolean;
+	getScrollLines?: (row: T) => DiffScrollLine[];
 }): React.ReactElement {
 	const elementRef = useRef<HTMLDivElement>(null);
 	const [revealed, setRevealed] = useState(() => !defer || typeof IntersectionObserver === "undefined");
 	const visible = revealed || !defer;
+	const scrollTarget = useContext(DiffScrollTargetContext);
+
+	// The parent captures its anchor in getSnapshotBeforeUpdate, after render
+	// but before this layout effect. Reveal even if shifted chunk boundaries put
+	// the reading line in a newly mounted, initially offscreen placeholder.
+	useLayoutEffect(() => {
+		elementRef.current?.removeAttribute("data-diff-scroll-pending");
+		const target = scrollTarget.current;
+		if (visible || !target || !getScrollLines) return;
+		if (
+			rows.some((row) =>
+				getScrollLines(row).some(
+					(line) =>
+						line.path === target.path && line.side === target.side && line.lineNumber === target.lineNumber,
+				),
+			)
+		) {
+			elementRef.current?.setAttribute("data-diff-scroll-pending", "true");
+			setRevealed(true);
+		}
+	});
 
 	useEffect(() => {
 		if (!defer) {

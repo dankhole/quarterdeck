@@ -499,7 +499,7 @@ export function FileEditorPanel({
 						<SourceEditor
 							ref={sourceEditorRef}
 							path={activeTab.path}
-							language={activeTab.language}
+							language=""
 							value={activeTab.value}
 							readOnly={!canEditActiveTab}
 							wordWrap={wordWrap}

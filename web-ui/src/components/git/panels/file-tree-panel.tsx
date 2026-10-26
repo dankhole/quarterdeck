@@ -1,6 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { FileText, Folder, FolderOpen } from "lucide-react";
-import { useMemo } from "react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
+import { useMemo, useState } from "react";
 import { FileContextMenuItems } from "@/components/git/panels/context-menu-utils";
 import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 import type { RuntimeWorkdirFileChange, RuntimeWorkdirFileStatus } from "@/runtime/types";
@@ -30,6 +30,8 @@ function FileTreeRow({
 	onSelectPath,
 	diffStatsByPath,
 	navigateToFile,
+	collapsedDirs,
+	onToggleDirectory,
 }: {
 	node: FileTreeNode;
 	depth: number;
@@ -37,8 +39,11 @@ function FileTreeRow({
 	onSelectPath: (path: string) => void;
 	diffStatsByPath: Record<string, FileDiffStats>;
 	navigateToFile?: (nav: FileNavigation) => void;
+	collapsedDirs: ReadonlySet<string>;
+	onToggleDirectory: (path: string) => void;
 }): React.ReactElement {
 	const isDirectory = node.type === "directory";
+	const isExpanded = isDirectory && !collapsedDirs.has(node.path);
 	const isSelected = !isDirectory && node.path === selectedPath;
 	const fileStats = !isDirectory ? diffStatsByPath[node.path] : undefined;
 	const rowClassName = `kb-file-tree-row${isDirectory ? " kb-file-tree-row-directory" : ""}${isSelected ? " kb-file-tree-row-selected" : ""}`;
@@ -50,13 +55,23 @@ function FileTreeRow({
 			type="button"
 			className={rowClassName}
 			style={{ paddingLeft: depth * 12 + 8 }}
+			aria-expanded={isDirectory ? isExpanded : undefined}
 			onClick={() => {
-				if (!isDirectory) {
+				if (isDirectory) {
+					onToggleDirectory(node.path);
+				} else {
 					onSelectPath(node.path);
 				}
 			}}
 		>
-			{isDirectory ? <Folder size={14} /> : <FileText size={14} />}
+			{isDirectory ? (
+				<>
+					{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+					{isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
+				</>
+			) : (
+				<FileText size={14} />
+			)}
 			<span className="truncate">{node.name}</span>
 			{fileStats ? (
 				<span
@@ -85,13 +100,15 @@ function FileTreeRow({
 					</ContextMenu.Portal>
 				</ContextMenu.Root>
 			)}
-			{node.children.length > 0 ? (
+			{isExpanded && node.children.length > 0 ? (
 				<div>
 					{node.children.map((child) => (
 						<FileTreeRow
 							key={child.path}
 							node={child}
 							depth={depth + 1}
+							collapsedDirs={collapsedDirs}
+							onToggleDirectory={onToggleDirectory}
 							selectedPath={selectedPath}
 							onSelectPath={onSelectPath}
 							diffStatsByPath={diffStatsByPath}
@@ -117,6 +134,15 @@ export function FileTreePanel({
 	panelFlex?: string;
 	navigateToFile?: (nav: FileNavigation) => void;
 }): React.ReactElement {
+	const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(() => new Set());
+	const toggleDirectory = (path: string) => {
+		setCollapsedDirs((previous) => {
+			const next = new Set(previous);
+			if (next.has(path)) next.delete(path);
+			else next.add(path);
+			return next;
+		});
+	};
 	const referencedPaths = useMemo(() => {
 		return projectFiles?.map((file) => file.path) ?? [];
 	}, [projectFiles]);
@@ -158,6 +184,8 @@ export function FileTreePanel({
 								key={node.path}
 								node={node}
 								depth={0}
+								collapsedDirs={collapsedDirs}
+								onToggleDirectory={toggleDirectory}
 								selectedPath={selectedPath}
 								onSelectPath={onSelectPath}
 								diffStatsByPath={diffStatsByPath}

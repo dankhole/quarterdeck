@@ -280,21 +280,30 @@ export async function writeRuntimeGlobalConfigFile(
 
 export async function writeRuntimeProjectConfigFile(
 	configPath: string | null,
-	config: { shortcuts: RuntimeProjectShortcut[]; defaultBaseRef?: string; worktreeSetupScript?: string },
+	config: {
+		shortcuts: RuntimeProjectShortcut[];
+		defaultBaseRef?: string;
+		defaultUseWorktree?: boolean;
+		worktreeSetupScript?: string;
+	},
 ): Promise<void> {
 	const normalizedShortcuts = normalizeShortcuts(config.shortcuts);
 	const normalizedBaseRef = typeof config.defaultBaseRef === "string" ? config.defaultBaseRef.trim() : "";
 	const normalizedSetupScript = normalizeWorktreeSetupScript(config.worktreeSetupScript);
+	const defaultUseWorktree = config.defaultUseWorktree !== false;
 	if (!configPath) {
 		if (normalizedShortcuts.length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
+		}
+		if (!defaultUseWorktree) {
+			throw new Error("Cannot save a worktree default without a selected project.");
 		}
 		if (normalizedSetupScript) {
 			throw new Error("Cannot save a worktree setup script without a selected project.");
 		}
 		return;
 	}
-	if (normalizedShortcuts.length === 0 && !normalizedBaseRef && !normalizedSetupScript) {
+	if (normalizedShortcuts.length === 0 && !normalizedBaseRef && !normalizedSetupScript && defaultUseWorktree) {
 		await withRuntimeWriteOperation([configPath], async () => {
 			assertRuntimeWriteAdmission(configPath);
 			await rm(configPath, { force: true });
@@ -307,6 +316,9 @@ export async function writeRuntimeProjectConfigFile(
 	}
 	if (normalizedBaseRef) {
 		payload.defaultBaseRef = normalizedBaseRef;
+	}
+	if (!defaultUseWorktree) {
+		payload.defaultUseWorktree = false;
 	}
 	if (normalizedSetupScript) {
 		payload.worktreeSetupScript = normalizedSetupScript;

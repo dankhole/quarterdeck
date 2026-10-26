@@ -6,16 +6,18 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
 
 import { buildGitCommandArgs, resolveWindowsCompatibleCommand } from "../../src/core";
+import { buildQuarterdeckRuntimeUrl } from "../../src/core/runtime-endpoint";
 
 import {
 	buildClaudeHookPayload,
 	type FakeAgentCommand,
 	getFakeAgentVersionOutput,
+	hasFakeClaudeHookCommand,
 	parseFakeAgentCommand,
 	parseFakeAgentProvider,
 	resolveFakeAgentInvocation,
 	resolveFakeAgentScenario,
-	shouldFakeClaudeUseFullscreen,
+	shouldFakeAgentUseFullscreen,
 } from "./fake-agent-protocol";
 import { readFakeCodexHistory } from "./fake-codex-history";
 import {
@@ -24,6 +26,7 @@ import {
 	resolveFakeCodexHistoryPath,
 	writeFakeInvocationReceipt,
 } from "./fake-invocation-receipt";
+import { appendFakePiMessage, type FakePiHistory, initializeFakePiHistory } from "./fake-pi-history";
 import { AgentLabScenarioSchema } from "./types";
 
 const args = process.argv.slice(2);
@@ -34,6 +37,7 @@ const taskId = process.env.QUARTERDECK_HOOK_TASK_ID ?? "unknown-task";
 const requestedSessionId = invocation.requestedSessionId;
 const sessionId = requestedSessionId || `agent-lab-${taskId}`;
 let historyPath = "";
+let piHistory: FakePiHistory | null = null;
 let turn = 0;
 let currentTurnId: string | null = null;
 let nativeInterruptedTurn = false;
@@ -114,7 +118,10 @@ async function emitHook(
 		writeLine("[agent-lab] Hook environment is incomplete.");
 		return;
 	}
-	const reliableActivity = options.hookEventName === "SessionStart" || options.hookEventName === "PermissionDenied";
+	const reliableActivity =
+		options.hookEventName === "SessionStart" ||
+		options.hookEventName === "PermissionDenied" ||
+		options.hookEventName === "SubagentStop";
 	const delivery = event === "activity" && !reliableActivity ? "notify" : "ingest";
 	const hookArgs = [tsxCliPath, cliEntrypointPath, "hooks", delivery, "--event", event, "--source", provider];
 	const claudePayload =
@@ -144,7 +151,7 @@ async function emitHook(
 		await postClaudeHttpHook(claudeHttpHook, claudePayload);
 		return;
 	}
-	if (provider === "codex") hookArgs.push("--transcript-path", historyPath);
+	if (provider === "codex" || provider === "pi") hookArgs.push("--transcript-path", historyPath);
 	if (!claudePayload) {
 		hookArgs.push("--hook-event-name", options.hookEventName, "--session-id", sessionId);
 		if (options.includeTurnId !== false) {
@@ -240,13 +247,14 @@ function printHelp(): void {
 	writeLine("  /queued-follow-up [message]  emit agent_end followed by a queued agent_start");
 	writeLine("  /stale-run                   replay the last completed Pi run identity");
 	writeLine("  /fail-next-resume            crash now and fail the next targeted Pi resume");
-	writeLine("  /progress [message]          append a synthetic Codex assistant progress message");
+	writeLine("  /progress [message]          append a synthetic Codex/Pi assistant progress message");
 	writeLine("  /working [message]           transition back to running");
 	writeLine("  /review [message]            finish the turn for review");
 	writeLine("  /write <path> <contents>     write inside the disposable checkout");
 	writeLine("  /commit [message]            commit all disposable changes");
 	writeLine("  /status                      show git status");
 	writeLine("  /clipboard-read              read the lab clipboard through OSC 52");
+	writeLine("  /hyperlink                   print a labeled OSC 8 link to the lab runtime");
 	writeLine("  /spam [1-2000]               produce terminal scrollback");
 	writeLine("  /alt-on | /alt-off           exercise the alternate screen");
 	writeLine("  /delay-review <ms> [message] schedule a review hook");
@@ -478,6 +486,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			writeLine(`AGENT LAB REVIEW READY: ${command.message}`);
 			if (provider === "pi") {
 				const settledTurnId = ensureTurnId();
+				if (piHistory) await appendFakePiMessage(piHistory, "assistant", command.message);
 				await emitHook("activity", {
 					hookEventName: "AgentEnd",
 					activityText: "Pi agent loop ended; waiting for settlement",
@@ -504,11 +513,15 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			pendingToolUseId = null;
 			return;
 		case "progress": {
-			if (provider !== "codex") return;
-			await appendFile(
-				historyPath,
-				`${JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: command.message }] } })}\n`,
-			);
+			if (provider !== "codex" && provider !== "pi") return;
+			if (piHistory) {
+				await appendFakePiMessage(piHistory, "assistant", command.message);
+			} else {
+				await appendFile(
+					historyPath,
+					`${JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: command.message }] } })}\n`,
+				);
+			}
 			writeLine(`AGENT LAB PROGRESS: ${command.message}`);
 			await emitHook("activity", { hookEventName: "PostToolUse", activityText: "Progress available" });
 			return;
@@ -562,6 +575,13 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			for (const line of status.output.trimEnd().split("\n")) {
 				writeLine(line);
 			}
+			return;
+		}
+		case "hyperlink": {
+			const url = buildQuarterdeckRuntimeUrl("/health");
+			// Exercise the same browser/provider mouse arbitration as a fullscreen TUI.
+			process.stdout.write("\u001b[?1000h\u001b[?1006h");
+			writeLine(`AGENT LAB LINK: \u001b]8;;${url}\u001b\\Open lab health\u001b]8;;\u001b\\`);
 			return;
 		}
 		case "clipboard-read":
@@ -696,7 +716,7 @@ async function assertClaudeLaunchContract(): Promise<void> {
 		PermissionRequest: ["ingest", "to_review"],
 		Notification: ["notify", "activity"],
 		PostToolUse: ["ingest", "to_in_progress"],
-		SubagentStop: ["notify", "activity"],
+		SubagentStop: ["ingest", "activity"],
 		Elicitation: ["ingest", "to_review"],
 		ElicitationResult: ["ingest", "to_in_progress"],
 		Stop: ["ingest", "to_review"],
@@ -721,9 +741,7 @@ async function assertClaudeLaunchContract(): Promise<void> {
 			}
 			continue;
 		}
-		const serializedHook = JSON.stringify(parsed.hooks?.[hookName]);
-		const expectedCommand = `'hooks' '${delivery}' '--event' '${event}' '--source' 'claude'`;
-		if (!serializedHook.includes(expectedCommand)) {
+		if (!hasFakeClaudeHookCommand(parsed.hooks?.[hookName], delivery, event)) {
 			throw new Error(`Fake Claude settings do not map ${hookName} to ${delivery}:${event}.`);
 		}
 	}
@@ -911,10 +929,14 @@ async function main(): Promise<void> {
 		return;
 	}
 	const prompt = invocation.prompt;
+	if (provider === "pi") {
+		piHistory = await initializeFakePiHistory({ environment: process.env, sessionId, cwd: process.cwd(), prompt });
+		historyPath = piHistory.path;
+	}
 	const fallbackScenario = AgentLabScenarioSchema.parse(process.env.QUARTERDECK_AGENT_LAB_SCENARIO ?? "idle");
 	const scenario = resolveFakeAgentScenario(prompt, fallbackScenario);
 	const providerLabel = provider === "pi" ? "Pi" : provider === "claude" ? "Claude" : "Codex";
-	if (shouldFakeClaudeUseFullscreen(provider, process.env)) {
+	if (shouldFakeAgentUseFullscreen(provider, args, process.env)) {
 		process.stdout.write("\u001b[?1049h\u001b[2J\u001b[H");
 	}
 	writeLine(`Quarterdeck Agent Lab — deterministic fake ${providerLabel}`);

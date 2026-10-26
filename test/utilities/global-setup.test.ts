@@ -49,7 +49,13 @@ describe("root test home", { concurrent: false }, () => {
 					"test/utilities/runtime-recovery-child.ts": join(directory, "runtime-recovery-child.mjs"),
 				}),
 			);
-			expect(existsSync(join(directory, "terminal/pi-lifecycle-extension.runtime.js"))).toBe(true);
+			expect(build).toHaveBeenCalledWith(
+				expect.objectContaining({
+					outfile: join(directory, "terminal/pi-lifecycle-extension.runtime.js"),
+					bundle: true,
+					format: "esm",
+				}),
+			);
 		} finally {
 			await teardown();
 		}

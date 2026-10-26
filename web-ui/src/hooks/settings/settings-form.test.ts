@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
+import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 import type { SettingsFormValues } from "./settings-form";
 import { areFormValuesEqual, reconcileSettingsFormValues, resolveInitialValues } from "./settings-form";
 
@@ -9,6 +10,15 @@ import { areFormValuesEqual, reconcileSettingsFormValues, resolveInitialValues }
 // ---------------------------------------------------------------------------
 
 describe("resolveInitialValues", () => {
+	it("defaults isolation on for older runtimes and preserves explicit false", () => {
+		expect(resolveInitialValues(null).defaultUseWorktree).toBe(true);
+		expect(
+			resolveInitialValues(createTestRuntimeConfigResponse({ defaultUseWorktree: undefined })).defaultUseWorktree,
+		).toBe(true);
+		expect(
+			resolveInitialValues(createTestRuntimeConfigResponse({ defaultUseWorktree: false })).defaultUseWorktree,
+		).toBe(false);
+	});
 	it("returns an object with all expected keys", () => {
 		const values = resolveInitialValues(null);
 		expect(values).not.toHaveProperty("showSummaryOnCards");
@@ -39,6 +49,10 @@ describe("areFormValuesEqual", () => {
 		const a = makeValues();
 		const b = makeValues();
 		expect(areFormValuesEqual(a, b)).toBe(true);
+	});
+
+	it("detects changes to the project isolation default", () => {
+		expect(areFormValuesEqual(makeValues(), makeValues({ defaultUseWorktree: false }))).toBe(false);
 	});
 
 	it("detects primitive field changes", () => {

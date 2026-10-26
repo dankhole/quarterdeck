@@ -27,6 +27,16 @@ export const QUARTERDECK_CJS_SHIM_BANNER = [
 	"const require = __quarterdeck_createRequire(import.meta.url);",
 ].join("\n");
 
+/** Self-contained Pi asset: only Node built-ins remain external after copying. */
+export function createPiLifecycleEsbuildOptions() {
+	return {
+		bundle: true,
+		format: "esm",
+		platform: "node",
+		target: "node22",
+	};
+}
+
 /** Shared esbuild options for every Quarterdeck Node entry point. */
 export function createQuarterdeckEsbuildOptions(buildId) {
 	return {

@@ -113,6 +113,34 @@ describe("RuntimeSettingsDialog", () => {
 		}
 	});
 
+	it("loads and saves the project task-isolation default", async () => {
+		saveMock.mockClear();
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open
+					projectId="project-1"
+					initialConfig={createSavedConfig({
+						projectConfigPath: "/tmp/project/config.json",
+						defaultUseWorktree: false,
+					})}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+		const toggle = findSwitchByLabel(document.body, "Use isolated worktree by default");
+		expect(toggle?.getAttribute("aria-checked")).toBe("false");
+		expect(toggle?.disabled).toBe(false);
+		await act(async () => {
+			toggle?.click();
+		});
+		expect(toggle?.getAttribute("aria-checked")).toBe("true");
+		await act(async () => {
+			findButtonByText(document.body, "Save")?.click();
+		});
+		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ defaultUseWorktree: true }));
+	});
+
 	it("loads, edits, and saves the project worktree setup script", async () => {
 		saveMock.mockClear();
 		await act(async () => {
@@ -153,6 +181,7 @@ describe("RuntimeSettingsDialog", () => {
 			);
 		});
 		expect(document.body.querySelector<HTMLTextAreaElement>("#runtime-settings-worktree-setup")?.disabled).toBe(true);
+		expect(findSwitchByLabel(document.body, "Use isolated worktree by default")?.disabled).toBe(true);
 	});
 
 	it("does not render support actions inside settings", async () => {

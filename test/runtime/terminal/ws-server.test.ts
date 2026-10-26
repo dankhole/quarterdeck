@@ -14,6 +14,7 @@ import {
 } from "../../../src/core";
 import type { TerminalRestoreSnapshot, TerminalSessionListener, TerminalSessionService } from "../../../src/terminal";
 import { createTerminalWebSocketBridge, type TerminalWebSocketBridge } from "../../../src/terminal";
+import type { TerminalOutputCursor } from "../../../src/terminal/terminal-state-mirror";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const TASK_ID = "task-1";
@@ -48,6 +49,7 @@ function rawDataToBuffer(data: RawData): Buffer {
 class FakeTerminalManager implements TerminalSessionService {
 	private readonly listenersByTaskId = new Map<string, Set<TerminalSessionListener>>();
 	readonly eventLog: string[] = [];
+	private outputSequence = 0;
 
 	attach(taskId: string, listener: TerminalSessionListener): (() => void) | null {
 		const listeners = this.listenersByTaskId.get(taskId) ?? new Set<TerminalSessionListener>();
@@ -68,6 +70,7 @@ class FakeTerminalManager implements TerminalSessionService {
 			snapshot: "",
 			cols: 80,
 			rows: 24,
+			outputCursor: { streamId: "fake-terminal", sequence: this.outputSequence },
 		};
 	});
 	recoverStaleSession = vi.fn((taskId: string) => {
@@ -83,9 +86,15 @@ class FakeTerminalManager implements TerminalSessionService {
 	resumeOutput = vi.fn(() => true);
 	stopTaskSession = vi.fn(() => createSummary());
 
-	emitOutput(taskId: string, data: string): void {
+	emitOutput(taskId: string, data: string): TerminalOutputCursor {
+		const outputCursor = { streamId: "fake-terminal", sequence: ++this.outputSequence };
+		this.broadcastOutput(taskId, data, outputCursor);
+		return outputCursor;
+	}
+
+	broadcastOutput(taskId: string, data: string, outputCursor: TerminalOutputCursor): void {
 		for (const listener of this.listenersByTaskId.get(taskId) ?? []) {
-			listener.onOutput?.(Buffer.from(data, "utf8"));
+			listener.onOutput?.(Buffer.from(data, "utf8"), outputCursor);
 		}
 	}
 
@@ -399,7 +408,58 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(controlSocket.socket);
 	});
 
-	it("does not accumulate restore-gap output while a viewer has no io socket", async () => {
+	it("filters snapshot-covered output before capture and after ack without changing the wire", async () => {
+		const ioSocket = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-dedup`,
+		);
+		const controlSocket = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-dedup`,
+		);
+		const coveredCursor = terminalManager.emitOutput(TASK_ID, "covered");
+		const restore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		expect(Object.keys(restore).sort()).toEqual(["cols", "rows", "snapshot", "type"]);
+		terminalManager.emitOutput(TASK_ID, "live-a");
+		terminalManager.emitOutput(TASK_ID, "live-b");
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+		await expect(waitForIoMessage(ioSocket)).resolves.toEqual(Buffer.from("live-a"));
+		await expect(waitForIoMessage(ioSocket)).resolves.toEqual(Buffer.from("live-b"));
+
+		// Render inspection may release an older chunk after restore and ack.
+		terminalManager.broadcastOutput(TASK_ID, "covered", coveredCursor);
+		terminalManager.emitOutput(TASK_ID, "tail");
+		await expect(waitForIoMessage(ioSocket)).resolves.toEqual(Buffer.from("tail"));
+		await expectNoQueuedMessage(ioSocket);
+		expect(ioSocket.queue).toEqual([]);
+		await closeSocket(ioSocket.socket);
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("waits for the preceding snapshot ack before sending an overlapping same-socket restore", async () => {
+		const ioSocket = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-overlap`,
+		);
+		const controlSocket = await openQueuedWebSocket(
+			`${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-overlap`,
+		);
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		controlSocket.socket.send(JSON.stringify({ type: "request_restore" }));
+		controlSocket.socket.send(JSON.stringify({ type: "request_restore" }));
+		await expectNoQueuedMessage(controlSocket);
+		expect(terminalManager.getRestoreSnapshot).toHaveBeenCalledTimes(1);
+
+		terminalManager.emitOutput(TASK_ID, "covered-next");
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		expect(terminalManager.getRestoreSnapshot).toHaveBeenCalledTimes(2);
+		await expectNoQueuedMessage(ioSocket);
+		terminalManager.emitOutput(TASK_ID, "after-next");
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+		await expect(waitForIoMessage(ioSocket)).resolves.toEqual(Buffer.from("after-next"));
+		await closeSocket(ioSocket.socket);
+		await closeSocket(controlSocket.socket);
+	});
+
+	it("recaptures after a no-IO gap without accumulating its raw output", async () => {
 		const ioUrl = `${runtimeUrl}/api/terminal/io?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
 		const controlUrl = `${runtimeUrl}/api/terminal/control?taskId=${TASK_ID}&projectId=${PROJECT_ID}&clientId=client-a`;
 		const ioSocket = await openQueuedWebSocket(ioUrl);
@@ -409,12 +469,16 @@ describe("createTerminalWebSocketBridge", () => {
 		await closeSocket(ioSocket.socket);
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
-		terminalManager.emitOutput(TASK_ID, "lost-during-gap");
+		terminalManager.emitOutput(TASK_ID, "captured-after-gap");
 
 		const replacementIoSocket = await openQueuedWebSocket(ioUrl);
 		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
-
+		await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		expect(terminalManager.getRestoreSnapshot).toHaveBeenCalledTimes(2);
 		await expectNoQueuedMessage(replacementIoSocket);
+		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
+		terminalManager.emitOutput(TASK_ID, "after-gap-recapture");
+		await expect(waitForIoMessage(replacementIoSocket)).resolves.toEqual(Buffer.from("after-gap-recapture"));
 
 		await closeSocket(replacementIoSocket.socket);
 		await closeSocket(controlSocket.socket);

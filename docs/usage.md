@@ -28,7 +28,9 @@ When creating a Claude Code task, you can choose a starting model alias (Fable, 
 
 When creating a Pi task, search the installed Pi CLI’s available models and optionally choose a starting thinking level, or leave either choice at **Pi default** to inherit Pi’s settings and configured arguments. Choices are saved with single and bulk tasks, including tasks started later. Explicit choices replace the corresponding configured `--provider`, `--model`, `--models`, or `--thinking` on fresh launches only; resume and restart keep the saved Pi session’s model and thinking level. Pi determines which thinking levels the selected model supports.
 
-The searchable picker currently lists all available models, not Pi’s `enabledModels` cycling shortlist. Model metadata is reused per project for five minutes, including across dialog reopenings; reload the browser to refresh its cache sooner. Discovery runs offline without loading extensions, MCP, or project resources or installing packages. Extension-defined and uncached models may be absent: use Pi default or Pi’s native `/model` selector for those. If discovery fails or no models are available, task creation still works with Pi default.
+The searchable picker follows Pi’s `enabledModels` shortlist using the installed Pi’s own pattern matching and ordering. Configure it with Pi’s `/scoped-models` command or in Pi’s `settings.json`; project `.pi/settings.json` overrides the user-level list, and an empty or missing effective list shows all available models. Provider/model identifiers are preserved exactly: gateway aliases such as `global.anthropic.claude-opus-5-5` are distinct from `claude-opus-5-5`, even if both describe Opus. Availability does not guarantee your gateway grants access to every catalog entry.
+
+Model metadata is reused per project for five minutes, including across dialog reopenings. Discovery reads installed Pi metadata offline without starting a session, loading extensions or MCP, changing Pi settings, or installing packages. It requires the supported npm installation’s SDK files; unsupported wrappers and standalone installations leave **Pi default** available. Extension-defined and uncached models may be absent: use Pi default or Pi’s native `/model` selector for those. If discovery fails or the configured shortlist has no available matches, task creation still works with Pi default.
 
 Pi users need exactly Pi 1.4.0. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
 
@@ -117,6 +119,8 @@ To keep the configuration across shell sessions, add the exports to the shell st
 2. Create task cards.
 
    Add cards manually or paste prompts into the sidebar. You can split a list into multiple unstarted cards, then start each task individually.
+
+   In **Settings → Project → Task creation**, set **Use isolated worktree by default** for this project. It starts enabled and seeds new tasks only; override **Use isolated worktree** on an individual task without changing the project default. Existing tasks are unchanged, and folder projects always run directly in their folder. Without isolation, concurrent tasks share the main checkout and may cause file conflicts.
 
 3. Start agents.
 

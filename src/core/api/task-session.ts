@@ -166,6 +166,17 @@ export const runtimeTaskProviderHookOrderObservationSchema = z.object({
 });
 export type RuntimeTaskProviderHookOrderObservation = z.infer<typeof runtimeTaskProviderHookOrderObservationSchema>;
 
+/** Local negative ordering evidence, never a provider completion or positive work proof. */
+export const runtimeTaskLocalForegroundInterruptSchema = z.object({
+	sessionInstanceId: z.string().min(1),
+	provider: runtimeTaskInteractionProviderSchema,
+	scopeId: z.string().min(1).nullable(),
+	occurredAt: z.number().int().nonnegative(),
+	toolUseIds: z.array(z.string().min(1)).max(512),
+	awaitingNativeStart: z.boolean(),
+});
+export type RuntimeTaskLocalForegroundInterrupt = z.infer<typeof runtimeTaskLocalForegroundInterruptSchema>;
+
 export const completedAgentResponseSchema = z.object({
 	/** The extracted assistant message text, capped at 500 chars. */
 	text: z.string(),
@@ -199,6 +210,8 @@ const runtimeTaskSessionSummaryBaseSchema = z.object({
 	recentProviderHookDeliveryIds: z.array(z.string().uuid()).max(128).default([]),
 	/** Bounded content-free history used only to rebuild provider-specific ordering after restart. */
 	recentProviderHookOrderObservations: z.array(runtimeTaskProviderHookOrderObservationSchema).max(512).default([]),
+	/** Durable-only Ctrl-C boundary; older summaries and browsers may omit it. */
+	localForegroundInterrupt: runtimeTaskLocalForegroundInterruptSchema.nullable().optional(),
 	latestHookActivity: runtimeTaskHookActivitySchema.nullable().default(null),
 	/** Current provider interaction, if user input was requested or its resolution remains unconfirmed. */
 	outstandingInteraction: runtimeTaskOutstandingInteractionSchema.nullable().default(null),
@@ -315,6 +328,15 @@ export function normalizeRuntimeTaskSessionSummary(
 			? { startupRecoveryRequired: true, startupRecoverySemanticStateUncertain: true }
 			: {}),
 	};
+
+	if (
+		next.localForegroundInterrupt &&
+		(next.state === "idle" ||
+			next.localForegroundInterrupt.sessionInstanceId !== next.sessionInstanceId ||
+			next.localForegroundInterrupt.provider !== next.agentId)
+	) {
+		next = { ...next, localForegroundInterrupt: null };
+	}
 
 	const interaction = next.outstandingInteraction;
 	if (interaction) {

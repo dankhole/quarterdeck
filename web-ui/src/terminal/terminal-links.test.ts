@@ -10,7 +10,7 @@ vi.mock("@/utils/platform", () => ({
 	},
 }));
 
-describe("terminal link gestures", () => {
+describe.each<RuntimeAgentId>(["codex", "pi"])("%s terminal link gestures", (sessionAgentId) => {
 	let terminal: Terminal;
 	let agentId: RuntimeAgentId | null;
 	let taskId: string;
@@ -18,15 +18,17 @@ describe("terminal link gestures", () => {
 	let target: HTMLSpanElement;
 	let disposeLinks: () => void;
 	let provider: ILinkProvider;
-	let link: Pick<ILink, "activate" | "hover" | "leave">;
+	let link: Pick<ILink, "activate" | "hover" | "leave"> | undefined;
 	const uri = "https://example.com/link";
 	const open = vi.fn(() => null);
 	const confirm = vi.fn(() => true);
 	const downstreamDown = vi.fn();
+	const downstreamUp = vi.fn();
 
 	beforeEach(async () => {
-		agentId = "codex";
+		agentId = sessionAgentId;
 		taskId = "task-1";
+		link = undefined;
 		platform.isMac = true;
 		terminal = new Terminal({ allowProposedApi: true, macOptionClickForcesSelection: true });
 		const registration = vi.spyOn(terminal, "registerLinkProvider");
@@ -42,6 +44,7 @@ describe("terminal link gestures", () => {
 		vi.spyOn(window, "open").mockImplementation(open);
 		vi.spyOn(window, "confirm").mockImplementation(confirm);
 		target.addEventListener("mousedown", downstreamDown);
+		target.addEventListener("mouseup", downstreamUp);
 		target.addEventListener("mouseup", (event) => link?.activate(event, uri));
 		await write(`\u001b[?1049h\u001b[?1002h${uri}`);
 	});
@@ -64,10 +67,10 @@ describe("terminal link gestures", () => {
 		return event;
 	}
 
-	async function hover(kind: "detected" | "osc"): Promise<void> {
+	async function hover(kind: "detected" | "osc", label = uri): Promise<void> {
 		if (kind === "osc") {
 			const handler = terminal.options.linkHandler!;
-			const range = { start: { x: 1, y: 1 }, end: { x: 24, y: 1 } };
+			const range = { start: { x: 1, y: 1 }, end: { x: label.length, y: 1 } };
 			link = {
 				activate: (event, text) => handler.activate(event, text, range),
 				hover: (event, text) => handler.hover?.(event, text, range),
@@ -82,15 +85,16 @@ describe("terminal link gestures", () => {
 	}
 
 	for (const kind of ["detected", "osc"] as const) {
-		it(`${kind}: opens once without forwarding the same click to Codex`, async () => {
+		it(`${kind}: opens once without forwarding the same click to the provider`, async () => {
 			await hover(kind);
 			pointer("mousedown");
 			pointer("mouseup");
 			expect(open).toHaveBeenCalledExactlyOnceWith(uri, "_blank", "noopener,noreferrer");
 			expect(downstreamDown).not.toHaveBeenCalled();
+			expect(downstreamUp).not.toHaveBeenCalled();
 		});
 
-		it.each<RuntimeAgentId | null>(["claude", "pi", null])(`${kind}: preserves xterm handling for %s`, async (id) => {
+		it.each<RuntimeAgentId | null>(["claude", null])(`${kind}: preserves xterm handling for %s`, async (id) => {
 			agentId = id;
 			await hover(kind);
 			pointer("mousedown");
@@ -145,7 +149,7 @@ describe("terminal link gestures", () => {
 		it(`${kind}: survives re-hover of the same link after a redraw`, async () => {
 			await hover(kind);
 			pointer("mousedown");
-			link.leave?.(new MouseEvent("mouseleave"), uri);
+			link?.leave?.(new MouseEvent("mouseleave"), uri);
 			await hover(kind);
 			pointer("mouseup");
 			expect(open).toHaveBeenCalledOnce();
@@ -163,7 +167,7 @@ describe("terminal link gestures", () => {
 		it(`${kind}: does not open a link that vanished during the click`, async () => {
 			await hover(kind);
 			pointer("mousedown");
-			link.leave?.(new MouseEvent("mouseleave"), uri);
+			link?.leave?.(new MouseEvent("mouseleave"), uri);
 			pointer("mouseup");
 			expect(open).not.toHaveBeenCalled();
 		});
@@ -181,12 +185,73 @@ describe("terminal link gestures", () => {
 		);
 	}
 
-	it("preserves OSC hyperlink confirmation cancellation in fullscreen Codex", async () => {
+	it("returns link gestures to xterm during a normal-buffer subprocess and recaptures them on fullscreen return", async () => {
+		await write(`\u001b[?1049l${uri}`);
+		await hover("detected");
+		pointer("mousedown");
+		pointer("mouseup");
+		expect(downstreamDown).toHaveBeenCalledOnce();
+		expect(downstreamUp).toHaveBeenCalledOnce();
+		expect(open).toHaveBeenCalledOnce();
+
+		vi.clearAllMocks();
+		await write(`\u001b[?1049h${uri}`);
+		await hover("detected");
+		pointer("mousedown");
+		pointer("mouseup");
+		expect(downstreamDown).not.toHaveBeenCalled();
+		expect(downstreamUp).not.toHaveBeenCalled();
+		expect(open).toHaveBeenCalledExactlyOnceWith(uri, "_blank", "noopener,noreferrer");
+	});
+
+	it("preserves OSC hyperlink confirmation cancellation in fullscreen", async () => {
 		await hover("osc");
 		confirm.mockReturnValueOnce(false);
 		pointer("mousedown");
 		pointer("mouseup");
 		expect(confirm).toHaveBeenCalledOnce();
+		expect(open).not.toHaveBeenCalled();
+		expect(downstreamDown).not.toHaveBeenCalled();
+		expect(downstreamUp).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ fullscreen: false, accepted: true },
+		{ fullscreen: false, accepted: false },
+		{ fullscreen: true, accepted: true },
+		{ fullscreen: true, accepted: false },
+	])("opens a labeled OSC 8 target only after confirmation: %j", async ({ fullscreen, accepted }) => {
+		const label = "Provider documentation";
+		await write(
+			`${fullscreen ? "" : "\u001b[?1002l\u001b[?1049l"}\u001b[2J\u001b[H\u001b]8;;${uri}\u0007${label}\u001b]8;;\u0007`,
+		);
+		expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe(label);
+		const detected = await new Promise<ILink[] | undefined>((resolve) => provider.provideLinks(1, resolve));
+		expect(detected ?? []).toHaveLength(0);
+		// xterm's OscLinkProvider passes the OSC target URI, not the displayed label,
+		// to this public handler. Pointer-to-OSC resolution needs browser functional coverage.
+		await hover("osc", label);
+		confirm.mockReturnValueOnce(accepted);
+		pointer("mousedown");
+		pointer("mouseup");
+		expect(confirm).toHaveBeenCalledExactlyOnceWith(
+			`Do you want to navigate to ${uri}?\n\nWARNING: This link could potentially be dangerous`,
+		);
+		if (accepted) {
+			expect(open).toHaveBeenCalledExactlyOnceWith(uri, "_blank", "noopener,noreferrer");
+		} else {
+			expect(open).not.toHaveBeenCalled();
+		}
+		expect(downstreamDown).toHaveBeenCalledTimes(fullscreen ? 0 : 1);
+		expect(downstreamUp).toHaveBeenCalledTimes(fullscreen ? 0 : 1);
+	});
+
+	it("leaves non-link input with fullscreen mouse tracking to xterm", () => {
+		pointer("mousedown");
+		pointer("mouseup");
+		expect(downstreamDown).toHaveBeenCalledOnce();
+		expect(downstreamUp).toHaveBeenCalledOnce();
+		expect(confirm).not.toHaveBeenCalled();
 		expect(open).not.toHaveBeenCalled();
 	});
 

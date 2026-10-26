@@ -42,6 +42,7 @@ export interface RuntimeGlobalConfigFileShape extends Partial<GlobalConfigFieldV
 export interface RuntimeProjectConfigFileShape {
 	shortcuts?: RuntimeProjectShortcut[];
 	defaultBaseRef?: string;
+	defaultUseWorktree?: boolean;
 	worktreeSetupScript?: string;
 }
 
@@ -57,6 +58,7 @@ export interface RuntimeConfigState extends GlobalConfigFieldValues {
 	shortcuts: RuntimeProjectShortcut[];
 	pinnedBranches: string[];
 	defaultBaseRef: string;
+	defaultUseWorktree: boolean;
 	worktreeSetupScript: string;
 	promptShortcuts: PromptShortcut[];
 	hiddenDefaultPromptShortcuts: string[];
@@ -78,6 +80,7 @@ export interface RuntimeConfigUpdateInput extends Partial<GlobalConfigFieldValue
 	shortcuts?: RuntimeProjectShortcut[];
 	pinnedBranches?: string[];
 	defaultBaseRef?: string;
+	defaultUseWorktree?: boolean;
 	worktreeSetupScript?: string;
 	promptShortcuts?: PromptShortcut[];
 	hiddenDefaultPromptShortcuts?: string[];
@@ -102,6 +105,7 @@ export const DEFAULT_RUNTIME_CONFIG_STATE: RuntimeConfigState = {
 	shortcuts: [],
 	pinnedBranches: [],
 	defaultBaseRef: "",
+	defaultUseWorktree: true,
 	worktreeSetupScript: "",
 	promptShortcuts: [],
 	hiddenDefaultPromptShortcuts: [],
@@ -340,6 +344,7 @@ export function toRuntimeConfigState({
 		shortcuts: normalizeShortcuts(projectConfig?.shortcuts),
 		pinnedBranches: normalizePinnedBranches(pinnedBranches),
 		defaultBaseRef: typeof rawDefaultBaseRef === "string" ? rawDefaultBaseRef.trim() : "",
+		defaultUseWorktree: projectConfig?.defaultUseWorktree !== false,
 		worktreeSetupScript: normalizeWorktreeSetupScript(projectConfig?.worktreeSetupScript),
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(globalConfig?.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(
@@ -375,6 +380,7 @@ export function createRuntimeConfigStateFromValues(
 		shortcuts: RuntimeProjectShortcut[];
 		pinnedBranches: string[];
 		defaultBaseRef: string;
+		defaultUseWorktree?: boolean;
 		worktreeSetupScript?: string;
 		promptShortcuts: PromptShortcut[];
 		hiddenDefaultPromptShortcuts: string[];
@@ -394,6 +400,7 @@ export function createRuntimeConfigStateFromValues(
 		shortcuts: normalizeShortcuts(input.shortcuts),
 		pinnedBranches: normalizePinnedBranches(input.pinnedBranches),
 		defaultBaseRef: typeof input.defaultBaseRef === "string" ? input.defaultBaseRef.trim() : "",
+		defaultUseWorktree: input.defaultUseWorktree !== false,
 		worktreeSetupScript: normalizeWorktreeSetupScript(input.worktreeSetupScript),
 		hiddenDefaultPromptShortcuts: normalizeHiddenDefaultPromptShortcuts(input.hiddenDefaultPromptShortcuts),
 		promptShortcuts: normalizePromptShortcuts(input.promptShortcuts, input.hiddenDefaultPromptShortcuts),
@@ -424,6 +431,7 @@ export function toGlobalRuntimeConfigState(current: RuntimeConfigState): Runtime
 		shortcuts: [],
 		pinnedBranches: [],
 		defaultBaseRef: "",
+		defaultUseWorktree: true,
 		worktreeSetupScript: "",
 		promptShortcuts: current.promptShortcuts,
 		hiddenDefaultPromptShortcuts: current.hiddenDefaultPromptShortcuts,

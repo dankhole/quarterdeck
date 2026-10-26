@@ -231,6 +231,86 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 		}
 	});
 
+	it("persists false worktree defaults only in project config and preserves them on partial saves", async () => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-worktree-default-");
+		try {
+			const configDir = join(tempHome, ".quarterdeck");
+			mkdirSync(configDir, { recursive: true });
+			writeFileSync(join(configDir, "config.json"), "{}", "utf8");
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(true);
+				const updated = await updateRuntimeConfig("project-a", { defaultUseWorktree: false });
+				expect(updated.defaultUseWorktree).toBe(false);
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(false);
+				expect((await loadRuntimeConfig("project-b")).defaultUseWorktree).toBe(true);
+				expect((await loadGlobalRuntimeConfig()).defaultUseWorktree).toBe(true);
+				const projectConfigPath = join(configDir, "projects", "project-a", "config.json");
+				expect(JSON.parse(readFileSync(projectConfigPath, "utf8"))).toEqual({ defaultUseWorktree: false });
+
+				await updateRuntimeConfig("project-a", { terminalFontWeight: 450 });
+				await updateRuntimeConfig("project-a", { worktreeSetupScript: "npm ci" });
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(false);
+				expect(JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"))).not.toHaveProperty(
+					"defaultUseWorktree",
+				);
+
+				await updateRuntimeConfig("project-a", { defaultUseWorktree: true });
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(true);
+				expect(JSON.parse(readFileSync(projectConfigPath, "utf8"))).toEqual({ worktreeSetupScript: "npm ci" });
+				await expect(updateRuntimeConfig(null, { defaultUseWorktree: false })).rejects.toThrow(
+					"without a selected project",
+				);
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
+	it.each([undefined, null, "false", 0])("defaults invalid project worktree values (%s) to true", async (value) => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-worktree-default-invalid-");
+		try {
+			const configDir = join(tempHome, ".quarterdeck");
+			const projectDir = join(configDir, "projects", "project-a");
+			mkdirSync(projectDir, { recursive: true });
+			writeFileSync(join(configDir, "config.json"), JSON.stringify({ defaultUseWorktree: false }));
+			writeFileSync(join(projectDir, "config.json"), JSON.stringify({ defaultUseWorktree: value }));
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(true);
+				expect((await loadGlobalRuntimeConfig()).defaultUseWorktree).toBe(true);
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("saves and resets project worktree defaults through the full save path", async () => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-worktree-default-save-");
+		try {
+			const configDir = join(tempHome, ".quarterdeck");
+			mkdirSync(configDir, { recursive: true });
+			writeFileSync(join(configDir, "config.json"), JSON.stringify({ defaultUseWorktree: false }));
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				const saved = await saveRuntimeConfig(
+					"project-a",
+					createDefaultRuntimeConfigSaveRequest({ defaultUseWorktree: false }),
+				);
+				expect(saved.defaultUseWorktree).toBe(false);
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(false);
+				expect(JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"))).not.toHaveProperty(
+					"defaultUseWorktree",
+				);
+				// Older callers omit the newly optional field; full saves resolve to the default.
+				const { defaultUseWorktree: _defaultUseWorktree, ...legacyConfig } =
+					createDefaultRuntimeConfigSaveRequest();
+				expect((await saveRuntimeConfig("project-a", legacyConfig)).defaultUseWorktree).toBe(true);
+				expect((await loadRuntimeConfig("project-a")).defaultUseWorktree).toBe(true);
+				expect(existsSync(join(configDir, "projects", "project-a", "config.json"))).toBe(false);
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("persists setup scripts only for their project, preserving shell syntax and clearing blank scripts", async () => {
 		const { path: tempHome, cleanup } = createTempDir("quarterdeck-home-worktree-setup-");
 		const script = "cat <<'EOF' > setup.txt\n  keep whitespace\nEOF\n";

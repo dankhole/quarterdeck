@@ -1,53 +1,33 @@
 import { type ExecFileException, execFile } from "node:child_process";
 
 import type { RuntimePiModelsResponse } from "../core/api/pi-models.js";
-import { runtimePiModelSchema } from "../core/api/pi-models.js";
+import { runtimePiModelsResponseSchema } from "../core/api/pi-models.js";
 import { armChildProcessTimeout, type ChildProcessTimeoutGuard } from "../core/process-termination.js";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { resolveWindowsCompatibleCommand } from "../core/windows-cmd-launch.js";
 import { resolveAgentCommandForLaunch } from "./agent-registry.js";
+import { preparePiModelDiscovery } from "./pi-model-discovery.js";
 import type { RuntimeConfigState } from "./runtime-config-normalizers.js";
 
-// Pi resolves packages before filtering resources; offline also prevents missing-package installation.
-const DISCOVERY_ARGS = [
-	"--list-models",
-	"--offline",
-	"--no-extensions",
-	"--no-skills",
-	"--no-prompt-templates",
-	"--no-themes",
-	"--no-context-files",
-	"--no-mcp",
-	"--no-approve",
-];
-
-/** Pi 1.4.0's native table contains only available chat models. Never forward raw CLI output. */
+/** Validate the isolated discovery response; never forward native model objects or raw errors. */
 export function parsePiModelCatalog(stdout: string): RuntimePiModelsResponse {
-	const lines = stdout.trim().split(/\r?\n/);
-	if (lines[0]?.startsWith("No models available.")) return { models: [] };
-	if (lines.shift()?.trim().split(/\s+/).join(" ") !== "provider model context max-out thinking images") {
+	let value: unknown;
+	try {
+		value = JSON.parse(stdout);
+	} catch {
 		throw new Error("Pi model catalog format is unavailable.");
 	}
-	const models: RuntimePiModelsResponse["models"] = [];
+	const parsed = runtimePiModelsResponseSchema.safeParse(value);
+	if (!parsed.success) throw new Error("Pi model catalog format is unavailable.");
 	const seen = new Set<string>();
-	for (const line of lines) {
-		const fields = line.trim().split(/\s+/);
-		if (
-			fields.length !== 6 ||
-			!/^\d+(?:\.\d+)?[KM]?$/.test(fields[2] ?? "") ||
-			!/^\d+(?:\.\d+)?[KM]?$/.test(fields[3] ?? "") ||
-			!["yes", "no"].includes(fields[4] ?? "") ||
-			!["yes", "no"].includes(fields[5] ?? "")
-		) {
-			throw new Error("Pi model catalog format is unavailable.");
-		}
-		const parsed = runtimePiModelSchema.safeParse({ provider: fields[0], id: fields[1] });
-		if (!parsed.success) throw new Error("Pi model catalog contains unsupported identifiers.");
-		const key = JSON.stringify(parsed.data);
-		if (!seen.has(key)) models.push(parsed.data);
-		seen.add(key);
-	}
-	return { models };
+	return {
+		models: parsed.data.models.filter((model) => {
+			const key = JSON.stringify(model);
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		}),
+	};
 }
 
 function readPiModelCatalog(binary: string, args: string[], cwd: string): Promise<string> {
@@ -95,6 +75,8 @@ export async function loadPiModelCatalog(
 		selectedAgentId: "pi",
 	});
 	// Do not forward configured launch arguments: they may load code or contain prompts/credentials.
-	const stdout = await readPiModelCatalog(command.binary, [...DISCOVERY_ARGS], cwd);
+	// --list-models ignores enabledModels. Use this installation's native settings and scope resolver instead.
+	const discovery = await preparePiModelDiscovery(command.binary, cwd);
+	const stdout = await readPiModelCatalog(discovery.binary, discovery.args, cwd);
 	return parsePiModelCatalog(stdout);
 }

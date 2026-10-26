@@ -2,6 +2,8 @@
 
 Quarterdeck provides optional definitions, references, and type information in live Files workspaces through user-installed Language Server Protocol (LSP) executables. It does not bundle or install servers. Code navigation is disabled by default and supports stdio transport only.
 
+Syntax highlighting is separate from navigation: supported editor languages, including C#, are colored without enabling LSP or installing a server. A language server adds semantic operations; it does not supply the editor's syntax grammar.
+
 ## Setup and use
 
 1. Install a language server separately and make its executable available to the owning runtime. Desktop users can configure executable folders in [Runtime Environment](./desktop-environment.md).
@@ -16,6 +18,8 @@ The only shipped template is TypeScript/JavaScript:
 | Executable | Arguments | Extensions | Root markers |
 | --- | --- | --- | --- |
 | `typescript-language-server` | `["--stdio"]` | `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, `.cjs` | `tsconfig.json`, `jsconfig.json`, `package.json` |
+
+The TypeScript template requires both `typescript-language-server` and a compatible TypeScript language service. TypeScript 7 does not include the JavaScript `lib/tsserver.js` used by this wrapper; use a separate compatible TypeScript 6 installation and set `initializationOptions.tsserver.path` to its absolute `lib/tsserver.js` path when necessary. This does not require downgrading the project's compiler dependency. An absolute server command also avoids desktop PATH discovery differences.
 
 Other languages require a custom server definition. Configuration stores an ID, display label, enabled flag, executable, argument array, extensions, root markers, and optional initialization-options/environment JSON. **Restore default templates** restores the shipped TS/JS definition. Up to 20 server definitions may be saved; the first enabled definition matching the file extension is selected.
 

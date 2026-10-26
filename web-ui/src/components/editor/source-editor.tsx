@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from "@codemirror/search";
-import { EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
 	crosshairCursor,
 	drawSelection,
@@ -27,6 +27,7 @@ import {
 } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import {
 	createSourceEditorActionContext,
 	detectSourceEditorLineSeparator,
@@ -36,7 +37,9 @@ import {
 	sourceEditorOffset,
 } from "./source-editor-context";
 
-import { languageExtension, quarterdeckEditorTheme, quarterdeckHighlightStyle } from "./source-presentation";
+import { quarterdeckEditorTheme, quarterdeckHighlightStyle } from "./source-presentation";
+
+const noLanguage: Extension = [];
 
 export type { SourceEditorAction, SourceEditorActionContext, SourceEditorRange } from "./source-editor-context";
 export { detectSourceEditorLineSeparator } from "./source-editor-context";
@@ -63,8 +66,7 @@ export interface SourceEditorHandle {
 }
 
 function createExtensions(input: {
-	path: string;
-	language: string;
+	languageExtension: Extension;
 	readOnly: boolean;
 	wordWrap: boolean;
 	onChange: (value: string) => void;
@@ -96,7 +98,7 @@ function createExtensions(input: {
 		EditorState.readOnly.of(input.readOnly),
 		EditorView.editable.of(!input.readOnly),
 		input.wordWrap ? EditorView.lineWrapping : [],
-		languageExtension(input.language, input.path) ?? [],
+		input.languageExtension,
 		EditorView.updateListener.of((update) => {
 			if (update.docChanged) input.documentVersionRef.current += 1;
 			if (!update.docChanged || input.ignoreUpdateRef.current) {
@@ -147,6 +149,8 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
 	const lineSeparator = useMemo(() => detectSourceEditorLineSeparator(value), [value]);
+	const sourceLanguage = useSourceLanguage(language, path);
+	const languageCompartment = useMemo(() => new Compartment(), []);
 
 	useEffect(() => {
 		onChangeRef.current = onChange;
@@ -179,8 +183,7 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 	const extensions = useMemo(
 		() =>
 			createExtensions({
-				path,
-				language,
+				languageExtension: languageCompartment.of(noLanguage),
 				readOnly,
 				wordWrap,
 				onChange: (nextValue) => onChangeRef.current(nextValue),
@@ -189,7 +192,7 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 				documentVersionRef,
 				lineSeparator,
 			}),
-		[path, language, readOnly, wordWrap, lineSeparator],
+		[path, readOnly, wordWrap, lineSeparator, languageCompartment],
 	);
 
 	useEffect(() => {
@@ -211,6 +214,17 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 			}
 		};
 	}, [extensions]);
+
+	useEffect(() => {
+		const view = viewRef.current;
+		if (!view || pathRef.current !== path) return;
+		const nextLanguage = sourceLanguage ?? noLanguage;
+		// The hook owns async loading and stale-result rejection. Apply only to the
+		// current view, without replacing its document, history, or selection.
+		if (languageCompartment.get(view.state) !== nextLanguage) {
+			view.dispatch({ effects: languageCompartment.reconfigure(nextLanguage) });
+		}
+	}, [sourceLanguage, languageCompartment, extensions, path]);
 
 	useEffect(() => {
 		const view = viewRef.current;

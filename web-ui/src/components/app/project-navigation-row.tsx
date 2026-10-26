@@ -29,6 +29,7 @@ export function ProjectRow({
 	striped = false,
 	removingProjectId,
 	needsInputCount = 0,
+	errorCount = 0,
 	dragDisabled = false,
 	dragHandleProps,
 	isDragging = false,
@@ -44,6 +45,7 @@ export function ProjectRow({
 	striped?: boolean;
 	removingProjectId: string | null;
 	needsInputCount?: number;
+	errorCount?: number;
 	dragDisabled?: boolean;
 	dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> | null;
 	groupActions?: ReactNode;
@@ -63,7 +65,7 @@ export function ProjectRow({
 	const isUnavailable = project.availability?.status === "unavailable";
 	const managementPending = management?.pendingProjectId != null;
 	const areActionsDisabled = actionsDisabled || hasAnyProjectRemoval || managementPending;
-	const displayCounts = resolveProjectNavigationTaskCounts(project.taskCounts, needsInputCount);
+	const displayCounts = resolveProjectNavigationTaskCounts(project.taskCounts, needsInputCount, errorCount);
 
 	useEffect(() => {
 		return () => {
@@ -94,6 +96,13 @@ export function ProjectRow({
 			shortLabel: "NI",
 			toneClassName: statusPillColors.needs_input,
 			count: displayCounts.needsInput,
+		},
+		{
+			id: "error",
+			title: "Error",
+			shortLabel: "Error",
+			toneClassName: statusPillColors.error,
+			count: displayCounts.error,
 		},
 	].filter((item) => item.count > 0);
 

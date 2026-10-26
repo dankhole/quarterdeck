@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prepareAgentLaunchMock = vi.hoisted(() => vi.fn());
@@ -18,12 +20,18 @@ vi.mock("../../../src/terminal/pty-session.js", () => ({
 	},
 }));
 
-import type { RuntimeTaskSessionSummary } from "../../../src/core";
+import {
+	type RuntimeHookIngestRequest,
+	type RuntimeTaskSessionSummary,
+	runtimeTaskSessionSummarySchema,
+} from "../../../src/core";
 import type { RuntimeDiagnostics } from "../../../src/diagnostics";
+import { createHookDeliveryIdGenerator } from "../../../src/hook-delivery-order";
 import { InMemorySessionSummaryStore, reduceSessionTransition, TerminalSessionManager } from "../../../src/terminal";
 import { createClaudeOutputTransitionHooks } from "../../../src/terminal/claude-turn-interruption";
 import { createHooksApi } from "../../../src/trpc";
 import { createTestProviderHookRequest, createTestTaskSessionSummary } from "../../utilities/task-session-factory";
+import { createTempDir } from "../../utilities/temp-dir";
 
 interface MockSpawnRequest {
 	onData?: (chunk: Buffer) => void;
@@ -74,14 +82,11 @@ function createSummary(overrides: Partial<RuntimeTaskSessionSummary> = {}): Runt
 function applyCurrentProviderHook(
 	manager: TerminalSessionManager,
 	event: "to_review" | "to_in_progress",
-	options: { occurredAt?: number } = {},
+	options: NonNullable<Parameters<typeof createTestProviderHookRequest>[2]> = {},
 ) {
 	const summary = manager.store.getSummary("task-1");
 	if (!summary) throw new Error("Expected task session summary.");
-	return manager.applyProviderHook(
-		"task-1",
-		createTestProviderHookRequest(summary, event, { occurredAt: options.occurredAt }),
-	);
+	return manager.applyProviderHook("task-1", createTestProviderHookRequest(summary, event, options));
 }
 
 async function startConfirmedTaskSession(
@@ -115,7 +120,214 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		vi.useRealTimers();
 	});
 
-	it("retains the interrupt fence through API ingest after timer expiry and restarts after fresh PreToolUse", async () => {
+	it.each(["claude", "codex", "pi"] as const)(
+		"keeps %s local cancellation durable across schema/disk hydration and API replay",
+		async (agentId) => {
+			setupMockPtySpawn();
+			const temp = createTempDir("quarterdeck-local-interrupt-");
+			try {
+				const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+				await manager.startTaskSession({
+					taskId: "task-1",
+					agentId,
+					binary: agentId,
+					args: [],
+					cwd: "/tmp/task-1",
+					prompt: "Synthetic task",
+				});
+				const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
+				const apiFor = (current: TerminalSessionManager) =>
+					createHooksApi({
+						projects: { getProjectPathById: () => "/tmp/repo" },
+						terminals: {
+							getTerminalManagerForProject: () => current,
+							ensureTerminalManagerForProject: async () => current,
+						},
+					});
+				const nextId = createHookDeliveryIdGenerator();
+				const request = (
+					name: string,
+					event: RuntimeHookIngestRequest["event"],
+					launch = sessionInstanceId,
+				): RuntimeHookIngestRequest => ({
+					taskId: "task-1",
+					projectId: "project-1",
+					event,
+					metadata: {
+						source: agentId,
+						sessionInstanceId: launch,
+						sessionId: "main-session",
+						hookEventName: name,
+						...(agentId === "claude" ? { promptId: "prompt" } : { turnId: "turn" }),
+						...(name === "PermissionRequest" ? { toolName: "Bash" } : {}),
+						...(name === "Stop" || name === "AgentSettled"
+							? { finalMessage: "Current provider completion" }
+							: {}),
+					},
+					delivery: { id: nextId(), occurredAt: Date.now() },
+				});
+				await apiFor(manager).ingest(
+					request(agentId === "pi" ? "AgentStart" : "UserPromptSubmit", "to_in_progress"),
+				);
+				vi.advanceTimersByTime(100);
+				manager.writeInput("task-1", Buffer.from([0x03]));
+				const persisted = runtimeTaskSessionSummarySchema.parse(manager.store.getSummary("task-1"));
+				expect(persisted.localForegroundInterrupt).toMatchObject({
+					sessionInstanceId,
+					provider: agentId,
+					awaitingNativeStart: true,
+				});
+				const path = join(temp.path, "sessions.json");
+				await writeFile(path, JSON.stringify(persisted));
+				const restored = runtimeTaskSessionSummarySchema.parse(JSON.parse(await readFile(path, "utf8")));
+				const recovered = new TerminalSessionManager(new InMemorySessionSummaryStore());
+				recovered.hydrateFromRecord({ "task-1": restored });
+				const beforeReplay = recovered.store.getSummary("task-1");
+				vi.advanceTimersByTime(1);
+				const delayedPermission = request("PermissionRequest", "to_review");
+				// The raw controller path cannot bypass the same durable local fence.
+				expect(recovered.applyProviderHook("task-1", delayedPermission)?.changed).toBe(false);
+				await apiFor(recovered).ingest(delayedPermission);
+				expect(recovered.store.getSummary("task-1")).toEqual(beforeReplay);
+				expect(recovered.store.getSummary("task-1")?.outstandingInteraction).toBeNull();
+				vi.advanceTimersByTime(1);
+				await apiFor(recovered).ingest(request(agentId === "pi" ? "AgentSettled" : "Stop", "to_review"));
+				expect(recovered.store.getSummary("task-1")).toMatchObject({
+					state: "awaiting_review",
+					reviewReason: "hook",
+					pid: null,
+					startupRecoveryRequired: false,
+					completedResponses: [{ text: "Current provider completion" }],
+				});
+				await recovered.startTaskSession({
+					taskId: "task-1",
+					agentId,
+					binary: agentId,
+					args: [],
+					cwd: "/tmp/task-1",
+					prompt: "Synthetic replacement",
+				});
+				const replacementId = recovered.store.getSummary("task-1")?.sessionInstanceId;
+				expect(replacementId).not.toBe(sessionInstanceId);
+				expect(recovered.store.getSummary("task-1")?.localForegroundInterrupt).toBeNull();
+				await apiFor(recovered).ingest(delayedPermission);
+				expect(recovered.store.getSummary("task-1")?.outstandingInteraction).toBeNull();
+				vi.advanceTimersByTime(1);
+				await apiFor(recovered).ingest(
+					request(agentId === "pi" ? "AgentStart" : "UserPromptSubmit", "to_in_progress", replacementId),
+				);
+				expect(recovered.store.getSummary("task-1")?.state).toBe("running");
+			} finally {
+				await temp.cleanupAsync();
+			}
+		},
+	);
+
+	it.each(["claude", "codex", "pi"] as const)(
+		"keeps the first current %s terminal completion admissible after local Ctrl-C",
+		async (agentId) => {
+			setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			await manager.startTaskSession({
+				taskId: "task-1",
+				agentId,
+				binary: agentId,
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "Synthetic task",
+			});
+			const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+			});
+			const ingest = (completion: boolean) =>
+				api.ingest({
+					taskId: "task-1",
+					projectId: "project-1",
+					event: completion ? "to_review" : "to_in_progress",
+					metadata: {
+						source: agentId,
+						sessionInstanceId,
+						sessionId: "main-session",
+						...(agentId === "claude" ? { promptId: "prompt" } : { turnId: "turn" }),
+						hookEventName:
+							agentId === "pi"
+								? completion
+									? "AgentSettled"
+									: "AgentStart"
+								: completion
+									? "Stop"
+									: "UserPromptSubmit",
+						...(completion ? { finalMessage: "Provider-owned completion" } : {}),
+					},
+					delivery: { id: `00000000-0000-4000-8000-00000000000${completion ? "2" : "1"}`, occurredAt: Date.now() },
+				});
+			await ingest(false);
+			vi.advanceTimersByTime(100);
+			manager.writeInput("task-1", Buffer.from([0x03]));
+			vi.advanceTimersByTime(1);
+			await ingest(true);
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "hook",
+				completedResponses: [{ text: "Provider-owned completion" }],
+			});
+			expect(manager.getDiagnosticSnapshot().sessions[0]?.suppressAutoRestartOnExit).toBe(false);
+		},
+	);
+
+	it("retains Pi's settled reply when an ordered next run starts in the same millisecond through ingest", async () => {
+		setupMockPtySpawn();
+		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+		await manager.startTaskSession({
+			taskId: "task-1",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/task-1",
+			prompt: "Synthetic task",
+		});
+		const sessionInstanceId = manager.store.getSummary("task-1")?.sessionInstanceId;
+		const api = createHooksApi({
+			projects: { getProjectPathById: () => "/tmp/repo" },
+			terminals: {
+				getTerminalManagerForProject: () => manager,
+				ensureTerminalManagerForProject: async () => manager,
+			},
+		});
+		const nextId = createHookDeliveryIdGenerator();
+		const occurredAt = Date.now();
+		const ingest = (turnId: string, hookEventName: "AgentStart" | "AgentSettled") =>
+			api.ingest({
+				taskId: "task-1",
+				projectId: "project-1",
+				event: hookEventName === "AgentStart" ? "to_in_progress" : "to_review",
+				metadata: {
+					source: "pi",
+					sessionInstanceId,
+					sessionId: "pi-session",
+					turnId,
+					hookEventName,
+					...(hookEventName === "AgentSettled" ? { finalMessage: "Completed run A" } : {}),
+				},
+				delivery: { id: nextId(), occurredAt },
+			} satisfies RuntimeHookIngestRequest);
+		await ingest("run-a", "AgentStart");
+		await ingest("run-a", "AgentSettled");
+		expect(manager.store.getSummary("task-1")?.completedResponses).toMatchObject([{ text: "Completed run A" }]);
+		await ingest("run-b", "AgentStart");
+		expect(manager.store.getSummary("task-1")).toMatchObject({
+			state: "running",
+			nativeWorkEvidence: { turnId: "run-b" },
+			completedResponses: [{ text: "Completed run A" }],
+		});
+	});
+
+	it("retains the interrupt fence through API ingest after timer expiry and restarts after a new-turn PreToolUse", async () => {
 		const processes = setupMockPtySpawn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn() });
@@ -141,6 +353,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			event: "activity" | "to_review" | "to_in_progress",
 			hookEventName: string,
 			occurredAt: number,
+			turnId = "main-turn",
 		) =>
 			api.ingest({
 				taskId: "task-1",
@@ -150,7 +363,7 @@ describe("TerminalSessionManager interrupt recovery", () => {
 					source: "codex",
 					sessionInstanceId,
 					sessionId: "main-session",
-					turnId: "main-turn",
+					turnId,
 					hookEventName,
 					...(hookEventName === "Stop" ? { finalMessage: "STALE RESULT" } : { toolUseId: "tool-1" }),
 				},
@@ -167,7 +380,10 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			reviewReason: "interrupted",
 			completedResponses: [],
 		});
+		// A later subprocess timestamp cannot revive the interrupted identity.
 		await ingest(4, "activity", "PreToolUse", Date.now());
+		expect(manager.store.getSummary("task-1")?.reviewReason).toBe("interrupted");
+		await ingest(5, "activity", "PreToolUse", Date.now() + 1, "next-turn");
 		expect(manager.store.getSummary("task-1")?.state).toBe("running");
 		processes[0]?.triggerExit(1);
 		await vi.advanceTimersByTimeAsync(100);
@@ -493,7 +709,10 @@ describe("TerminalSessionManager interrupt recovery", () => {
 			state: "awaiting_review",
 			reviewReason: "interrupted",
 		});
-		applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: Date.now() + 1 });
+		applyCurrentProviderHook(manager, "to_in_progress", {
+			occurredAt: Date.now() + 1,
+			metadata: { turnId: "next-turn", toolUseId: "next-tool" },
+		});
 
 		expect(manager.store.getSummary("task-1")).toMatchObject({ state: "running", reviewReason: null });
 		expect(manager.getDiagnosticSnapshot().sessions[0]?.suppressAutoRestartOnExit).toBe(false);
@@ -515,7 +734,10 @@ describe("TerminalSessionManager interrupt recovery", () => {
 		manager.writeInput("task-1", Buffer.from([0x03]));
 		await vi.advanceTimersByTimeAsync(1_000);
 		manager.writeInput("task-1", Buffer.from([0x0d]));
-		applyCurrentProviderHook(manager, "to_in_progress", { occurredAt: Date.now() + 1 });
+		applyCurrentProviderHook(manager, "to_in_progress", {
+			occurredAt: Date.now() + 1,
+			metadata: { turnId: "next-turn", toolUseId: "next-tool" },
+		});
 		await vi.advanceTimersByTimeAsync(5_000);
 
 		expect(manager.store.getSummary("task-1")).toMatchObject({ state: "running", reviewReason: null });

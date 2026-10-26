@@ -11,10 +11,12 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 	let taskId: string;
 	let element: HTMLDivElement;
 	const reports = vi.fn();
+	const batchWheelReports = vi.fn((dispatch: () => void) => dispatch());
 	beforeEach(async () => {
 		agentId = initialAgentId;
 		taskId = "task";
 		reports.mockClear();
+		batchWheelReports.mockClear();
 		terminal = new Terminal({ rows: 30 });
 		element = document.createElement("div");
 		const screen = document.createElement("div");
@@ -25,7 +27,11 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		vi.spyOn(terminal, "attachCustomWheelEventHandler").mockImplementation((handler) => {
 			handleWheel = handler;
 		});
-		input = new TerminalWheelInput(terminal, { getSessionAgentId: () => agentId, getConnectedTaskId: () => taskId });
+		input = new TerminalWheelInput(terminal, {
+			getSessionAgentId: () => agentId,
+			getConnectedTaskId: () => taskId,
+			batchWheelReports,
+		});
 		element.addEventListener("wheel", (event) => {
 			// Re-entrant dispatch must pass through to xterm exactly once per normalized report.
 			if (handleWheel(event)) reports(event.deltaY, event.deltaMode, event.clientX, event.clientY);
@@ -90,6 +96,24 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
 		expect(reports).not.toHaveBeenCalled();
 	});
+	it("does not carry fractional motion through a normal-buffer subprocess without wheel input", async () => {
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
+		await write("\u001b[?1049lsubprocess output\r\n");
+		expect(terminal.buffer.active.type).toBe("normal");
+		await write("\u001b[?1049h");
+		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
+		expect(reports).not.toHaveBeenCalled();
+	});
+	it("resets fractional motion when mouse-disabled input falls back to xterm", async () => {
+		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
+		await write("\u001b[?1002l");
+		expect(wheel()).toBe(true);
+		await write("\u001b[?1002h");
+		expect(wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 })).toBe(false);
+		expect(reports).not.toHaveBeenCalled();
+		wheel();
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
+	});
 	it("preserves equivalent distance for coalesced and fine-grained deltas", () => {
 		wheel();
 		const coalescedCount = reports.mock.calls.length;
@@ -109,6 +133,45 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		reports.mockClear();
 		wheel();
 		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
+	});
+	it("opens exactly one synchronous transport scope per physical wheel", () => {
+		wheel();
+		expect(batchWheelReports).toHaveBeenCalledOnce();
+		wheel();
+		expect(batchWheelReports).toHaveBeenCalledTimes(2);
+	});
+	it("distinguishes a reentrant physical wheel from its own synthetic reports", () => {
+		let reentered = false;
+		element.addEventListener("wheel", () => {
+			if (reentered) return;
+			reentered = true;
+			wheel();
+		});
+		wheel();
+		expect(batchWheelReports).toHaveBeenCalledTimes(2);
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 12 : 4);
+	});
+	it("stops synthetic dispatch immediately when disposed reentrantly", () => {
+		element.addEventListener("wheel", () => input.dispose(), { once: true });
+		wheel();
+		expect(reports).toHaveBeenCalledOnce();
+	});
+	it("does not leave synthetic bypass enabled after dispatch throws", () => {
+		const dispatch = vi.spyOn(element, "dispatchEvent").mockImplementationOnce(() => {
+			throw new Error("dispatch failed");
+		});
+		expect(() => wheel()).toThrow("dispatch failed");
+		dispatch.mockRestore();
+		wheel();
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
+	});
+	it("unsubscribes from buffer changes on disposal", () => {
+		input.dispose();
+		const subscription = { dispose: vi.fn() };
+		vi.spyOn(terminal.buffer, "onBufferChange").mockReturnValue(subscription);
+		input = new TerminalWheelInput(terminal, { getSessionAgentId: () => agentId, getConnectedTaskId: () => taskId });
+		input.dispose();
+		expect(subscription.dispose).toHaveBeenCalledOnce();
 	});
 	it("restores ordinary xterm handling on disposal", () => {
 		input.dispose();

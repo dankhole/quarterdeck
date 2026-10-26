@@ -1,12 +1,12 @@
-import serializeAddonModule from "@xterm/addon-serialize";
-import headlessTerminalModule from "@xterm/headless";
+import { randomUUID } from "node:crypto";
+import headlessTerminalModule, { type Terminal as HeadlessTerminal } from "@xterm/headless";
 
 import { createTaggedLogger } from "../core";
+import { SerializeAddon } from "./xterm-serialize";
 
 const log = createTaggedLogger("terminal-mirror");
 
-const { SerializeAddon } = serializeAddonModule as typeof import("@xterm/addon-serialize");
-const { Terminal } = headlessTerminalModule as typeof import("@xterm/headless");
+const { Terminal } = headlessTerminalModule as { Terminal: typeof HeadlessTerminal };
 
 /** Must match web-ui/src/terminal/terminal-slot.ts TERMINAL_SCROLLBACK */
 const TERMINAL_SCROLLBACK = 1_500;
@@ -28,10 +28,29 @@ const MINIMUM_TERMINAL_SCROLLBACK = 100;
 
 const BATCH_FLUSH_INTERVAL_MS = 160;
 
+/** Server-internal position in one mirror's accepted output stream. */
+export interface TerminalOutputCursor {
+	readonly streamId: string;
+	readonly sequence: number;
+}
+
+export interface TerminalOutputApplyOptions {
+	/** Parser/UTF-8 restore safety after this output settles; omission preserves the prior accepted state. */
+	restoreSnapshotSafe?: boolean;
+}
+
+export class TerminalRestoreSnapshotUnavailableError extends Error {
+	constructor() {
+		super("Terminal restore snapshot unavailable while output framing is incomplete");
+		this.name = "TerminalRestoreSnapshotUnavailableError";
+	}
+}
+
 export interface TerminalRestoreSnapshot {
 	snapshot: string;
 	cols: number;
 	rows: number;
+	outputCursor: TerminalOutputCursor;
 }
 
 /** Rendered primary/alternate-screen viewport after an output write settles. */
@@ -67,12 +86,19 @@ export class TerminalStateMirror {
 	private operationQueue: Promise<void> = Promise.resolve();
 	private disposed = false;
 	private mouseEncodingMode: 0 | 1006 | 1016 = 0;
+	private acceptedOutputCursor: TerminalOutputCursor = Object.freeze({ streamId: randomUUID(), sequence: 0 });
+	private appliedOutputCursor = this.acceptedOutputCursor;
+	private acceptedRestoreSnapshotSafe = true;
+	private appliedRestoreSnapshotSafe = true;
+	private finishActiveWrite: (() => void) | null = null;
 
 	private readonly snapshotScrollback: number;
 
 	private batching = false;
 	private batchBuffer: Uint8Array[] = [];
 	private batchAppliedCallbacks: Array<(screen: TerminalScreenSnapshot) => void> = [];
+	private batchOutputCursor = this.acceptedOutputCursor;
+	private batchRestoreSnapshotSafe = true;
 	private batchTimer: ReturnType<typeof setTimeout> | null = null;
 	/**
 	 * Output queued behind an in-flight operation but not yet written. Later
@@ -84,6 +110,8 @@ export class TerminalStateMirror {
 	private pendingWrite: {
 		chunks: Uint8Array[];
 		callbacks: Array<(screen: TerminalScreenSnapshot) => void>;
+		outputCursor: TerminalOutputCursor;
+		restoreSnapshotSafe: boolean;
 	} | null = null;
 
 	constructor(cols: number, rows: number, options: TerminalStateMirrorOptions = {}) {
@@ -128,66 +156,92 @@ export class TerminalStateMirror {
 		}
 	}
 
-	applyOutput(chunk: Buffer, onApplied?: (screen: TerminalScreenSnapshot) => void): void {
-		if (this.disposed) return;
+	applyOutput(
+		chunk: Buffer,
+		onApplied?: (screen: TerminalScreenSnapshot) => void,
+		options: TerminalOutputApplyOptions = {},
+	): TerminalOutputCursor | null {
+		if (this.disposed) return null;
+		if (chunk.byteLength > 0) {
+			this.acceptedOutputCursor = Object.freeze({
+				streamId: this.acceptedOutputCursor.streamId,
+				sequence: this.acceptedOutputCursor.sequence + 1,
+			});
+		}
+		const outputCursor = this.acceptedOutputCursor;
+		const restoreSnapshotSafe = options.restoreSnapshotSafe ?? this.acceptedRestoreSnapshotSafe;
+		this.acceptedRestoreSnapshotSafe = restoreSnapshotSafe;
 
 		if (this.batching) {
 			this.batchBuffer.push(new Uint8Array(chunk));
+			this.batchOutputCursor = outputCursor;
+			this.batchRestoreSnapshotSafe = restoreSnapshotSafe;
 			if (onApplied) {
 				this.batchAppliedCallbacks.push(onApplied);
 			}
 			if (this.batchTimer === null) {
 				this.batchTimer = setTimeout(() => this.flushBatch(), BATCH_FLUSH_INTERVAL_MS);
 			}
-			return;
+			return outputCursor;
 		}
 
 		const chunkCopy = new Uint8Array(chunk);
 		if (this.pendingWrite) {
 			this.pendingWrite.chunks.push(chunkCopy);
 			if (onApplied) this.pendingWrite.callbacks.push(onApplied);
-			return;
+			this.pendingWrite.outputCursor = outputCursor;
+			this.pendingWrite.restoreSnapshotSafe = restoreSnapshotSafe;
+			return outputCursor;
 		}
-		const group = { chunks: [chunkCopy], callbacks: onApplied ? [onApplied] : [] };
+		const group = { chunks: [chunkCopy], callbacks: onApplied ? [onApplied] : [], outputCursor, restoreSnapshotSafe };
 		this.enqueueOperation(() => {
 			if (this.pendingWrite === group) this.pendingWrite = null;
-			return this.writeAndNotify(mergeChunks(group.chunks), group.callbacks);
+			return this.writeAndNotify(
+				mergeChunks(group.chunks),
+				group.callbacks,
+				group.outputCursor,
+				group.restoreSnapshotSafe,
+			);
 		});
 		this.pendingWrite = group;
+		return outputCursor;
 	}
 
 	resize(cols: number, rows: number): void {
 		if (this.disposed) return;
-		if (cols === this.terminal.cols && rows === this.terminal.rows) {
-			return;
-		}
+		this.flushBatch();
 		this.enqueueOperation(() => {
-			this.terminal.resize(cols, rows);
+			if (cols !== this.terminal.cols || rows !== this.terminal.rows) {
+				this.terminal.resize(cols, rows);
+			}
 		});
 	}
 
 	async getSnapshot(): Promise<TerminalRestoreSnapshot | null> {
 		const t0 = performance.now();
 		this.flushBatch();
-		await this.operationQueue;
-		const t1 = performance.now();
-		if (this.disposed) {
-			return null;
-		}
-		const mouseEncoding = this.mouseEncodingMode === 0 ? "" : `\u001b[?${this.mouseEncodingMode}h`;
-		const snapshot = this.serializeAddon.serialize({ scrollback: this.snapshotScrollback }) + mouseEncoding;
-		const t2 = performance.now();
-		const cols = this.terminal.cols;
-		const rows = this.terminal.rows;
-		log.debug("[perf] getSnapshot", {
-			queueDrainMs: Math.round((t1 - t0) * 100) / 100,
-			serializeMs: Math.round((t2 - t1) * 100) / 100,
-			totalMs: Math.round((t2 - t0) * 100) / 100,
-			snapshotLength: snapshot.length,
-			cols,
-			rows,
+		// Capture inside the queue, not after awaiting its current tail: later
+		// output must neither join a preceding write nor reach this snapshot.
+		return this.enqueueOperation(() => {
+			if (!this.appliedRestoreSnapshotSafe) {
+				throw new TerminalRestoreSnapshotUnavailableError();
+			}
+			const t1 = performance.now();
+			const mouseEncoding = this.mouseEncodingMode === 0 ? "" : `\u001b[?${this.mouseEncodingMode}h`;
+			const snapshot = this.serializeAddon.serialize({ scrollback: this.snapshotScrollback }) + mouseEncoding;
+			const t2 = performance.now();
+			const cols = this.terminal.cols;
+			const rows = this.terminal.rows;
+			log.debug("[perf] getSnapshot", {
+				queueDrainMs: Math.round((t1 - t0) * 100) / 100,
+				serializeMs: Math.round((t2 - t1) * 100) / 100,
+				totalMs: Math.round((t2 - t0) * 100) / 100,
+				snapshotLength: snapshot.length,
+				cols,
+				rows,
+			});
+			return { snapshot, cols, rows, outputCursor: this.appliedOutputCursor };
 		});
-		return { snapshot, cols, rows };
 	}
 
 	getDiagnosticSnapshot(): TerminalStateMirrorDiagnosticSnapshot {
@@ -201,6 +255,7 @@ export class TerminalStateMirror {
 	}
 
 	dispose(): void {
+		if (this.disposed) return;
 		this.disposed = true;
 		if (this.batchTimer !== null) {
 			clearTimeout(this.batchTimer);
@@ -209,6 +264,9 @@ export class TerminalStateMirror {
 		this.batchBuffer.length = 0;
 		this.batchAppliedCallbacks.length = 0;
 		this.pendingWrite = null;
+		// xterm disposal can cancel its write callback. Release the FIFO so
+		// queued snapshots still settle (as null) instead of waiting forever.
+		this.finishActiveWrite?.();
 		this.terminal.dispose();
 	}
 
@@ -224,28 +282,56 @@ export class TerminalStateMirror {
 		const appliedCallbacks = this.batchAppliedCallbacks;
 		this.batchAppliedCallbacks = [];
 
+		const outputCursor = this.batchOutputCursor;
+		const restoreSnapshotSafe = this.batchRestoreSnapshotSafe;
 		const merged = mergeChunks(chunks);
-		this.enqueueOperation(() => this.writeAndNotify(merged, appliedCallbacks));
+		this.enqueueOperation(() => this.writeAndNotify(merged, appliedCallbacks, outputCursor, restoreSnapshotSafe));
 	}
 
 	private writeAndNotify(
 		data: Uint8Array,
 		appliedCallbacks: ReadonlyArray<(screen: TerminalScreenSnapshot) => void>,
+		outputCursor: TerminalOutputCursor,
+		restoreSnapshotSafe: boolean,
 	): Promise<void> {
-		return new Promise<void>((resolve) => {
-			this.terminal.write(data, () => {
-				if (appliedCallbacks.length > 0) {
-					const screen = this.captureVisibleScreen();
-					for (const callback of appliedCallbacks) {
-						try {
-							callback(screen);
-						} catch {
-							log.warn("terminal applied-output callback failed");
+		return new Promise<void>((resolve, reject) => {
+			let settled = false;
+			const finish = () => {
+				if (settled) return;
+				settled = true;
+				this.finishActiveWrite = null;
+				resolve();
+			};
+			this.finishActiveWrite = finish;
+			try {
+				this.terminal.write(data, () => {
+					if (settled) return;
+					this.appliedOutputCursor = outputCursor;
+					// Safety belongs to the rendered group at this queue position,
+					// not to later accepted output that may complete its parser state.
+					this.appliedRestoreSnapshotSafe = restoreSnapshotSafe;
+					if (appliedCallbacks.length > 0 && !this.disposed) {
+						const screen = this.captureVisibleScreen();
+						for (const callback of appliedCallbacks) {
+							if (this.disposed) break;
+							try {
+								callback(screen);
+							} catch {
+								log.warn("terminal applied-output callback failed");
+							}
 						}
 					}
-				}
-				resolve();
-			});
+					finish();
+				});
+			} catch (error) {
+				settled = true;
+				this.finishActiveWrite = null;
+				// A failed write leaves stream coverage unknown. Retire this mirror
+				// rather than let a later cursor claim that missing output.
+				log.warn("terminal output write failed");
+				this.dispose();
+				reject(error);
+			}
 		});
 	}
 
@@ -263,13 +349,16 @@ export class TerminalStateMirror {
 		};
 	}
 
-	private enqueueOperation(operation: () => void | Promise<void>): void {
+	private enqueueOperation<T>(operation: () => T | Promise<T>): Promise<T | null> {
 		this.pendingWrite = null;
-		this.operationQueue = this.operationQueue
-			.catch(() => undefined)
-			.then(async () => {
-				await operation();
-			});
+		const result = this.operationQueue.then(() => (this.disposed ? null : operation()));
+		// A failed operation must not strand later barriers or leave an ignored
+		// output/resize operation as an unhandled rejection.
+		this.operationQueue = result.then(
+			() => undefined,
+			() => undefined,
+		);
+		return result;
 	}
 }
 

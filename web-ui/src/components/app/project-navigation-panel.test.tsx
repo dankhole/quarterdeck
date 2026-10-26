@@ -72,6 +72,7 @@ describe("ProjectNavigationPanel", () => {
 					onAddProject={() => {}}
 					onCreateTask={() => {}}
 					needsInputByProject={{}}
+					errorByProject={{}}
 					{...overrides}
 				/>,
 			);
@@ -154,6 +155,38 @@ describe("ProjectNavigationPanel", () => {
 		expect(container.textContent).not.toMatch(/backlog/i);
 	});
 
+	it("wires exclusive Error and Needs Input pills through the flat project list", () => {
+		renderPanel({
+			currentProjectId: null,
+			projects: PROJECTS.map((project) => ({
+				...project,
+				taskCounts: { in_progress: 1, review: 4, trash: 5 },
+			})),
+			needsInputByProject: { "project-1": 1 },
+			errorByProject: { "project-1": 2, "other-project": 8 },
+		});
+		expect(container.querySelector('[title="In Progress"]')?.textContent).toBe("IP|1");
+		expect(container.querySelector('[title="Review"]')?.textContent).toBe("R|1");
+		expect(container.querySelector('[title="Needs Input"]')?.textContent).toBe("NI|1");
+		const error = container.querySelector('[title="Error"]');
+		expect(error?.textContent).toBe("Error|2");
+		expect(error?.classList.contains("text-status-red")).toBe(true);
+	});
+
+	it("shows an Error-only row and clears its pill when the projection clears", () => {
+		const projects = PROJECTS.map((project) => ({
+			...project,
+			taskCounts: { in_progress: 0, review: 2, trash: 0 },
+		}));
+		renderPanel({ projects, errorByProject: { "project-1": 2 } });
+		expect(container.querySelector('[title="Error"]')?.textContent).toBe("Error|2");
+		expect(container.querySelector('[title="Review"]')).toBeNull();
+		expect(container.querySelector('[title="Needs Input"]')).toBeNull();
+		renderPanel({ projects });
+		expect(container.querySelector('[title="Error"]')).toBeNull();
+		expect(container.querySelector('[title="Review"]')?.textContent).toBe("R|2");
+	});
+
 	it("keeps the active project selected when collapsed, summarizes activity, and reveals an explicit switch", () => {
 		const onSelectProject = vi.fn();
 		const organization = {
@@ -167,7 +200,13 @@ describe("ProjectNavigationPanel", () => {
 			{ ...PROJECTS[0]!, taskCounts: { in_progress: 2, review: 3, trash: 0 } },
 			{ ...PROJECTS[0]!, id: "project-2", name: "Tools", taskCounts: { in_progress: 1, review: 2, trash: 0 } },
 		];
-		const props = { organization, projects, onSelectProject, needsInputByProject: { "project-1": 1 } };
+		const props = {
+			organization,
+			projects,
+			onSelectProject,
+			needsInputByProject: { "project-1": 1 },
+			errorByProject: { "project-1": 1, "project-2": 1, "other-project": 9 },
+		};
 		renderPanel(props);
 		const disclosure = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Work"]');
 		if (!disclosure) throw new Error("Missing group disclosure");
@@ -176,11 +215,34 @@ describe("ProjectNavigationPanel", () => {
 		expect(disclosure.getAttribute("aria-label")).toBe("Expand Work, contains current project");
 		expect(container.querySelector("#project-group-work")?.hasAttribute("hidden")).toBe(true);
 		expect(container.querySelector('[aria-label="3 tasks In Progress"]')).not.toBeNull();
-		expect(container.querySelector('[aria-label="4 tasks Review"]')).not.toBeNull();
+		expect(container.querySelector('[aria-label="2 tasks Review"]')).not.toBeNull();
+		expect(container.querySelector('[aria-label="2 tasks Error"]')?.textContent).toBe("Error 2");
 		expect(container.querySelector('[aria-label="1 tasks Needs Input"]')).not.toBeNull();
 		renderPanel({ ...props, currentProjectId: "project-2" });
 		expect(container.querySelector("#project-group-work")?.hasAttribute("hidden")).toBe(false);
 		expect(onSelectProject).not.toHaveBeenCalled();
+	});
+
+	it("keeps Error-only collapsed group activity visible and floors Review per project", () => {
+		const organization = {
+			id: "error-collapse-test",
+			revision: 1,
+			groups: [{ id: "work", name: "Work" }],
+			membership: { "project-1": "work", "project-2": "work" },
+			projectOrder: ["project-1", "project-2"],
+		};
+		const projects = [
+			{ ...PROJECTS[0]!, taskCounts: { in_progress: 0, review: 1, trash: 0 } },
+			{ ...PROJECTS[0]!, id: "project-2", name: "Tools", taskCounts: { in_progress: 0, review: 2, trash: 0 } },
+		];
+		const props = { organization, projects, errorByProject: { "project-1": 3, "project-2": 2 } };
+		renderPanel(props);
+		act(() => container.querySelector<HTMLButtonElement>('[aria-label="Collapse Work"]')!.click());
+		expect(container.querySelector('[aria-label="5 tasks Error"]')?.textContent).toBe("Error 5");
+		expect(container.querySelector('[aria-label$="tasks Review"]')).toBeNull();
+		renderPanel({ ...props, errorByProject: { "project-1": 3 } });
+		expect(container.querySelector('[aria-label="3 tasks Error"]')).not.toBeNull();
+		expect(container.querySelector('[aria-label="2 tasks Review"]')).not.toBeNull();
 	});
 
 	it("fills its parent container without fixed width", () => {

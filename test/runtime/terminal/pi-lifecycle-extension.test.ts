@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -28,12 +28,11 @@ import {
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
 	QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
+import { createPiLifecycleClockHarness, type LifecycleContext } from "../../utilities/pi-lifecycle-clock-harness";
 import { useProcessTestBudget } from "../../utilities/process-test-budget";
 
-// captureLifecycleHooks below spawns several real, serial Node child
-// processes per test. Heavy machine load can push that well past the fast
-// lane's default testTimeout/hookTimeout even though nothing is actually
-// hung.
+// Real-clock optional-subagent cases cross the provider's wake-grace window.
+// Process-boundary publication/packaging has its own narrow fixture tests.
 useProcessTestBudget();
 
 const HOOK_COMMAND_ENV_PLACEHOLDER = "__QUARTERDECK_PI_HOOK_COMMAND_ENV__";
@@ -62,23 +61,7 @@ function listenerBlock(source: string, eventName: string): string {
 	return next === -1 ? source.slice(start) : source.slice(start, next);
 }
 
-interface PiExtensionContextHarness {
-	cwd?: string;
-	ui: {
-		notify(message: string, type?: string): void;
-	};
-	sessionManager: {
-		getSessionId(): string;
-		// pi-subagents resolves its own "current session" as
-		// `getSessionFile() ?? getSessionId()`, so the sessionId it reports on
-		// async lifecycle events is often this file-path form instead.
-		getSessionFile?(): string | null;
-	};
-	// Real Pi's extension-context method the extension consults when a
-	// deferred Review's wake-grace timer expires, to avoid flushing while Pi
-	// is still mid-turn.
-	isIdle?(): boolean;
-}
+type PiExtensionContextHarness = LifecycleContext;
 
 type PiEventHandlerHarness = (
 	event: Record<string, unknown>,
@@ -96,28 +79,6 @@ type PiEventHandlerHarness = (
 interface PiLifecycleEventsBusHarness {
 	on(channel: string, handler: (payload: unknown) => void): () => void;
 	emit(channel: string, payload: unknown): void;
-}
-
-function createEventsBusHarness(): PiLifecycleEventsBusHarness {
-	const channelHandlers = new Map<string, Set<(payload: unknown) => void>>();
-	return {
-		on(channel, handler) {
-			let handlers = channelHandlers.get(channel);
-			if (!handlers) {
-				handlers = new Set();
-				channelHandlers.set(channel, handlers);
-			}
-			handlers.add(handler);
-			return () => {
-				handlers?.delete(handler);
-			};
-		},
-		emit(channel, payload) {
-			for (const handler of channelHandlers.get(channel) ?? []) {
-				handler(payload);
-			}
-		},
-	};
 }
 
 function flagValue(args: string[], flag: string): string | undefined {
@@ -146,20 +107,16 @@ async function loadPiLifecycleExtension(): Promise<(pi: PiExtensionApiHarness) =
 }
 
 interface CaptureLifecycleHooksOptions {
-	/**
-	 * Shared `pi.events` bus to attach to the harness `pi` object. Pass
-	 * `null` to omit the `events` field entirely, simulating a Pi host build
-	 * without the shared extension bus (today's shape). Omit the option to
-	 * get a working in-memory bus; pass one explicitly to reuse/inspect it.
-	 */
-	events?: PiLifecycleEventsBusHarness | null;
+	/** Pass null to simulate a host without the optional extension event bus. */
+	events?: null;
 	/**
 	 * After the expected hooks have arrived, keep waiting this long (real
 	 * time) and re-assert the count is still unchanged. Used for negative
 	 * assertions that a deferred hook was NOT emitted once the background
-	 * wake-grace window (nominally 1.5s) has fully elapsed.
+	 * wake-grace window (nominally 3s) has fully elapsed.
 	 */
 	verifyNoFurtherHookForMs?: number;
+	afterCapture?: () => Promise<void>;
 }
 
 async function captureLifecycleHooks(
@@ -171,71 +128,19 @@ async function captureLifecycleHooks(
 	expectedCount: number,
 	options: CaptureLifecycleHooksOptions = {},
 ): Promise<string[][]> {
-	const initialize = await loadPiLifecycleExtension();
-	const handlers = new Map<string, PiEventHandlerHarness>();
-	const events = options.events === null ? undefined : (options.events ?? createEventsBusHarness());
-	const api: PiExtensionApiHarness = { on: (eventName, handler) => handlers.set(eventName, handler) };
-	if (events) {
-		api.events = events;
-	}
-	initialize(api);
-	const tempDir = await mkdtemp(join(tmpdir(), "quarterdeck-pi-hook-capture-"));
-	const helperPath = join(tempDir, "capture-hook.mjs");
-	const outputPath = join(tempDir, "hooks.jsonl");
-	await writeFile(
-		helperPath,
-		'import { appendFileSync } from "node:fs";\nappendFileSync(process.env.QD_TEST_PI_HOOK_OUTPUT, JSON.stringify(process.argv.slice(2)) + "\\n");\n',
-		"utf8",
-	);
-	const context: PiExtensionContextHarness = {
-		ui: { notify: vi.fn() },
-		sessionManager: {
-			getSessionId: () => "pi-session-1",
-			getSessionFile: () => "/sessions/pi-session-1.json",
-		},
-		isIdle: () => true,
-	};
-	const originalHookCommand = process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-	const originalOutputPath = process.env.QD_TEST_PI_HOOK_OUTPUT;
-	// Pi binds optional bus listeners at session_start, not extension-factory
-	// time (factories can be filtered out). Boot without recording metadata so
-	// individual cases continue to assert only the hooks they exercise.
-	process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = "";
-	await handlers.get("session_start")?.({}, context);
-	process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = JSON.stringify([process.execPath, helperPath, "notify"]);
-	process.env.QD_TEST_PI_HOOK_OUTPUT = outputPath;
-	async function readHookLines(): Promise<string[]> {
-		return (await readFile(outputPath, "utf8"))
-			.trim()
-			.split("\n")
-			.filter((line) => line.length > 0);
-	}
+	const harness = createPiLifecycleClockHarness({ bus: options.events !== null, realClock: true });
+	await harness.boot();
 	try {
-		emit(handlers, context, events ?? createEventsBusHarness());
-		await vi.waitFor(
-			async () => {
-				expect(await readHookLines()).toHaveLength(expectedCount);
-			},
-			// Up to 5 serial real Node spawns, plus the background wake-grace
-			// window on some cases; 30s raced heavy load even though each hook
-			// was progressing normally, just more slowly.
-			{ timeout: 30_000 },
-		);
+		emit(harness.handlers, harness.context, harness.bus);
+		await vi.waitFor(() => expect(harness.calls).toHaveLength(expectedCount), { timeout: 10_000 });
 		if (options.verifyNoFurtherHookForMs) {
 			await new Promise((resolve) => setTimeout(resolve, options.verifyNoFurtherHookForMs));
-			expect(await readHookLines()).toHaveLength(expectedCount);
+			expect(harness.calls).toHaveLength(expectedCount);
 		}
-		return (await readHookLines()).map((line) => JSON.parse(line) as string[]);
+		await options.afterCapture?.();
+		return [...harness.calls];
 	} finally {
-		// Dispose listeners and background timers without launching cleanup hooks
-		// after this case's temporary capture directory has been removed.
-		process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = "";
-		await handlers.get("session_shutdown")?.({}, context);
-		if (originalHookCommand === undefined) delete process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV];
-		else process.env[QUARTERDECK_PI_HOOK_COMMAND_ENV] = originalHookCommand;
-		if (originalOutputPath === undefined) delete process.env.QD_TEST_PI_HOOK_OUTPUT;
-		else process.env.QD_TEST_PI_HOOK_OUTPUT = originalOutputPath;
-		await rm(tempDir, { recursive: true, force: true });
+		await harness.dispose();
 	}
 }
 
@@ -252,7 +157,19 @@ describe("Pi lifecycle extension source", () => {
 			assetSource
 				.replace(HOOK_COMMAND_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_COMMAND_ENV)
 				.replace(HOOK_HTTP_URL_ENV_PLACEHOLDER, QUARTERDECK_PI_HOOK_HTTP_URL_ENV)
-				.replace(WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER, QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV),
+				.replace(WORKTREE_TRUST_SCOPE_ENV_PLACEHOLDER, QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV)
+				.replace(
+					'from "../commands/hook-metadata.js"',
+					`from ${JSON.stringify(new URL("../../../src/commands/hook-metadata.ts", import.meta.url).href)}`,
+				)
+				.replace(
+					'from "../hook-reliable-delivery.js"',
+					`from ${JSON.stringify(new URL("../../../src/hook-reliable-delivery.ts", import.meta.url).href)}`,
+				)
+				.replace(
+					'from "../hook-delivery-order.js"',
+					`from ${JSON.stringify(new URL("../../../src/hook-delivery-order.ts", import.meta.url).href)}`,
+				),
 		);
 		expect(source).toContain(`const HOOK_COMMAND_ENV = "${QUARTERDECK_PI_HOOK_COMMAND_ENV}";`);
 		expect(source).toContain(`const HOOK_HTTP_URL_ENV = "${QUARTERDECK_PI_HOOK_HTTP_URL_ENV}";`);
@@ -293,14 +210,12 @@ describe("Pi lifecycle extension source", () => {
 		}
 	});
 
-	it("gives durable `hooks ingest` enough budget to survive heavy machine load without losing a to_review", () => {
+	it("uses the shared in-process publication client without a durable subprocess timeout", () => {
 		const source = buildPiLifecycleExtensionSource();
-
-		// Durable (waitForExit) hooks are killed and treated as finished once this
-		// timer fires, which can drop a to_review transition if a slow CLI under
-		// load hasn't durably persisted yet. Keep it generous; non-durable
-		// `notify` hooks never pass through this timeout at all.
-		expect(source).toContain("const DURABLE_HOOK_TIMEOUT_MS = 30_000;");
+		expect(source).toContain("publishReliableHook(request)");
+		expect(source).toContain("deliverPublishedHook(handle, { signal: deliveryAbortController.signal })");
+		expect(source).not.toContain("DURABLE_HOOK_TIMEOUT_MS");
+		expect(source).not.toContain("waitForExit");
 	});
 
 	it("registers the Pi lifecycle events Quarterdeck maps into hook state", () => {
@@ -326,11 +241,10 @@ describe("Pi lifecycle extension source", () => {
 	it("serializes durable state hooks so lifecycle transitions cannot overtake each other", () => {
 		const source = buildPiLifecycleExtensionSource();
 
-		expect(source).toContain("let durableHookQueue = Promise.resolve();");
+		expect(source).toContain("durableHookQueue: Promise.resolve(),");
 		expect(source).toContain("function enqueueDurableHook");
-		expect(source).toContain("function selectHookCommandArgs");
-		expect(source).toContain('durableArgs[durableArgs.length - 1] = "ingest";');
-		expect(source).toContain("waitForExit: true");
+		expect(source).toContain("publicationQueue: Promise.resolve(),");
+		expect(source).toContain("handle = await publishReliableHook(request);");
 		expect(listenerBlock(source, "session_start")).toMatch(/enqueueDurableHook\(\s*"activity"/);
 		expect(listenerBlock(source, "agent_start")).toMatch(/enqueueDurableHook\(\s*"to_in_progress"/);
 		expect(listenerBlock(source, "agent_end")).toMatch(/enqueueDurableHook\(\s*"activity"/);
@@ -381,7 +295,7 @@ describe("Pi lifecycle extension source", () => {
 				"```",
 			].join("\n");
 			const text = truncated ? `${markdown}\n${"x".repeat(1_000)}` : markdown;
-			const expected = truncated ? `${text.slice(0, 600)}...` : text;
+			const expected = truncated ? `${text.slice(0, 500)}…` : text;
 			const calls = await captureLifecycleHooks((handlers, context) => {
 				handlers.get("agent_start")?.({}, context);
 				handlers.get("agent_end")?.(
@@ -398,7 +312,8 @@ describe("Pi lifecycle extension source", () => {
 				handlers.get("agent_settled")?.({ aborted: false }, context);
 			}, 3);
 			expect(flagValue(calls[2], "--final-message")).toBe(expected);
-			const activity = `Final: ${expected}`.replace(/\s+/g, " ").trim();
+			const summary = truncated ? `${text.slice(0, 600)}...` : text;
+			const activity = `Final: ${summary}`.replace(/\s+/g, " ").trim();
 			expect(flagValue(calls[2], "--activity-text")).toBe(
 				activity.length > 600 ? `${activity.slice(0, 600)}...` : activity,
 			);
@@ -987,7 +902,7 @@ async function startHookHttpServer(): Promise<{
 }
 
 describe("Pi lifecycle extension best-effort HTTP delivery", () => {
-	it("POSTs best-effort activity hooks to the published loopback endpoint instead of spawning, while durable hooks keep spawning `ingest`", async () => {
+	it("POSTs best-effort tool activity to loopback while lifecycle hooks publish in-process", async () => {
 		const httpServer = await startHookHttpServer();
 		const originalEnv = {
 			url: process.env[QUARTERDECK_PI_HOOK_HTTP_URL_ENV],
@@ -1004,20 +919,28 @@ describe("Pi lifecycle extension best-effort HTTP delivery", () => {
 		const sessionFilePath = "/sessions/My  Repo\t/pi-session-1.json";
 
 		try {
-			// agent_start's durable `to_in_progress` must still spawn `hooks
-			// ingest`; the two best-effort tool_execution hooks below must not
-			// spawn anything at all once the HTTP URL env is published.
-			await captureLifecycleHooks((handlers, context) => {
-				context.sessionManager.getSessionFile = () => sessionFilePath;
-				handlers.get("agent_start")?.({}, context);
-				handlers.get("tool_execution_start")?.(
-					{ toolName: "Bash", toolCallId: "call-1", args: { command: "npm test" } },
-					context,
-				);
-				handlers.get("tool_execution_end")?.({ toolName: "Bash", toolCallId: "call-1", isError: false }, context);
-			}, 1);
-
-			await vi.waitFor(() => expect(httpServer.requests).toHaveLength(2));
+			// Reliable agent_start publishes locally. Tool events alone use the
+			// best-effort notify endpoint; none of these events spawns a process.
+			await captureLifecycleHooks(
+				(handlers, context) => {
+					context.sessionManager.getSessionFile = () => sessionFilePath;
+					handlers.get("agent_start")?.({}, context);
+					handlers.get("tool_execution_start")?.(
+						{ toolName: "Bash", toolCallId: "call-1", args: { command: "npm test" } },
+						context,
+					);
+					handlers.get("tool_execution_end")?.(
+						{ toolName: "Bash", toolCallId: "call-1", isError: false },
+						context,
+					);
+				},
+				1,
+				{
+					afterCapture: async () => {
+						await vi.waitFor(() => expect(httpServer.requests).toHaveLength(2));
+					},
+				},
+			);
 
 			const startRequest = httpServer.requests.find(
 				(request) => request.body.hook_event_name === "ToolExecutionStart",

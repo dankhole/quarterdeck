@@ -150,6 +150,9 @@ async function applyConfigUpdates({
 	const nextDefaultBaseRef = projectConfigPath
 		? (updates.defaultBaseRef ?? current.defaultBaseRef)
 		: current.defaultBaseRef;
+	const nextDefaultUseWorktree = projectConfigPath
+		? (updates.defaultUseWorktree ?? current.defaultUseWorktree)
+		: current.defaultUseWorktree;
 	const nextWorktreeSetupScript = projectConfigPath
 		? normalizeWorktreeSetupScript(updates.worktreeSetupScript ?? current.worktreeSetupScript)
 		: current.worktreeSetupScript;
@@ -178,6 +181,7 @@ async function applyConfigUpdates({
 			current.audibleNotificationSuppressCurrentProject.failure ||
 		(projectConfigPath !== null && !areRuntimeProjectShortcutsEqual(nextShortcuts, current.shortcuts)) ||
 		nextDefaultBaseRef !== current.defaultBaseRef ||
+		nextDefaultUseWorktree !== current.defaultUseWorktree ||
 		nextWorktreeSetupScript !== current.worktreeSetupScript ||
 		pinnedBranchesChanged;
 
@@ -201,6 +205,7 @@ async function applyConfigUpdates({
 		await writeRuntimeProjectConfigFile(projectConfigPath, {
 			shortcuts: nextShortcuts,
 			defaultBaseRef: nextDefaultBaseRef,
+			defaultUseWorktree: nextDefaultUseWorktree,
 			worktreeSetupScript: nextWorktreeSetupScript,
 		});
 	}
@@ -221,6 +226,7 @@ async function applyConfigUpdates({
 		shortcuts: nextShortcuts,
 		pinnedBranches: nextPinnedBranches,
 		defaultBaseRef: nextDefaultBaseRef,
+		defaultUseWorktree: nextDefaultUseWorktree,
 		worktreeSetupScript: nextWorktreeSetupScript,
 		promptShortcuts: nextPromptShortcuts,
 		hiddenDefaultPromptShortcuts: nextHiddenDefaults,
@@ -267,6 +273,7 @@ export async function saveRuntimeConfig(
 		shortcuts: RuntimeProjectShortcut[];
 		pinnedBranches: string[];
 		defaultBaseRef: string;
+		defaultUseWorktree?: boolean;
 		worktreeSetupScript?: string;
 		promptShortcuts: PromptShortcut[];
 		hiddenDefaultPromptShortcuts: string[];
@@ -279,9 +286,15 @@ export async function saveRuntimeConfig(
 	// availability state is intentionally stale.
 	const { globalConfigPath, projectConfigPath } = resolveRuntimeConfigPaths(projectId);
 	return await lockedFileSystem.withLocks(getRuntimeConfigLockRequests(projectId), async () => {
-		const { shortcuts, pinnedBranches, defaultBaseRef, worktreeSetupScript, ...globalFields } = config;
+		const { shortcuts, pinnedBranches, defaultBaseRef, defaultUseWorktree, worktreeSetupScript, ...globalFields } =
+			config;
 		await writeRuntimeGlobalConfigFile(globalConfigPath, globalFields);
-		await writeRuntimeProjectConfigFile(projectConfigPath, { shortcuts, defaultBaseRef, worktreeSetupScript });
+		await writeRuntimeProjectConfigFile(projectConfigPath, {
+			shortcuts,
+			defaultBaseRef,
+			defaultUseWorktree,
+			worktreeSetupScript,
+		});
 		if (projectId) {
 			await writePinnedBranchesFile(projectId, pinnedBranches);
 		}
@@ -310,6 +323,9 @@ export async function updateRuntimeConfig(
 		const current = await loadRuntimeConfigLocked(projectId);
 		if (projectConfigPath === null && normalizeShortcuts(updates.shortcuts).length > 0) {
 			throw new Error("Cannot save project shortcuts without a selected project.");
+		}
+		if (projectConfigPath === null && updates.defaultUseWorktree === false) {
+			throw new Error("Cannot save a worktree default without a selected project.");
 		}
 		if (projectConfigPath === null && normalizeWorktreeSetupScript(updates.worktreeSetupScript)) {
 			throw new Error("Cannot save a worktree setup script without a selected project.");
@@ -350,6 +366,7 @@ export async function updateGlobalRuntimeConfig(
 			shortcuts: current.shortcuts,
 			pinnedBranches: current.pinnedBranches,
 			defaultBaseRef: current.defaultBaseRef,
+			defaultUseWorktree: current.defaultUseWorktree,
 			worktreeSetupScript: current.worktreeSetupScript,
 		};
 		const result = await applyConfigUpdates({

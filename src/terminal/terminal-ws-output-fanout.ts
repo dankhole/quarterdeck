@@ -19,9 +19,9 @@ export function ensureTerminalWsOutputListener({
 		return;
 	}
 	streamState.detachOutputListener = terminalManager.attach(taskId, {
-		onOutput: (chunk) => {
+		onOutput: (chunk, outputCursor) => {
 			for (const viewerState of streamState.viewers.values()) {
-				restoreCoordinator.handleLiveOutput(viewerState, chunk);
+				restoreCoordinator.handleLiveOutput(viewerState, chunk, outputCursor);
 			}
 		},
 	});

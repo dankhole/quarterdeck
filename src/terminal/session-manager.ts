@@ -187,6 +187,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 					providerSessionId: summary.agentId === "codex" ? summary.resumeSessionId : null,
 					recentDeliveryIds: summary.recentProviderHookDeliveryIds,
 					outstandingInteraction: summary.outstandingInteraction,
+					localForegroundInterrupt: summary.localForegroundInterrupt,
 				});
 				entry.providerHookReplayBoundary = {
 					context: "startup",
@@ -428,7 +429,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry?.active || entry.active.session.wasInterrupted()) {
 			return null;
 		}
-		const summaryBeforeInput = this.store.getSummary(taskId);
+		// Immediate approval choices are single-byte input. Multi-report mouse
+		// frames (and other longer writes) need no pre-input summary for this check.
+		const summaryBeforeInput = data.length === 1 ? this.store.getSummary(taskId) : null;
 		const summary = processSessionInput(
 			entry,
 			taskId,
@@ -455,7 +458,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// A stale or non-browser client cannot cancel recovery merely by
 		// addressing a processless or explicitly stopping task.
 		entry.pendingStartupRecoveryToken = null;
-		this.clearStartupRecoveryRequirement(taskId);
+		this.clearStartupRecoveryRequirement(taskId, summary);
 		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
 		if (
 			options?.explicitUserSubmission === true ||
@@ -500,9 +503,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 				warningMessage,
 			);
 			const output = Buffer.from(`\r\n[quarterdeck] ${warningMessage}\r\n`, "utf8");
-			entry.terminalStateMirror?.applyOutput(output);
+			const outputCursor = entry.terminalStateMirror?.applyOutput(output) ?? null;
 			for (const listener of entry.listeners.values()) {
-				listener.onOutput?.(output);
+				listener.onOutput?.(output, outputCursor);
 			}
 			this.record(
 				"session.resume_identity_mismatch",
@@ -764,8 +767,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		await this.lifecycle.waitForShutdownQuiescence();
 	}
 
-	private clearStartupRecoveryRequirement(taskId: string): void {
-		if (this.store.getSummary(taskId)?.startupRecoveryRequired === true) {
+	private clearStartupRecoveryRequirement(
+		taskId: string,
+		summary: RuntimeTaskSessionSummary | null = this.store.getSummary(taskId),
+	): void {
+		if (summary?.startupRecoveryRequired === true) {
 			this.store.update(taskId, { startupRecoveryRequired: false });
 		}
 	}

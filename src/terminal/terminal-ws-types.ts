@@ -1,13 +1,19 @@
 import type { WebSocket } from "ws";
+import type { TerminalOutputCursor } from "./terminal-state-mirror";
 
 export interface IoOutputState {
 	enqueueOutput: (chunk: Buffer) => void;
 	acknowledgeOutput: (bytes: number) => void;
+	/** Flush pending batches and wait until the browser has applied every sent byte. */
+	drainOutput: () => Promise<boolean>;
 	dispose: () => void;
 }
 
 export interface TerminalViewerRestoreState {
-	pendingOutputChunks: Buffer[];
+	pendingOutputChunks: Array<{ chunk: Buffer; outputCursor: TerminalOutputCursor | null }>;
+	snapshotCursor: TerminalOutputCursor | null;
+	pendingOutputBytes: number;
+	restoreTimeoutTimer: ReturnType<typeof setTimeout> | null;
 	restoreComplete: boolean;
 	deferredSnapshotTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -44,6 +50,9 @@ export function createTerminalViewerState(clientId: string): TerminalViewerState
 		restoreStartedAt: null,
 		restore: {
 			pendingOutputChunks: [],
+			snapshotCursor: null,
+			pendingOutputBytes: 0,
+			restoreTimeoutTimer: null,
 			restoreComplete: false,
 			deferredSnapshotTimer: null,
 		},

@@ -13,6 +13,7 @@ import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import type { TerminalImagePasteWriter } from "@/terminal/terminal-input";
 import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import { shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
+import { TerminalWheelTransport } from "@/terminal/terminal-wheel-transport";
 import type { TerminalWriteOptions } from "@/terminal/terminal-write-options";
 import { createClientLogger } from "@/utils/client-logger";
 import { isMacPlatform } from "@/utils/platform";
@@ -48,6 +49,7 @@ export class TerminalViewport {
 	private readonly resizer: SlotResizeManager;
 	private readonly unicode11Addon = new Unicode11Addon();
 	private readonly writeQueue: SlotWriteQueue;
+	private readonly wheelTransport: TerminalWheelTransport;
 	private pendingAutoFocus = false;
 	private revealFrame: {
 		id: number;
@@ -63,11 +65,15 @@ export class TerminalViewport {
 		private readonly callbacks: TerminalViewportCallbacks,
 	) {
 		this.appearance = appearance;
+		this.wheelTransport = new TerminalWheelTransport((data) => this.callbacks.sendIoData(data));
 		this.terminal = this.createTerminal();
 		this.writeQueue = this.createWriteQueue();
 		this.initializeTerminalAddons();
 		this.configureTerminalIoForwarding();
-		this.browserInput = new TerminalBrowserInput(this.terminal, this.domHost.hostElement, callbacks);
+		this.browserInput = new TerminalBrowserInput(this.terminal, this.domHost.hostElement, {
+			...callbacks,
+			batchWheelReports: (dispatch) => this.wheelTransport.batchWheelReports(dispatch),
+		});
 		this.renderer = this.createRenderer();
 		this.resizer = this.createResizeManager();
 		this.renderer.openWhenFontsReady();
@@ -111,16 +117,8 @@ export class TerminalViewport {
 	}
 
 	private configureTerminalIoForwarding(): void {
-		this.terminal.onData((data) => {
-			this.callbacks.sendIoData(data);
-		});
-		this.terminal.onBinary((data) => {
-			const bytes = new Uint8Array(data.length);
-			for (let index = 0; index < data.length; index += 1) {
-				bytes[index] = data.charCodeAt(index) & 0xff;
-			}
-			this.callbacks.sendIoData(bytes);
-		});
+		this.terminal.onData((data) => this.wheelTransport.forward(data));
+		this.terminal.onBinary((data) => this.wheelTransport.forward(data, true));
 	}
 
 	private createRenderer(): SlotRenderer {
@@ -436,6 +434,7 @@ export class TerminalViewport {
 	}
 
 	dispose(): void {
+		this.wheelTransport.dispose();
 		this.cancelPendingReveal();
 		this.resizer.disconnect();
 		this.renderer.dispose();

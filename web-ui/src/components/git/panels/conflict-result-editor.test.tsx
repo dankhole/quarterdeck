@@ -24,6 +24,8 @@ vi.mock("@/components/editor/source-editor", () => ({
 	SourceEditor: (props: SourceEditorProps) => (
 		<textarea
 			aria-label={props.readOnly ? "Source" : "Result"}
+			data-language={props.language}
+			data-path={props.path}
 			value={props.value}
 			readOnly={props.readOnly}
 			onInput={(event) => props.onChange(event.currentTarget.value)}
@@ -91,6 +93,18 @@ describe("conflict result workspace", () => {
 			button(label).click();
 		});
 	}
+	it("uses filename detection for both conflict sources and results", async () => {
+		query.mockResolvedValue({ ...content("$color: red;\n", "disk-hash"), language: "css" });
+		await render({ ...file, path: "styles/theme.scss" });
+		await click("Ours");
+		const editors = [...host.querySelectorAll("textarea")];
+		expect(editors).toHaveLength(2);
+		for (const editor of editors) {
+			expect(editor.dataset.path).toBe("styles/theme.scss");
+			expect(editor.dataset.language).toBe("");
+		}
+	});
+
 	it("stages binary sources through Git even when the current worktree result is text", async () => {
 		await render({ ...file, binary: true, theirsContent: "binary\0bytes" });
 		expect(button("Use Theirs in Result").disabled).toBe(true);

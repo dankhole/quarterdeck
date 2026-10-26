@@ -18,6 +18,16 @@ This document owns the implemented Files/review contract. Commit, compare, uncom
 
 Hook paths are under `web-ui/src/hooks/git` unless qualified; component paths are under `web-ui/src`. `FilesView` does not own Git operations. Existing row renderers remain review-specific presentation primitives behind the shared document contract, rather than a second writable editor or buffer cache.
 
+## Syntax highlighting
+
+Files, conflict editors, search result previews, and rendered review rows share CodeMirror's maintained language catalog, one resolver, and the editor palette. The catalog recognizes language aliases, filename extensions, and special filenames such as `Dockerfile`; grammar coverage follows the installed `@codemirror/language-data` release rather than a separate per-view language list. It is broad but not universal: files such as Makefiles or languages absent from the catalog remain plain text unless an existing review fallback is available. File-backed views use the actual filename instead of the runtime's older, coarser language hints. Explicit supported hints remain available to embedded editor callers.
+
+Existing core grammars are available immediately; additional grammars load on demand from bundled application assets, not a CDN or executable installer. Files stay editable while a grammar loads. Unknown files and failed loads remain usable without highlighting; review views retain their available Prism fallback. Grammar completion updates highlighting without replacing the editor's document, selection, or undo history. Navigation and LSP installation remain separate, optional operations. Rendered Markdown fenced code blocks retain their separate Prism highlighter; loading an editor grammar does not expand that renderer's language coverage.
+
+Grammar quality varies by language. C# uses CodeMirror's maintained stream tokenizer: records, init accessors, comments, and ordinary/verbatim strings receive lexical highlighting, but interpolation expressions remain string-colored and raw strings do not have full grammar support.
+
+Complete editors retain multiline tokenizer state. Review rows and inline diff segments are independent fragments, so multiline comments and strings can differ from their full-file appearance. Fragment highlighting preserves HTML escaping and the existing 20,000-character line-length bound; it does not treat partial patches as complete files. C# review fragments longer than 10,000 characters retain Prism highlighting because the stream tokenizer stops tokenizing long lines; these exceptional rows use Prism's palette. Languages without a shared editor grammar also retain the review renderer's Prism fallback.
+
 ## Commit review
 
 `GitCommitDiffPanel` creates immutable review documents and supplies patches directly to the shared presenter. Patch line numbers, added/deleted/renamed/binary files, statistics, collapse, file navigation, loading, and errors remain available. Commit data responses carry their request scope and selected commit identity; switching commits or repositories masks old data immediately and rejects late responses.
@@ -25,6 +35,8 @@ Hook paths are under `web-ui/src/hooks/git` unless qualified; component paths ar
 ## Compare and uncommitted review
 
 `DiffViewerPanel` supplies complete old/new content to the same presenter. Split/unified mode, comments, context expansion, hunk prompts, selected-file priority, and visible-file reporting retain their existing owners. Compare option changes clear comments tied to the previous comparison. Working-copy review stays immutable; writable content enters the existing live Files scope explicitly.
+
+Live refreshes preserve the visible code line and its intra-line viewport offset in unified and split review, rather than reusing scroll pixels. Line anchors relocate through content edits; a deleted anchor uses the nearest surviving source line, and hidden/collapsed content falls back to a nearby visible line. File headers and footers retain their relative offsets, and disappearing files use a neighboring file when available. Deferred chunks reveal a relocated reading line before settling the anchor. Explicit file navigation and repository/comparison changes take precedence; review anchors are transient presentation state, not durable review history or comment identity.
 
 This migration makes no performance improvement claim. Track remaining performance work in the primary checkout's local `docs/qDeck.yaml`. Measure first-open and selected-file latency with bounded diagnostic marks before further changes to calculation, transfer, prefetch, or virtualization. Highlighting remains limited to rendered rows and bounded line lengths.
 

@@ -144,6 +144,7 @@ export interface CreateHooksApiDependencies {
 		taskId: string;
 		store: SessionSummaryStore;
 		previous: RuntimeTaskSessionSummary;
+		foregroundSettled?: boolean;
 	}) => void;
 	onNativeProviderSessionObserved?: (input: {
 		scope: { projectId: string; projectPath: string };
@@ -301,8 +302,15 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 				providerSessionIdentityAccepted = true;
 				// A Codex subagent hook carries the root session id beside the child
 				// thread's own transcript path; it must not redirect the task's
-				// conversation source.
-				if (!body.metadata?.providerAgentId?.trim()) {
+				// conversation source. Ordering may also admit an old-launch replay;
+				// Pi source paths authorize reads only for the current native launch.
+				const currentPiLaunch =
+					hookProvider !== "pi" ||
+					Boolean(
+						previousSummary.sessionInstanceId &&
+							body.metadata?.sessionInstanceId?.trim() === previousSummary.sessionInstanceId,
+					);
+				if (!body.metadata?.providerAgentId?.trim() && currentPiLaunch) {
 					deps.conversationSourceHints?.recordProviderHookHint({
 						projectId,
 						taskId,
@@ -323,7 +331,13 @@ export function createHooksApi(deps: CreateHooksApiDependencies): RuntimeTrpcCon
 					? applyCompletedResponseFromMetadata(store, taskId, body.metadata)
 					: null;
 				if (transitionResult.hookMetadataMode === "apply") {
-					deps.observeProgress?.({ projectId, taskId, store, previous: previousSummary });
+					deps.observeProgress?.({
+						projectId,
+						taskId,
+						store,
+						previous: previousSummary,
+						foregroundSettled: hasForegroundCompletionMetadata,
+					});
 				}
 				// Ordering is committed after the canonical mutation so correlation for
 				// PermissionRequest observes the preceding PreToolUse, not itself. The

@@ -52,7 +52,7 @@ export function SearchResultPreview({
 					<SourceEditor
 						key={path}
 						path={path}
-						language={content.language}
+						language=""
 						value={content.content}
 						readOnly
 						wordWrap={false}

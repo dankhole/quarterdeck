@@ -16,7 +16,7 @@ import {
 	parseFakeAgentCommand,
 	resolveFakeAgentInvocation,
 	resolveFakeAgentScenario,
-	shouldFakeClaudeUseFullscreen,
+	shouldFakeAgentUseFullscreen,
 } from "../../scripts/agent-lab/fake-agent-protocol";
 import {
 	writeAgentProviderLaunchers,
@@ -57,6 +57,7 @@ import {
 	resetAgentAvailabilityCache,
 } from "../../src/config/agent-registry";
 import { isBinaryAvailableOnPath, mergeProcessEnvironment, resolveWindowsPowerShellPath } from "../../src/core";
+import { prepareAgentLaunch } from "../../src/terminal/agent-session-adapters";
 
 const execFileAsync = promisify(execFile);
 
@@ -1450,15 +1451,157 @@ describe("agent-lab fake agent protocol", () => {
 	});
 
 	it("mirrors Claude's fullscreen renderer environment across deterministic launches", () => {
-		expect(shouldFakeClaudeUseFullscreen("claude", { CLAUDE_CODE_NO_FLICKER: "1" })).toBe(true);
+		expect(shouldFakeAgentUseFullscreen("claude", [], { CLAUDE_CODE_NO_FLICKER: "1" })).toBe(true);
 		expect(
-			shouldFakeClaudeUseFullscreen("claude", {
+			shouldFakeAgentUseFullscreen("claude", [], {
 				CLAUDE_CODE_NO_FLICKER: "1",
 				CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1",
 			}),
 		).toBe(false);
-		expect(shouldFakeClaudeUseFullscreen("claude", { CLAUDE_CODE_NO_FLICKER: "0" })).toBe(false);
-		expect(shouldFakeClaudeUseFullscreen("codex", { CLAUDE_CODE_NO_FLICKER: "1" })).toBe(false);
+		expect(shouldFakeAgentUseFullscreen("claude", [], { CLAUDE_CODE_NO_FLICKER: "0" })).toBe(false);
+		for (const provider of ["claude", "codex", "pi"] as const) {
+			expect(shouldFakeAgentUseFullscreen(provider, [], {})).toBe(false);
+		}
+		expect(shouldFakeAgentUseFullscreen("codex", [], { CLAUDE_CODE_NO_FLICKER: "1" })).toBe(false);
+	});
+
+	it.each(
+		(["claude", "codex", "pi"] as const).flatMap((provider) =>
+			(["fresh", "continue", "targeted"] as const).map((resumeKind) => ({ provider, resumeKind })),
+		),
+	)("follows actual $provider adapter policy for $resumeKind launches", async ({ provider, resumeKind }) => {
+		const launch = await prepareAgentLaunch({
+			agentId: provider,
+			taskId: "fullscreen-fixture",
+			args: [],
+			cwd: "/synthetic/project",
+			projectPath: "/synthetic/project",
+			// Renderer arguments must not depend on hook installation/admission.
+			prompt: resumeKind === "fresh" ? "- synthetic prompt" : "",
+			resumeConversation: resumeKind !== "fresh",
+			resumeSessionId: resumeKind === "targeted" ? "agent-lab-fullscreen" : undefined,
+		});
+		expect(shouldFakeAgentUseFullscreen(provider, launch.args, launch.env)).toBe(true);
+		expect(resolveFakeAgentInvocation(provider, launch.args)).toMatchObject({
+			prompt: resumeKind === "fresh" ? "- synthetic prompt" : "",
+			resumeKind,
+			requestedSessionId: resumeKind === "targeted" ? "agent-lab-fullscreen" : null,
+		});
+	});
+
+	it.each([{ args: [] }, { args: ["--append-system-prompt", "--"] }])(
+		"keeps a prompt-less Pi start prompt-less with native option arguments $args",
+		async ({ args }) => {
+			const launch = await prepareAgentLaunch({
+				agentId: "pi",
+				taskId: "fullscreen-fixture",
+				args,
+				cwd: "/synthetic/project",
+				prompt: "",
+			});
+			expect(shouldFakeAgentUseFullscreen("pi", launch.args, launch.env)).toBe(true);
+			expect(resolveFakeAgentInvocation("pi", launch.args)).toMatchObject({
+				prompt: "",
+				resumeKind: "fresh",
+				requestedSessionId: null,
+			});
+		},
+	);
+
+	it("requires every managed Codex renderer override and respects conflicting flags", () => {
+		const policy = [
+			"-c",
+			"tui.fullscreen_transcript=true",
+			"--config",
+			'tui.alternate_screen="always"',
+			"--config=tui.raw_output_mode=false",
+		] as const;
+		expect(shouldFakeAgentUseFullscreen("codex", policy, {})).toBe(true);
+		for (const args of [
+			policy.slice(2),
+			[...policy.slice(0, 2), policy[4]],
+			policy.slice(0, 4),
+			[...policy, "--no-alt-screen"],
+			[...policy, "-c=tui.fullscreen_transcript=false"],
+			[...policy, "-c", "tui.alternate_screen='never'"],
+			[...policy, "-c", "tui.raw_output_mode=true"],
+			["--", ...policy],
+			["--model", policy[4], ...policy.slice(0, 4)],
+		]) {
+			expect(shouldFakeAgentUseFullscreen("codex", args, {})).toBe(false);
+		}
+		expect(shouldFakeAgentUseFullscreen("codex", [...policy, "--", "--no-alt-screen"], {})).toBe(true);
+	});
+
+	it("parses Pi renderer, resume, and prompt tokens without treating option values as prompts", () => {
+		expect(getFakeAgentVersionOutput("pi")).toBe("1.4.0");
+		for (const args of [
+			["--tui-mode", "fullscreen"],
+			["--tui-mode", "regular", "--tui-mode", "fullscreen"],
+		]) {
+			expect(shouldFakeAgentUseFullscreen("pi", args, {})).toBe(true);
+			expect(resolveFakeAgentInvocation("pi", args).prompt).toBe("");
+		}
+		for (const args of [
+			["--tui-mode", "regular"],
+			["--tui-mode", "fullscreen", "--tui-mode", "regular"],
+			["--tui-mode=fullscreen"],
+			["--system-prompt", "--tui-mode", "fullscreen"],
+			["--", "--tui-mode", "fullscreen"],
+		]) {
+			expect(shouldFakeAgentUseFullscreen("pi", args, {})).toBe(false);
+		}
+		expect(
+			resolveFakeAgentInvocation("pi", [
+				"--session",
+				"/synthetic/session.jsonl",
+				"--extension",
+				"/synthetic/hooks.js",
+				"--tui-mode",
+				"fullscreen",
+			]),
+		).toMatchObject({ prompt: "", resumeKind: "targeted", requestedSessionId: "/synthetic/session.jsonl" });
+		expect(resolveFakeAgentInvocation("pi", ["--tui-mode", "fullscreen", "--", "--continue"])).toMatchObject({
+			prompt: "--continue",
+			resumeKind: "fresh",
+		});
+		expect(resolveFakeAgentInvocation("pi", ["--system-prompt", "--continue"])).toMatchObject({
+			prompt: "",
+			resumeKind: "fresh",
+		});
+	});
+
+	it.each([
+		{ args: ["--plan", "extension value", "review this"], prompt: "review this" },
+		{ args: ["--plan=extension value", "review this"], prompt: "review this" },
+		{ args: ["--plan", "@context.txt", "review this"], prompt: "review this" },
+		{ args: ["--plan", "--", "review this"], prompt: "review this" },
+		{ args: ["--continue", "review this"], prompt: "review this" },
+		{ args: ["--offline", "review this"], prompt: "review this" },
+		{ args: ["--", "--plan", "review this", "@context.txt"], prompt: "--plan review this" },
+	])("preserves native Pi extension-flag positional ownership for $args", ({ args, prompt }) => {
+		expect(resolveFakeAgentInvocation("pi", args).prompt).toBe(prompt);
+	});
+
+	it("keeps a positional Pi prompt after a renderer option adjacent to an extension flag", async () => {
+		const args = ["--plan", "--tui-mode", "regular", "review this"];
+		expect(resolveFakeAgentInvocation("pi", args).prompt).toBe("review this");
+		// Deleting the native mode pair would make --plan consume the prompt.
+		expect(resolveFakeAgentInvocation("pi", ["--plan", "review this"]).prompt).toBe("");
+		const launch = await prepareAgentLaunch({
+			agentId: "pi",
+			taskId: "fullscreen-fixture",
+			args,
+			cwd: "/synthetic/project",
+			prompt: "",
+		});
+		expect(shouldFakeAgentUseFullscreen("pi", launch.args, launch.env)).toBe(true);
+		expect(resolveFakeAgentInvocation("pi", launch.args).prompt).toBe("review this");
+	});
+
+	it("retains explicit alternate-screen and normal-buffer fallback commands", () => {
+		expect(parseFakeAgentCommand("/alt-on")).toEqual({ kind: "alternate-screen", enabled: true });
+		expect(parseFakeAgentCommand("/alt-off")).toEqual({ kind: "alternate-screen", enabled: false });
 	});
 
 	it("builds Claude-shaped native hook payloads with provider identities", () => {
@@ -1498,6 +1641,7 @@ describe("agent-lab fake agent protocol", () => {
 			message: "provider approved",
 		});
 		expect(parseFakeAgentCommand("/approval-overlay")).toEqual({ kind: "approval-overlay" });
+		expect(parseFakeAgentCommand("/hyperlink")).toEqual({ kind: "hyperlink" });
 		expect(parseFakeAgentCommand("/turn-interrupted")).toEqual({ kind: "turn-interrupted" });
 		expect(parseFakeAgentCommand("/native-interrupt")).toEqual({ kind: "native-interrupt" });
 		expect(parseFakeAgentCommand("/new-turn continue")).toEqual({ kind: "new-turn", message: "continue" });

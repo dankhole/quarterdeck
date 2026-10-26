@@ -478,12 +478,85 @@ describe("bounded coexistence wrapper commands", () => {
 		expect(kill).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		["Executable doesn't exist at /private/browser", "executable_missing", null],
+		["Cannot find module '/private/missing' ERR_MODULE_NOT_FOUND", "module_missing", null],
+		["Socket directory path is too long (120 bytes)", "socket_path_too_long", null],
+		["browserType.launch: Target page, context or browser has been closed", "browser_closed", null],
+		["browserType.launch: Failed to launch: spawn EACCES", "launch_failed", "EACCES"],
+		["unrecognized private failure", "unclassified", null],
+	] as const)("retains only allowlisted startup diagnostics for %s", async (output, reason, osErrorCode) => {
+		const { child } = wrapper();
+		const result = _testing.runBoundedBrowserCommand(() => child, 1_000, 512 * 1024, true);
+		// Include both streams and split the actual error across chunks, as daemon startup does.
+		child.stdout?.emit("data", Buffer.from(output.slice(0, 7)));
+		child.stdout?.emit("data", Buffer.from(output.slice(7)));
+		child.stderr?.emit(
+			"data",
+			Buffer.from(" password=private-value Bearer private-token https://host/?token=private"),
+		);
+		child.emit("close", 1, null);
+		const error: unknown = await result.catch((value: unknown) => value);
+		expect(error).toMatchObject({
+			unconfirmed: false,
+			startupFailure: { outcome: "exit", exitCode: 1, signal: null, reason, osErrorCode },
+		});
+		const retained = JSON.stringify(error);
+		expect(retained).not.toContain("private");
+		expect(retained).not.toContain("password");
+		expect(retained).not.toContain("https:");
+	});
+
+	it("retains only the allowlisted OS code when the wrapper cannot spawn", async () => {
+		const { child, kill } = wrapper();
+		const result = _testing.runBoundedBrowserCommand(() => child, 1_000, 512 * 1024, true);
+		child.emit("error", Object.assign(new Error("private executable and arguments"), { code: "ENOENT" }));
+		const error: unknown = await result.catch((value: unknown) => value);
+		expect(error).toMatchObject({
+			unconfirmed: true,
+			startupFailure: { outcome: "spawn_error", exitCode: null, signal: null, osErrorCode: "ENOENT" },
+		});
+		expect(JSON.stringify(error)).not.toContain("private");
+		expect(kill).not.toHaveBeenCalled();
+	});
+
+	it("does not capture diagnostics for credential-bearing admission or later commands", async () => {
+		const { child } = wrapper();
+		const result = _testing.runBoundedBrowserCommand(() => child);
+		child.stderr?.emit("data", Buffer.from("Executable doesn't exist: private-admission-capability"));
+		child.emit("close", 1, null);
+		const error: unknown = await result.catch((value: unknown) => value);
+		expect(error).toMatchObject({ unconfirmed: false, startupFailure: undefined });
+		expect(JSON.stringify(error)).not.toContain("private-admission-capability");
+	});
+
+	it("preserves startup status through coexistence and an independently failed cleanup", async () => {
+		const ports = fixture();
+		ports.openBrowser.mockImplementation(async () => {
+			const { child } = wrapper();
+			const result = _testing.runBoundedBrowserCommand(() => child, 1_000, 512 * 1024, true);
+			child.stderr?.emit("data", Buffer.from("browserType.launch: private-arguments"));
+			child.emit("close", null, "SIGABRT");
+			await result;
+		});
+		ports.closeBrowser.mockRejectedValue(new Error("private cleanup error"));
+		await expect(_testing.proveCoexistence("synthetic-browser", ports)).rejects.toMatchObject({
+			failureStage: "open_browser",
+			cleanupConfirmed: false,
+			startupFailure: { outcome: "exit", exitCode: null, signal: "SIGABRT", reason: "launch_failed" },
+		});
+		expect(ports.closeBrowser).toHaveBeenCalledOnce();
+	});
+
 	it("times out without signalling the wrapper and retains cleanup uncertainty", async () => {
 		vi.useFakeTimers();
 		const { child, kill, unref } = wrapper();
 		try {
-			const result = _testing.runBoundedBrowserCommand(() => child, 20);
-			const rejected = expect(result).rejects.toThrow("unconfirmed");
+			const result = _testing.runBoundedBrowserCommand(() => child, 20, 512 * 1024, true);
+			const rejected = expect(result).rejects.toMatchObject({
+				unconfirmed: true,
+				startupFailure: { outcome: "timeout", exitCode: null, signal: null },
+			});
 			await vi.advanceTimersByTimeAsync(20);
 			await rejected;
 			child.emit("close", 0, null);
@@ -496,10 +569,13 @@ describe("bounded coexistence wrapper commands", () => {
 
 	it("bounds combined stdout/stderr without automatic process termination or private output exposure", async () => {
 		const { child, kill, unref } = wrapper();
-		const result = _testing.runBoundedBrowserCommand(() => child, 1_000, 20);
+		const result = _testing.runBoundedBrowserCommand(() => child, 1_000, 20, true);
 		child.stdout?.emit("data", Buffer.from("private stdout"));
 		child.stderr?.emit("data", Buffer.from("private stderr"));
-		await expect(result).rejects.toThrow("unconfirmed");
+		await expect(result).rejects.toMatchObject({
+			unconfirmed: true,
+			startupFailure: { outcome: "output_limit", exitCode: null, signal: null },
+		});
 		expect(kill).not.toHaveBeenCalled();
 		expect(unref).toHaveBeenCalledTimes(1);
 	});

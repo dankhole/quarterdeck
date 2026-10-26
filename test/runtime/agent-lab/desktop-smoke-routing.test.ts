@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -229,13 +229,23 @@ describe.skipIf(process.platform !== "darwin")("exclusive packaged performance r
 					origin: "http://127.0.0.1:12345",
 				},
 				cleanupConfirmed,
-				"performance",
+				"open_browser",
+				{
+					outcome: "exit",
+					exitCode: 1,
+					signal: null,
+					reason: "socket_path_too_long",
+					osErrorCode: "ENAMETOOLONG",
+				},
 			);
 			vi.mocked(exerciseDesktopBrowserCoexistence).mockRejectedValueOnce(error);
 			await expect(runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true })).rejects.toThrow(
 				"Desktop evidence:",
 			);
 			expect(fixture.keepTemp).toBe(!cleanupConfirmed);
+			expect(
+				JSON.parse(await readFile(join(fixture.manifest.artifactDir, "browser-coexistence-failure.json"), "utf8")),
+			).toMatchObject({ failureStage: "open_browser", cleanupConfirmed, startupFailure: error.startupFailure });
 			expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(error);
 			expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
 			expect(mocks.driver.app.evaluate).not.toHaveBeenCalled();

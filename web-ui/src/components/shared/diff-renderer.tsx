@@ -2,8 +2,8 @@ import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
 import { createSourceLineCache } from "@/components/editor/source-line-highlighting";
 import { quarterdeckHighlightStyle } from "@/components/editor/source-presentation";
-
 import { Button } from "@/components/ui/button";
+import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { DeferredDiffRows } from "./deferred-diff-rows";
 import { DiffContextRows } from "./diff-context-rows";
 import type { CollapsedContextBlock, ExpandedBlockState, UnifiedDiffRow } from "./diff-parser";
@@ -213,7 +213,8 @@ export const ReadOnlyUnifiedDiff = memo(function ReadOnlyUnifiedDiff({
 	path: string;
 }): React.ReactElement {
 	const { expandedBlocks, expandTop, expandBottom, expandAll } = useIncrementalExpand();
-	const highlightCache = useMemo(() => createSourceLineCache(path), [path, rows]);
+	const languageSupport = useSourceLanguage("", path);
+	const highlightCache = useMemo(() => createSourceLineCache(path, languageSupport), [path, rows, languageSupport]);
 	const displayItems = useMemo(() => buildDiffDisplayGroups(rows), [rows]);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {

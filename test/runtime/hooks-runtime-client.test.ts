@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -129,6 +129,36 @@ describe("hooks-runtime-client wire format", () => {
 			expect(JSON.stringify(records)).not.toContain("live activity");
 		}
 		expect(await readdir(join(stateHome, "hook-transition-outbox"))).toEqual([]);
+	});
+
+	it("keeps explicit online fallback when local publication fails", async () => {
+		vi.stubEnv("QUARTERDECK_HOOK_SESSION_INSTANCE_ID", "launch-1");
+		const blocked = join(stateHome, "not-a-directory");
+		await writeFile(blocked, "synthetic");
+		process.env.QUARTERDECK_STATE_HOME = blocked;
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+		await runHooksIngest("to_review", { source: "claude" }, undefined);
+
+		expect(ingestMock).toHaveBeenCalledOnce();
+		expect(process.exitCode ?? 0).toBe(0);
+		expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain(
+			"failed to persist transition for replay",
+		);
+	});
+
+	it("fails online fallback rather than claiming durable success when publication and network both fail", async () => {
+		vi.stubEnv("QUARTERDECK_HOOK_SESSION_INSTANCE_ID", "launch-1");
+		const blocked = join(stateHome, "not-a-directory");
+		await writeFile(blocked, "synthetic");
+		process.env.QUARTERDECK_STATE_HOME = blocked;
+		vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		ingestMock.mockResolvedValue({ ok: false, error: "synthetic offline" });
+
+		await runHooksIngest("to_review", { source: "claude" }, undefined);
+
+		expect(ingestMock).toHaveBeenCalledTimes(2);
+		expect(process.exitCode).toBe(1);
 	});
 
 	it("retains an abandoned record and succeeds when the runtime refuses connection", async () => {

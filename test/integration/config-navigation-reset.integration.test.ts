@@ -139,12 +139,18 @@ describe("configuration saves and language-server lifetime", () => {
 			const deps = await createDeps();
 			const projectFields: Pick<
 				RuntimeConfigState,
-				"projectConfigPath" | "shortcuts" | "pinnedBranches" | "defaultBaseRef" | "worktreeSetupScript"
+				| "projectConfigPath"
+				| "shortcuts"
+				| "pinnedBranches"
+				| "defaultBaseRef"
+				| "defaultUseWorktree"
+				| "worktreeSetupScript"
 			> = {
 				projectConfigPath: "/synthetic/project-config.json",
 				shortcuts: [{ label: "Build", command: "npm run build" }],
 				pinnedBranches: ["main"],
 				defaultBaseRef: "main",
+				defaultUseWorktree: false,
 				worktreeSetupScript: "npm ci",
 			};
 			Object.assign(deps.config.getActiveRuntimeConfig(), projectFields);
@@ -174,6 +180,7 @@ describe("configuration saves and language-server lifetime", () => {
 				shortcuts: [{ label: "Build", command: "npm run build" }],
 				pinnedBranches: ["feature"],
 				defaultBaseRef: "feature",
+				defaultUseWorktree: false,
 				worktreeSetupScript: "npm ci",
 			};
 			const projectConfigPath = deps.config.getActiveRuntimeConfig().projectConfigPath;
@@ -229,6 +236,7 @@ describe("configuration saves and language-server lifetime", () => {
 				{
 					shortcuts: [{ label: "Build", command: "npm run build" }],
 					defaultBaseRef: "main",
+					defaultUseWorktree: false,
 				},
 				deps,
 			);
@@ -238,12 +246,14 @@ describe("configuration saves and language-server lifetime", () => {
 					terminalFontWeight: 450,
 					shortcuts: [{ label: "Test", command: "npm test" }],
 					defaultBaseRef: "develop",
+					defaultUseWorktree: true,
 				},
 				deps,
 			);
 			expect(deps.config.getActiveRuntimeConfig()).toMatchObject({
 				terminalFontWeight: 450,
 				defaultBaseRef: "main",
+				defaultUseWorktree: false,
 				shortcuts: [{ label: "Build", command: "npm run build" }],
 			});
 			expect(deps.config.getActiveRuntimeConfig()).toEqual(await loadRuntimeConfig("project-1"));
@@ -259,6 +269,7 @@ describe("configuration saves and language-server lifetime", () => {
 					shortcuts: [{ label: "Test", command: "npm test" }],
 					pinnedBranches: ["develop"],
 					defaultBaseRef: "develop",
+					defaultUseWorktree: false,
 					worktreeSetupScript: "npm install",
 				});
 				const gate = pauseNextConfigWrite(deps.config.getActiveRuntimeConfig().globalConfigPath);

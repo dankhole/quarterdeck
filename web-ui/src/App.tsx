@@ -547,6 +547,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 											void projectNavigation.handleAddProject(groupId);
 										}}
 										needsInputByProject={projectNotifications.needsInputByProject}
+										errorByProject={projectNotifications.errorByProject}
 									/>
 								</div>
 								<ResizeHandle
