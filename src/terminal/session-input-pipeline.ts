@@ -84,12 +84,12 @@ const MOUSE_WHEEL_FLAG = 64;
 function isPassiveMouseButtonCode(code: number): boolean {
 	// Wheel (64-67) and motion reports carry modifier bits (4, 8, 16) on top;
 	// presses and releases of buttons 0-2 are deliberate clicks.
-	return (code & MOUSE_WHEEL_FLAG) !== 0 || (code & MOUSE_MOTION_FLAG) !== 0;
+	return code >= 32 && code <= 95 && ((code & MOUSE_WHEEL_FLAG) !== 0 || (code & MOUSE_MOTION_FLAG) !== 0);
 }
 
 /**
  * Detects a buffer made only of passive xterm mouse reports: wheel scrolling
- * or pointer motion, in SGR (`\x1b[<b;x;yM|m`) or X10 (`\x1b[M` plus three
+ * or pointer motion, in SGR (`\x1b[<b;x;yM`) or X10 (`\x1b[M` plus three
  * bytes) encoding. Fullscreen providers enable mouse tracking, so scrolling
  * arrives as terminal input; clicks remain direct user input.
  */
@@ -99,22 +99,43 @@ export function isTerminalPassiveMouseReport(data: Buffer): boolean {
 		if (data[offset] !== ESC || data[offset + 1] !== CSI_BRACKET) return false;
 		if (data[offset + 2] === 0x4d /* M */) {
 			if (offset + 6 > data.length) return false;
-			if (!isPassiveMouseButtonCode((data[offset + 3] as number) - 32)) return false;
+			if (
+				!isPassiveMouseButtonCode((data[offset + 3] as number) - 32) ||
+				(data[offset + 4] as number) < 33 ||
+				(data[offset + 5] as number) < 33
+			)
+				return false;
 			offset += 6;
 			continue;
 		}
 		if (data[offset + 2] !== 0x3c /* < */) return false;
 		let index = offset + 3;
 		let separators = 0;
+		let parameterDigits = 0;
+		let parameterValue = 0;
 		let buttonCode = 0;
-		while (index < data.length && data[index] !== 0x4d /* M */ && data[index] !== 0x6d /* m */) {
+		while (index < data.length && data[index] !== 0x4d /* M */) {
 			const byte = data[index] as number;
-			if (byte === 0x3b /* ; */) separators += 1;
-			else if (byte < 0x30 || byte > 0x39) return false;
-			else if (separators === 0) buttonCode = buttonCode * 10 + (byte - 0x30);
+			if (byte === 0x3b /* ; */) {
+				if (parameterDigits === 0 || separators === 2) return false;
+				separators += 1;
+				parameterDigits = 0;
+				parameterValue = 0;
+			} else {
+				if (byte < 0x30 || byte > 0x39) return false;
+				parameterDigits += 1;
+				parameterValue = parameterValue * 10 + (byte - 0x30);
+				if (parameterValue > Number.MAX_SAFE_INTEGER) return false;
+				if (separators === 0) {
+					buttonCode = parameterValue;
+					if (buttonCode > 95) return false;
+				}
+			}
 			index += 1;
 		}
-		if (index >= data.length || separators !== 2 || !isPassiveMouseButtonCode(buttonCode)) return false;
+		if (index >= data.length || separators !== 2 || parameterDigits === 0 || !isPassiveMouseButtonCode(buttonCode)) {
+			return false;
+		}
 		offset = index + 1;
 	}
 	return data.length > 0;
@@ -190,12 +211,21 @@ export function processSessionInput(
 	if (!entry.active || entry.active.session.wasInterrupted()) {
 		return null;
 	}
+	// Passive reports cannot answer an interaction or interrupt a turn. Keep the
+	// write and its current detached return snapshot, without cloning the prior
+	// summary or deriving actionable-input state. Explicit submit intent still
+	// takes the ordinary semantic path, even when its bytes look like mouse input.
+	const passiveMouseReport = isTerminalPassiveMouseReport(data);
+	if (passiveMouseReport && options.explicitUserSubmission !== true) {
+		entry.active.session.write(data);
+		return deps.getSummary(taskId);
+	}
 	const summary = deps.getSummary(taskId);
 
 	const protocolResponse = isTerminalProtocolResponse(data);
 	// Wheel scrolling and pointer motion in fullscreen providers are not intent
 	// to answer a trust dialog; keys and clicks take it over.
-	if (!protocolResponse && !isTerminalPassiveMouseReport(data)) cancelWorkspaceTrustForUserInput(entry.active);
+	if (!protocolResponse && !passiveMouseReport) cancelWorkspaceTrustForUserInput(entry.active);
 	const explicitSubmission =
 		!protocolResponse &&
 		(options.explicitUserSubmission === true ||

@@ -402,7 +402,11 @@ describe("Claude trust output and input fencing", () => {
 	it.each([
 		["SGR", "\u001b[<0;10;5M\u001b[<0;10;5m"],
 		["X10", "\u001b[M !!"],
-	])("lets a %s mouse click take over the dialog", async (_encoding, click) => {
+		["wheel plus click", "\u001b[<64;10;5M\u001b[<0;10;5M"],
+		["wheel plus key", "\u001b[<64;10;5My"],
+		["wheel plus protocol", "\u001b[<64;10;5M\u001b[I"],
+		["wheel plus partial report", "\u001b[<64;10;5M\u001b[<64;10;"],
+	])("lets a %s input frame take over the dialog", async (_encoding, click) => {
 		const test = fixture("claude");
 		output(test, renderClaudeTrust("confirm"));
 		await flushMirror(test);

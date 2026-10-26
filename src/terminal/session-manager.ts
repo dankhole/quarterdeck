@@ -429,7 +429,9 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry?.active || entry.active.session.wasInterrupted()) {
 			return null;
 		}
-		const summaryBeforeInput = this.store.getSummary(taskId);
+		// Immediate approval choices are single-byte input. Multi-report mouse
+		// frames (and other longer writes) need no pre-input summary for this check.
+		const summaryBeforeInput = data.length === 1 ? this.store.getSummary(taskId) : null;
 		const summary = processSessionInput(
 			entry,
 			taskId,
@@ -456,7 +458,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		// A stale or non-browser client cannot cancel recovery merely by
 		// addressing a processless or explicitly stopping task.
 		entry.pendingStartupRecoveryToken = null;
-		this.clearStartupRecoveryRequirement(taskId);
+		this.clearStartupRecoveryRequirement(taskId, summary);
 		markTaskSessionLaunchUserEngaged(entry.launchMonitor);
 		if (
 			options?.explicitUserSubmission === true ||
@@ -765,8 +767,11 @@ export class TerminalSessionManager implements TerminalSessionService {
 		await this.lifecycle.waitForShutdownQuiescence();
 	}
 
-	private clearStartupRecoveryRequirement(taskId: string): void {
-		if (this.store.getSummary(taskId)?.startupRecoveryRequired === true) {
+	private clearStartupRecoveryRequirement(
+		taskId: string,
+		summary: RuntimeTaskSessionSummary | null = this.store.getSummary(taskId),
+	): void {
+		if (summary?.startupRecoveryRequired === true) {
 			this.store.update(taskId, { startupRecoveryRequired: false });
 		}
 	}

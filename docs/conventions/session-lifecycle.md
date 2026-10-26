@@ -138,6 +138,12 @@ Terminal snapshots must preserve OSC 8 destinations and the current open hyperli
 
 Terminal snapshots must preserve mouse encoding together with mouse tracking. xterm's serialize addon restores tracking but omits SGR/SGR-pixel encoding; `TerminalStateMirror` observes DECSET/DECRST and full reset through public parser handlers and appends the encoding to snapshots. Otherwise a restored browser emits legacy mouse bytes that a provider can interpret as composer text. Keep these observers non-consuming so xterm still applies each sequence.
 
+### Wheel input transport
+
+Fullscreen Pi/Codex wheel normalization leaves report encoding to xterm. Reports generated synchronously by one physical wheel event share one immediate transport write; separate wheel events and ordinary keyboard, paste, click, and protocol-response input remain separate. Do not add a typing debounce or retain wheel input across session changes. Binary mouse reports must retain their original bytes, not undergo UTF-8 re-encoding.
+
+Batching reduces repeated native-input admission work; it never grants write authority. Every resulting frame still passes the project/location, execution-owner, and exact-PTY fences. A passive-mouse fast path may avoid intent classification and redundant summary copies only for complete, exclusively passive reports, while preserving manager bookkeeping and detached summary-return semantics. Mixed or malformed input and explicit submission retain the ordinary path.
+
 ## Hook and input semantics
 
 ### Shared rules

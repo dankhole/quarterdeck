@@ -47,6 +47,7 @@ export class TerminalBrowserInput {
 			getSessionAgentId: () => RuntimeAgentId | null;
 			getConnectedTaskId: () => string | null;
 			beginImagePaste: () => TerminalImagePasteWriter | null;
+			batchWheelReports?: (dispatch: () => void) => void;
 		},
 	) {
 		this.wheel = new TerminalWheelInput(terminal, callbacks);

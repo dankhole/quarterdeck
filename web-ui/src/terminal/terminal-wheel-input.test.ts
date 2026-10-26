@@ -11,10 +11,12 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 	let taskId: string;
 	let element: HTMLDivElement;
 	const reports = vi.fn();
+	const batchWheelReports = vi.fn((dispatch: () => void) => dispatch());
 	beforeEach(async () => {
 		agentId = initialAgentId;
 		taskId = "task";
 		reports.mockClear();
+		batchWheelReports.mockClear();
 		terminal = new Terminal({ rows: 30 });
 		element = document.createElement("div");
 		const screen = document.createElement("div");
@@ -25,7 +27,11 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		vi.spyOn(terminal, "attachCustomWheelEventHandler").mockImplementation((handler) => {
 			handleWheel = handler;
 		});
-		input = new TerminalWheelInput(terminal, { getSessionAgentId: () => agentId, getConnectedTaskId: () => taskId });
+		input = new TerminalWheelInput(terminal, {
+			getSessionAgentId: () => agentId,
+			getConnectedTaskId: () => taskId,
+			batchWheelReports,
+		});
 		element.addEventListener("wheel", (event) => {
 			// Re-entrant dispatch must pass through to xterm exactly once per normalized report.
 			if (handleWheel(event)) reports(event.deltaY, event.deltaMode, event.clientX, event.clientY);
@@ -125,6 +131,37 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		wheel({ deltaY: 1e9 });
 		expect(reports).toHaveBeenCalledTimes(100);
 		reports.mockClear();
+		wheel();
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
+	});
+	it("opens exactly one synchronous transport scope per physical wheel", () => {
+		wheel();
+		expect(batchWheelReports).toHaveBeenCalledOnce();
+		wheel();
+		expect(batchWheelReports).toHaveBeenCalledTimes(2);
+	});
+	it("distinguishes a reentrant physical wheel from its own synthetic reports", () => {
+		let reentered = false;
+		element.addEventListener("wheel", () => {
+			if (reentered) return;
+			reentered = true;
+			wheel();
+		});
+		wheel();
+		expect(batchWheelReports).toHaveBeenCalledTimes(2);
+		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 12 : 4);
+	});
+	it("stops synthetic dispatch immediately when disposed reentrantly", () => {
+		element.addEventListener("wheel", () => input.dispose(), { once: true });
+		wheel();
+		expect(reports).toHaveBeenCalledOnce();
+	});
+	it("does not leave synthetic bypass enabled after dispatch throws", () => {
+		const dispatch = vi.spyOn(element, "dispatchEvent").mockImplementationOnce(() => {
+			throw new Error("dispatch failed");
+		});
+		expect(() => wheel()).toThrow("dispatch failed");
+		dispatch.mockRestore();
 		wheel();
 		expect(reports).toHaveBeenCalledTimes(initialAgentId === "pi" ? 6 : 2);
 	});

@@ -5,7 +5,8 @@ import { TerminalWheelAccumulator } from "@/terminal/terminal-wheel-policy";
 /** Normalize fullscreen Codex/Pi distance; xterm owns mouse coordinates and encoding. */
 export class TerminalWheelInput {
 	private readonly accumulator = new TerminalWheelAccumulator();
-	private forwarding = false;
+	private readonly forwardedEvents = new WeakSet<WheelEvent>();
+	private disposed = false;
 	private sessionKey: string | null = null;
 	private agentId: RuntimeAgentId | null = null;
 	private readonly bufferChangeSubscription: IDisposable;
@@ -15,6 +16,7 @@ export class TerminalWheelInput {
 		private readonly callbacks: {
 			getSessionAgentId: () => RuntimeAgentId | null;
 			getConnectedTaskId: () => string | null;
+			batchWheelReports?: (dispatch: () => void) => void;
 		},
 	) {
 		// A subprocess may leave and re-enter the same alternate buffer between wheel events.
@@ -23,7 +25,7 @@ export class TerminalWheelInput {
 	}
 
 	private readonly onWheel = (event: WheelEvent): boolean => {
-		if (this.forwarding) return true;
+		if (this.disposed || this.forwardedEvents.has(event)) return true;
 		const { terminal } = this;
 		const sessionKey = this.callbacks.getConnectedTaskId();
 		const agentId = this.callbacks.getSessionAgentId();
@@ -61,29 +63,33 @@ export class TerminalWheelInput {
 		// Codex advances three rows/report. Pi's local macOS auto mode expects
 		// one report per browser row; its native wheel setting remains a multiplier.
 		const reports = this.accumulator.consume(event, height / terminal.rows, terminal.rows, agentId === "pi" ? 1 : 3);
-		this.forwarding = true;
-		try {
-			for (let i = 0; i < Math.abs(reports); i++) {
+		const dispatch = (): void => {
+			for (let i = 0; i < Math.abs(reports) && !this.disposed; i++) {
 				// A line-mode unit avoids xterm 6's pixel heuristic and one-report-per-event truncation.
 				// Re-enter its public DOM path so SGR/legacy/pixel coordinates remain xterm-owned.
-				element.dispatchEvent(
-					new WheelEvent("wheel", {
-						bubbles: true,
-						cancelable: true,
-						deltaMode: WheelEvent.DOM_DELTA_LINE,
-						deltaY: Math.sign(reports),
-						clientX: event.clientX,
-						clientY: event.clientY,
-					}),
-				);
+				const forwarded = new WheelEvent("wheel", {
+					bubbles: true,
+					cancelable: true,
+					deltaMode: WheelEvent.DOM_DELTA_LINE,
+					deltaY: Math.sign(reports),
+					clientX: event.clientX,
+					clientY: event.clientY,
+				});
+				this.forwardedEvents.add(forwarded);
+				try {
+					element.dispatchEvent(forwarded);
+				} finally {
+					this.forwardedEvents.delete(forwarded);
+				}
 			}
-		} finally {
-			this.forwarding = false;
-		}
+		};
+		if (this.callbacks.batchWheelReports) this.callbacks.batchWheelReports(dispatch);
+		else dispatch();
 		return false;
 	};
 
 	dispose(): void {
+		this.disposed = true;
 		this.bufferChangeSubscription.dispose();
 		this.terminal.attachCustomWheelEventHandler(() => true);
 		this.accumulator.reset();
