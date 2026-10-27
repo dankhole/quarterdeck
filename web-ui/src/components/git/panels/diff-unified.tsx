@@ -32,9 +32,11 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
+	readOnlyReview = false,
 }: {
 	path: string;
 	agentContextSource?: string;
+	readOnlyReview?: boolean;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
@@ -50,7 +52,7 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
 		const rowKey = row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
-		const existingComment = rowKey ? comments.get(rowKey) : null;
+		const existingComment = !readOnlyReview && rowKey ? comments.get(rowKey) : null;
 		const hasComment = existingComment != null;
 		const baseClass =
 			row.variant === "added"
@@ -59,11 +61,11 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 					? "kb-diff-row kb-diff-row-removed"
 					: "kb-diff-row kb-diff-row-context";
 		const rowClass = hasComment ? `${baseClass} kb-diff-row-commented` : baseClass;
-		const canClickRow = row.lineNumber != null && !hasComment;
+		const canClickRow = !readOnlyReview && row.lineNumber != null && !hasComment;
 		const highlightedLineHtml = row.lineNumber == null || row.segments ? null : highlightCache.get(row.text);
 
 		const handleRowClick =
-			row.lineNumber != null && !hasComment
+			!readOnlyReview && row.lineNumber != null && !hasComment
 				? () => {
 						onAddComment(path, row.lineNumber!, row.text, row.variant);
 					}
@@ -75,11 +77,13 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 					className={rowClass}
 					data-diff-line={row.lineNumber ?? undefined}
 					data-diff-side={row.variant === "removed" ? "removed" : "current"}
+					data-code-navigation-side={row.variant === "removed" ? "old" : "new"}
 					style={canClickRow ? undefined : { cursor: "default" }}
 					onClick={handleRowClick}
 				>
 					<DiffLineGutter
 						lineNumber={row.lineNumber}
+						canComment={!readOnlyReview}
 						hasComment={hasComment}
 						onDeleteComment={hasComment ? () => onDeleteComment(path, row.lineNumber!, row.variant) : undefined}
 					/>
@@ -105,7 +109,9 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 				if (item.type === "rows") {
 					return (
 						<div key={item.rows[0]!.key}>
-							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
+							{!readOnlyReview ? (
+								<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
+							) : null}
 							<DeferredDiffRows
 								rows={item.rows}
 								getRowKey={(row) => row.key}

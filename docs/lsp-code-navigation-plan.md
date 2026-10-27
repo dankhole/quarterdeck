@@ -1,6 +1,6 @@
 # Code navigation with user-installed language servers
 
-Quarterdeck provides optional definitions, references, and type information in live Files workspaces through user-installed Language Server Protocol (LSP) executables. It does not bundle or install servers. Code navigation is disabled by default and supports stdio transport only.
+Quarterdeck provides optional definitions, references, and type information in live Files workspaces and the new/right WORKTREE side of Compare and uncommitted diffs through user-installed Language Server Protocol (LSP) executables. It does not bundle or install servers. Code navigation is disabled by default and supports stdio transport only.
 
 Syntax highlighting is separate from navigation: supported editor languages, including C#, are colored without enabling LSP or installing a server. A language server adds semantic operations; it does not supply the editor's syntax grammar.
 
@@ -8,10 +8,10 @@ Syntax highlighting is separate from navigation: supported editor languages, inc
 
 1. Install a language server separately and make its executable available to the owning runtime. Desktop users can configure executable folders in [Runtime Environment](./desktop-environment.md).
 2. Open **Settings → Code Navigation**, enable code navigation, and edit or add a server. **Check command** verifies executable availability without starting the server. Save the settings to apply changes.
-3. Open a complete, editable text file in a live project or task Files workspace. Use the editor context menu's **Go to Definition**, **Find References**, or **Show Type Information** action at the desired position.
+3. Open a complete text file in a live project or task Files workspace, or compare against WORKTREE in Compare/uncommitted changes. Right-click the desired symbol in the editor or the new/right diff text and choose **Go to Definition**, **Find References**, or **Show Type Information**.
 4. Select a definition/reference result to open its file and position. Results are grouped by relative path and show line/column locations. Type information appears as text in the results panel.
 
-Opening Settings or an eligible file does not launch a server. The first navigation action starts one on demand and may wait for initialization/indexing. Missing executables, disabled configuration, unsupported actions, and empty results have explicit UI states. Read-only Git revisions and diff views do not support navigation; open the live worktree file instead.
+Opening Settings or an eligible file does not launch a server. The first navigation action starts one on demand and may wait for initialization/indexing. Missing executables, disabled configuration, unsupported actions, and empty results have explicit UI states. Old/base diff text and historical Git revisions explicitly report that navigation is unavailable; they never query the live index using historical positions. Eligibility uses explicit content provenance, not the ref label: a branch named `WORKTREE` remains historical when uncommitted work is excluded. New/right WORKTREE diff requests use the complete new-side snapshot and the clicked UTF-16 position, including nested syntax/inline-diff spans. Diff review remains immutable: navigation grants no edit or save capability. Definition/reference results open the live Files workspace at their exact range in the original project/task scope. In a detached Compare window, results instead open a read-only live-file preview without mounting an editable Files workspace.
 
 The only shipped template is TypeScript/JavaScript:
 
@@ -31,7 +31,7 @@ Each request carries the exact unsaved editor content, its document version, and
 
 Requests for one server are serialized. Each exchanges `didOpen`, the requested operation, and `didClose`, using a runtime-monotonic document version. Servers must support opening/closing unsaved documents and the requested capability. Continuous `didChange` subscriptions are not implemented.
 
-The browser rejects a pending response after its source document changes or closes, or its scope/configuration changes. Completed definition/reference lists remain available while navigating within their original scope. Server results are accepted only for readable files inside that live scope; non-file URIs, escaped paths, missing files, and duplicate locations are discarded.
+The browser rejects a pending response after its source document changes or closes, or its scope/configuration changes. In Files, completed definition/reference lists remain available while navigating within their original scope. Diff results are cleared when their source snapshot, revision pair, live scope, or navigation configuration changes. Server results are accepted only for readable files inside that live scope; non-file URIs, escaped paths, missing files, and duplicate locations are discarded.
 
 The tRPC operations are `project.codeNavigation.status`, `.definition`, `.references`, and `.hover`. Project identity comes from the project-scoped client. Inputs use `path`, optional `taskId`/ref scope fields, and, for navigation, `position`, `documentVersion`, and `content`; references also accept `includeDeclaration`. The API returns typed unavailable/error states or versioned results. The schemas in `src/core/api/code-navigation.ts` own the exact contract.
 

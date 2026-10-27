@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GitViewCompareNavigation } from "@/hooks/git/use-git-view-compare";
 import type { MainViewId } from "@/resize/use-card-detail-layout";
+import type { CodeNavigationLocation } from "@/runtime/types";
 
 interface UseGitNavigationInput {
 	isGitHistoryOpen: boolean;
@@ -12,6 +13,9 @@ export interface FileNavigation {
 	targetView: "git" | "files";
 	filePath: string;
 	lineNumber?: number;
+	/** LSP result in the live worktree, including files excluded from the tree. */
+	codeLocation?: CodeNavigationLocation;
+	codeTaskId?: string | null;
 }
 
 interface UseGitNavigationResult {

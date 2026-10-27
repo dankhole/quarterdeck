@@ -9,6 +9,8 @@ export interface DesktopWindowOptions {
 	isQuitting: () => boolean;
 	isSynthetic: boolean;
 	showWindow: boolean;
+	closeBehavior?: "hide" | "destroy";
+	title?: string;
 	onSurfaceAction: (action: DesktopSurfaceAction, sender: ApprovedRenderer) => void;
 	onRendererFailed: () => void;
 	onDocumentNavigation?: () => void;
@@ -22,7 +24,7 @@ export function createDesktopWindow(options: DesktopWindowOptions): ApprovedRend
 		minHeight: 540,
 		show: options.showWindow,
 		backgroundColor: "#24292e",
-		title: "Quarterdeck",
+		title: options.title ?? "Quarterdeck",
 		webPreferences: {
 			preload: options.preloadPath,
 			partition: options.partition,
@@ -37,7 +39,7 @@ export function createDesktopWindow(options: DesktopWindowOptions): ApprovedRend
 	});
 	const renderer: ApprovedRenderer = { contents: window.webContents, generation: null };
 	window.on("close", (event) => {
-		if (!options.isQuitting()) {
+		if (!options.isQuitting() && options.closeBehavior !== "destroy") {
 			event.preventDefault();
 			window.hide();
 		}

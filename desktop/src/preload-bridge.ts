@@ -1,6 +1,11 @@
 import {
+	compareWindowOpenResponseSchema,
+	compareWindowTargetSchema,
+} from "../../src/shared/compare-window-contract.js";
+import {
 	type DesktopBootstrap,
 	type DesktopBridge,
+	type DesktopCompareBridge,
 	desktopAppCommandSchema,
 	desktopCommandAvailabilitySchema,
 	desktopDraftSaveRequestSchema,
@@ -12,10 +17,12 @@ import {
 	desktopQuitPreflightRequestSchema,
 	desktopQuitPreflightResponseSchema,
 	QUARTERDECK_DESKTOP_BRIDGE_VERSION,
+	QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION,
 } from "../../src/shared/desktop-bridge-contract.js";
 import {
 	DESKTOP_AVAILABILITY_CHANNEL,
 	DESKTOP_COMMAND_CHANNEL,
+	DESKTOP_COMPARE_OPEN_CHANNEL,
 	DESKTOP_DRAFT_SAVE_CHANNEL,
 	DESKTOP_NOTIFICATION_CONTEXT_CHANNEL,
 	DESKTOP_NOTIFICATION_TARGET_CHANNEL,
@@ -117,4 +124,39 @@ export function createDesktopBridge(bootstrap: DesktopBootstrap, ipc: PreloadIpc
 			}
 		},
 	} satisfies DesktopBridge);
+}
+
+export function createDesktopCompareBridge(
+	bootstrap: DesktopBootstrap,
+	ipc: PreloadIpc,
+	documentId: string,
+): DesktopCompareBridge {
+	const generation = bootstrap.runtimeGeneration;
+	return Object.freeze<DesktopCompareBridge>({
+		version: QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION,
+		openCompareWindow: async (target: unknown) => {
+			const parsed = compareWindowTargetSchema.safeParse(target);
+			if (!parsed.success) return { kind: "failed" };
+			try {
+				const result = compareWindowOpenResponseSchema.safeParse(
+					await ipc.invoke(DESKTOP_COMPARE_OPEN_CHANNEL, {
+						documentId,
+						runtimeGeneration: generation,
+						target: parsed.data,
+					}),
+				);
+				return result.success ? result.data : { kind: "failed" };
+			} catch {
+				return { kind: "failed" };
+			}
+		},
+	});
+}
+
+/** Compare documents receive runtime transport identity, never native command methods. */
+export function createCompareDesktopBridge(bootstrap: DesktopBootstrap): DesktopBridge {
+	return Object.freeze({
+		version: QUARTERDECK_DESKTOP_BRIDGE_VERSION,
+		bootstrap: Object.freeze({ ...bootstrap, capabilities: Object.freeze({ ...bootstrap.capabilities }) }),
+	});
 }

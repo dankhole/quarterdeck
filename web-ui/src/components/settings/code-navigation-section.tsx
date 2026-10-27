@@ -166,7 +166,7 @@ export function CodeNavigationSection({
 				onCheckedChange={(value) => setField("codeNavigationEnabled", value)}
 				disabled={disabled}
 				label="Enable code navigation"
-				description="Use your installed language servers for definitions, references, and type information in live Files workspaces. Servers start when you request navigation."
+				description="Use your installed language servers for definitions, references, and type information in live Files workspaces and new-side WORKTREE diffs. Servers start when you request navigation."
 			/>
 			<div className="mt-3 space-y-2">
 				{fields.lspServers.map((server, index) => (

@@ -1,4 +1,7 @@
-import { PanelLeft } from "lucide-react";
+import { ExternalLink, PanelLeft } from "lucide-react";
+import { useState } from "react";
+import { showAppToast } from "@/components/app-toaster";
+import { openCompareWindow } from "@/components/compare-window/open-compare-window";
 
 import { CompareBar } from "@/components/git/git-view-compare-bar";
 import { GitViewEmptyPanel, GitViewLoadingPanel } from "@/components/git/git-view-empty";
@@ -7,7 +10,9 @@ import { DiffViewerPanel } from "@/components/git/panels/diff-viewer-panel";
 import { FileTreePanel } from "@/components/git/panels/file-tree-panel";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { CodeNavigationConfig } from "@/hooks/git/code-navigation";
 import { deriveEmptyTitle } from "@/hooks/git/git-view";
+import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 import { type UseGitViewOptions, useGitView } from "@/hooks/git/use-git-view";
 import { ResizeHandle } from "@/resize/resize-handle";
 
@@ -47,7 +52,8 @@ function TabButton({
 
 export interface GitViewProps extends UseGitViewOptions {
 	/** Navigate to a file in a different main view (e.g. file browser). */
-	navigateToFile?: (nav: { targetView: "git" | "files"; filePath: string }) => void;
+	navigateToFile?: (nav: FileNavigation) => void;
+	codeNavigationConfig?: CodeNavigationConfig | null;
 	/** Slot for the branch pill + git status controls rendered in the tab bar. */
 	branchStatusSlot?: React.ReactNode;
 	/** When provided, renders the git history panel instead of the normal diff content. */
@@ -62,6 +68,7 @@ export interface GitViewProps extends UseGitViewOptions {
 
 export function GitView({
 	navigateToFile,
+	codeNavigationConfig,
 	branchStatusSlot,
 	gitHistoryPanel,
 	pinnedBranches,
@@ -70,6 +77,7 @@ export function GitView({
 	onSendToTerminal,
 	...hookOptions
 }: GitViewProps): React.ReactElement {
+	const [isOpeningCompare, setIsOpeningCompare] = useState(false);
 	const {
 		repositoryScope,
 		activeTab,
@@ -96,6 +104,28 @@ export function GitView({
 		hasNoChanges,
 		handleRollbackFile,
 	} = useGitView({ ...hookOptions, reviewVisible: !gitHistoryPanel });
+
+	const handlePopOutCompare = () => {
+		if (!hookOptions.currentProjectId || !compare.sourceRef || !compare.targetRef || isOpeningCompare) return;
+		setIsOpeningCompare(true);
+		void openCompareWindow({
+			projectId: hookOptions.currentProjectId,
+			taskId: hookOptions.selectedCard?.card.id ?? null,
+			...(hookOptions.selectedCard ? { taskCreatedAt: hookOptions.selectedCard.card.createdAt } : {}),
+			sourceRef: compare.sourceRef,
+			targetRef: compare.targetRef,
+			includeUncommitted: compare.includeUncommitted,
+			threeDotDiff: compare.threeDotDiff,
+			...(selectedPath ? { selectedPath } : {}),
+		})
+			.catch((error: unknown) => {
+				showAppToast({
+					intent: "danger",
+					message: error instanceof Error ? error.message : "Could not open the Compare window.",
+				});
+			})
+			.finally(() => setIsOpeningCompare(false));
+	};
 
 	// --- Conflict resolution early return ---
 
@@ -149,6 +179,20 @@ export function GitView({
 				<div className="flex-1" />
 
 				{branchStatusSlot}
+
+				{activeTab === "compare" && !gitHistoryPanel ? (
+					<Tooltip content="Pop out Compare">
+						<button
+							type="button"
+							aria-label="Pop out Compare"
+							onClick={handlePopOutCompare}
+							disabled={!hasCompareRefs || !hookOptions.currentProjectId || isOpeningCompare}
+							className="flex items-center justify-center w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 disabled:opacity-35 disabled:cursor-not-allowed"
+						>
+							<ExternalLink size={14} />
+						</button>
+					</Tooltip>
+				) : null}
 
 				<Tooltip content={fileTreeVisible ? "Hide file tree" : "Show file tree"}>
 					<button
@@ -235,6 +279,7 @@ export function GitView({
 								}}
 							>
 								<DiffViewerPanel
+									codeNavigationConfig={codeNavigationConfig}
 									reviewScope={{
 										repository: repositoryScope,
 										revisions: {
@@ -244,6 +289,10 @@ export function GitView({
 												activeTab === "uncommitted" || compare.includeUncommitted
 													? "WORKTREE"
 													: (compare.sourceRef ?? ""),
+											headSource:
+												activeTab === "uncommitted" || compare.includeUncommitted
+													? "live-worktree"
+													: "revision",
 											mode: compare.threeDotDiff ? "three_dot" : "two_dot",
 										},
 									}}

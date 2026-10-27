@@ -1,12 +1,14 @@
 import {
 	type DesktopBridge,
 	type DesktopCapabilities,
+	type DesktopCompareBridge,
 	QUARTERDECK_DESKTOP_BRIDGE_VERSION,
 } from "../../../src/shared/desktop-bridge-contract";
 
 declare global {
 	interface Window {
 		readonly quarterdeckDesktop?: DesktopBridge;
+		readonly quarterdeckDesktopCompare?: DesktopCompareBridge;
 	}
 }
 

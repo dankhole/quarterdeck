@@ -24,9 +24,26 @@ describe("review documents", () => {
 		expect(createReviewDocument(scope, { ...file, previousPath: "another.ts" }, content).key).not.toBe(doc.key);
 		expect(doc).not.toHaveProperty("save");
 	});
+	it("changes identity when identical WORKTREE labels switch between live content and a committed ref", () => {
+		const content = { kind: "text", oldText: "old()", newText: "same()" } as const;
+		const revisions = { kind: "compare", base: "main", head: "WORKTREE" } as const;
+		const historical = createReviewDocument({ ...scope, revisions }, { path: "a.ts" }, content);
+		const explicitRevision = createReviewDocument(
+			{ ...scope, revisions: { ...revisions, headSource: "revision" } },
+			{ path: "a.ts" },
+			content,
+		);
+		const live = createReviewDocument(
+			{ ...scope, revisions: { ...revisions, headSource: "live-worktree" } },
+			{ path: "a.ts" },
+			content,
+		);
+		expect(historical.key).toBe(explicitRevision.key);
+		expect(live.key).not.toBe(historical.key);
+	});
 	it("keeps deletion and working-copy snapshots read-only", () => {
 		const doc = createReviewDocument(
-			{ ...scope, revisions: { kind: "working-copy", base: "HEAD", head: "WORKTREE" } },
+			{ ...scope, revisions: { kind: "working-copy", base: "HEAD", head: "WORKTREE", headSource: "live-worktree" } },
 			{ path: "gone.ts", status: "deleted" },
 			{ kind: "text", oldText: "old", newText: "" },
 		);

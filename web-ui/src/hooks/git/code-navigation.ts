@@ -1,9 +1,15 @@
-import type { FileEditorTab } from "@/hooks/git/file-editor-workspace";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import type { CodeNavigationLocation, RuntimeConfigResponse } from "@/runtime/types";
 
 export type CodeNavigationOperation = "definition" | "references" | "hover";
 export type CodeNavigationConfig = Pick<RuntimeConfigResponse, "codeNavigationEnabled" | "lspServers">;
+
+/** Navigation reads a text snapshot; source admission does not grant editor/save authority. */
+export interface CodeNavigationSource {
+	readonly path: string;
+	readonly content: string;
+	readonly eligibility: "eligible" | "read-only" | "incomplete";
+}
 
 export const CODE_NAVIGATION_LABELS: Record<CodeNavigationOperation, string> = {
 	definition: "Go to Definition",
@@ -27,17 +33,16 @@ export function codeNavigationUnavailableReason(input: {
 	projectId: string | null;
 	scope: WorkdirSearchScope;
 	config: CodeNavigationConfig | null;
-	tab: FileEditorTab | null;
-	readOnly: boolean;
+	source: CodeNavigationSource | null;
 }): string | null {
 	if (!input.projectId) return "Select a project to use code navigation.";
-	if (input.scope.ref || input.readOnly)
+	if (input.scope.ref || input.source?.eligibility === "read-only")
 		return "Code navigation is available in live workspaces. Open the worktree file to continue.";
 	if (!input.config?.codeNavigationEnabled)
 		return "Enable Code Navigation in Settings and configure an installed language server.";
-	if (!input.tab || input.tab.binary || input.tab.truncated || !input.tab.editable)
+	if (input.source?.eligibility !== "eligible")
 		return "Code navigation requires a complete text file within the editor size limit.";
-	const path = input.tab.path.toLowerCase();
+	const path = input.source.path.toLowerCase();
 	if (
 		!input.config.lspServers.some(
 			(server) => server.enabled && server.extensions.some((extension) => path.endsWith(extension.toLowerCase())),

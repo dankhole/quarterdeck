@@ -7,6 +7,8 @@ import {
 	DesktopBrowserCoexistenceError,
 	exerciseDesktopBrowserCoexistence,
 } from "../../../scripts/agent-lab/desktop-browser-coexistence";
+import type * as compareWindowModule from "../../../scripts/agent-lab/desktop-compare-window";
+import { exerciseDesktopCompareWindow } from "../../../scripts/agent-lab/desktop-compare-window";
 import { type DesktopLabFixture, prepareDesktopLabFixture } from "../../../scripts/agent-lab/desktop-fixture";
 import { exerciseDesktopMainLoss } from "../../../scripts/agent-lab/desktop-main-loss-scenario";
 import {
@@ -76,6 +78,10 @@ vi.mock("../../../scripts/agent-lab/desktop-driver", () => ({
 	withDesktopDeadline: <T>(promise: Promise<T>) => promise,
 }));
 vi.mock("../../../scripts/agent-lab/desktop-fixture", () => ({ prepareDesktopLabFixture: vi.fn() }));
+vi.mock("../../../scripts/agent-lab/desktop-compare-window", async (importOriginal) => ({
+	...(await importOriginal<typeof compareWindowModule>()),
+	exerciseDesktopCompareWindow: vi.fn(async () => {}),
+}));
 vi.mock("../../../scripts/agent-lab/desktop-renderer-recovery", () => ({
 	openDesktopPrimaryProject: vi.fn(async () => {}),
 	exerciseDesktopRendererRecovery: vi.fn(),
@@ -312,6 +318,54 @@ describe.skipIf(process.platform !== "darwin")("exclusive packaged performance r
 		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
 		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
 		expect(exerciseDesktopMainLoss).not.toHaveBeenCalled();
+	});
+
+	it("routes the hidden no-agent Compare lane directly to the narrow scenario and normal cleanup", async () => {
+		await runDesktopSmoke({ appPath: fixture.manifest.appPath, compareWindow: true, includeAgent: false });
+		expect(exerciseDesktopCompareWindow).toHaveBeenCalledExactlyOnceWith(
+			mocks.page,
+			expect.objectContaining({ fixture }),
+		);
+		expect(mocks.driver.markReady).toHaveBeenCalledOnce();
+		expect(mocks.driver.inspect.mock.calls).toEqual([["ready"], ["completed"]]);
+		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(undefined);
+		expect(exerciseDesktopBrowserCoexistence).not.toHaveBeenCalled();
+		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
+		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
+		expect(exerciseDesktopMainLoss).not.toHaveBeenCalled();
+		expect(mocks.driver.app.evaluate).not.toHaveBeenCalled();
+		expect(mocks.page.keyboard.press).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ includeAgent: undefined },
+		{ includeAgent: true },
+		{ showWindow: true },
+		{ agentMode: "real-codex" as const },
+		{ agentMode: "real-claude" as const },
+		{ npmLaunch: true },
+		{ manualShells: true },
+		{ nativeExperience: true },
+		{ performance: true },
+		{ mainLoss: true },
+		{ sessionRecovery: true },
+		{ notifications: true },
+	])("rejects conflicting Compare options before creating a fixture: %j", async (options) => {
+		await expect(
+			runDesktopSmoke({ appPath: fixture.manifest.appPath, compareWindow: true, includeAgent: false, ...options }),
+		).rejects.toThrow("Compare window checks require");
+		expect(prepareDesktopLabFixture).not.toHaveBeenCalled();
+		expect(mocks.driver.launch).not.toHaveBeenCalled();
+	});
+
+	it("retains normal cleanup ownership when the Compare scenario fails", async () => {
+		const failure = new Error("Compare isolation proof failed");
+		vi.mocked(exerciseDesktopCompareWindow).mockRejectedValueOnce(failure);
+		await expect(
+			runDesktopSmoke({ appPath: fixture.manifest.appPath, compareWindow: true, includeAgent: false }),
+		).rejects.toThrow(failure.message);
+		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(failure);
+		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
 	});
 
 	it("preserves fixture preparation failure for cleanup and never launches an app", async () => {

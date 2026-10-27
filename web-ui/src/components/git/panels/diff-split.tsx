@@ -110,9 +110,11 @@ export const SplitDiff = memo(function SplitDiff({
 	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
+	readOnlyReview = false,
 }: {
 	path: string;
 	agentContextSource?: string;
+	readOnlyReview?: boolean;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
@@ -138,7 +140,7 @@ export const SplitDiff = memo(function SplitDiff({
 			return <></>;
 		}
 
-		const canCommentOnSide = isCommentableOnSplitSide(row, side);
+		const canCommentOnSide = !readOnlyReview && isCommentableOnSplitSide(row, side);
 		const rowKey = canCommentOnSide ? commentKey(path, rowLineNumber, row.variant) : null;
 		const existingComment = rowKey ? comments.get(rowKey) : null;
 		const hasComment = existingComment != null;
@@ -162,6 +164,7 @@ export const SplitDiff = memo(function SplitDiff({
 					className={rowClass}
 					data-diff-line={rowLineNumber}
 					data-diff-side={row.variant === "removed" ? "removed" : "current"}
+					data-code-navigation-side={side === "left" ? "old" : "new"}
 					style={canClickRow ? undefined : { cursor: "default" }}
 					onClick={
 						canClickRow
@@ -218,7 +221,9 @@ export const SplitDiff = memo(function SplitDiff({
 				{displayItems.map((item) =>
 					item.type === "rows" ? (
 						<div key={item.pairs[0]!.key}>
-							<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
+							{!readOnlyReview ? (
+								<AgentDiffHunkAction path={path} rows={item.rows} source={agentContextSource} />
+							) : null}
 							<DeferredDiffRows
 								rows={item.pairs}
 								getRowKey={(pair) => pair.key}

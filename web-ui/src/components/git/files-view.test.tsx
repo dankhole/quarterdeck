@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SourceEditorProps } from "@/components/editor/source-editor";
@@ -7,6 +7,7 @@ import { createFileBrowserContentScopeKey } from "@/hooks/git/file-browser-scope
 import { setLastSelectedFileBrowserPath } from "@/hooks/git/file-browser-selection-cache";
 import { clearCachedFileEditorTabs } from "@/hooks/git/file-editor-cache";
 import { useFileBrowserData } from "@/hooks/git/use-file-browser-data";
+import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 import type { RuntimeFileContentRequest, RuntimeFileContentResponse, RuntimeListFilesResponse } from "@/runtime/types";
 import { fileTreePage } from "@/test-utils/file-tree";
 import { FilesView } from "./files-view";
@@ -108,13 +109,29 @@ function contentResponse(content: string, editable: boolean): RuntimeFileContent
 	};
 }
 
-function Harness({ taskId = null }: { taskId?: string | null }) {
-	const browser = useFileBrowserData({ projectId, taskId, rootPath: "/project" });
+function Harness({
+	taskId = null,
+	browseRef,
+	navigation,
+	onConsumed,
+}: {
+	taskId?: string | null;
+	browseRef?: string;
+	navigation?: FileNavigation;
+	onConsumed?: () => void;
+}) {
+	const browser = useFileBrowserData({ projectId, taskId, rootPath: "/project", ref: browseRef });
+	const [consumed, setConsumed] = useState(false);
 	return (
 		<FilesView
 			projectId={projectId}
 			fileBrowserData={browser}
 			fileEditorAutosaveMode="focus"
+			pendingFileNavigation={consumed ? null : navigation}
+			onFileNavigationConsumed={() => {
+				setConsumed(true);
+				onConsumed?.();
+			}}
 			scopeBar={null}
 			codeNavigationConfig={{
 				codeNavigationEnabled: true,
@@ -256,6 +273,65 @@ describe("FilesView", () => {
 		expect(container.querySelector('[aria-label="File tree"]')?.textContent).toContain("src/app.ts");
 		expect(container.querySelector("[data-editor-path]")).toBe(editor);
 		expect(editor?.textContent).toContain("// draft");
+	});
+
+	it.each([
+		{ name: "historical", browseRef: "main", overrides: {} },
+		{ name: "read-only", overrides: { editable: false } },
+		{ name: "binary", overrides: { binary: true } },
+		{ name: "truncated", overrides: { truncated: true } },
+		{ name: "oversize", overrides: { editable: false, size: 2 * 1024 * 1024 } },
+	])("does not navigate from a $name Files source", async ({ browseRef, overrides }) => {
+		rpc.getFileContent.mockResolvedValue({ ...contentResponse("const value = 42;", true), ...overrides });
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness browseRef={browseRef} />
+				</TooltipProvider>,
+			),
+		);
+		await act(async () => button("src/app.ts").click());
+		const action = Array.from(container.querySelectorAll("button")).find(
+			(item) => item.textContent === "Go to Definition",
+		);
+		if (action) await act(async () => action.click());
+		else expect(overrides).toMatchObject({ binary: true });
+		expect(rpc.definition).not.toHaveBeenCalled();
+	});
+
+	it("opens external diff navigation at the complete range, including excluded files", async () => {
+		const consumed = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness
+						navigation={{ targetView: "files", filePath: target.path, codeLocation: target, codeTaskId: null }}
+						onConsumed={consumed}
+					/>
+				</TooltipProvider>,
+			),
+		);
+		expect(consumed).toHaveBeenCalled();
+		const editor = container.querySelector("[data-editor-path]");
+		expect(editor?.getAttribute("data-editor-path")).toBe(target.path);
+		expect(JSON.parse(editor?.getAttribute("data-range") ?? "null")).toEqual(target.range);
+		expect(editor?.getAttribute("data-read-only")).toBe("true");
+	});
+
+	it("does not consume a live code result in another worktree scope", async () => {
+		const consumed = vi.fn();
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness
+						navigation={{ targetView: "files", filePath: target.path, codeLocation: target, codeTaskId: "task" }}
+						onConsumed={consumed}
+					/>
+				</TooltipProvider>,
+			),
+		);
+		expect(consumed).not.toHaveBeenCalled();
+		expect(container.querySelector("[data-editor-path]")).toBeNull();
 	});
 
 	it("opens an excluded dependency result read-only at its complete range and permits revisiting its tab", async () => {

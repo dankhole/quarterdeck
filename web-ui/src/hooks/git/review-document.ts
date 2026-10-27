@@ -5,6 +5,8 @@ export interface ReviewRevisionPair {
 	readonly kind: "commit" | "compare" | "working-copy" | "conflict" | "auto-merge";
 	readonly base: string;
 	readonly head: string;
+	/** Content provenance, never inferred from the ref label. Omission grants no live navigation. */
+	readonly headSource?: "live-worktree" | "revision";
 	readonly mode?: "two_dot" | "three_dot";
 	readonly version?: string | number;
 }
@@ -40,7 +42,7 @@ export function createReviewDocument(
 	const repositoryKey = createFileBrowserContentScopeKey(scope.repository);
 	const oldPath = file.status === "added" || file.status === "untracked" ? null : (file.previousPath ?? file.path);
 	const newPath = file.status === "deleted" ? null : file.path;
-	const { kind, base, head, mode, version } = scope.revisions;
+	const { kind, base, head, headSource = "revision", mode, version } = scope.revisions;
 	return {
 		kind: "review",
 		readOnly: true,
@@ -56,6 +58,7 @@ export function createReviewDocument(
 			kind,
 			base,
 			head,
+			headSource,
 			mode,
 			version ?? file.contentRevision,
 			oldPath,

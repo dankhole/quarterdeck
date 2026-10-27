@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { Page } from "playwright-core";
 
 import { DesktopBrowserCoexistenceError, exerciseDesktopBrowserCoexistence } from "./desktop-browser-coexistence";
+import { exerciseDesktopCompareWindow, validateDesktopCompareWindowSelection } from "./desktop-compare-window";
 import { DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import { exerciseDesktopEnvironmentSettings } from "./desktop-environment-settings";
 import type {
@@ -478,10 +479,12 @@ export async function runDesktopSmoke(options: {
 	sessionRecovery?: boolean;
 	npmLaunch?: boolean;
 	manualShells?: boolean;
+	compareWindow?: boolean;
 	notifications?: boolean;
 	agentMode?: DesktopAgentMode;
 }): Promise<{ runId: string; manifestPath: string; artifactDir: string }> {
 	if (process.platform !== "darwin") throw new Error("Packaged desktop smoke requires macOS.");
+	if (options.compareWindow) validateDesktopCompareWindowSelection(options);
 	if (options.sessionRecovery) validateDesktopSessionRecoverySelection(options);
 	if (options.notifications) validateDesktopNotificationSelection(options);
 	validateDesktopProviderSelection(options.agentMode ?? "fake", options.includeAgent !== false);
@@ -551,6 +554,9 @@ export async function runDesktopSmoke(options: {
 			await driver.inspect("completed");
 		} else if (npmPreparation) {
 			await exerciseDesktopNpmLaunch(page, driver, npmPreparation);
+		} else if (options.compareWindow) {
+			await exerciseDesktopCompareWindow(page, driver);
+			await driver.inspect("completed");
 		} else if (options.manualShells) {
 			await exerciseDesktopManualShells(page, driver);
 			await driver.inspect("completed");

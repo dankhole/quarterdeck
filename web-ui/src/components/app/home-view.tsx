@@ -64,6 +64,10 @@ export function HomeView({
 	const interactions = useInteractionsContext();
 
 	useEffect(() => {
+		if (navigation.pendingFileNavigation?.codeLocation) git.fileBrowserReturnToContextual();
+	}, [navigation.pendingFileNavigation, git.fileBrowserReturnToContextual]);
+
+	useEffect(() => {
 		navigation.setActiveFileSearchScope(git.homeFileBrowserData.searchScope);
 	}, [git.homeFileBrowserData.searchScope, navigation.setActiveFileSearchScope]);
 
@@ -138,6 +142,7 @@ export function HomeView({
 						<div className="flex flex-1 min-h-0 min-w-0">
 							{!isProjectUnavailable && navigation.mainView === "git" ? (
 								<GitView
+									codeNavigationConfig={projectRuntime.runtimeProjectConfig}
 									currentProjectId={projectNavigation.currentProjectId}
 									selectedCard={null}
 									projectPath={projectPath}

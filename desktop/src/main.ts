@@ -22,6 +22,7 @@ import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown
 import { DesktopInstallationError, validateDesktopInstallation } from "../../src/desktop-install/index.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { admittedBrowserLaunch } from "./browser-launch.js";
+import { DesktopCompareWindows } from "./compare-windows.js";
 import { createDesktopDiagnostics, type DesktopDiagnostics } from "./desktop-diagnostics.js";
 import { DesktopDialogs } from "./desktop-dialogs.js";
 import { DesktopHostEffectDispatcher } from "./desktop-host-effects.js";
@@ -48,6 +49,7 @@ import {
 	isBootstrapSender,
 } from "./renderer-admission.js";
 import { DesktopRendererCommands } from "./renderer-commands.js";
+import { DesktopRendererRegistry } from "./renderer-registry.js";
 import { type RuntimeBundle, readRuntimeBundle } from "./runtime-bundle.js";
 import { resolveDesktopRuntimeEnvironment } from "./runtime-environment.js";
 import { RuntimeSelection } from "./runtime-selection.js";
@@ -98,6 +100,8 @@ async function launchDesktop(
 		return;
 	}
 	let renderer: ApprovedRenderer | null = null;
+	const rendererRegistry = new DesktopRendererRegistry(() => renderer);
+	let compareWindows: DesktopCompareWindows | null = null;
 	let supervisor: RuntimeSupervisor | null = null;
 	let commands: DesktopRendererCommands | null = null;
 	let coordinator: DesktopQuitCoordinator | null = null;
@@ -329,6 +333,7 @@ async function launchDesktop(
 		}
 		notifications = null;
 		selection.clear();
+		compareWindows?.closeAll();
 		currentProjectId = null;
 		return notificationCleanup;
 	};
@@ -790,7 +795,18 @@ async function launchDesktop(
 	});
 	const partition = desktopPartition(launch.stateHome);
 	const desktopSession = session.fromPartition(partition);
-	installRendererAdmission(desktopSession, () => renderer, selection);
+	installRendererAdmission(desktopSession, rendererRegistry.get, selection);
+	compareWindows = new DesktopCompareWindows({
+		ipc: ipcMain,
+		registry: rendererRegistry,
+		selection,
+		getMainRenderer: () => renderer,
+		canOpen: () => connectedProduct() && !coordinator?.isPending(),
+		partition,
+		preloadPath: join(import.meta.dirname, "preload.cjs"),
+		isSynthetic: launch.synthetic,
+		showWindow,
+	});
 	desktopSession.protocol.handle("app", async (request) => {
 		const url = desktopUrl(request.url);
 		if (!url) return new Response("Forbidden", { status: 403 });
@@ -799,12 +815,17 @@ async function launchDesktop(
 		return await proxyRuntimeRequest(request, selection);
 	});
 	ipcMain.on(DESKTOP_BOOTSTRAP_CHANNEL, (event, payload: unknown) => {
+		const sender = rendererRegistry.get(event.sender.id);
 		event.returnValue =
 			isBootstrapPayload(payload) &&
-			isBootstrapSender(event, renderer, selection) &&
-			renderer?.generation &&
-			renderer.documentId
-				? { bootstrap: selection.bootstrap(renderer.generation), documentId: renderer.documentId }
+			isBootstrapSender(event, sender, selection) &&
+			sender?.generation &&
+			sender.documentId
+				? {
+						bootstrap: selection.bootstrap(sender.generation),
+						documentId: sender.documentId,
+						...(sender.role === "compare" ? { role: "compare" } : {}),
+					}
 				: null;
 	});
 	commands = new DesktopRendererCommands(ipcMain, () => renderer, selection, 5000, {
@@ -1023,6 +1044,7 @@ async function launchDesktop(
 		controller: environmentController,
 	});
 	app.once("will-quit", () => {
+		compareWindows?.dispose();
 		updates?.dispose();
 		disposeUpdateIpc();
 		disposeEnvironmentIpc();

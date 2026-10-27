@@ -18,6 +18,33 @@ describe("browser shared UI preferences", () => {
 		expect(patch).not.toHaveBeenCalled();
 	});
 
+	it("hydrates a read-only viewer without installing a write transport or staging local changes", async () => {
+		const store = new SharedUiPreferencesStore();
+		const read = vi.fn().mockResolvedValue({ ...empty, revision: 1, values: { [key]: false } });
+		await store.initializeReadOnly({ read });
+		expect(read).toHaveBeenCalledOnce();
+		expect(store.active).toBe(true);
+		expect(store.read(key)).toBe("false");
+		store.write(key, "true");
+		store.writeCollapsedGroups("org-1", ["ungrouped"]);
+		await store.flush();
+		expect(store.read(key)).toBe("false");
+		expect(store.readCollapsedGroups("org-1")).toEqual([]);
+		store.apply({ ...empty, revision: 2, values: { [key]: true } });
+		expect(store.read(key)).toBe("true");
+	});
+
+	it("removes any prior write transport when initialized for a read-only viewer", async () => {
+		const store = new SharedUiPreferencesStore();
+		const patch = vi.fn();
+		await store.initialize({ read: async () => empty, patch }, collectLegacyUiPreferences(null), vi.fn());
+		await store.initializeReadOnly({ read: async () => empty });
+		store.write(key, "true");
+		store.writeCollapsedGroups("org-1", ["ungrouped"]);
+		await store.flush();
+		expect(patch).not.toHaveBeenCalled();
+	});
+
 	it("migrates only explicitly saved valid preferences, including scoped group seeds", () => {
 		localStorage.setItem(key, "false");
 		localStorage.setItem("quarterdeck.git-history-refs-panel-width", "NaN");

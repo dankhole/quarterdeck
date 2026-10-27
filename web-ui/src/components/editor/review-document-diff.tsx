@@ -1,12 +1,16 @@
 import { useMemo } from "react";
+import { DiffCodeNavigationMenu } from "@/components/git/panels/diff-code-navigation-menu";
 import { SplitDiff } from "@/components/git/panels/diff-split";
 import { UnifiedDiff } from "@/components/git/panels/diff-unified";
 import type { DiffCommentCallbacks, DiffLineComment, DiffViewMode } from "@/components/git/panels/diff-viewer-utils";
 import { buildUnifiedDiffRows, parsePatchToRows, ReadOnlyUnifiedDiff } from "@/components/shared/diff-renderer";
 import type { ReviewDocument } from "@/hooks/git/review-document";
+import type { DiffCodeNavigationOptions } from "@/hooks/git/use-diff-code-navigation";
+import type { CodeNavigationLocation } from "@/runtime/types";
 
 export interface ReviewInteractions extends DiffCommentCallbacks {
 	comments: Map<string, DiffLineComment>;
+	readOnlyReview?: boolean;
 	agentContextSource?: string;
 }
 
@@ -15,10 +19,12 @@ export function ReviewDocumentDiff({
 	document,
 	viewMode = "unified",
 	interactions,
+	codeNavigation,
 }: {
 	document: ReviewDocument;
 	viewMode?: DiffViewMode;
 	interactions?: ReviewInteractions;
+	codeNavigation?: { options: DiffCodeNavigationOptions; onNavigate: (location: CodeNavigationLocation) => void };
 }): React.ReactElement {
 	const { content, path } = document;
 	const patch = content.kind === "patch" ? content.patch : null;
@@ -29,6 +35,26 @@ export function ReviewDocumentDiff({
 		if (newText !== null) return buildUnifiedDiffRows(oldText, newText);
 		return null;
 	}, [patch, oldText, newText]);
+	const interactiveDiff =
+		content.kind === "text" && interactions ? (
+			viewMode === "split" ? (
+				<SplitDiff
+					key={document.key}
+					path={path}
+					oldText={content.oldText}
+					newText={content.newText}
+					{...interactions}
+				/>
+			) : (
+				<UnifiedDiff
+					key={document.key}
+					path={path}
+					oldText={content.oldText}
+					newText={content.newText}
+					{...interactions}
+				/>
+			)
+		) : null;
 	return (
 		<div data-review-document={document.key} data-readonly="true">
 			{document.oldPath && document.newPath && document.oldPath !== document.newPath ? (
@@ -46,23 +72,17 @@ export function ReviewDocumentDiff({
 				<div role="status" className="p-3 text-xs text-text-tertiary">
 					{content.message ?? "No textual diff available."}
 				</div>
-			) : content.kind === "text" && interactions ? (
-				viewMode === "split" ? (
-					<SplitDiff
-						key={document.key}
-						path={path}
-						oldText={content.oldText}
-						newText={content.newText}
-						{...interactions}
-					/>
+			) : interactiveDiff ? (
+				codeNavigation ? (
+					<DiffCodeNavigationMenu
+						document={document}
+						options={codeNavigation.options}
+						onNavigate={codeNavigation.onNavigate}
+					>
+						{interactiveDiff}
+					</DiffCodeNavigationMenu>
 				) : (
-					<UnifiedDiff
-						key={document.key}
-						path={path}
-						oldText={content.oldText}
-						newText={content.newText}
-						{...interactions}
-					/>
+					interactiveDiff
 				)
 			) : rows?.length ? (
 				<ReadOnlyUnifiedDiff key={document.key} path={path} rows={rows} />

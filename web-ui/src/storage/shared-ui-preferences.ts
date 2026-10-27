@@ -114,6 +114,14 @@ export class SharedUiPreferencesStore {
 		this.apply(snapshot);
 	}
 
+	/** Isolated viewers read runtime authority without legacy migration or a write transport. */
+	async initializeReadOnly(transport: Pick<UiPreferencesTransport, "read">): Promise<void> {
+		this.transport = null;
+		this.pending.clear();
+		this.onSaveError = () => {};
+		this.apply(await transport.read());
+	}
+
 	apply(snapshot: RuntimeUiPreferences): void {
 		const parsed = runtimeUiPreferencesSchema.parse(snapshot);
 		if (this.snapshot && parsed.revision < this.snapshot.revision) return;

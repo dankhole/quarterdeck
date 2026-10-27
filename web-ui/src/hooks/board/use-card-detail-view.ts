@@ -152,6 +152,10 @@ export function useCardDetailView({
 		if (folderOnly) taskReturnToContextual();
 	}, [folderOnly, taskReturnToContextual]);
 
+	useEffect(() => {
+		if (navigation.pendingFileNavigation?.codeLocation) taskReturnToContextual();
+	}, [navigation.pendingFileNavigation, taskReturnToContextual]);
+
 	const taskBranchActions = useBranchActions({
 		projectId: folderOnly ? null : currentProjectId,
 		board,

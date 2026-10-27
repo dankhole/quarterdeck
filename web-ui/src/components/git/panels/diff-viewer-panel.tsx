@@ -7,11 +7,13 @@ import { CONTEXT_MENU_ITEM_CLASS, FileContextMenuItems } from "@/components/git/
 import { truncatePathMiddle } from "@/components/shared/diff-renderer";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import type { CodeNavigationConfig } from "@/hooks/git/code-navigation";
 import { createFileBrowserContentScopeKey } from "@/hooks/git/file-browser-scope";
 import { createReviewDocument, type ReviewScope } from "@/hooks/git/review-document";
 import { useDiffComments } from "@/hooks/git/use-diff-comments";
 import { useDiffScrollSync } from "@/hooks/git/use-diff-scroll-sync";
 import type { FileNavigation } from "@/hooks/git/use-git-navigation";
+import { createWorkdirSearchScope } from "@/hooks/search/search-scope";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
 import { isBinaryFilePath } from "@/utils/is-binary-file-path";
@@ -48,6 +50,8 @@ export function DiffViewerPanel({
 	viewMode = "unified",
 	navigateToFile,
 	fileLoadingState,
+	codeNavigationConfig,
+	readOnlyReview = false,
 }: {
 	projectFiles: RuntimeWorkdirFileChange[] | null;
 	reviewScope: ReviewScope;
@@ -64,6 +68,8 @@ export function DiffViewerPanel({
 	navigateToFile?: (nav: FileNavigation) => void;
 	/** Per-file loading state from useAllFileDiffContent. When provided, shows per-file skeletons. */
 	fileLoadingState?: FileLoadingState;
+	codeNavigationConfig?: CodeNavigationConfig | null;
+	readOnlyReview?: boolean;
 }): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 	const lastReportedVisiblePathsRef = useRef<string[]>([]);
@@ -179,8 +185,8 @@ export function DiffViewerPanel({
 	} = useDiffComments({
 		comments,
 		onCommentsChange,
-		onAddToTerminal,
-		onSendToTerminal,
+		onAddToTerminal: readOnlyReview ? undefined : onAddToTerminal,
+		onSendToTerminal: readOnlyReview ? undefined : onSendToTerminal,
 	});
 
 	/** Returns true when a file's diff content hasn't loaded yet. */
@@ -326,7 +332,7 @@ export function DiffViewerPanel({
 													filePath={group.path}
 													navigateToFile={navigateToFile}
 												>
-													{onRollbackFile ? (
+													{onRollbackFile && !readOnlyReview ? (
 														<>
 															<ContextMenu.Separator className="h-px bg-border my-1" />
 															<ContextMenu.Item
@@ -377,7 +383,25 @@ export function DiffViewerPanel({
 																			},
 																)}
 																viewMode={viewMode}
+																codeNavigation={{
+																	options: {
+																		projectId: reviewScope.repository.projectId,
+																		scope: createWorkdirSearchScope({
+																			...reviewScope.repository,
+																			ref: reviewScope.repository.ref ?? undefined,
+																		}),
+																		config: codeNavigationConfig ?? null,
+																	},
+																	onNavigate: (location) =>
+																		navigateToFile?.({
+																			targetView: "files",
+																			filePath: location.path,
+																			codeLocation: location,
+																			codeTaskId: reviewScope.repository.taskId,
+																		}),
+																}}
 																interactions={{
+																	readOnlyReview,
 																	agentContextSource,
 																	comments,
 																	onAddComment: handleAddComment,
@@ -395,7 +419,7 @@ export function DiffViewerPanel({
 							})}
 						</div>
 					</DiffScrollPreserver>
-					{hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
+					{!readOnlyReview && hasAnyComments && (onAddToTerminal || onSendToTerminal) ? (
 						<div className="kb-diff-comments-footer">
 							<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 								<span className="kb-diff-comments-count text-text-secondary">

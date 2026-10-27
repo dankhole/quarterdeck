@@ -1,4 +1,5 @@
 // Private, allowlisted preload channels. No renderer-provided channel names reach IPC.
+export const DESKTOP_COMPARE_OPEN_CHANNEL = "quarterdeck:desktop-open-compare:v1";
 export const DESKTOP_BOOTSTRAP_CHANNEL = "quarterdeck:desktop-bootstrap:v1";
 export const DESKTOP_COMMAND_CHANNEL = "quarterdeck:desktop-command:v1";
 export const DESKTOP_PROJECT_OPEN_CHANNEL = "quarterdeck:desktop-project-open:v1";

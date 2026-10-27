@@ -8,10 +8,12 @@ import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useFileEditorWorkspace } from "@/hooks/git";
 import type { CodeNavigationConfig } from "@/hooks/git/code-navigation";
+import { getFileEditorScopeGeneration } from "@/hooks/git/file-editor-cache";
 import type { FileEditorAutosaveMode } from "@/hooks/git/file-editor-workspace";
 import { useAgentEditorActions } from "@/hooks/git/use-agent-editor-actions";
 import { useCodeNavigation } from "@/hooks/git/use-code-navigation";
 import type { UseFileBrowserDataResult } from "@/hooks/git/use-file-browser-data";
+import type { FileNavigation } from "@/hooks/git/use-git-navigation";
 import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { ResizeHandle } from "@/resize/resize-handle";
 import { clampBetween } from "@/resize/resize-persistence";
@@ -53,7 +55,7 @@ export interface FilesViewProps {
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
 	/** External file navigation from commit panel — selects a file when arriving from another view. */
-	pendingFileNavigation?: { targetView: "git" | "files"; filePath: string; lineNumber?: number } | null;
+	pendingFileNavigation?: FileNavigation | null;
 	/** Called after consuming pendingFileNavigation. */
 	onFileNavigationConsumed?: () => void;
 	/** Scope key for persisting expanded dirs and scroll position across unmount/remount cycles. */
@@ -130,8 +132,19 @@ export function FilesView({
 		scopeKey: fileBrowserData.contentScopeKey,
 		scope: fileBrowserData.searchScope,
 		config: codeNavigationConfig,
-		tab: editorWorkspace.activeTab,
-		readOnly: fileBrowserData.isReadOnly,
+		source: editorWorkspace.activeTab
+			? {
+					path: editorWorkspace.activeTab.path,
+					content: editorWorkspace.activeTab.value,
+					eligibility: fileBrowserData.isReadOnly
+						? "read-only"
+						: editorWorkspace.activeTab.binary ||
+								editorWorkspace.activeTab.truncated ||
+								!editorWorkspace.activeTab.editable
+							? "incomplete"
+							: "eligible",
+				}
+			: null,
 	});
 	const agentEditorActions = useAgentEditorActions();
 	const editorActions = useMemo(
@@ -175,15 +188,26 @@ export function FilesView({
 		return () => fileBrowserData.setExpandedDirectories(new Set());
 	}, [expandedDirs, fileTreeVisible, fileBrowserData.setExpandedDirectories]);
 
-	// Navigate to a specific file when external file navigation arrives (from commit panel or search)
+	const editorScopeGeneration = getFileEditorScopeGeneration(fileBrowserData.contentScopeKey);
+	// Navigate only after workspace registration has provided this render's admission generation.
 	useEffect(() => {
 		if (pendingFileNavigation?.targetView === "files") {
-			fileBrowserData.onSelectPath(pendingFileNavigation.filePath);
-			setPendingCodeLocation(null);
-			setPendingScrollLine(pendingFileNavigation.lineNumber ?? null);
+			if (pendingFileNavigation.codeLocation) {
+				if (
+					editorScopeGeneration === undefined ||
+					fileBrowserData.isReadOnly ||
+					(fileBrowserData.searchScope.taskId ?? null) !== (pendingFileNavigation.codeTaskId ?? null)
+				)
+					return;
+				handleCodeNavigate(pendingFileNavigation.codeLocation);
+			} else {
+				fileBrowserData.onSelectPath(pendingFileNavigation.filePath);
+				setPendingCodeLocation(null);
+				setPendingScrollLine(pendingFileNavigation.lineNumber ?? null);
+			}
 			onFileNavigationConsumed?.();
 		}
-	}, [pendingFileNavigation, onFileNavigationConsumed, fileBrowserData]);
+	}, [pendingFileNavigation, onFileNavigationConsumed, fileBrowserData, handleCodeNavigate, editorScopeGeneration]);
 
 	// --- Resize ---
 

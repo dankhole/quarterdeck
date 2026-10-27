@@ -9,6 +9,7 @@ import {
 import {
 	DESKTOP_AVAILABILITY_CHANNEL,
 	DESKTOP_COMMAND_CHANNEL,
+	DESKTOP_COMPARE_OPEN_CHANNEL,
 	DESKTOP_DRAFT_SAVE_CHANNEL,
 	DESKTOP_NOTIFICATION_CONTEXT_CHANNEL,
 	DESKTOP_NOTIFICATION_TARGET_CHANNEL,
@@ -17,7 +18,7 @@ import {
 	DESKTOP_PREFLIGHT_REPLY_CHANNEL,
 	DESKTOP_PROJECT_OPEN_CHANNEL,
 } from "../src/desktop-ipc-channels.js";
-import { createDesktopBridge } from "../src/preload-bridge.js";
+import { createCompareDesktopBridge, createDesktopBridge, createDesktopCompareBridge } from "../src/preload-bridge.js";
 
 const generation = "generation-current";
 const documentId = "document-current";
@@ -65,6 +66,43 @@ const response: DesktopQuitPreflightResponse = {
 };
 
 describe("desktop preload bridge", () => {
+	it("opens validated Compare targets through a separate sealed bridge", async () => {
+		const { bridge: mainBridge, bootstrap, ipc, invoke } = fixture();
+		const bridge = createDesktopCompareBridge(bootstrap, ipc, documentId);
+		const target = {
+			projectId: "project-1",
+			taskId: null,
+			sourceRef: "feature/a",
+			targetRef: "main",
+			includeUncommitted: true,
+			threeDotDiff: true,
+		};
+		invoke.mockResolvedValueOnce({ kind: "opened" });
+		expect(await required(bridge.openCompareWindow)(target)).toEqual({ kind: "opened" });
+		expect(invoke).toHaveBeenCalledExactlyOnceWith(DESKTOP_COMPARE_OPEN_CHANNEL, {
+			documentId,
+			runtimeGeneration: generation,
+			target,
+		});
+		expect(Object.keys(bridge).sort()).toEqual(["openCompareWindow", "version"]);
+		expect(mainBridge).not.toHaveProperty("openCompareWindow");
+		expect(await required(bridge.openCompareWindow)({ ...target, projectId: "../outside" })).toEqual({
+			kind: "failed",
+		});
+		expect(invoke).toHaveBeenCalledOnce();
+		invoke.mockResolvedValueOnce({ kind: "opened", token: "must-not-escape" });
+		expect(await required(bridge.openCompareWindow)(target)).toEqual({ kind: "failed" });
+		invoke.mockRejectedValueOnce(new Error("unavailable"));
+		expect(await required(bridge.openCompareWindow)(target)).toEqual({ kind: "failed" });
+	});
+
+	it("gives Compare documents only immutable non-secret transport bootstrap", () => {
+		const { bootstrap } = fixture();
+		const bridge = createCompareDesktopBridge(bootstrap);
+		expect(Object.getOwnPropertyNames(bridge).sort()).toEqual(["bootstrap", "version"]);
+		expect(Object.isFrozen(bridge)).toBe(true);
+		expect(Object.isFrozen(bridge.bootstrap.capabilities)).toBe(true);
+	});
 	it("freezes copied public bootstrap data without exposing document identity or IPC", () => {
 		const { bridge, bootstrap, ipc } = fixture();
 		expect(Object.isFrozen(bridge)).toBe(true);

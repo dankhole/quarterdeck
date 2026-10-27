@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SourceEditorAction, SourceEditorActionContext } from "@/components/editor/source-editor-context";
-import type { FileEditorTab } from "@/hooks/git/file-editor-workspace";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -9,6 +8,7 @@ import {
 	type CodeNavigationConfig,
 	type CodeNavigationOperation,
 	type CodeNavigationResult,
+	type CodeNavigationSource,
 	codeNavigationUnavailableReason,
 } from "./code-navigation";
 
@@ -17,8 +17,7 @@ export interface UseCodeNavigationOptions {
 	scopeKey: string;
 	scope: WorkdirSearchScope;
 	config: CodeNavigationConfig | null;
-	tab: FileEditorTab | null;
-	readOnly: boolean;
+	source: CodeNavigationSource | null;
 }
 
 export interface UseCodeNavigationResult {
@@ -28,16 +27,16 @@ export interface UseCodeNavigationResult {
 }
 
 export function useCodeNavigation(options: UseCodeNavigationOptions): UseCodeNavigationResult {
-	const { projectId, scopeKey, scope, tab, config, readOnly } = options;
+	const { projectId, scopeKey, scope, source, config } = options;
 	const [outcome, setOutcome] = useState<{
 		scopeKey: string;
 		configKey: string;
 		result: CodeNavigationResult;
 	} | null>(null);
 	const requestRef = useRef(0);
-	const latestRef = useRef(options);
-	latestRef.current = options;
 	const configKey = JSON.stringify([config?.codeNavigationEnabled, config?.lspServers]);
+	const latestRef = useRef({ ...options, configKey });
+	latestRef.current = { ...options, configKey };
 	const result = outcome?.scopeKey === scopeKey && outcome.configKey === configKey ? outcome.result : null;
 	const dismiss = useCallback(() => {
 		requestRef.current += 1;
@@ -55,23 +54,25 @@ export function useCodeNavigation(options: UseCodeNavigationOptions): UseCodeNav
 		requestRef.current += 1;
 		// Keep a completed references/definitions list available while visiting its results.
 		setOutcome((current) => (current?.result.status === "locations" ? current : null));
-	}, [tab?.path, tab?.value]);
+	}, [source?.path, source?.content, source?.eligibility]);
 
 	const run = useCallback(
 		async (operation: CodeNavigationOperation, context: SourceEditorActionContext) => {
 			const requestId = ++requestRef.current;
 			const setResult = (next: CodeNavigationResult) => setOutcome({ scopeKey, configKey, result: next });
-			const unavailable = codeNavigationUnavailableReason({ projectId, scope, tab, config, readOnly });
+			const unavailable = codeNavigationUnavailableReason({ projectId, scope, source, config });
 			if (unavailable) {
 				setResult({ status: "unavailable", operation, message: unavailable });
 				return;
 			}
-			if (context.path !== tab?.path) return;
+			if (!source || context.path !== source.path || context.content !== source.content) return;
 			const isCurrent = () =>
 				requestRef.current === requestId &&
 				latestRef.current.scopeKey === scopeKey &&
-				latestRef.current.tab?.path === context.path &&
-				latestRef.current.tab.value === context.content;
+				latestRef.current.configKey === configKey &&
+				latestRef.current.source?.eligibility === "eligible" &&
+				latestRef.current.source.path === context.path &&
+				latestRef.current.source.content === context.content;
 			setResult({ status: "busy", operation });
 			const request = {
 				...scope,
@@ -112,7 +113,7 @@ export function useCodeNavigation(options: UseCodeNavigationOptions): UseCodeNav
 				if (isCurrent()) setResult({ status: "error", operation, message: toErrorMessage(error) });
 			}
 		},
-		[projectId, scopeKey, scope, tab, config, configKey, readOnly],
+		[projectId, scopeKey, scope, source, config, configKey],
 	);
 
 	const actions = useMemo(

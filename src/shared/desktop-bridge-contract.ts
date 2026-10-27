@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CompareWindowOpenResponse, CompareWindowTarget } from "./compare-window-contract.js";
 import { desktopLaunchPathSchema } from "./desktop-launch-contract.js";
 
 /** Desktop preload contract. This is independent of the browser/runtime protocol. */
@@ -140,4 +141,11 @@ export interface DesktopBridge {
 	readonly respondQuitPreflight?: (response: DesktopQuitPreflightResponse) => void;
 	readonly onPreflightReleased?: (listener: (release: DesktopPreflightRelease) => void) => () => void;
 	readonly saveEditorDraft?: (request: DesktopDraftSaveRequest) => Promise<DesktopDraftSaveResponse>;
+}
+
+/** Separate namespace preserves the original bootstrap contract for older compatible frontends. */
+export const QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION = 1;
+export interface DesktopCompareBridge {
+	readonly version: typeof QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION;
+	readonly openCompareWindow: (target: CompareWindowTarget) => Promise<CompareWindowOpenResponse>;
 }

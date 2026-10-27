@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SourceEditorActionContext } from "@/components/editor/source-editor-context";
 import type { CodeNavigationResponse } from "@/runtime/types";
-import { createFileEditorTab } from "./file-editor-workspace";
 import { type UseCodeNavigationOptions, type UseCodeNavigationResult, useCodeNavigation } from "./use-code-navigation";
 
 const { definition, references, hover } = vi.hoisted(() => ({
@@ -46,15 +45,7 @@ describe("useCodeNavigation", () => {
 		scopeKey: "project:task",
 		scope: { taskId: "task" },
 		config: { codeNavigationEnabled: true, lspServers: CONFIG_DEFAULTS.lspServers },
-		readOnly: false,
-		tab: createFileEditorTab(context.path, {
-			content: context.content,
-			contentHash: "old-disk-hash",
-			language: "typescript",
-			size: 19,
-			binary: false,
-			truncated: false,
-		}),
+		source: { path: context.path, content: context.content, eligibility: "eligible" },
 	});
 	function Harness({ options }: { options: UseCodeNavigationOptions }): null {
 		current = useCodeNavigation(options);
@@ -134,7 +125,7 @@ describe("useCodeNavigation", () => {
 		const options = createOptions();
 		await render(options);
 		await act(async () => current.actions[0]!.onSelect(context));
-		await render({ ...options, tab: { ...options.tab!, value: "new draft" } });
+		await render({ ...options, source: { ...options.source!, content: "new draft" } });
 		await act(async () => resolve({ status: "ok", documentVersion: 12, locations: [], truncated: false }));
 		expect(current.result).toBeNull();
 		definition.mockClear();
@@ -146,6 +137,29 @@ describe("useCodeNavigation", () => {
 			message: expect.stringContaining("Enable Code Navigation"),
 		});
 	});
+	it("rejects a stale action context before dispatching its old content", async () => {
+		const options = createOptions();
+		await render({ ...options, source: { ...options.source!, content: "new draft" } });
+		await act(async () => current.actions[0]!.onSelect(context));
+		expect(definition).not.toHaveBeenCalled();
+	});
+	it.each(["read-only", "incomplete"] as const)(
+		"rejects a pending result after source admission becomes %s",
+		async (eligibility) => {
+			let resolve!: (response: CodeNavigationResponse) => void;
+			definition.mockReturnValue(
+				new Promise<CodeNavigationResponse>((done) => {
+					resolve = done;
+				}),
+			);
+			const options = createOptions();
+			await render(options);
+			await act(async () => current.actions[0]!.onSelect(context));
+			await render({ ...options, source: { ...options.source!, eligibility } });
+			await act(async () => resolve({ status: "ok", documentVersion: 12, locations: [], truncated: false }));
+			expect(current.result).toBeNull();
+		},
+	);
 	it("shows actionable unavailable errors returned by the runtime", async () => {
 		definition.mockResolvedValue({
 			status: "unavailable",
@@ -170,7 +184,7 @@ describe("useCodeNavigation", () => {
 		const options = createOptions();
 		await render(options);
 		await act(async () => current.actions[1]!.onSelect(context));
-		await render({ ...options, tab: { ...options.tab!, path: "src/target.ts", value: "target" } });
+		await render({ ...options, source: { ...options.source!, path: "src/target.ts", content: "target" } });
 		expect(current.result).toMatchObject({ status: "locations", sourcePath: "src/example.ts" });
 		await render({ ...options, scopeKey: "other-project" });
 		expect(current.result).toBeNull();

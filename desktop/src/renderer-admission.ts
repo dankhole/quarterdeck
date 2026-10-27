@@ -34,6 +34,9 @@ export function isBootstrapPayload(payload: unknown): boolean {
 
 export interface ApprovedRenderer extends ApprovedRendererDocument {
 	contents: WebContents;
+	role?: "compare";
+	/** Main-created, immutable destination for the transport-only Compare role. */
+	documentUrl?: string;
 }
 
 type RendererRequest = Pick<
@@ -78,7 +81,11 @@ export function isAdmittedSocket(
 			isProductPage(renderer.contents.mainFrame.url) &&
 			request.initiatorOrigin === DESKTOP_ORIGIN &&
 			request.resourceType === "webSocket" &&
-			isPinnedWebSocket(request.url, runtime.origin),
+			isPinnedWebSocket(request.url, runtime.origin) &&
+			(renderer.role !== "compare" ||
+				(Boolean(renderer.documentId) &&
+					renderer.contents.mainFrame.url === renderer.documentUrl &&
+					new URL(request.url).pathname === "/api/runtime/ws")),
 	);
 }
 
@@ -89,18 +96,23 @@ export function isBootstrapSender(
 ): boolean {
 	return (
 		isApprovedDocumentSender(event, renderer, renderer?.generation ?? null) &&
-		Boolean(selection.get() && renderer?.generation === selection.get()?.generation)
+		Boolean(selection.get() && renderer?.generation === selection.get()?.generation) &&
+		(renderer?.role !== "compare" || renderer.contents.mainFrame.url === renderer.documentUrl)
 	);
 }
 
 export function installRendererAdmission(
 	session: Session,
-	getRenderer: () => ApprovedRenderer | null,
+	getRenderer: (contentsId?: number) => ApprovedRenderer | null,
 	selection: RuntimeSelection,
 ): void {
 	session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (request, callback) => {
-		const renderer = getRenderer();
+		const renderer = getRenderer(request.webContentsId);
 		const approved = renderer && !renderer.contents.isDestroyed() && request.webContentsId === renderer.contents.id;
+		if (renderer?.role === "compare" && !isAdmittedCompareRequest(request, renderer, selection)) {
+			callback({ cancel: true });
+			return;
+		}
 		const appUrl = desktopUrl(request.url);
 		const local = Boolean(
 			approved && appUrl && (request.initiatorOrigin === undefined || request.initiatorOrigin === DESKTOP_ORIGIN),
@@ -113,7 +125,7 @@ export function installRendererAdmission(
 	session.webRequest.onBeforeSendHeaders({ urls: ["ws://127.0.0.1/*"] }, (request, callback) => {
 		const headers = stripPrivateHeaders(request);
 		const selected = selection.get();
-		if (!selected || !isAdmittedSocket(request, getRenderer(), selection)) {
+		if (!selected || !isAdmittedSocket(request, getRenderer(request.webContentsId), selection)) {
 			callback({ cancel: true, requestHeaders: headers });
 			return;
 		}
@@ -123,13 +135,55 @@ export function installRendererAdmission(
 	session.setPermissionCheckHandler(
 		(contents, permission, requestingOrigin, details) =>
 			requestingOrigin === DESKTOP_ORIGIN &&
-			isAdmittedClipboardPermission(contents, permission, details, getRenderer()),
+			isAdmittedClipboardPermission(contents, permission, details, getRenderer(contents?.id)),
 	);
 	session.setPermissionRequestHandler((contents, permission, callback, details) =>
-		callback(isAdmittedClipboardPermission(contents, permission, details, getRenderer())),
+		callback(isAdmittedClipboardPermission(contents, permission, details, getRenderer(contents?.id))),
 	);
 	session.setDevicePermissionHandler(() => false);
 	session.on("will-download", (event) => event.preventDefault());
+}
+
+/** A Compare document can read runtime data, but cannot launch/control terminals or mutate project state. */
+export function isAdmittedCompareRequest(
+	request: Pick<OnBeforeRequestListenerDetails, "url" | "method" | "resourceType" | "frame">,
+	renderer: ApprovedRenderer,
+	selection: RuntimeSelection,
+): boolean {
+	if (!renderer.documentId || renderer.generation !== selection.get()?.generation || !selection.get()) return false;
+	if (request.resourceType === "mainFrame") return request.method === "GET" && request.url === renderer.documentUrl;
+	if (request.frame !== renderer.contents.mainFrame || renderer.contents.mainFrame.url !== renderer.documentUrl)
+		return false;
+	if (request.resourceType === "webSocket") return new URL(request.url).pathname === "/api/runtime/ws";
+	if (request.method === "GET" || request.method === "HEAD") return true;
+	const url = desktopUrl(request.url);
+	const navigationProcedures =
+		url?.pathname.startsWith("/api/trpc/") && url.pathname.length <= 1024
+			? url.pathname.slice("/api/trpc/".length).split(",")
+			: [];
+	const navigationReads =
+		navigationProcedures.length > 0 &&
+		navigationProcedures.length <= 16 &&
+		navigationProcedures.every((procedure) =>
+			[
+				"project.codeNavigation.definition",
+				"project.codeNavigation.references",
+				"project.codeNavigation.hover",
+			].includes(procedure),
+		);
+	return (
+		request.method === "POST" &&
+		url !== null &&
+		// Match literal canonical paths; only bounded batches containing exclusively navigation reads are safe.
+		request.url === `${DESKTOP_ORIGIN}${url.pathname}${url.search}` &&
+		(navigationReads ||
+			new Set([
+				"/api/diagnostics/browser-records",
+				"/api/diagnostics/browser-snapshot",
+				"/api/diagnostics/browser-subscription",
+				"/api/diagnostics/browser-record",
+			]).has(url.pathname))
+	);
 }
 
 function stripPrivateHeaders(request: OnBeforeSendHeadersListenerDetails): Record<string, string> {

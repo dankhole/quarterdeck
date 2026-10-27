@@ -8,28 +8,36 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import { getOptionalLocalStorage } from "@/storage/local-storage-store";
 import { collectLegacyUiPreferences, sharedUiPreferences } from "@/storage/shared-ui-preferences";
 
-/** All preference consumers mount after runtime hydration and legacy seeding. */
-export function UiPreferencesBoundary({ children }: { children: ReactNode }): ReactNode {
-	const [ready, setReady] = useState(sharedUiPreferences.active);
+/** Consumers mount after hydration; isolated read-only surfaces never seed or save preferences. */
+export function UiPreferencesBoundary({
+	children,
+	readOnly = false,
+}: {
+	children: ReactNode;
+	readOnly?: boolean;
+}): ReactNode {
+	const [ready, setReady] = useState(!readOnly && sharedUiPreferences.active);
 	const [error, setError] = useState<string | null>(null);
 	const [attempt, setAttempt] = useState(0);
 	useEffect(() => {
 		if (ready) return;
 		let mounted = true;
 		const client = getRuntimeTrpcClient(null);
-		void sharedUiPreferences
-			.initialize(
-				{
-					read: () => client.runtime.getUiPreferences.query(),
-					patch: (patch) => client.runtime.patchUiPreferences.mutate(patch),
-				},
-				collectLegacyUiPreferences(getOptionalLocalStorage()),
-				() => {
-					toast.error(
-						"Could not save the shared UI preference. Check the runtime connection and try the change again.",
-					);
-				},
-			)
+		const initialization = readOnly
+			? sharedUiPreferences.initializeReadOnly({ read: () => client.runtime.getUiPreferences.query() })
+			: sharedUiPreferences.initialize(
+					{
+						read: () => client.runtime.getUiPreferences.query(),
+						patch: (patch) => client.runtime.patchUiPreferences.mutate(patch),
+					},
+					collectLegacyUiPreferences(getOptionalLocalStorage()),
+					() => {
+						toast.error(
+							"Could not save the shared UI preference. Check the runtime connection and try the change again.",
+						);
+					},
+				);
+		void initialization
 			.then(() => {
 				if (mounted) setReady(true);
 			})
@@ -46,7 +54,7 @@ export function UiPreferencesBoundary({ children }: { children: ReactNode }): Re
 		return () => {
 			mounted = false;
 		};
-	}, [attempt, ready]);
+	}, [attempt, ready, readOnly]);
 	if (ready) return children;
 	return (
 		<div className="flex h-[100svh] flex-col items-center justify-center gap-3 bg-surface-0 p-6 text-text-primary">

@@ -25,6 +25,7 @@ Open Quarterdeck from Finder or the Dock, then choose **File → Add Project…*
 | Close the window or press `Cmd+W` | Hide the window while tasks continue. Click the Dock icon to return. |
 | Quit with `Cmd+Q` | Review unsaved work and any live sessions before shutdown. A separately started CLI runtime stays running. |
 | File → Open in Browser | Open the same runtime in the default browser. Browser and desktop share projects and tasks. |
+| Git → Compare → Pop out Compare | Open a read-only comparison window for another monitor while the main window shows agent chat. Closing the comparison window does not stop agents. |
 | View → Reload Window | Reload the interface after checking unsaved work; the runtime stays alive. |
 | File → Restart Runtime… | Recover from a runtime failure after resolving unsaved work. This action appears enabled when recovery is available. |
 | Help → Export Diagnostics… | Choose a folder for a diagnostic bundle, including app evidence when the runtime is unavailable. |
@@ -70,6 +71,8 @@ Owned desktop helpers bind an ephemeral loopback port and publish the actual end
 ## Renderer and browser admission
 
 The window uses stable `app://quarterdeck` storage scoped to its canonical state home. Main proxies approved assets, runtime/project APIs, and browser diagnostic routes. Management and provider hook routes are excluded. Main injects a credential only for the selected generation and approved contents. Runtime state, terminal I/O, and terminal control sockets share one environment adapter.
+
+Compare-only windows use separately admitted sandboxed renderer documents and the same runtime generation. They receive runtime transport access, not the main window's native command, notification, or quit-preflight authority. Runtime replacement closes these auxiliary windows; reopening captures a fresh comparison target. They never mount editable-file recovery or attach a terminal.
 
 The renderer has context isolation, sandboxing, and no Node integration. Its versioned preload exposes typed commands and responses. Sender, frame, generation, schema, endpoint, and navigation checks are mandatory. Never expose arbitrary executable arguments, raw IPC, or general filesystem access. Existing domain owners remain the only board/session writers.
 

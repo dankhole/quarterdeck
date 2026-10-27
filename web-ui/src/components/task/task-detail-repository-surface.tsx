@@ -111,6 +111,7 @@ export function TaskDetailRepositorySurface({
 		>
 			{mainView === "git" ? (
 				<GitView
+					codeNavigationConfig={runtimeProjectConfig}
 					currentProjectId={currentProjectId}
 					selectedCard={selection}
 					projectPath={projectPath}
