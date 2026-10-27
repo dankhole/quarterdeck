@@ -541,6 +541,29 @@ describe("RuntimeSettingsDialog", () => {
 		});
 	});
 
+	it.each([false, true])("saves the app-wide generated-worktrees preference from %s", async (initial) => {
+		saveMock.mockReset();
+		saveMock.mockResolvedValue(true);
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open
+					projectId="project-1"
+					initialConfig={createSavedConfig({ showGeneratedWorktrees: initial })}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+		const control = findSwitchByLabel(document.body, "Show generated worktrees");
+		expect(control?.getAttribute("data-state")).toBe(initial ? "checked" : "unchecked");
+		const saveButton = findButtonByText(document.body, "Save");
+		expect(saveButton?.disabled).toBe(true);
+		await act(async () => control!.click());
+		expect(saveButton?.disabled).toBe(false);
+		await act(async () => saveButton!.click());
+		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ showGeneratedWorktrees: !initial }));
+	});
+
 	it("includes file editor autosave mode in save payload", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);

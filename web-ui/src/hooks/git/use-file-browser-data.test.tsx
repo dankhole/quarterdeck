@@ -29,11 +29,13 @@ function HookHarness({
 	taskId,
 	browseRef,
 	enabled = true,
+	showGeneratedWorktrees,
 	onResult,
 }: {
 	taskId: string | null;
 	browseRef?: string;
 	enabled?: boolean;
+	showGeneratedWorktrees?: boolean;
 	onResult: (result: UseFileBrowserDataResult) => void;
 }): null {
 	const result = useFileBrowserData({
@@ -42,6 +44,7 @@ function HookHarness({
 		baseRef: taskId ? "main" : undefined,
 		ref: browseRef,
 		enabled,
+		showGeneratedWorktrees,
 	});
 	onResult(result);
 	return null;
@@ -543,7 +546,17 @@ describe("useFileBrowserData", () => {
 		expect(latest.selectedPath).toBe("unopened/restored.ts");
 		expect(latest.fileContent?.editable).toBe(true);
 		await act(async () => latest.onSelectPath("unopened/search.ts"));
-		await act(async () => latest.setShowExcluded(true));
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					showGeneratedWorktrees
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
 		expect(latest.selectedPath).toBe("unopened/search.ts");
 		expect(latest.fileContent?.editable).toBe(true);
 	});
@@ -565,7 +578,17 @@ describe("useFileBrowserData", () => {
 		);
 		await act(async () => latest.onSelectNavigationTarget("unexpanded/target.ts"));
 		expect(latest.fileContent?.editable).toBe(true);
-		await act(async () => latest.setShowExcluded(true));
+		await act(async () =>
+			root.render(
+				<HookHarness
+					taskId={null}
+					showGeneratedWorktrees
+					onResult={(result) => {
+						latest = result;
+					}}
+				/>,
+			),
+		);
 		listFilesQueryMock.mockResolvedValue(fileTreePage({ snapshotId: "reset", files: [] }));
 		await act(async () => vi.advanceTimersByTimeAsync(35_000));
 		expect(latest.selectedPath).toBe("unexpanded/target.ts");

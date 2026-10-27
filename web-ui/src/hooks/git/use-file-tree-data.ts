@@ -1,3 +1,4 @@
+import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeListFilesResponse, RuntimeWorkdirEntryKind } from "@/runtime/types";
@@ -19,8 +20,6 @@ export interface UseFileTreeDataResult {
 	readonly files: string[] | null;
 	readonly directories: string[] | null;
 	readonly directoryPages: FileTreeDirectoryPages;
-	readonly showExcluded: boolean;
-	setShowExcluded: (show: boolean) => void;
 	setExpandedDirectories: (directories: ReadonlySet<string>) => void;
 	loadDirectory: (directory: string, append?: boolean) => Promise<RuntimeListFilesResponse | null>;
 	readonly fileListError: Error | null;
@@ -32,9 +31,11 @@ export interface UseFileTreeDataResult {
 	revealEntry: (path: string, kind: RuntimeWorkdirEntryKind, removedPath?: string) => void;
 }
 
-export function useFileTreeData(scope: FileBrowserScope): UseFileTreeDataResult {
+export function useFileTreeData(
+	scope: FileBrowserScope,
+	showExcluded = CONFIG_DEFAULTS.showGeneratedWorktrees,
+): UseFileTreeDataResult {
 	const [, publish] = useReducer((value: number) => value + 1, 0);
-	const [showExcluded, setShowExcluded] = useState(false);
 	const expandedRef = useRef<ReadonlySet<string>>(new Set());
 	const [revealed, setRevealed] = useState<FileTreeMutationProjection>({
 		scopeKey: scope.contentScopeKey,
@@ -138,8 +139,6 @@ export function useFileTreeData(scope: FileBrowserScope): UseFileTreeDataResult 
 		files: root?.data ? projected.files : null,
 		directories: root?.data ? projected.directories : null,
 		directoryPages: loader.pages,
-		showExcluded,
-		setShowExcluded,
 		setExpandedDirectories: updateVisible,
 		loadDirectory: useCallback((directory: string, append = false) => loader.load(directory, append), [loader]),
 		fileListData: root?.data ?? null,

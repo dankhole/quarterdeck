@@ -14,16 +14,18 @@ function Harness({
 	taskId = null,
 	browseRef = null,
 	enabled = true,
+	showGeneratedWorktrees,
 }: {
 	taskId?: string | null;
 	browseRef?: string | null;
 	enabled?: boolean;
+	showGeneratedWorktrees?: boolean;
 }) {
 	const scope = useMemo(
 		() => resolveFileBrowserScope({ projectId: "project", taskId, ref: browseRef, enabled }),
 		[taskId, browseRef, enabled],
 	);
-	latest = useFileTreeData(scope);
+	latest = useFileTreeData(scope, showGeneratedWorktrees);
 	return null;
 }
 
@@ -86,7 +88,7 @@ describe("useFileTreeData", () => {
 		);
 		await act(async () => root.render(<Harness />));
 		await act(async () => {
-			if (change === "toggle") latest.setShowExcluded(true);
+			if (change === "toggle") root.render(<Harness showGeneratedWorktrees />);
 			else
 				root.render(
 					<Harness taskId={change === "task" ? "task" : null} browseRef={change === "ref" ? "main" : null} />,
@@ -98,6 +100,21 @@ describe("useFileTreeData", () => {
 			change === "toggle" ? { showExcluded: true } : change === "task" ? { taskId: "task" } : { ref: "main" },
 		);
 	});
+	it("defaults generated worktrees off and reloads when the saved preference changes", async () => {
+		query.mockImplementation(async ({ showExcluded }: RuntimeListFilesRequest) =>
+			fileTreePage({ files: showExcluded ? ["normal.txt", ".claude/worktrees/task/file.txt"] : ["normal.txt"] }),
+		);
+		await act(async () => root.render(<Harness />));
+		expect(query.mock.lastCall?.[0].showExcluded).toBe(false);
+		expect(latest.files).toEqual(["normal.txt"]);
+		await act(async () => root.render(<Harness showGeneratedWorktrees />));
+		expect(query.mock.lastCall?.[0].showExcluded).toBe(true);
+		expect(latest.files).toContain(".claude/worktrees/task/file.txt");
+		await act(async () => root.render(<Harness showGeneratedWorktrees={false} />));
+		expect(query.mock.lastCall?.[0].showExcluded).toBe(false);
+		expect(latest.files).toEqual(["normal.txt"]);
+	});
+
 	it("does not overlap slow polling rounds and does not poll read-only refs", async () => {
 		await act(async () => root.render(<Harness />));
 		let resolveSlow!: (page: RuntimeListFilesResponse) => void;

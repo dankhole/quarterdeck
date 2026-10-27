@@ -19,6 +19,15 @@ describe("resolveInitialValues", () => {
 			resolveInitialValues(createTestRuntimeConfigResponse({ defaultUseWorktree: false })).defaultUseWorktree,
 		).toBe(false);
 	});
+	it("defaults generated worktrees off for missing or older config and restores saved values", () => {
+		expect(resolveInitialValues(null).showGeneratedWorktrees).toBe(false);
+		const olderConfig = createTestRuntimeConfigResponse();
+		Reflect.deleteProperty(olderConfig, "showGeneratedWorktrees");
+		expect(resolveInitialValues(olderConfig).showGeneratedWorktrees).toBe(false);
+		expect(
+			resolveInitialValues(createTestRuntimeConfigResponse({ showGeneratedWorktrees: true })).showGeneratedWorktrees,
+		).toBe(true);
+	});
 	it("returns an object with all expected keys", () => {
 		const values = resolveInitialValues(null);
 		expect(values).not.toHaveProperty("showSummaryOnCards");
@@ -53,6 +62,10 @@ describe("areFormValuesEqual", () => {
 
 	it("detects changes to the project isolation default", () => {
 		expect(areFormValuesEqual(makeValues(), makeValues({ defaultUseWorktree: false }))).toBe(false);
+	});
+
+	it("detects generated worktree preference changes", () => {
+		expect(areFormValuesEqual(makeValues(), makeValues({ showGeneratedWorktrees: true }))).toBe(false);
 	});
 
 	it("detects primitive field changes", () => {

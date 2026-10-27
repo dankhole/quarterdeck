@@ -11,6 +11,7 @@ import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/g
 import { useBoardContext } from "@/providers/board-provider";
 import { useGitContext } from "@/providers/git-provider";
 import { useProjectSyncContext } from "@/providers/project-provider";
+import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import { useSurfaceNavigationContext } from "@/providers/surface-navigation-provider";
 import { useResizeDrag } from "@/resize/use-resize-drag";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -92,6 +93,7 @@ export function useCardDetailView({
 	const navigation = useSurfaceNavigationContext();
 	const { runGitAction } = useGitContext();
 	const { projectGit } = useProjectSyncContext();
+	const { runtimeProjectConfig } = useProjectRuntimeContext();
 	const folderOnly = projectGit?.folderOnly === true;
 	const { startDrag: startSidePanelResize } = useResizeDrag();
 	const detailLayoutRef = useRef<HTMLDivElement | null>(null);
@@ -166,6 +168,7 @@ export function useCardDetailView({
 	const fileBrowserScope = useMemo(() => resolveCardDetailFileBrowserScope(taskResolvedScope), [taskResolvedScope]);
 
 	const fileBrowserData = useFileBrowserData({
+		showGeneratedWorktrees: runtimeProjectConfig?.showGeneratedWorktrees,
 		projectId: currentProjectId,
 		taskId: fileBrowserScope.taskId,
 		taskCreatedAt: fileBrowserScope.taskId ? selection.card.createdAt : undefined,

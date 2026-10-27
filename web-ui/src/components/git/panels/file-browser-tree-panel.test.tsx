@@ -31,8 +31,6 @@ function Harness() {
 			expandedDirs={expanded}
 			onExpandedDirsChange={setExpanded}
 			directoryPages={data.directoryPages}
-			showExcluded={data.showExcluded}
-			onShowExcludedChange={data.setShowExcluded}
 			onLoadDirectory={data.loadDirectory}
 		/>
 	);
@@ -59,9 +57,8 @@ describe("FileBrowserTreePanel", () => {
 		if (!found) throw new Error(`Missing ${label}`);
 		return found;
 	};
-	it("renders root continuation, retained retry error, and reveal toggle even for empty pages", async () => {
+	it("renders root continuation and retained retry error without a generated-worktrees control", async () => {
 		const load = vi.fn();
-		const show = vi.fn();
 		const render = async (pages: FileTreeDirectoryPages) =>
 			act(async () =>
 				root.render(
@@ -73,8 +70,6 @@ describe("FileBrowserTreePanel", () => {
 							expandedDirs={new Set()}
 							onExpandedDirsChange={() => {}}
 							directoryPages={pages}
-							showExcluded={false}
-							onShowExcludedChange={show}
 							onLoadDirectory={load}
 						/>
 					</TooltipProvider>,
@@ -84,8 +79,8 @@ describe("FileBrowserTreePanel", () => {
 		expect(container.textContent).not.toContain("No files");
 		await act(async () => button("Load more root").click());
 		expect(load).toHaveBeenCalledWith("", true);
-		await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click());
-		expect(show).toHaveBeenCalledWith(true);
+		expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+		expect(container.textContent).not.toContain("Show generated worktrees");
 		await render({ "": { data: null, loading: true, error: new Error("offline") } });
 		expect(container.textContent).toContain("offline");
 		expect(button("Retry root").disabled).toBe(true);
@@ -144,8 +139,6 @@ describe("FileBrowserTreePanel", () => {
 									error: null,
 								},
 							}}
-							showExcluded={false}
-							onShowExcludedChange={() => {}}
 							onLoadDirectory={async () => null}
 						/>
 					</TooltipProvider>,

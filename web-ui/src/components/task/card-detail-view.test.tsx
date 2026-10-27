@@ -20,6 +20,10 @@ vi.mock("@/providers/interactions-provider", () => ({
 	useInteractionsContext: () => ({ handleRestartTaskSession: vi.fn() }),
 }));
 
+vi.mock("@/providers/project-runtime-provider", () => ({
+	useProjectRuntimeContext: () => ({ runtimeProjectConfig: null }),
+}));
+
 vi.mock("@/providers/project-provider", () => ({
 	useProjectSyncContext: () => ({ projectGit: null }),
 }));
@@ -309,8 +313,6 @@ const noopGitContext: GitContextValue = {
 	homeFileBrowserData: {
 		files: null,
 		directoryPages: {},
-		showExcluded: false,
-		setShowExcluded: () => {},
 		setExpandedDirectories: () => {},
 		loadDirectory: async () => null,
 		directories: null,

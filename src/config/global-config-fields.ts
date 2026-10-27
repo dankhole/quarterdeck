@@ -109,6 +109,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),
 	codeNavigationEnabled: boolField(false),
+	showGeneratedWorktrees: boolField(false),
 	lspServers: {
 		defaultValue: DEFAULT_LSP_SERVERS,
 		normalize: (value: unknown, fallback: LspServerConfig[]): LspServerConfig[] => {

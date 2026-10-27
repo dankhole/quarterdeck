@@ -73,6 +73,31 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 		}
 	});
 
+	it("persists generated-worktree visibility globally and defaults it off", async () => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-generated-worktrees-");
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				expect((await loadGlobalRuntimeConfig()).showGeneratedWorktrees).toBe(false);
+				const configPath = join(tempHome, ".quarterdeck", "config.json");
+				for (const showGeneratedWorktrees of [true, false]) {
+					const updated = await updateRuntimeConfig("project-a", { showGeneratedWorktrees });
+					expect(updated.showGeneratedWorktrees).toBe(showGeneratedWorktrees);
+					expect(JSON.parse(readFileSync(configPath, "utf8")).showGeneratedWorktrees).toBe(showGeneratedWorktrees);
+					expect((await loadGlobalRuntimeConfig()).showGeneratedWorktrees).toBe(showGeneratedWorktrees);
+					expect((await loadRuntimeConfig("project-b")).showGeneratedWorktrees).toBe(showGeneratedWorktrees);
+					const projectConfigPath = join(tempHome, ".quarterdeck", "projects", "project-a", "config.json");
+					if (existsSync(projectConfigPath)) {
+						expect(JSON.parse(readFileSync(projectConfigPath, "utf8"))).not.toHaveProperty(
+							"showGeneratedWorktrees",
+						);
+					}
+				}
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("persists the Claude launch permission mode globally", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-claude-permissions-");
 

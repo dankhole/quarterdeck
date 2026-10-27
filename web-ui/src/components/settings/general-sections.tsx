@@ -1,5 +1,6 @@
 // Settings sections: diagnostics, editor, and troubleshooting.
 import { Button } from "@/components/ui/button";
+import { SettingsSwitch } from "@/components/ui/settings-controls";
 import {
 	FILE_EDITOR_AUTOSAVE_MODES,
 	type FileEditorAutosaveMode,
@@ -38,6 +39,13 @@ export function EditorSection({ fields, setField, disabled }: SettingsSectionPro
 	return (
 		<>
 			<h6 className="font-semibold text-text-primary mt-4 mb-2">Editor</h6>
+			<SettingsSwitch
+				checked={fields.showGeneratedWorktrees}
+				onCheckedChange={(value) => setField("showGeneratedWorktrees", value)}
+				disabled={disabled}
+				label="Show generated worktrees"
+				description="Show generated worktree folders in the Files tree for all projects."
+			/>
 			<div className="settings-row">
 				<div className="flex items-center justify-between gap-3">
 					<label htmlFor="runtime-settings-file-editor-autosave" className="text-text-primary text-[13px]">

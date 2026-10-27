@@ -123,8 +123,6 @@ export function FileBrowserTreePanel({
 	expandedDirs,
 	onExpandedDirsChange,
 	directoryPages,
-	showExcluded,
-	onShowExcludedChange,
 	onLoadDirectory,
 	rootPath,
 	getFileContent,
@@ -141,8 +139,6 @@ export function FileBrowserTreePanel({
 	expandedDirs: Set<string>;
 	onExpandedDirsChange: (value: SetStateAction<Set<string>>) => void;
 	directoryPages: FileTreeDirectoryPages;
-	showExcluded: boolean;
-	onShowExcludedChange: (show: boolean) => void;
 	onLoadDirectory: (directory: string, append?: boolean) => Promise<RuntimeListFilesResponse | null>;
 	/** Absolute path to the worktree/project root, used for "Copy path" context menu action. */
 	rootPath?: string | null;
@@ -441,14 +437,6 @@ export function FileBrowserTreePanel({
 					)}
 				</AlertDialogDescription>
 			</ConfirmationDialog>
-			<label className="flex items-center gap-2 px-2 py-1.5 border-b border-border text-xs text-text-secondary">
-				<input
-					type="checkbox"
-					checked={showExcluded}
-					onChange={(event) => onShowExcludedChange(event.target.checked)}
-				/>
-				Show generated worktrees
-			</label>
 			{(files?.length ?? 0) > 0 || (directories?.length ?? 0) > 0 || canMutateEntries ? (
 				<div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border">
 					<Search size={12} className="text-text-tertiary shrink-0" />

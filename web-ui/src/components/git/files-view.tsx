@@ -356,8 +356,6 @@ export function FilesView({
 							>
 								<FileBrowserTreePanel
 									directoryPages={fileBrowserData.directoryPages}
-									showExcluded={fileBrowserData.showExcluded}
-									onShowExcludedChange={fileBrowserData.setShowExcluded}
 									onLoadDirectory={fileBrowserData.loadDirectory}
 									files={fileBrowserData.files}
 									directories={fileBrowserData.directories}

@@ -20,6 +20,7 @@ export interface SettingsFormValues {
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	codeNavigationEnabled: boolean;
+	showGeneratedWorktrees: boolean;
 	lspServers: RuntimeConfigResponse["lspServers"];
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
@@ -52,6 +53,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		codeNavigationEnabled: config?.codeNavigationEnabled ?? CONFIG_DEFAULTS.codeNavigationEnabled,
+		showGeneratedWorktrees: config?.showGeneratedWorktrees ?? CONFIG_DEFAULTS.showGeneratedWorktrees,
 		lspServers: config?.lspServers ?? CONFIG_DEFAULTS.lspServers,
 		audibleNotificationsEnabled: config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
 		audibleNotificationVolume: config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume,

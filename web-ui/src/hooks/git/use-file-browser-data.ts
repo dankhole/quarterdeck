@@ -23,8 +23,6 @@ import { useFileTreeData } from "./use-file-tree-data";
 export interface UseFileBrowserDataResult {
 	files: string[] | null;
 	directoryPages: FileTreeDirectoryPages;
-	showExcluded: boolean;
-	setShowExcluded: (show: boolean) => void;
 	setExpandedDirectories: (directories: ReadonlySet<string>) => void;
 	loadDirectory: (directory: string, append?: boolean) => Promise<RuntimeListFilesResponse | null>;
 	directories: string[] | null;
@@ -70,6 +68,8 @@ export function useFileBrowserData(options: {
 	baseRef?: string;
 	/** Browse files at a git ref (read-only). */
 	ref?: string | null;
+	/** Saved app-wide Files preference, supplied by the runtime config owner. */
+	showGeneratedWorktrees?: boolean;
 	/** Keep cheap scope state available while skipping file-list/content IO. */
 	enabled?: boolean;
 }): UseFileBrowserDataResult {
@@ -84,7 +84,7 @@ export function useFileBrowserData(options: {
 		[projectId, taskId, taskCreatedAt, rootPath],
 	);
 	const contentScopeKey = scope.contentScopeKey;
-	const treeData = useFileTreeData(scope);
+	const treeData = useFileTreeData(scope, options.showGeneratedWorktrees);
 	const contentData = useFileContentData(scope, selectedPath);
 	// Content data subscribes to the workspace generation, so retirement also expires these admissions.
 	const scopeGeneration = getFileEditorScopeGeneration(contentScopeKey);
@@ -262,8 +262,6 @@ export function useFileBrowserData(options: {
 		editorScope,
 		files: treeData.files,
 		directoryPages: treeData.directoryPages,
-		showExcluded: treeData.showExcluded,
-		setShowExcluded: treeData.setShowExcluded,
 		setExpandedDirectories: treeData.setExpandedDirectories,
 		loadDirectory: treeData.loadDirectory,
 		directories: treeData.directories,

@@ -18,6 +18,10 @@ This document owns the implemented Files/review contract. Commit, compare, uncom
 
 Hook paths are under `web-ui/src/hooks/git` unless qualified; component paths are under `web-ui/src`. `FilesView` does not own Git operations. Existing row renderers remain review-specific presentation primitives behind the shared document contract, rather than a second writable editor or buffer cache.
 
+## Generated worktrees
+
+Generated worktree folders are hidden from the Files tree by default. Use **Settings → Editor → Show generated worktrees**, then **Save**, to reveal them. This is a saved app-wide preference shared across projects, home/task workspaces, and branch views; there is no per-tree toggle.
+
 ## Syntax highlighting
 
 Files, conflict editors, search result previews, and rendered review rows share CodeMirror's maintained language catalog, one resolver, and the editor palette. The catalog recognizes language aliases, filename extensions, and special filenames such as `Dockerfile`; grammar coverage follows the installed `@codemirror/language-data` release rather than a separate per-view language list. It is broad but not universal: files such as Makefiles or languages absent from the catalog remain plain text unless an existing review fallback is available. File-backed views use the actual filename instead of the runtime's older, coarser language hints. Explicit supported hints remain available to embedded editor callers.
