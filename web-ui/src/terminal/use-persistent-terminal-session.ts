@@ -35,7 +35,6 @@ export interface UsePersistentTerminalSessionResult {
 	isContentPending: boolean;
 	isStopping: boolean;
 	clearTerminal: () => void;
-	requestRestore: () => boolean;
 	stopTerminal: () => Promise<void>;
 }
 
@@ -242,7 +241,7 @@ export function usePersistentTerminalSession({
 			// The control socket can observe the new pid/startedAt and finish its
 			// reconnect restore before this React effect runs. Resetting afterward
 			// would then erase the authoritative snapshot and leave the task pane
-			// blank until another manual re-sync. Requesting a restore here is safe
+			// blank. Requesting a restore here is safe
 			// in either order: the socket manager queues it behind an in-flight
 			// restore, sends it after one already completed, or the reconnect's
 			// upcoming initial restore supplies the same snapshot.
@@ -282,14 +281,6 @@ export function usePersistentTerminalSession({
 			input: (text) => terminalRef.current?.input(text) ?? false,
 			paste: (text) => terminalRef.current?.paste(text) ?? false,
 			focus: () => terminalRef.current?.focus(),
-			requestRestore: () => {
-				const terminal = terminalRef.current;
-				if (!terminal) {
-					return false;
-				}
-				terminal.requestRestore();
-				return true;
-			},
 			waitForLikelyPrompt: async (timeoutMs) => await (terminalRef.current?.waitForLikelyPrompt(timeoutMs) ?? false),
 		});
 	}, [taskId]);
@@ -313,15 +304,6 @@ export function usePersistentTerminalSession({
 		terminalRef.current?.clear();
 	}, []);
 
-	const requestRestore = useCallback(() => {
-		const terminal = terminalRef.current;
-		if (!terminal) {
-			return false;
-		}
-		terminal.requestRestore();
-		return true;
-	}, []);
-
 	return {
 		containerRef,
 		lastError,
@@ -329,7 +311,6 @@ export function usePersistentTerminalSession({
 		isContentPending,
 		isStopping,
 		clearTerminal,
-		requestRestore,
 		stopTerminal,
 	};
 }

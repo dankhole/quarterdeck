@@ -121,7 +121,7 @@ Terminal restore joins a snapshot with live output at one ordered boundary. The 
 
 Output framing must keep incomplete UTF-8 and terminal control sequences out of acknowledged snapshot coverage: xterm serialization does not preserve its pending decoder/parser state. Framing retention is bounded; oversized incomplete frames continue streaming without byte loss, but their per-write snapshot-safety flag follows the same FIFO as output. Restore explicitly disconnects rather than delivering an unsafe snapshot until framing recovers. Charset selection and scrolling margins must survive serialization along with rendered cells and supported modes.
 
-Same-socket Re-sync first flushes existing IO batches and waits for their browser output acknowledgements before capture; cursor filtering alone cannot retract bytes already in flight on the separate IO socket. Restore gaps are bounded by bytes, chunk count, and time, and fail by explicit reconnect rather than silently trimming the stream.
+Same-socket snapshot restoration first flushes existing IO batches and waits for their browser output acknowledgements before capture; cursor filtering alone cannot retract bytes already in flight on the separate IO socket. Restore gaps are bounded by bytes, chunk count, and time, and fail by explicit reconnect rather than silently trimming the stream.
 
 Queued resizes must be evaluated in operation order, not against dimensions read before earlier resizes apply. Returning to the original dimensions is still a real resize when a different size is queued ahead of it. Snapshot capture and resize boundaries must also close pending output groups so later writes cannot move ahead of them.
 
@@ -132,7 +132,7 @@ Terminal restore has several distinct races:
 - Once the IO socket is open, a stalled control restore must not keep the loading overlay forever. `terminal-session-handle.ts` uses a readiness fallback for new and reused slots and for delayed IO-open events.
 - Do not pair that fallback with speculative restore. A stale or empty snapshot can erase live output already written to xterm.
 - When a live session instance changes (`startedAt` with non-null `pid`), drop and reopen pooled terminal sockets rather than queueing restore on an existing control socket; reused active slots can otherwise remain stuck at `restoreCompleted=false`. Do not reconnect for processless stop summaries (`pid: null`).
-- When acquiring a pooled viewer or requesting Re-sync, replace both sockets if either is missing, closing, or closed. IO loss invalidates restore readiness even if control remains open; retaining that control socket can queue restore forever. Preserve a healthy connecting pair, and ignore callbacks from replaced sockets.
+- When acquiring a pooled viewer or requesting automatic snapshot restoration, replace both sockets if either is missing, closing, or closed. IO loss invalidates restore readiness even if control remains open; retaining that control socket can queue restore forever. Preserve a healthy connecting pair, and ignore callbacks from replaced sockets.
 - Before treating a restore snapshot as empty, `TerminalViewport` drains queued writes; live output can be queued but not yet visible.
 - A forced same-size redraw is platform-owned. POSIX may send `SIGWINCH`; Windows must issue one bounded adjacent-row ConPTY resize and immediately restore the requested geometry. Do not signal ConPTY with Unix redraw semantics or leave the nudged size authoritative.
 

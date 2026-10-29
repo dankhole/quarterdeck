@@ -17,7 +17,6 @@ function createSessionControls(
 		isLoading: false,
 		isStopping: false,
 		lastError: null,
-		requestRestore: vi.fn(),
 		stopTerminal: vi.fn(async () => {}),
 		...overrides,
 	};
@@ -55,9 +54,8 @@ describe("PersistentTerminalPanelLayout", () => {
 		}
 	});
 
-	it("exposes terminal re-sync in the full session toolbar", async () => {
-		const requestRestore = vi.fn();
-		const sessionControls = createSessionControls({ requestRestore });
+	it("keeps clear and stop controls without manual re-sync in the full toolbar", async () => {
+		const sessionControls = createSessionControls();
 
 		await act(async () => {
 			root.render(
@@ -67,19 +65,19 @@ describe("PersistentTerminalPanelLayout", () => {
 			);
 		});
 
-		const resyncButton = findButtonByText(container, "Re-sync");
-		expect(resyncButton).toBeInstanceOf(HTMLButtonElement);
+		expect(findButtonByText(container, "Re-sync")).toBeNull();
+		expect(container.querySelector('[aria-label="Re-sync terminal content"]')).toBeNull();
+		expect(findButtonByText(container, "Stop")).toBeInstanceOf(HTMLButtonElement);
 
 		await act(async () => {
-			resyncButton?.click();
+			findButtonByText(container, "Clear")?.click();
 		});
 
-		expect(requestRestore).toHaveBeenCalledTimes(1);
+		expect(sessionControls.clearTerminal).toHaveBeenCalledTimes(1);
 	});
 
-	it("exposes terminal re-sync in the compact shell terminal header", async () => {
-		const requestRestore = vi.fn();
-		const sessionControls = createSessionControls({ requestRestore });
+	it("keeps clear and close controls without manual re-sync in the compact header", async () => {
+		const sessionControls = createSessionControls();
 
 		await act(async () => {
 			root.render(
@@ -95,14 +93,13 @@ describe("PersistentTerminalPanelLayout", () => {
 			);
 		});
 
-		const resyncButton = container.querySelector<HTMLButtonElement>('[aria-label="Re-sync terminal content"]');
-		expect(resyncButton).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('[aria-label="Re-sync terminal content"]')).toBeNull();
 
 		await act(async () => {
-			resyncButton?.click();
+			container.querySelector<HTMLButtonElement>('[aria-label="Clear terminal"]')?.click();
 		});
 
-		expect(requestRestore).toHaveBeenCalledTimes(1);
+		expect(sessionControls.clearTerminal).toHaveBeenCalledTimes(1);
 		expect(container.querySelector<HTMLButtonElement>('[aria-label="Close terminal"]')).toBeInstanceOf(
 			HTMLButtonElement,
 		);
@@ -124,7 +121,6 @@ describe("PersistentTerminalPanelLayout", () => {
 			);
 		});
 
-		expect(container.querySelector<HTMLButtonElement>('[aria-label="Re-sync terminal content"]')).toBeNull();
-		expect(container.querySelector<HTMLButtonElement>('[aria-label="Clear terminal"]')).toBeNull();
+		expect(container.querySelector("button")).toBeNull();
 	});
 });

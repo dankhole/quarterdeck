@@ -1,4 +1,4 @@
-import { Activity, Command, Copy, RefreshCw, Settings, Terminal, Wrench } from "lucide-react";
+import { Activity, Command, Copy, Settings, Terminal, Wrench } from "lucide-react";
 import { DesktopUpdateControl } from "@/components/app/desktop-update-control";
 import { TopBarOpenProjectControl } from "@/components/app/top-bar-open-project-control";
 import { TopBarProjectShortcutControl } from "@/components/app/top-bar-project-shortcut-control";
@@ -27,7 +27,6 @@ export function TopBar({
 	onToggleTerminal,
 	isTerminalOpen,
 	isTerminalLoading,
-	onResyncAgentTerminal,
 	onCopyConversation,
 	isCopyingConversation,
 	onOpenSettings,
@@ -67,7 +66,6 @@ export function TopBar({
 	onToggleTerminal?: () => void;
 	isTerminalOpen?: boolean;
 	isTerminalLoading?: boolean;
-	onResyncAgentTerminal?: () => void;
 	onCopyConversation?: () => void;
 	isCopyingConversation?: boolean;
 	onOpenSettings?: (section?: SettingsSection) => void;
@@ -198,18 +196,6 @@ export function TopBar({
 							onClick={onCopyConversation}
 							disabled={isCopyingConversation}
 							aria-label="Copy full conversation"
-							className="ml-0.5"
-						/>
-					</Tooltip>
-				) : null}
-				{onResyncAgentTerminal ? (
-					<Tooltip side="bottom" content="Re-sync agent terminal content">
-						<Button
-							variant="ghost"
-							size="sm"
-							icon={<RefreshCw size={16} />}
-							onClick={onResyncAgentTerminal}
-							aria-label="Re-sync agent terminal content"
 							className="ml-0.5"
 						/>
 					</Tooltip>

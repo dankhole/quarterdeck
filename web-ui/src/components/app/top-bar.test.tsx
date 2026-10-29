@@ -245,24 +245,34 @@ describe("TopBar script shortcut onboarding", () => {
 		},
 	);
 
-	it("shows agent terminal re-sync when a handler is provided", async () => {
-		const onResyncAgentTerminal = vi.fn();
+	it("keeps terminal and conversation actions without manual agent terminal re-sync", async () => {
+		const onToggleTerminal = vi.fn();
+		const onCopyConversation = vi.fn();
 
 		await act(async () => {
 			root.render(
 				<TooltipProvider>
-					<TopBar selectedTaskId="task-1" onResyncAgentTerminal={onResyncAgentTerminal} />
+					<TopBar
+						selectedTaskId="task-1"
+						onToggleTerminal={onToggleTerminal}
+						onCopyConversation={onCopyConversation}
+					/>
 				</TooltipProvider>,
 			);
 		});
 
-		const resyncButton = container.querySelector<HTMLButtonElement>('[aria-label="Re-sync agent terminal content"]');
-		expect(resyncButton).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('[aria-label="Re-sync agent terminal content"]')).toBeNull();
+		const terminalButton = container.querySelector<HTMLButtonElement>('[aria-label="Open terminal"]');
+		const copyButton = container.querySelector<HTMLButtonElement>('[aria-label="Copy full conversation"]');
+		expect(terminalButton).toBeInstanceOf(HTMLButtonElement);
+		expect(copyButton).toBeInstanceOf(HTMLButtonElement);
 
 		await act(async () => {
-			resyncButton?.click();
+			terminalButton?.click();
+			copyButton?.click();
 		});
 
-		expect(onResyncAgentTerminal).toHaveBeenCalledTimes(1);
+		expect(onToggleTerminal).toHaveBeenCalledTimes(1);
+		expect(onCopyConversation).toHaveBeenCalledTimes(1);
 	});
 });
