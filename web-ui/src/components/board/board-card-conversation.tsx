@@ -1,6 +1,5 @@
-import * as Collapsible from "@radix-ui/react-collapsible";
 import { canSendTaskQuickReply, deriveTaskIndicatorState, TASK_QUICK_REPLY_MAX_LENGTH } from "@runtime-contract";
-import { ChevronRight, MessageSquare, Send, X } from "lucide-react";
+import { MessageSquare, Send, X } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { BoardResponsePreview } from "@/components/board/board-response-preview";
 import { Button } from "@/components/ui/button";
@@ -165,21 +164,6 @@ export function BoardCardConversation({
 					text={text || "No response yet. Open the agent to follow its progress."}
 					className="text-text-primary/90"
 				/>
-				{progressMessage && completedResponse ? (
-					<Collapsible.Root
-						className="mt-2 border-t border-border pt-1.5"
-						onClick={(event) => event.stopPropagation()}
-						onDoubleClick={(event) => event.stopPropagation()}
-					>
-						<Collapsible.Trigger className="group flex items-center gap-1 rounded-sm text-xs text-text-secondary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-border-focus">
-							<ChevronRight size={12} aria-hidden className="group-data-[state=open]:rotate-90" />
-							Previous response
-						</Collapsible.Trigger>
-						<Collapsible.Content>
-							<BoardResponsePreview text={completedResponse} className="mt-1.5 text-text-secondary" />
-						</Collapsible.Content>
-					</Collapsible.Root>
-				) : null}
 			</div>
 			<div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-1.5">
 				{!readOnly && replyScope && !card.unstarted && columnId !== "trash" ? (

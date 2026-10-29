@@ -126,16 +126,16 @@ describe("board card conversation", () => {
 		const formattedResponse = preview().innerHTML;
 		await render("Validating the **next change**.");
 		expect(preview().querySelector("strong")?.textContent).toBe("next change");
-		const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
-		expect(trigger?.textContent).toBe("Previous response");
-		await act(async () => trigger?.click());
-		expect(preview(1).innerHTML).toBe(formattedResponse);
+		expect(container.querySelectorAll(previewSelector)).toHaveLength(1);
+		expect(container.querySelector("[aria-expanded]")).toBeNull();
+		expect(container.textContent).not.toContain("Previous response");
+		expect(container.textContent).not.toContain("completed response");
 		await render(null);
 		expect(preview().innerHTML).toBe(formattedResponse);
 		expect(container.querySelector("[aria-expanded]")).toBeNull();
 	});
 
-	it("formats current and previous responses identically without changing card navigation", async () => {
+	it("formats response previews without changing card navigation", async () => {
 		const openTask = vi.fn();
 		const response =
 			"## Result\n\nThe **layout** uses *compact* `code`.\n\n- [Details](https://example.com)\n- Keyboard support";
@@ -163,43 +163,28 @@ describe("board card conversation", () => {
 		expect(preview().querySelectorAll("li")).toHaveLength(2);
 		expect(preview().querySelector("a, img, button, input, textarea, select")).toBeNull();
 		expect(preview().textContent).toContain("Details");
-		const formattedResponse = preview().innerHTML;
 		await act(async () => preview().querySelector("strong")?.click());
 		await act(async () => preview().dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
 		expect(openTask).toHaveBeenCalledTimes(2);
 		openTask.mockClear();
 		await render("Checking the **remaining shortcuts**.");
 		expect(preview().querySelector("strong")?.textContent).toBe("remaining shortcuts");
-		const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]');
-		expect(trigger?.textContent).toBe("Previous response");
-		expect(trigger?.type).toBe("button");
-		await act(async () => trigger?.click());
-		expect(trigger?.getAttribute("aria-expanded")).toBe("true");
-		const contentId = trigger?.getAttribute("aria-controls");
-		expect(contentId).toBeTruthy();
-		expect(document.getElementById(contentId!)?.querySelector(previewSelector)?.innerHTML).toBe(formattedResponse);
-		await act(async () => preview(1).querySelector("strong")?.click());
-		await act(async () => preview(1).dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-		await act(async () => trigger?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-		expect(openTask).not.toHaveBeenCalled();
-		await act(async () => trigger?.click());
-		expect(trigger?.getAttribute("aria-expanded")).toBe("false");
+		expect(container.querySelector("[aria-expanded]")).toBeNull();
+		expect(container.textContent).not.toContain("Previous response");
+		expect(container.textContent).not.toContain("Result");
 		expect(container.querySelectorAll(previewSelector)).toHaveLength(1);
 		await act(async () => preview().click());
 		expect(openTask).toHaveBeenCalledOnce();
 	});
 
-	it.each(["progress", "final", "retained", "prompt", "previous"] as const)(
+	it.each(["progress", "final", "retained", "prompt"] as const)(
 		"bounds the %s source through the shared formatted preview",
 		async (source) => {
 			const text = `**Bounded** ${"x".repeat(600)} omitted tail`;
 			const summary: RuntimeTaskSessionSummary = {
 				...running,
-				latestHookActivity:
-					source === "final" || source === "previous"
-						? { ...ready.latestHookActivity!, finalMessage: text }
-						: null,
-				progressMessage: source === "progress" ? text : source === "previous" ? "Current progress" : null,
+				latestHookActivity: source === "final" ? { ...ready.latestHookActivity!, finalMessage: text } : null,
+				progressMessage: source === "progress" ? text : null,
 				completedResponses: source === "retained" ? [{ text, capturedAt: 100, sessionIndex: 0 }] : [],
 			};
 			await act(async () =>
@@ -211,10 +196,7 @@ describe("board card conversation", () => {
 					/>,
 				),
 			);
-			if (source === "previous") {
-				await act(async () => container.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click());
-			}
-			const bounded = preview(source === "previous" ? 1 : 0);
+			const bounded = preview();
 			expect(bounded.querySelector("strong")?.textContent).toBe("Bounded");
 			expect(bounded.textContent).toBe(`Bounded ${"x".repeat(500 - "**Bounded** ".length)}`);
 			expect(bounded.textContent).not.toContain("omitted tail");
