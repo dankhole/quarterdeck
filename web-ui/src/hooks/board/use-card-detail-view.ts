@@ -1,11 +1,11 @@
 import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { showAppToast } from "@/components/app-toaster";
 import {
 	formatCardDetailSidePanelPercent,
 	resolveCardDetailBranchPillLabel,
 	resolveCardDetailFileBrowserScope,
 } from "@/hooks/board/card-detail-view";
+import { type ReviewSendResult, useReviewSend } from "@/hooks/board/use-review-send";
 import { type TaskTerminalState, useTaskTerminalState } from "@/hooks/board/use-task-terminal-state";
 import { useBranchActions, useFileBrowserData, useScopeContext } from "@/hooks/git";
 import { useBoardContext } from "@/providers/board-provider";
@@ -20,7 +20,6 @@ import {
 	useTaskRepositoryInfoValue,
 	useTaskWorktreeSnapshotValue,
 } from "@/stores/project-metadata-store";
-import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { CardSelection } from "@/types";
 import { resolveTaskGitState } from "@/utils/task-git-state";
 
@@ -67,8 +66,7 @@ export interface CardDetailViewRepositoryState {
 	navigateToFile: ReturnType<typeof useSurfaceNavigationContext>["navigateToFile"];
 	navigateToGitView: () => void;
 	runGitAction: ReturnType<typeof useGitContext>["runGitAction"];
-	handleAddToTerminal: (text: string) => Promise<void>;
-	handleSendToTerminal: (text: string) => Promise<void>;
+	handleSendToTerminal: (text: string) => Promise<ReviewSendResult>;
 }
 
 export type CardDetailViewTerminalState = TaskTerminalState;
@@ -197,56 +195,13 @@ export function useCardDetailView({
 
 	const taskId = selection.card.id;
 
-	const handleAddToTerminal = useCallback(
-		async (text: string) => {
-			const result = await sendTaskSessionInput(taskId, text, {
-				intent: "write",
-				appendNewline: false,
-				mode: "paste",
-			});
-			if (!result.ok) {
-				showAppToast({
-					intent: "danger",
-					message: result.message ?? "Could not paste review comments into the terminal.",
-					timeout: 7000,
-				});
-			}
-		},
-		[sendTaskSessionInput, taskId],
-	);
-
-	const handleSendToTerminal = useCallback(
-		async (text: string) => {
-			const result = await sendTaskSessionInput(taskId, text, {
-				intent: "write",
-				appendNewline: false,
-				mode: "paste",
-			});
-			if (!result.ok) {
-				showAppToast({
-					intent: "danger",
-					message: result.message ?? "Could not paste review comments into the terminal.",
-					timeout: 7000,
-				});
-				return;
-			}
-			await new Promise<void>((resolve) => setTimeout(resolve, 200));
-			const submitted = await sendTaskSessionInput(taskId, "\r", {
-				intent: "submit",
-				appendNewline: false,
-			});
-			if (!submitted.ok) {
-				showAppToast({
-					intent: "danger",
-					message: submitted.message ?? "Could not submit review comments.",
-					timeout: 7000,
-				});
-				return;
-			}
-			getTerminalController(taskId)?.focus?.();
-		},
-		[sendTaskSessionInput, taskId],
-	);
+	const handleSendToTerminal = useReviewSend({
+		projectId: currentProjectId,
+		taskId,
+		taskCreatedAt: selection.card.createdAt,
+		summary: taskSessions[taskId] ?? null,
+		sendInput: sendTaskSessionInput,
+	});
 
 	return {
 		layout: {
@@ -281,7 +236,6 @@ export function useCardDetailView({
 			navigateToFile: navigation.navigateToFile,
 			navigateToGitView: navigation.navigateToGitView,
 			runGitAction,
-			handleAddToTerminal,
 			handleSendToTerminal,
 		},
 		terminal: terminalState,

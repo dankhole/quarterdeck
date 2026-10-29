@@ -225,7 +225,7 @@ describe("standalone Compare root", () => {
 			rootPath: "/repo/worktree",
 		});
 		expect(lastViewer().selectedPath).toBe("src/pinned.ts");
-		expect(lastViewer().onAddToTerminal).toBeUndefined();
+		expect(lastViewer()).not.toHaveProperty("onAddToTerminal");
 		expect(lastViewer().onSendToTerminal).toBeUndefined();
 		expect(lastViewer().onRollbackFile).toBeUndefined();
 		expect(mocks.editor).not.toHaveBeenCalled();

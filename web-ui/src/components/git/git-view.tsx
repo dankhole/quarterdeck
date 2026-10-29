@@ -60,10 +60,8 @@ export interface GitViewProps extends UseGitViewOptions {
 	gitHistoryPanel?: React.ReactNode;
 	pinnedBranches?: string[];
 	onTogglePinBranch?: (branchName: string) => void;
-	/** Paste formatted inline comments into the agent terminal without submitting. */
-	onAddToTerminal?: (text: string) => void;
-	/** Paste formatted inline comments into the agent terminal and submit. */
-	onSendToTerminal?: (text: string) => void;
+	/** Submit all review comments; only an acknowledged success may clear the sent snapshot. */
+	onSendToTerminal?: (text: string) => Promise<{ ok: boolean; message?: string }>;
 }
 
 export function GitView({
@@ -73,7 +71,6 @@ export function GitView({
 	gitHistoryPanel,
 	pinnedBranches,
 	onTogglePinBranch,
-	onAddToTerminal,
 	onSendToTerminal,
 	...hookOptions
 }: GitViewProps): React.ReactElement {
@@ -92,6 +89,7 @@ export function GitView({
 		setSelectedPath,
 		handleVisibleDiffPathsChange,
 		diffComments,
+		reviewDraftKey,
 		setDiffComments,
 		conflictResolution,
 		compare,
@@ -236,11 +234,11 @@ export function GitView({
 				<div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">{gitHistoryPanel}</div>
 			) : (
 				<div ref={contentRowRef} className="flex flex-1 min-h-0">
-					{activeTab === "compare" && !hasCompareRefs ? (
+					{activeTab === "compare" && !hasCompareRefs && diffComments.size === 0 ? (
 						<GitViewEmptyPanel title="Select a branch to compare against." />
-					) : isChangesPending ? (
+					) : isChangesPending && diffComments.size === 0 ? (
 						<GitViewLoadingPanel />
-					) : hasNoChanges ? (
+					) : hasNoChanges && diffComments.size === 0 ? (
 						<GitViewEmptyPanel title={emptyTitle} />
 					) : (
 						<>
@@ -301,15 +299,19 @@ export function GitView({
 											? "Uncommitted: HEAD → working copy"
 											: `Compare: ${compare.targetRef} → ${compare.includeUncommitted ? "working copy" : compare.sourceRef}${compare.threeDotDiff ? " (merge-base comparison)" : ""}`
 									}
-									projectFiles={isRuntimeAvailable ? enrichedFiles : null}
+									projectFiles={
+										isRuntimeAvailable && !isChangesPending && (activeTab !== "compare" || hasCompareRefs)
+											? enrichedFiles
+											: null
+									}
 									selectedPath={selectedPath}
 									onSelectedPathChange={setSelectedPath}
 									onVisiblePathsChange={handleVisibleDiffPathsChange}
 									onRollbackFile={activeTab === "uncommitted" ? handleRollbackFile : undefined}
 									viewMode="split"
 									comments={diffComments}
+									reviewDraftKey={reviewDraftKey}
 									onCommentsChange={setDiffComments}
-									onAddToTerminal={onAddToTerminal}
 									onSendToTerminal={onSendToTerminal}
 									navigateToFile={navigateToFile}
 									fileLoadingState={fileLoadingState}

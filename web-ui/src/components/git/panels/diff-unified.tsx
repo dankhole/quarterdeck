@@ -5,7 +5,6 @@ import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
 import { DiffContextRows } from "@/components/shared/diff-context-rows";
 import {
 	buildDiffDisplayGroups,
-	buildUnifiedDiffRows,
 	CollapsedBlockControls,
 	DiffRowText,
 	type UnifiedDiffRow,
@@ -17,10 +16,12 @@ import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
 import {
 	commentKey,
+	createDiffAnchorLookup,
 	type DiffCommentCallbacks,
 	type DiffLineComment,
 	DiffLineGutter,
 	InlineComment,
+	indexAnchoredComments,
 } from "./diff-viewer-utils";
 
 export const UnifiedDiff = memo(function UnifiedDiff({
@@ -29,9 +30,13 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 	oldText,
 	newText,
 	comments,
+	anchorLookup,
 	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
+	onSaveComment,
+	onEditComment,
+	onCancelEditComment,
 	readOnlyReview = false,
 }: {
 	path: string;
@@ -47,12 +52,18 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 		() => createSourceLineCache(path, languageSupport),
 		[path, oldText, newText, languageSupport],
 	);
-	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
+	const lookup = useMemo(
+		() => anchorLookup ?? createDiffAnchorLookup(oldText, newText),
+		[anchorLookup, oldText, newText],
+	);
+	const { rows, revision: anchorRevision } = lookup;
+	const anchoredComments = useMemo(() => indexAnchoredComments(path, comments, lookup), [path, comments, lookup]);
 	const displayItems = useMemo(() => buildDiffDisplayGroups(rows), [rows]);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
-		const rowKey = row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
-		const existingComment = !readOnlyReview && rowKey ? comments.get(rowKey) : null;
+		const rowKey = !readOnlyReview && row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
+		const anchored = rowKey ? anchoredComments.get(rowKey) : undefined;
+		const existingComment = anchored?.comment;
 		const hasComment = existingComment != null;
 		const baseClass =
 			row.variant === "added"
@@ -64,12 +75,11 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 		const canClickRow = !readOnlyReview && row.lineNumber != null && !hasComment;
 		const highlightedLineHtml = row.lineNumber == null || row.segments ? null : highlightCache.get(row.text);
 
-		const handleRowClick =
-			!readOnlyReview && row.lineNumber != null && !hasComment
-				? () => {
-						onAddComment(path, row.lineNumber!, row.text, row.variant);
-					}
-				: undefined;
+		const handleRowClick = canClickRow
+			? () => {
+					onAddComment(path, row.lineNumber!, row.text, row.variant, anchorRevision);
+				}
+			: undefined;
 
 		return (
 			<div key={row.key}>
@@ -85,15 +95,22 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 						lineNumber={row.lineNumber}
 						canComment={!readOnlyReview}
 						hasComment={hasComment}
-						onDeleteComment={hasComment ? () => onDeleteComment(path, row.lineNumber!, row.variant) : undefined}
+						onDeleteComment={
+							hasComment
+								? () => onDeleteComment(path, row.lineNumber!, row.variant, anchored?.draftKey)
+								: undefined
+						}
 					/>
 					<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 				</div>
 				{existingComment ? (
 					<InlineComment
 						comment={existingComment}
-						onChange={(text) => onUpdateComment(path, row.lineNumber!, row.variant, text)}
-						onDelete={() => onDeleteComment(path, row.lineNumber!, row.variant)}
+						onChange={(text) => onUpdateComment(path, row.lineNumber!, row.variant, text, anchored?.draftKey)}
+						onDelete={() => onDeleteComment(path, row.lineNumber!, row.variant, anchored?.draftKey)}
+						onSave={() => onSaveComment?.(path, row.lineNumber!, row.variant, anchored?.draftKey)}
+						onEdit={() => onEditComment?.(path, row.lineNumber!, row.variant, anchored?.draftKey)}
+						onCancel={() => onCancelEditComment?.(path, row.lineNumber!, row.variant, anchored?.draftKey)}
 					/>
 				) : null}
 			</div>
@@ -126,7 +143,16 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 					<div key={item.block.id}>
 						<DiffContextRows
 							block={item.block}
-							state={expandedBlocks[item.block.id]}
+							state={
+								!readOnlyReview &&
+								item.block.rows.some(
+									(row) =>
+										row.lineNumber != null &&
+										anchoredComments.has(commentKey(path, row.lineNumber, row.variant)),
+								)
+									? true
+									: expandedBlocks[item.block.id]
+							}
 							renderRow={renderRow}
 							renderControls={(block) => (
 								<CollapsedBlockControls

@@ -2,6 +2,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiffViewerPanel } from "@/components/git/panels/diff-viewer-panel";
+import type { DiffLineComment } from "@/components/git/panels/diff-viewer-utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { diffCodeNavigationUnavailableReason } from "@/hooks/git/diff-code-navigation";
 import { createReviewDocument } from "@/hooks/git/review-document";
@@ -15,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 	targetRef: "main",
 	includeUncommitted: true,
 	viewer: vi.fn(),
+	comments: new Map<string, DiffLineComment>(),
+	hasNoChanges: false,
+	isChangesPending: false,
 }));
 vi.mock("@/components/compare-window/open-compare-window", () => ({ openCompareWindow: mocks.open }));
 vi.mock("@/components/app-toaster", () => ({ showAppToast: mocks.toast }));
@@ -41,7 +45,11 @@ vi.mock("@/hooks/git/use-git-view", () => ({
 			threeDotDiff: false,
 		},
 		hasCompareRefs: Boolean(mocks.sourceRef && mocks.targetRef),
-		hasNoChanges: false,
+		hasNoChanges: mocks.hasNoChanges,
+		isChangesPending: mocks.isChangesPending,
+		diffComments: mocks.comments,
+		reviewDraftKey: "window-scoped-review",
+		enrichedFiles: [],
 		isRuntimeAvailable: true,
 	}),
 }));
@@ -59,6 +67,9 @@ describe("GitView Compare pop-out", () => {
 		mocks.sourceRef = "feature";
 		mocks.targetRef = "main";
 		mocks.includeUncommitted = true;
+		mocks.comments = new Map();
+		mocks.hasNoChanges = false;
+		mocks.isChangesPending = false;
 		mocks.open.mockResolvedValue(undefined);
 	});
 	afterEach(() => {
@@ -123,6 +134,28 @@ describe("GitView Compare pop-out", () => {
 		expect(uncommitted.revisions).toMatchObject({ kind: "working-copy", headSource: "live-worktree" });
 		expect(diffCodeNavigationUnavailableReason(uncommitted)).toBeNull();
 	});
+	it.each(["empty", "missing-refs", "pending"] as const)(
+		"keeps drafts and their owner key reachable when %s",
+		async (state) => {
+			mocks.comments.set("a.ts:added:1", {
+				filePath: "a.ts",
+				lineNumber: 1,
+				lineText: "old anchor",
+				variant: "added",
+				comment: "Retain me",
+				editing: false,
+			});
+			mocks.hasNoChanges = state === "empty";
+			mocks.isChangesPending = state === "pending";
+			if (state === "missing-refs") mocks.targetRef = "";
+			await render();
+			expect(mocks.viewer).toHaveBeenCalled();
+			const props = mocks.viewer.mock.calls.at(-1)?.[0] as ComponentProps<typeof DiffViewerPanel>;
+			expect(props.comments).toBe(mocks.comments);
+			expect(props.reviewDraftKey).toBe("window-scoped-review");
+			expect(props.projectFiles).toEqual(state === "empty" ? [] : null);
+		},
+	);
 	it("reports opening failure without leaving the button busy", async () => {
 		mocks.open.mockRejectedValue(new Error("Allow popups"));
 		await render();

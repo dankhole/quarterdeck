@@ -1,13 +1,23 @@
-import { useCallback, useMemo } from "react";
-import { useHotkeys } from "react-hotkeys-hook";
-
-import { commentKey, type DiffLineComment, formatCommentsForTerminal } from "@/components/git/panels/diff-viewer-utils";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type DiffLineComment, formatCommentsForTerminal } from "@/components/git/panels/diff-viewer-utils";
+import { ReviewDrafts, type ReviewSendResult, reviewDrafts } from "@/state/review-drafts";
+import {
+	addDiffComment,
+	type CommentAddress,
+	type CommentVariant,
+	changeDiffComment,
+	finishDiffComment,
+	resolveDiffCommentKey,
+	sortedNonEmptyComments,
+} from "./diff-comments";
+import { useReviewDraft } from "./use-review-draft";
 
 export interface UseDiffCommentsOptions {
+	/** Production identity from useGitView. Omitted for standalone controlled viewers. */
+	reviewDraftKey?: string;
 	comments: Map<string, DiffLineComment>;
 	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
-	onAddToTerminal?: (formatted: string) => void;
-	onSendToTerminal?: (formatted: string) => void;
+	onSendToTerminal?: (formatted: string) => Promise<ReviewSendResult>;
 }
 
 export interface UseDiffCommentsResult {
@@ -15,164 +25,145 @@ export interface UseDiffCommentsResult {
 		filePath: string,
 		lineNumber: number,
 		lineText: string,
-		variant: "added" | "removed" | "context",
+		variant: CommentVariant,
+		anchorRevision?: string,
 	) => void;
 	handleUpdateComment: (
 		filePath: string,
 		lineNumber: number,
-		variant: "added" | "removed" | "context",
+		variant: CommentVariant,
 		text: string,
+		draftKey?: string,
 	) => void;
-	handleDeleteComment: (filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => void;
-	handleAddComments: () => void;
-	handleSendComments: () => void;
+	handleDeleteComment: (...address: CommentAddress) => void;
+	handleSaveComment: (...address: CommentAddress) => void;
+	handleEditComment: (...address: CommentAddress) => void;
+	handleCancelEditComment: (...address: CommentAddress) => void;
+	handleSendComments: () => Promise<void>;
 	handleClearAllComments: () => void;
 	hasAnyComments: boolean;
 	nonEmptyCount: number;
+	fileCount: number;
+	formattedLength: number;
+	isSending: boolean;
+	sendError: string | null;
 }
 
 export function useDiffComments({
+	reviewDraftKey,
 	comments,
 	onCommentsChange,
-	onAddToTerminal,
 	onSendToTerminal,
 }: UseDiffCommentsOptions): UseDiffCommentsResult {
+	const [localStore] = useState(() => {
+		const store = new ReviewDrafts();
+		store.updateComments("local", () => comments);
+		return store;
+	});
+	const store = reviewDraftKey === undefined ? localStore : reviewDrafts;
+	const key = reviewDraftKey ?? "local";
+	const draft = useReviewDraft(key, store);
+	const lastControlledComments = useRef(comments);
+	const dispatchScope = useMemo(() => ({ active: false }), [key, store, onSendToTerminal]);
+	useLayoutEffect(() => {
+		dispatchScope.active = true;
+		return () => {
+			dispatchScope.active = false;
+		};
+	}, [dispatchScope]);
+
+	// Standalone viewers remain controlled. Scoped production viewers read their window owner directly.
+	useLayoutEffect(() => {
+		if (reviewDraftKey === undefined && comments !== lastControlledComments.current) {
+			store.updateComments(key, () => comments);
+		}
+		lastControlledComments.current = comments;
+	}, [comments, reviewDraftKey, store, key]);
+
+	const updateComments = useCallback(
+		(update: (previous: Map<string, DiffLineComment>) => Map<string, DiffLineComment>) => {
+			store.updateComments(key, update);
+			const next = store.get(key).comments;
+			lastControlledComments.current = next;
+			onCommentsChange(next);
+		},
+		[key, store, onCommentsChange],
+	);
+
 	const handleAddComment = useCallback(
-		(filePath: string, lineNumber: number, lineText: string, variant: "added" | "removed" | "context") => {
-			const key = commentKey(filePath, lineNumber, variant);
-			if (comments.has(key)) {
-				return;
-			}
-			const next = new Map(comments);
-			// Remove any existing empty comment boxes before opening a new one
-			for (const [existingKey, existingComment] of next) {
-				if (existingComment.comment.trim() === "") {
-					next.delete(existingKey);
-				}
-			}
-			next.set(key, {
-				filePath,
-				lineNumber,
-				lineText,
-				variant,
-				comment: "",
-			});
-			onCommentsChange(next);
+		(filePath: string, lineNumber: number, lineText: string, variant: CommentVariant, anchorRevision?: string) => {
+			updateComments((previous) =>
+				addDiffComment(previous, filePath, lineNumber, lineText, variant, anchorRevision, crypto.randomUUID()),
+			);
 		},
-		[comments, onCommentsChange],
+		[updateComments],
 	);
-
 	const handleUpdateComment = useCallback(
-		(filePath: string, lineNumber: number, variant: "added" | "removed" | "context", text: string) => {
-			const key = commentKey(filePath, lineNumber, variant);
-			const existing = comments.get(key);
-			if (!existing) {
-				return;
-			}
-			const next = new Map(comments);
-			next.set(key, { ...existing, comment: text });
-			onCommentsChange(next);
+		(filePath: string, lineNumber: number, variant: CommentVariant, text: string, draftKey?: string) => {
+			updateComments((previous) =>
+				changeDiffComment(previous, [filePath, lineNumber, variant, draftKey], { comment: text }),
+			);
 		},
-		[comments, onCommentsChange],
+		[updateComments],
 	);
-
 	const handleDeleteComment = useCallback(
-		(filePath: string, lineNumber: number, variant: "added" | "removed" | "context") => {
-			const next = new Map(comments);
-			next.delete(commentKey(filePath, lineNumber, variant));
-			onCommentsChange(next);
+		(...address: CommentAddress) => {
+			updateComments((previous) => {
+				const key = resolveDiffCommentKey(previous, address);
+				if (key === undefined) return previous;
+				const next = new Map(previous);
+				next.delete(key);
+				return next;
+			});
 		},
-		[comments, onCommentsChange],
+		[updateComments],
 	);
-
-	const nonEmptyComments = useMemo(() => {
-		return Array.from(comments.values()).filter((c) => c.comment.trim().length > 0);
-	}, [comments]);
-
-	const buildFormattedComments = useCallback((): string | null => {
-		if (nonEmptyComments.length === 0) {
-			return null;
-		}
-		const sorted = [...nonEmptyComments].sort((a, b) => {
-			const pathCmp = a.filePath.localeCompare(b.filePath);
-			if (pathCmp !== 0) {
-				return pathCmp;
-			}
-			return a.lineNumber - b.lineNumber;
-		});
-		return formatCommentsForTerminal(sorted);
-	}, [nonEmptyComments]);
-
-	const handleAddComments = useCallback(() => {
-		const formatted = buildFormattedComments();
-		if (!formatted || !onAddToTerminal) {
-			return;
-		}
-		onAddToTerminal(formatted);
-		onCommentsChange(new Map());
-	}, [buildFormattedComments, onAddToTerminal, onCommentsChange]);
-
-	const handleSendComments = useCallback(() => {
-		const formatted = buildFormattedComments();
-		if (!formatted || !onSendToTerminal) {
-			return;
-		}
-		onSendToTerminal(formatted);
-		onCommentsChange(new Map());
-	}, [buildFormattedComments, onCommentsChange, onSendToTerminal]);
-
+	const handleSaveComment = useCallback(
+		(...address: CommentAddress) => {
+			updateComments((previous) => finishDiffComment(previous, address, false));
+		},
+		[updateComments],
+	);
+	const handleEditComment = useCallback(
+		(...address: CommentAddress) => {
+			updateComments((previous) => changeDiffComment(previous, address, { editing: true }));
+		},
+		[updateComments],
+	);
+	const handleCancelEditComment = useCallback(
+		(...address: CommentAddress) => {
+			updateComments((previous) => finishDiffComment(previous, address, true));
+		},
+		[updateComments],
+	);
 	const handleClearAllComments = useCallback(() => {
-		onCommentsChange(new Map());
-	}, [onCommentsChange]);
+		updateComments(() => new Map());
+	}, [updateComments]);
+	const handleSendComments = useCallback(async () => {
+		if (!dispatchScope.active || !onSendToTerminal) return;
+		await store.send(key, (snapshot) => onSendToTerminal(formatCommentsForTerminal(snapshot)));
+		// The callback is captured with its original scope, never the currently navigated scope.
+		const next = store.get(key).comments;
+		lastControlledComments.current = next;
+		onCommentsChange(next);
+	}, [key, store, onSendToTerminal, onCommentsChange, dispatchScope]);
 
-	const nonEmptyCount = nonEmptyComments.length;
-
-	useHotkeys(
-		"meta+enter,ctrl+enter",
-		(event) => {
-			if (!onAddToTerminal || nonEmptyCount === 0) {
-				return;
-			}
-			event.preventDefault();
-			handleAddComments();
-		},
-		{
-			enabled: Boolean(onAddToTerminal),
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			ignoreEventWhen: (event) => event.defaultPrevented,
-			preventDefault: true,
-		},
-		[handleAddComments, nonEmptyCount, onAddToTerminal],
-	);
-
-	useHotkeys(
-		"meta+shift+enter,ctrl+shift+enter",
-		(event) => {
-			if (!onSendToTerminal || nonEmptyCount === 0) {
-				return;
-			}
-			event.preventDefault();
-			handleSendComments();
-		},
-		{
-			enabled: Boolean(onSendToTerminal),
-			enableOnFormTags: true,
-			enableOnContentEditable: true,
-			ignoreEventWhen: (event) => event.defaultPrevented,
-			preventDefault: true,
-		},
-		[handleSendComments, nonEmptyCount, onSendToTerminal],
-	);
-
+	const nonEmptyComments = useMemo(() => sortedNonEmptyComments(draft.comments), [draft.comments]);
+	const formattedLength = useMemo(() => formatCommentsForTerminal(nonEmptyComments).length, [nonEmptyComments]);
 	return {
 		handleAddComment,
 		handleUpdateComment,
 		handleDeleteComment,
-		handleAddComments,
+		handleSaveComment,
+		handleEditComment,
+		handleCancelEditComment,
 		handleSendComments,
 		handleClearAllComments,
-		hasAnyComments: comments.size > 0,
-		nonEmptyCount,
+		hasAnyComments: draft.comments.size > 0,
+		nonEmptyCount: nonEmptyComments.length,
+		fileCount: new Set(nonEmptyComments.map((comment) => comment.filePath)).size,
+		formattedLength,
+		isSending: draft.isSending,
+		sendError: draft.sendError,
 	};
 }

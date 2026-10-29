@@ -96,8 +96,7 @@ describe("Compare code navigation wiring", () => {
 						])
 					}
 					onCommentsChange={onCommentsChange}
-					onAddToTerminal={() => {}}
-					onSendToTerminal={() => {}}
+					onSendToTerminal={async () => ({ ok: true })}
 					navigateToFile={navigateToFile}
 					codeNavigationConfig={{ codeNavigationEnabled: true, lspServers: CONFIG_DEFAULTS.lspServers }}
 				/>,

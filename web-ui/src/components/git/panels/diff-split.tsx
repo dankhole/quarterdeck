@@ -5,7 +5,6 @@ import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
 import { DiffContextRows } from "@/components/shared/diff-context-rows";
 import {
 	buildDiffDisplayGroups,
-	buildUnifiedDiffRows,
 	CollapsedBlockControls,
 	DiffRowText,
 	type UnifiedDiffRow,
@@ -17,10 +16,12 @@ import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
 import {
 	commentKey,
+	createDiffAnchorLookup,
 	type DiffCommentCallbacks,
 	type DiffLineComment,
 	DiffLineGutter,
 	InlineComment,
+	indexAnchoredComments,
 } from "./diff-viewer-utils";
 
 interface SplitDiffRowPair {
@@ -107,9 +108,13 @@ export const SplitDiff = memo(function SplitDiff({
 	oldText,
 	newText,
 	comments,
+	anchorLookup,
 	onAddComment,
 	onUpdateComment,
 	onDeleteComment,
+	onSaveComment,
+	onEditComment,
+	onCancelEditComment,
 	readOnlyReview = false,
 }: {
 	path: string;
@@ -125,7 +130,12 @@ export const SplitDiff = memo(function SplitDiff({
 		() => createSourceLineCache(path, languageSupport),
 		[path, oldText, newText, languageSupport],
 	);
-	const rows = useMemo(() => buildUnifiedDiffRows(oldText, newText), [oldText, newText]);
+	const lookup = useMemo(
+		() => anchorLookup ?? createDiffAnchorLookup(oldText, newText),
+		[anchorLookup, oldText, newText],
+	);
+	const { rows, revision: anchorRevision } = lookup;
+	const anchoredComments = useMemo(() => indexAnchoredComments(path, comments, lookup), [path, comments, lookup]);
 	const displayItems = useMemo(
 		() =>
 			buildDiffDisplayGroups(rows).map((item) =>
@@ -142,7 +152,8 @@ export const SplitDiff = memo(function SplitDiff({
 
 		const canCommentOnSide = !readOnlyReview && isCommentableOnSplitSide(row, side);
 		const rowKey = canCommentOnSide ? commentKey(path, rowLineNumber, row.variant) : null;
-		const existingComment = rowKey ? comments.get(rowKey) : null;
+		const anchored = rowKey ? anchoredComments.get(rowKey) : undefined;
+		const existingComment = anchored?.comment;
 		const hasComment = existingComment != null;
 		const baseClass =
 			row.variant === "added"
@@ -169,7 +180,7 @@ export const SplitDiff = memo(function SplitDiff({
 					onClick={
 						canClickRow
 							? () => {
-									onAddComment(path, rowLineNumber, row.text, row.variant);
+									onAddComment(path, rowLineNumber, row.text, row.variant, anchorRevision);
 								}
 							: undefined
 					}
@@ -178,15 +189,22 @@ export const SplitDiff = memo(function SplitDiff({
 						lineNumber={rowLineNumber}
 						hasComment={hasComment}
 						canComment={canCommentOnSide}
-						onDeleteComment={hasComment ? () => onDeleteComment(path, rowLineNumber, row.variant) : undefined}
+						onDeleteComment={
+							hasComment
+								? () => onDeleteComment(path, rowLineNumber, row.variant, anchored?.draftKey)
+								: undefined
+						}
 					/>
 					<DiffRowText row={row} highlightedLineHtml={highlightedLineHtml} highlightCache={highlightCache} />
 				</div>
 				{existingComment ? (
 					<InlineComment
 						comment={existingComment}
-						onChange={(text) => onUpdateComment(path, rowLineNumber, row.variant, text)}
-						onDelete={() => onDeleteComment(path, rowLineNumber, row.variant)}
+						onChange={(text) => onUpdateComment(path, rowLineNumber, row.variant, text, anchored?.draftKey)}
+						onDelete={() => onDeleteComment(path, rowLineNumber, row.variant, anchored?.draftKey)}
+						onSave={() => onSaveComment?.(path, rowLineNumber, row.variant, anchored?.draftKey)}
+						onEdit={() => onEditComment?.(path, rowLineNumber, row.variant, anchored?.draftKey)}
+						onCancel={() => onCancelEditComment?.(path, rowLineNumber, row.variant, anchored?.draftKey)}
 					/>
 				) : null}
 			</div>
@@ -238,7 +256,16 @@ export const SplitDiff = memo(function SplitDiff({
 						<div key={item.block.id}>
 							<DiffContextRows
 								block={item.block}
-								state={expandedBlocks[item.block.id]}
+								state={
+									!readOnlyReview &&
+									item.block.rows.some(
+										(row) =>
+											row.lineNumber != null &&
+											anchoredComments.has(commentKey(path, row.lineNumber, row.variant)),
+									)
+										? true
+										: expandedBlocks[item.block.id]
+								}
 								renderRow={(row) => renderPair({ key: `pair-context-${row.key}`, left: row, right: row })}
 								renderControls={(block) => (
 									<div className="kb-diff-split-grid-row">

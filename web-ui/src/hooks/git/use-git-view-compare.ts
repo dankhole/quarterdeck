@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { areGitRefsResponsesEqual } from "@/runtime/query-equality";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRef, RuntimeGitRefsResponse, RuntimeGitSyncSummary } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
+import {
+	createGitCompareSelectionKey,
+	type GitCompareSelection,
+	gitCompareSelections,
+} from "@/state/git-compare-selections";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { useTaskRepositoryInfoValue, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
@@ -79,36 +84,84 @@ export function useGitViewCompare({
 		return null;
 	}, [selectedCard]);
 
-	const [sourceRef, setSourceRefState] = useState<string | null>(defaultSourceRef);
-	const [targetRef, setTargetRefState] = useState<string | null>(defaultTargetRef);
-
-	const [includeUncommitted, setIncludeUncommitted] = useBooleanLocalStorageValue(
+	// Existing preferences seed newly visited scopes; restored selections never write them back.
+	const [defaultIncludeUncommitted, setDefaultIncludeUncommitted] = useBooleanLocalStorageValue(
 		LocalStorageKey.CompareIncludeUncommitted,
 		true,
 	);
-	const [threeDotDiff, setThreeDotDiff] = useBooleanLocalStorageValue(LocalStorageKey.CompareThreeDotDiff, true);
-
-	// Reset on task/project change
+	const [defaultThreeDotDiff, setDefaultThreeDotDiff] = useBooleanLocalStorageValue(
+		LocalStorageKey.CompareThreeDotDiff,
+		true,
+	);
+	const selectionKey = createGitCompareSelectionKey(
+		currentProjectId,
+		selectedCard?.card.id ?? null,
+		selectedCard?.card.createdAt,
+	);
+	const initialSelection = useMemo<GitCompareSelection>(
+		() => ({
+			includeUncommitted: defaultIncludeUncommitted,
+			threeDotDiff: defaultThreeDotDiff,
+		}),
+		[defaultIncludeUncommitted, defaultThreeDotDiff],
+	);
+	const subscribe = useCallback(
+		(listener: () => void) => gitCompareSelections.subscribe(selectionKey, listener),
+		[selectionKey],
+	);
+	const getSnapshot = useCallback(
+		() => gitCompareSelections.get(selectionKey) ?? initialSelection,
+		[selectionKey, initialSelection],
+	);
+	const selection = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 	useEffect(() => {
-		setSourceRefState(defaultSourceRef);
-		setTargetRefState(defaultTargetRef);
-	}, [selectedCard?.card.id, currentProjectId, defaultSourceRef, defaultTargetRef]);
+		gitCompareSelections.initialize(selectionKey, initialSelection);
+	}, [selectionKey, initialSelection]);
 
-	// Apply external navigation requests (e.g. "compare against [branch]" from another component)
+	const sourceRef = selection.sourceRefOverride ?? defaultSourceRef;
+	const targetRef = selection.targetRefOverride ?? defaultTargetRef;
+	const { includeUncommitted, threeDotDiff } = selection;
+	const setSourceRef = useCallback(
+		(ref: string) => {
+			gitCompareSelections.update(selectionKey, initialSelection, { sourceRefOverride: ref });
+		},
+		[selectionKey, initialSelection],
+	);
+	const setTargetRef = useCallback(
+		(ref: string) => {
+			gitCompareSelections.update(selectionKey, initialSelection, { targetRefOverride: ref });
+		},
+		[selectionKey, initialSelection],
+	);
+	const setIncludeUncommitted = useCallback(
+		(value: boolean) => {
+			gitCompareSelections.update(selectionKey, initialSelection, { includeUncommitted: value });
+			setDefaultIncludeUncommitted(value);
+		},
+		[selectionKey, initialSelection, setDefaultIncludeUncommitted],
+	);
+	const setThreeDotDiff = useCallback(
+		(value: boolean) => {
+			gitCompareSelections.update(selectionKey, initialSelection, { threeDotDiff: value });
+			setDefaultThreeDotDiff(value);
+		},
+		[selectionKey, initialSelection, setDefaultThreeDotDiff],
+	);
+
+	// External navigation overrides only its supplied refs, including a restored selection.
 	useEffect(() => {
 		if (!pendingNavigation) return;
-		if (pendingNavigation.sourceRef) setSourceRefState(pendingNavigation.sourceRef);
-		if (pendingNavigation.targetRef) setTargetRefState(pendingNavigation.targetRef);
+		if (pendingNavigation.sourceRef) setSourceRef(pendingNavigation.sourceRef);
+		if (pendingNavigation.targetRef) setTargetRef(pendingNavigation.targetRef);
 		onNavigationConsumed?.();
-	}, [pendingNavigation, onNavigationConsumed]);
-
-	const setSourceRef = useCallback((ref: string) => setSourceRefState(ref), []);
-	const setTargetRef = useCallback((ref: string) => setTargetRefState(ref), []);
+	}, [pendingNavigation, onNavigationConsumed, setSourceRef, setTargetRef]);
 
 	const resetToDefaults = useCallback(() => {
-		setSourceRefState(defaultSourceRef);
-		setTargetRefState(defaultTargetRef);
-	}, [defaultSourceRef, defaultTargetRef]);
+		gitCompareSelections.update(selectionKey, initialSelection, {
+			sourceRefOverride: undefined,
+			targetRefOverride: undefined,
+		});
+	}, [selectionKey, initialSelection]);
 
 	const isBrowsing = sourceRef !== null && sourceRef !== defaultSourceRef;
 	const hasOverride =

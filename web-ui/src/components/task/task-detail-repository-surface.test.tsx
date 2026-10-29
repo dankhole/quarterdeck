@@ -208,8 +208,7 @@ function createRepositoryState(): CardDetailViewRepositoryState {
 		navigateToFile: () => {},
 		navigateToGitView: () => {},
 		runGitAction: async () => {},
-		handleAddToTerminal: async () => {},
-		handleSendToTerminal: async () => {},
+		handleSendToTerminal: async () => ({ ok: true }),
 	};
 }
 

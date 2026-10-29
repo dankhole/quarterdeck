@@ -138,7 +138,6 @@ export function TaskDetailRepositorySurface({
 					gitHistoryPanel={repositoryProps.gitHistoryPanel}
 					pinnedBranches={repositoryProps.pinnedBranches}
 					onTogglePinBranch={repositoryProps.onTogglePinBranch}
-					onAddToTerminal={repositoryState.handleAddToTerminal}
 					onSendToTerminal={repositoryState.handleSendToTerminal}
 				/>
 			) : (

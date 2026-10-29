@@ -18,6 +18,7 @@ import {
 	type UseGitViewCompareResult,
 	useGitViewCompare,
 } from "@/hooks/git/use-git-view-compare";
+import { useReviewDraft } from "@/hooks/git/use-review-draft";
 import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { clampBetween } from "@/resize/resize-persistence";
 import {
@@ -29,6 +30,7 @@ import { useResizeDrag } from "@/resize/use-resize-drag";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitSyncSummary, RuntimeWorkdirFileChange } from "@/runtime/types";
 import type { FileLoadingState } from "@/runtime/use-all-file-diff-content";
+import { createReviewDraftKey } from "@/state/review-drafts";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { useTaskRepositoryInfoValue } from "@/stores/project-metadata-store";
 import type { BoardData, CardSelection } from "@/types";
@@ -75,7 +77,6 @@ export function useGitView({
 	);
 	const [selectedPath, setSelectedPathRaw] = useState<string | null>(null);
 	const [visibleDiffPaths, setVisibleDiffPaths] = useState<readonly string[]>([]);
-	const [diffComments, setDiffComments] = useState<Map<string, DiffLineComment>>(new Map());
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
 	const pendingCompareNavigationRef = useRef(pendingCompareNavigation);
@@ -206,9 +207,15 @@ export function useGitView({
 		compare,
 	});
 
-	useEffect(() => {
-		setDiffComments(new Map());
-	}, [compare.sourceRef, compare.targetRef, compare.includeUncommitted, compare.threeDotDiff]);
+	const reviewDraftKey = createReviewDraftKey({
+		...repositoryScope,
+		tab: activeTab,
+		sourceRef: compare.sourceRef,
+		targetRef: compare.targetRef,
+		includeUncommitted: compare.includeUncommitted,
+		threeDotDiff: compare.threeDotDiff,
+	});
+	const { comments: diffComments, setComments: setDiffComments } = useReviewDraft(reviewDraftKey);
 
 	// Auto-select file when file list changes
 	const availablePaths = useMemo(() => {
@@ -271,7 +278,6 @@ export function useGitView({
 	useEffect(() => {
 		setSelectedPathRaw(getLastSelectedPath(taskId, activeTab) ?? null);
 		setVisibleDiffPaths([]);
-		setDiffComments(new Map());
 	}, [taskId, activeTab]);
 
 	useEffect(() => {
@@ -280,7 +286,6 @@ export function useGitView({
 		if (!pendingCompareNavigationRef.current) {
 			setActiveTab("uncommitted");
 		}
-		setDiffComments(new Map());
 	}, [currentProjectId, setActiveTab]);
 
 	return {
@@ -296,6 +301,7 @@ export function useGitView({
 		selectedPath,
 		setSelectedPath,
 		handleVisibleDiffPathsChange,
+		reviewDraftKey,
 		diffComments,
 		setDiffComments,
 		conflictResolution,
@@ -324,6 +330,7 @@ export interface UseGitViewResult {
 	selectedPath: string | null;
 	setSelectedPath: (path: string | null) => void;
 	handleVisibleDiffPathsChange: (paths: string[]) => void;
+	reviewDraftKey: string;
 	diffComments: Map<string, DiffLineComment>;
 	setDiffComments: React.Dispatch<React.SetStateAction<Map<string, DiffLineComment>>>;
 	conflictResolution: UseConflictResolutionResult;

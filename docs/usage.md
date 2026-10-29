@@ -138,6 +138,10 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
    The task detail view includes terminal output, git diffs, a file browser, branch comparison, and line comments that can be sent back to the agent. The git view can also compare branches and inspect uncommitted work in either the home repo or the selected task worktree.
 
+   Click a diff line to write a comment, then choose **Add comment** (⌘/Ctrl+Enter) to keep it inline as an **Unsent** draft. Use **Edit** or **Delete** while reviewing other lines and files. **Send all comments** (⌘/Ctrl+Shift+Enter) submits the latest non-empty comments together to the task's review-ready agent; nothing is sent when adding or editing an individual comment. Drafts clear only after confirmed delivery. If delivery cannot be confirmed, check the agent before resending.
+
+   Drafts survive navigation between Files, Git, Terminal, tasks, and comparisons in the same window. They belong to their original project/task/comparison and are not shared between windows or retained after a window reload or close. If a line changes or disappears, its draft remains available separately with its original code context rather than moving silently to another line.
+
 6. Land the work.
 
    Use Commit, Open PR, Squash Merge, cherry-pick, or the git view to move reviewed work back toward your base branch. Prompt shortcuts help automate repetitive landing steps.

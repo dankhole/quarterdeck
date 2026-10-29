@@ -139,6 +139,8 @@ The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact 
 - **Pop out Compare** opens a separate Compare-only window pinned to the current project/task, selected refs, and comparison options. The main window can then show the agent terminal or another task without retargeting the comparison. Ref names remain selected while their contents may update.
 - The detached viewer is read-only: it does not mount the full application, terminal/session providers, editable Files workspaces, draft recovery, or agent-send/comment controls. Code-navigation results open a read-only file preview in that window. Closing it leaves the main window and agents running.
 
+Inline diff comments are window-local review drafts, not terminal input or durable board state. Their owner outlives Git-view mounts and isolates project, task creation identity, and comparison selections. Adding/updating a draft never delivers input; the review footer sends the latest non-empty drafts together and clears only after acknowledgement. Drafts and pending delivery state survive navigation, but not a window reload/close. Changed or missing line anchors retain original context in a separate draft presentation instead of silently reattaching to a different line. Final delivery uses the existing exact-session reply admission; an unavailable, busy, or approval-waiting agent cannot consume review drafts.
+
 ## Side Panels
 
 ### Projects
