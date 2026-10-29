@@ -1,9 +1,76 @@
+import * as childProcess from "node:child_process";
 import { ChildProcess } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
-import { _testing } from "../../../scripts/agent-lab/browser-session";
+import * as browserProcesses from "../../../scripts/agent-lab/browser-processes";
+import { _testing, closeAgentLabBrowserSession } from "../../../scripts/agent-lab/browser-session";
 import * as core from "../../../src/core";
 
+vi.mock("node:child_process", async (importOriginal) => ({
+	...(await importOriginal<typeof childProcess>()),
+	spawn: vi.fn(),
+}));
+
 describe("Agent Lab browser session cleanup", () => {
+	it("reaps finalized/abandoned sessions without launching another CLI", async () => {
+		const group = {
+			pid: 80906,
+			pgid: 80906,
+			startTime: "Thu Oct 22 16:31:06 2026",
+			commandLine: "node cliDaemon.js qd-abandoned-run",
+		};
+		const tree = {
+			rootPids: [80906],
+			processPids: [80906, 80907],
+			identities: [
+				group,
+				{ pid: 80907, pgid: 80906, startTime: "Thu Oct 22 16:31:07 2026", commandLine: "chrome-headless-shell" },
+			],
+			groups: [group],
+		};
+		const inspect = vi
+			.spyOn(browserProcesses, "findAgentLabBrowserProcessTree")
+			.mockResolvedValueOnce(tree)
+			.mockResolvedValueOnce(tree)
+			.mockResolvedValue({ rootPids: [], processPids: [] });
+		const terminate = vi.spyOn(browserProcesses, "terminateAgentLabBrowserProcessTree").mockResolvedValue([]);
+		const spawn = vi.mocked(childProcess.spawn).mockImplementation(() => {
+			throw new Error("Recovery must not start a CLI");
+		});
+		try {
+			await expect(
+				closeAgentLabBrowserSession("/repo", "qd-abandoned-run", { mode: "owned-processes-only" }),
+			).resolves.toBeUndefined();
+			expect(inspect).toHaveBeenNthCalledWith(1, "/repo", "qd-abandoned-run", { groups: [] });
+			expect(inspect).toHaveBeenNthCalledWith(2, "/repo", "qd-abandoned-run", { groups: [group] });
+			expect(terminate).toHaveBeenCalledWith(tree);
+			expect(spawn).not.toHaveBeenCalled();
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
+	it("retains a reparented child's identity across cleanup retry passes", async () => {
+		const identity = { pid: 11, startTime: "Thu Oct 22 16:31:07 2026", commandLine: "chrome-headless-shell" };
+		const group = {
+			pid: 10,
+			pgid: 10,
+			startTime: "Thu Oct 22 16:31:06 2026",
+			commandLine: "node cliDaemon.js qd-abandoned-run",
+		};
+		const tree = { rootPids: [10], processPids: [10, 11], identities: [identity], groups: [group] };
+		const terminate = vi.fn().mockResolvedValueOnce([11]).mockResolvedValue([]);
+		const inspect = vi.fn(async () => ({ rootPids: [], processPids: [] }));
+		await expect(
+			_testing.terminateUntilBrowserSessionIsQuiescent(tree, { inspect, terminate, wait: async () => {} }),
+		).resolves.toEqual([]);
+		expect(terminate).toHaveBeenNthCalledWith(2, {
+			rootPids: [],
+			processPids: [11],
+			identities: [identity],
+			groups: [group],
+		});
+	});
+
 	it("terminates a daemon that appears after the first empty verification snapshot", async () => {
 		const replacementTree = { rootPids: [20], processPids: [20, 21] };
 		const snapshots = [

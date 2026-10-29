@@ -1,12 +1,25 @@
-import { describe, expect, it } from "vitest";
+import type * as childProcess from "node:child_process";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { findAgentLabBrowserProcessTree } from "../../../scripts/agent-lab/browser-processes";
 
 import {
 	collectOwnedDesktopProcesses,
 	findMarkedDesktopProcesses,
+	listDesktopProcesses,
 	parseDesktopProcessList,
 	stopOwnedDesktopProcesses,
 } from "../../../scripts/agent-lab/desktop-processes";
 import type { DesktopLabProcess } from "../../../scripts/agent-lab/desktop-types";
+
+const processList = vi.hoisted(() => ({ run: vi.fn() }));
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof childProcess>();
+	return {
+		...actual,
+		execFile: Object.assign(vi.fn(), { [Symbol.for("nodejs.util.promisify.custom")]: processList.run }),
+	};
+});
 
 function processRecord(
 	pid: number,
@@ -18,6 +31,53 @@ function processRecord(
 }
 
 describe("desktop lab owned process cleanup", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.clearAllMocks();
+	});
+
+	it.each([
+		["it_IT.UTF-8", "gio ott  1 12:00:00 2026"],
+		["nl_NL.UTF-8", "do  okt  1 12:00:00 2026"],
+	])("keeps browser discovery admissible with a localized %s desktop census", async (locale, localizedBirth) => {
+		vi.stubEnv("LC_ALL", locale);
+		vi.stubEnv("LC_TIME", locale);
+		vi.stubEnv("LANG", locale);
+		vi.stubEnv("LC_CTYPE", "UTF-8");
+		const daemonPath = "/repo/café/web-ui/node_modules/playwright-core/lib/entry/cliDaemon.js";
+		processList.run.mockImplementation(
+			async (_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
+				const englishDates = options.env?.LC_TIME === "C" && !options.env.LC_ALL;
+				const birth = englishDates ? "Thu Oct  1 12:00:00 2026" : localizedBirth;
+				return {
+					stdout: `10 1 S ${birth} /bin/node ${daemonPath} qd-localized-census\n11 10 S ${birth} /tmp/chrome-headless-shell\n`,
+					stderr: "",
+				};
+			},
+		);
+		const census = await listDesktopProcesses();
+		const tree = await findAgentLabBrowserProcessTree("/repo/café", "qd-localized-census", {
+			platform: "darwin",
+			resolveDaemonEntrypoint: () => daemonPath,
+			runProcessList: async () => ({
+				ok: true,
+				stdout: census
+					.map(({ pid, parentPid, startedAt, command }) => `${pid} ${parentPid} ${startedAt} ${command}`)
+					.join("\n"),
+			}),
+		});
+		expect(tree.rootPids).toEqual([10]);
+		expect(tree.processPids).toEqual([10, 11]);
+		expect(processList.run).toHaveBeenCalledWith(
+			"/bin/ps",
+			["-ax", "-o", "pid=,ppid=,stat=,lstart=,command="],
+			expect.objectContaining({
+				env: expect.objectContaining({ LC_TIME: "C", LC_CTYPE: locale, LANG: locale, TZ: "UTC" }),
+			}),
+		);
+		expect(processList.run.mock.calls[0]?.[2]?.env?.LC_ALL).toBeUndefined();
+	});
+
 	it("parses macOS process identities while excluding zombies", () => {
 		expect(
 			parseDesktopProcessList(

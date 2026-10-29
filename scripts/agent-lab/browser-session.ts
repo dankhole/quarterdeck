@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { terminateProcessTree } from "../../src/core";
 
 import {
+	type AgentLabBrowserProcessIdentity,
 	type AgentLabBrowserProcessTree,
 	findAgentLabBrowserProcessTree,
 	mergeAgentLabBrowserProcessTrees,
+	processListEnvironment,
 	terminateAgentLabBrowserProcessTree,
 } from "./browser-processes";
 
@@ -35,7 +37,15 @@ async function terminateUntilBrowserSessionIsQuiescent(
 		remainingPids = await dependencies.terminate(pendingTree);
 		const verifiedTree = await dependencies.inspect();
 		if (remainingPids.length > 0 || verifiedTree.processPids.length > 0) {
-			pendingTree = mergeAgentLabBrowserProcessTrees({ rootPids: [], processPids: remainingPids }, verifiedTree);
+			pendingTree = mergeAgentLabBrowserProcessTrees(
+				{
+					rootPids: pendingTree.rootPids.filter((pid) => remainingPids.includes(pid)),
+					processPids: remainingPids,
+					identities: pendingTree.identities?.filter(({ pid }) => remainingPids.includes(pid)),
+					...(pendingTree.groups?.length ? { groups: pendingTree.groups } : {}),
+				},
+				verifiedTree,
+			);
 			continue;
 		}
 
@@ -67,8 +77,8 @@ interface BrowserCloseResult {
 }
 
 export interface AgentLabBrowserCloseOptions {
-	/** Never signal a PID or process group if the wrapper cannot confirm closure. */
-	mode?: "named-session-only";
+	/** Named-session-only never signals PIDs; owned-processes-only skips the CLI for finalized/abandoned runs. */
+	mode?: "named-session-only" | "owned-processes-only";
 }
 
 function parseStrictBrowserProcesses(stdout: string): Array<{ pid: number; parentPid: number; command: string }> {
@@ -94,8 +104,13 @@ async function inspectNamedBrowserSession(repoRoot: string, sessionName: string)
 	const stdout = await new Promise<string>((resolve, reject) => {
 		execFile(
 			"/bin/ps",
-			["-ax", "-o", "pid=,ppid=,command="],
-			{ encoding: "utf8", timeout: BROWSER_CLOSE_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+			["-ax", "-o", "pid=,ppid=,pgid=,lstart=,command="],
+			{
+				encoding: "utf8",
+				timeout: BROWSER_CLOSE_TIMEOUT_MS,
+				maxBuffer: 4 * 1024 * 1024,
+				env: processListEnvironment(process.env),
+			},
 			(error, output) => {
 				if (error) reject(new Error("Browser process inspection is unconfirmed."));
 				else resolve(output);
@@ -201,16 +216,22 @@ export async function closeAgentLabBrowserSession(
 		});
 	}
 	const inspectionErrors: Error[] = [];
+	let groups: AgentLabBrowserProcessIdentity[] = [];
 	const inspect = async () => {
 		try {
-			return await findAgentLabBrowserProcessTree(repoRoot, sessionName);
+			const tree = await findAgentLabBrowserProcessTree(repoRoot, sessionName, { groups });
+			// Retain a verified group across daemon exit, but retire it once empty.
+			groups = tree.groups ?? [];
+			return tree;
 		} catch (error) {
 			inspectionErrors.push(error instanceof Error ? error : new Error(String(error)));
 			return { rootPids: [], processPids: [] };
 		}
 	};
 	const beforeClose = await inspect();
-	const closeResult = await close();
+	// Finalized/abandoned manifests already fence new browser commands. Do not
+	// launch another Playwright CLI (or require installed dependencies) to reap them.
+	const closeResult = options.mode === "owned-processes-only" ? undefined : await close();
 	const afterClose = await inspect();
 	const remainingPids = await terminateUntilBrowserSessionIsQuiescent(
 		mergeAgentLabBrowserProcessTrees(beforeClose, afterClose),
@@ -224,6 +245,7 @@ export async function closeAgentLabBrowserSession(
 		throw new Error(`Agent Lab browser cleanup left process IDs running: ${remainingPids.join(", ")}`);
 	}
 	if (inspectionErrors.length > 0) throw inspectionErrors[0];
+	if (!closeResult) return;
 	if (closeResult.error) throw closeResult.error;
 	if (closeResult.exitCode !== 0) {
 		throw new Error(`Browser close command exited with ${closeResult.signal ?? closeResult.exitCode ?? "unknown"}.`);

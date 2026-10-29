@@ -141,7 +141,9 @@ async function captureCohort(
 	const tree = await findAgentLabBrowserProcessTree(scope.repoRoot, scope.browserSession, {
 		runProcessList: async () => ({
 			ok: true,
-			stdout: census.map(({ pid, parentPid, command }) => `${pid} ${parentPid} ${command}`).join("\n"),
+			stdout: census
+				.map(({ pid, parentPid, startedAt, command }) => `${pid} ${parentPid} ${startedAt} ${command}`)
+				.join("\n"),
 		}),
 	});
 	if (tree.rootPids.length !== 1 || tree.processPids.length < 2)

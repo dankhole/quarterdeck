@@ -362,35 +362,32 @@ async function statusAgentLab(runId: string | undefined, options: OutputOptions)
 async function stopAgentLab(runId: string | undefined, options: OutputOptions): Promise<void> {
 	const manifestPath = await resolveManifestPath(runId);
 	let manifest = await readAgentLabManifest(manifestPath);
-	if (manifest.status === "stopped" || manifest.status === "failed") {
-		if (options.json) {
-			printJson(manifest);
-		} else {
-			printManifestSummary(manifest);
+	const finalized = (manifest.status === "stopped" || manifest.status === "failed") && manifest.stoppedAt !== null;
+	if (finalized || !isProcessAlive(manifest.supervisorPid)) {
+		if (!finalized) {
+			const liveChildren = Object.entries(manifest.processes)
+				.filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== null)
+				.filter(([, child]) => isProcessAlive(child.pid));
+			manifest = {
+				...manifest,
+				status: "failed",
+				stoppedAt: new Date().toISOString(),
+				failure: manifest.failure ?? `Supervisor ${manifest.supervisorPid} exited without finalizing the run.`,
+			};
+			if (liveChildren.length > 0) {
+				manifest.failure += ` Managed processes still appear alive (${liveChildren.map(([label, child]) => `${label}:${child.pid}`).join(", ")}). Inspect ${manifest.artifactDir} before terminating them.`;
+			}
+			// Fence new browser commands before recovering an abandoned session.
+			await writeJsonAtomic(manifestPath, manifest);
 		}
-		assertAgentLabDidNotFail(manifest);
-		return;
-	}
-	if (!isProcessAlive(manifest.supervisorPid)) {
-		const liveChildren = Object.entries(manifest.processes)
-			.filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== null)
-			.filter(([, child]) => isProcessAlive(child.pid));
-		if (liveChildren.length > 0) {
-			throw new Error(
-				`Agent-lab supervisor ${manifest.supervisorPid} is not running, but managed processes still appear alive (${liveChildren.map(([label, child]) => `${label}:${child.pid}`).join(", ")}). Inspect ${manifest.artifactDir} before terminating them.`,
-			);
-		}
-		manifest = {
-			...manifest,
-			status: "failed",
-			stoppedAt: new Date().toISOString(),
-			failure: manifest.failure ?? `Supervisor ${manifest.supervisorPid} exited without finalizing the run.`,
-		};
 		try {
-			await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession);
+			await closeAgentLabBrowserSession(manifest.repoRoot, manifest.browserSession, {
+				mode: "owned-processes-only",
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			manifest.failure = `${manifest.failure} Browser cleanup also failed: ${message}`;
+			manifest.status = "failed";
+			manifest.failure = `${manifest.failure ? `${manifest.failure} ` : ""}Browser cleanup failed: ${message}`;
 		}
 		await writeJsonAtomic(manifestPath, manifest);
 		if (options.json) {
@@ -404,7 +401,7 @@ async function stopAgentLab(runId: string | undefined, options: OutputOptions): 
 	await writeJsonAtomic(manifest.stopRequestPath, { requestedAt: new Date().toISOString(), requestedBy: process.pid });
 	const stopped = await waitForManifest(
 		manifestPath,
-		(value) => value.status === "stopped" || value.status === "failed",
+		(value) => (value.status === "stopped" || value.status === "failed") && value.stoppedAt !== null,
 		STOP_TIMEOUT_MS + 5_000,
 	);
 	if (options.json) {

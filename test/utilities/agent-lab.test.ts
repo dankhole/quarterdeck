@@ -1742,7 +1742,7 @@ describe("agent-lab manifest compatibility", () => {
 					webUrl: "http://127.0.0.1:4174",
 					browserConfigPath: join(root, "browser.json"),
 					browserOutputPath: join(root, "browser"),
-					browserSession: "legacy-browser",
+					browserSession: "qd-legacy-run",
 					scenario: "idle",
 					keepTemp: true,
 					supervisorPid: process.pid,

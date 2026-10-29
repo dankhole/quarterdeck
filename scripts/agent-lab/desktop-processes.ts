@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { processListEnvironment } from "./browser-processes";
 import type { DesktopLabProcess } from "./desktop-types";
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +24,7 @@ export function parseDesktopProcessList(contents: string): DesktopLabProcess[] {
 export async function listDesktopProcesses(): Promise<DesktopLabProcess[]> {
 	const { stdout } = await execFileAsync("/bin/ps", ["-ax", "-o", "pid=,ppid=,stat=,lstart=,command="], {
 		encoding: "utf8",
+		env: processListEnvironment(process.env),
 		timeout: 5_000,
 		// A busy machine under heavy load runs far more processes than Node's
 		// 1MB execFile default tolerates, which previously surfaced as a
