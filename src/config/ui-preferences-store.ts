@@ -38,6 +38,7 @@ export class UiPreferencesStore {
 			const previous = await this.read();
 			const values = { ...previous.values };
 			const collapsedProjectGroups = { ...previous.collapsedProjectGroups };
+			let gitViews = previous.gitViews;
 			for (const [key, value] of Object.entries(patch.values)) {
 				if (patch.mode === "seed" && Object.hasOwn(values, key)) continue;
 				Object.assign(values, { [key]: value });
@@ -46,15 +47,25 @@ export class UiPreferencesStore {
 				if (patch.mode === "seed" && Object.hasOwn(collapsedProjectGroups, scope)) continue;
 				collapsedProjectGroups[scope] = ids;
 			}
+			for (const [scope, update] of Object.entries(patch.gitViews ?? {})) {
+				const preference = { ...(gitViews && Object.hasOwn(gitViews, scope) ? gitViews[scope] : {}) };
+				for (const [field, value] of Object.entries(update)) {
+					if (value === undefined || (patch.mode === "seed" && Object.hasOwn(preference, field))) continue;
+					Object.assign(preference, { [field]: value });
+				}
+				if (Object.keys(preference).length) gitViews = { ...gitViews, [scope]: preference };
+			}
 			if (
 				JSON.stringify(values) === JSON.stringify(previous.values) &&
-				JSON.stringify(collapsedProjectGroups) === JSON.stringify(previous.collapsedProjectGroups)
+				JSON.stringify(collapsedProjectGroups) === JSON.stringify(previous.collapsedProjectGroups) &&
+				JSON.stringify(gitViews) === JSON.stringify(previous.gitViews)
 			)
 				return previous;
 			const next = runtimeUiPreferencesSchema.parse({
 				revision: previous.revision + 1,
 				values,
 				collapsedProjectGroups,
+				...(gitViews === undefined ? {} : { gitViews }),
 			});
 			await lockedFileSystem.writeTextFileAtomic(this.path, JSON.stringify(next), { lock: null });
 			return next;

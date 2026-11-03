@@ -1,5 +1,6 @@
 import {
 	RUNTIME_UI_PREFERENCE_KEYS,
+	type RuntimeGitViewPreference,
 	type RuntimeUiPreferenceKey,
 	type RuntimeUiPreferences,
 	type RuntimeUiPreferencesPatch,
@@ -106,7 +107,11 @@ export class SharedUiPreferencesStore {
 		this.transport = transport;
 		this.onSaveError = onSaveError;
 		let snapshot = runtimeUiPreferencesSchema.parse(await transport.read());
-		if (Object.keys(legacy.values).length || Object.keys(legacy.collapsedProjectGroups ?? {}).length) {
+		if (
+			Object.keys(legacy.values).length ||
+			Object.keys(legacy.collapsedProjectGroups ?? {}).length ||
+			Object.keys(legacy.gitViews ?? {}).length
+		) {
 			// Seed intent is merged under the runtime lock, so another client's saved
 			// values win even if they arrived after the preceding read.
 			snapshot = runtimeUiPreferencesSchema.parse(await transport.patch(legacy));
@@ -138,6 +143,32 @@ export class SharedUiPreferencesStore {
 	readCollapsedGroups(scope: string): string[] {
 		const value = this.pending.get(`groups:${scope}`)?.value ?? this.snapshot?.collapsedProjectGroups[scope];
 		return Array.isArray(value) ? (value as string[]) : [];
+	}
+
+	readGitView(scope: string): RuntimeGitViewPreference {
+		const views = this.snapshot?.gitViews;
+		const preference = { ...(views && Object.hasOwn(views, scope) ? views[scope] : {}) };
+		const activeTab = this.pending.get(`git:${scope}:activeTab`);
+		const collapsedDirectories = this.pending.get(`git:${scope}:collapsedDirectories`);
+		if (activeTab) preference.activeTab = activeTab.value as RuntimeGitViewPreference["activeTab"];
+		if (collapsedDirectories) preference.collapsedDirectories = collapsedDirectories.value as string[];
+		return preference;
+	}
+
+	writeGitView(scope: string, preference: RuntimeGitViewPreference): void {
+		const result = runtimeUiPreferencesPatchSchema.safeParse({
+			mode: "patch",
+			values: {},
+			gitViews: { [scope]: preference },
+		});
+		if (!result.success) {
+			this.onSaveError(new Error("The Git view preference is invalid."));
+			return;
+		}
+		const entries: Array<[string, unknown]> = Object.entries(result.data.gitViews?.[scope] ?? {})
+			.filter(([, value]) => value !== undefined)
+			.map(([field, value]) => [`git:${scope}:${field}`, value]);
+		if (entries.length) this.enqueue(result.data, entries);
 	}
 
 	write(key: RuntimeUiPreferenceKey, raw: string | null): void {

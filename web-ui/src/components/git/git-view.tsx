@@ -79,6 +79,8 @@ export function GitView({
 		repositoryScope,
 		activeTab,
 		setActiveTab,
+		collapsedDirectories,
+		setCollapsedDirectories,
 		fileTreeVisible,
 		setFileTreeVisible,
 		fileTreePercent,
@@ -253,6 +255,8 @@ export function GitView({
 										}}
 									>
 										<FileTreePanel
+											collapsedDirectories={collapsedDirectories}
+											onCollapsedDirectoriesChange={setCollapsedDirectories}
 											projectFiles={isRuntimeAvailable ? activeFiles : null}
 											selectedPath={selectedPath}
 											onSelectPath={setSelectedPath}

@@ -6,16 +6,14 @@ import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/
 
 export type GitViewTab = "uncommitted" | "compare";
 
-// --- Tab persistence ---
+// --- Preference scope ---
 
-export function loadGitViewTab(): GitViewTab {
-	const stored = readLocalStorageItem(LocalStorageKey.GitViewActiveTab);
-	if (stored === "uncommitted" || stored === "compare") return stored;
-	return "uncommitted";
-}
-
-export function persistGitViewTab(tab: GitViewTab): void {
-	writeLocalStorageItem(LocalStorageKey.GitViewActiveTab, tab);
+export function gitViewPreferenceScopeKey(
+	projectId: string | null,
+	taskId: string | null,
+	taskCreatedAt?: number,
+): string {
+	return JSON.stringify([projectId, taskId, taskId ? (taskCreatedAt ?? null) : null]);
 }
 
 // --- Last-selected-path persistence ---

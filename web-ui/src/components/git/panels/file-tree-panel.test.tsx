@@ -68,6 +68,36 @@ describe("FileTreePanel folder expansion", () => {
 		expect(button("app.ts").hasAttribute("aria-expanded")).toBe(false);
 	});
 
+	it("uses restored folder state and reports expansion changes to its owner", async () => {
+		const onChange = vi.fn();
+		const renderControlled = async (directories: string[]) => {
+			await act(async () =>
+				root.render(
+					<FileTreePanel
+						projectFiles={files}
+						selectedPath={null}
+						onSelectPath={onSelectPath}
+						collapsedDirectories={new Set(directories)}
+						onCollapsedDirectoriesChange={onChange}
+					/>,
+				),
+			);
+		};
+		await renderControlled(["src/nested"]);
+		expect(button("src").getAttribute("aria-expanded")).toBe("true");
+		expect(button("nested").getAttribute("aria-expanded")).toBe("false");
+		await click("nested");
+		expect(onChange).toHaveBeenLastCalledWith(new Set());
+		await renderControlled([]);
+		expect(button("nested").getAttribute("aria-expanded")).toBe("true");
+		await click("src");
+		expect(onChange).toHaveBeenLastCalledWith(new Set(["src"]));
+		await act(async () => root.render(null));
+		await renderControlled(["src"]);
+		expect(button("src").getAttribute("aria-expanded")).toBe("false");
+		expect(container.textContent).not.toContain("app.ts");
+	});
+
 	it("preserves nested collapse choices when a parent reopens and files refresh", async () => {
 		await render();
 		await click("nested");

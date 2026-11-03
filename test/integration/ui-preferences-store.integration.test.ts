@@ -61,6 +61,100 @@ describe("shared UI preference persistence", () => {
 		}
 	});
 
+	it("merges Git view fields and scopes across concurrent clients and a fresh disk store", async () => {
+		const temp = createTempDir();
+		try {
+			const path = join(temp.path, "ui-preferences.json");
+			const legacy = {
+				revision: 7,
+				values: { "quarterdeck.file-browser-word-wrap": false },
+				collapsedProjectGroups: { "org-1": ["group-a"] },
+			};
+			await writeFile(path, JSON.stringify(legacy));
+			const browser = new UiPreferencesStore(path);
+			const desktop = new UiPreferencesStore(path);
+			expect(await browser.read()).toEqual(legacy);
+			await Promise.all([
+				browser.patch({ mode: "patch", values: {}, gitViews: { "project/task-a": { activeTab: "compare" } } }),
+				desktop.patch({
+					mode: "patch",
+					values: {},
+					gitViews: { "project/task-a": { collapsedDirectories: ["src", "docs/guides"] } },
+				}),
+				desktop.patch({ mode: "patch", values: {}, gitViews: { "project/task-b": { activeTab: "uncommitted" } } }),
+			]);
+			const saved = await new UiPreferencesStore(path).read();
+			expect(saved).toEqual({
+				...legacy,
+				revision: 10,
+				gitViews: {
+					"project/task-a": { activeTab: "compare", collapsedDirectories: ["src", "docs/guides"] },
+					"project/task-b": { activeTab: "uncommitted" },
+				},
+			});
+			await browser.patch({
+				mode: "seed",
+				values: {},
+				gitViews: {
+					"project/task-a": { activeTab: "uncommitted", collapsedDirectories: [] },
+					"project/task-b": { activeTab: "compare", collapsedDirectories: ["test"] },
+				},
+			});
+			expect((await desktop.read()).gitViews).toEqual({
+				...saved.gitViews,
+				"project/task-b": { activeTab: "uncommitted", collapsedDirectories: ["test"] },
+			});
+			await desktop.patch({
+				mode: "patch",
+				values: {},
+				gitViews: { "project/task-a": { activeTab: "uncommitted", collapsedDirectories: [] } },
+			});
+			const beforeSeed = await browser.read();
+			expect(
+				await browser.patch({
+					mode: "seed",
+					values: {},
+					gitViews: { "project/task-a": { activeTab: "compare", collapsedDirectories: ["src"] } },
+				}),
+			).toEqual(beforeSeed);
+			expect((await new UiPreferencesStore(path).read()).gitViews?.["project/task-a"]).toEqual({
+				activeTab: "uncommitted",
+				collapsedDirectories: [],
+			});
+		} finally {
+			await temp.cleanupAsync();
+		}
+	});
+
+	it("bounds Git view scopes, paths, counts, and total encoded preference bytes", async () => {
+		const invalidViews = [
+			{ "": {} },
+			{ ["s".repeat(1_025)]: {} },
+			{ scope: { activeTab: "history" } },
+			{ scope: { collapsedDirectories: [""] } },
+			{ scope: { collapsedDirectories: ["p".repeat(4_097)] } },
+			{ scope: { collapsedDirectories: Array.from({ length: 513 }, () => "src") } },
+			Object.fromEntries(Array.from({ length: 257 }, (_, index) => [`scope-${index}`, {}])),
+			{ scope: { collapsedDirectories: Array.from({ length: 20 }, () => "é".repeat(2_000)) } },
+		];
+		for (const gitViews of invalidViews) {
+			expect(runtimeUiPreferencesPatchSchema.safeParse({ mode: "patch", values: {}, gitViews }).success).toBe(false);
+		}
+		const temp = createTempDir();
+		try {
+			const path = join(temp.path, "ui-preferences.json");
+			const store = new UiPreferencesStore(path);
+			const collapsedDirectories = Array.from({ length: 24 }, (_, index) => `${index}/${"p".repeat(2_000)}`);
+			const saved = await store.patch({ mode: "patch", values: {}, gitViews: { first: { collapsedDirectories } } });
+			await expect(
+				store.patch({ mode: "patch", values: {}, gitViews: { second: { collapsedDirectories } } }),
+			).rejects.toThrow("storage limit");
+			expect(await new UiPreferencesStore(path).read()).toEqual(saved);
+		} finally {
+			await temp.cleanupAsync();
+		}
+	});
+
 	it("keeps independent organization seeds and rejects arbitrary storage and malformed disk data", async () => {
 		const temp = createTempDir();
 		try {

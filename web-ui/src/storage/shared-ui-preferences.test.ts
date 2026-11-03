@@ -27,9 +27,11 @@ describe("browser shared UI preferences", () => {
 		expect(store.read(key)).toBe("false");
 		store.write(key, "true");
 		store.writeCollapsedGroups("org-1", ["ungrouped"]);
+		store.writeGitView("task-a", { activeTab: "compare" });
 		await store.flush();
 		expect(store.read(key)).toBe("false");
 		expect(store.readCollapsedGroups("org-1")).toEqual([]);
+		expect(store.readGitView("task-a")).toEqual({});
 		store.apply({ ...empty, revision: 2, values: { [key]: true } });
 		expect(store.read(key)).toBe("true");
 	});
@@ -91,6 +93,128 @@ describe("browser shared UI preferences", () => {
 		expect(store.read("quarterdeck.onboarding.tips.dismissed")).toBe("true");
 		store.apply(empty);
 		expect(store.read(key)).toBe("true");
+	});
+
+	it("defaults missing Git views to empty and initializes Git-only seeds from runtime authority", async () => {
+		const store = new SharedUiPreferencesStore();
+		expect(store.readGitView("task-a")).toEqual({});
+		expect(store.readGitView("constructor")).toEqual({});
+		const seed = { mode: "seed" as const, values: {}, gitViews: { "task-a": { activeTab: "compare" as const } } };
+		const patch = vi.fn().mockResolvedValue({
+			...empty,
+			revision: 1,
+			gitViews: { "task-a": { activeTab: "uncommitted", collapsedDirectories: ["src"] } },
+		});
+		await store.initialize({ read: async () => empty, patch }, seed, vi.fn());
+		expect(patch).toHaveBeenCalledWith(seed);
+		expect(store.readGitView("task-a")).toEqual({ activeTab: "uncommitted", collapsedDirectories: ["src"] });
+		expect(store.readGitView("task-b")).toEqual({});
+	});
+
+	it("preserves pending Git view fields and independent scopes across snapshots and acknowledgments", async () => {
+		const store = new SharedUiPreferencesStore();
+		let releaseFirst: (value: RuntimeUiPreferences) => void = () => {};
+		let releaseSecond: (value: RuntimeUiPreferences) => void = () => {};
+		const firstWrite = new Promise<RuntimeUiPreferences>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const secondWrite = new Promise<RuntimeUiPreferences>((resolve) => {
+			releaseSecond = resolve;
+		});
+		const patch = vi
+			.fn()
+			.mockImplementationOnce(() => firstWrite)
+			.mockImplementationOnce(() => secondWrite)
+			.mockResolvedValueOnce({
+				...empty,
+				revision: 4,
+				gitViews: {
+					"task-a": { activeTab: "compare", collapsedDirectories: ["src"] },
+					"task-b": { activeTab: "compare", collapsedDirectories: ["docs"] },
+				},
+			})
+			.mockResolvedValueOnce({
+				...empty,
+				revision: 5,
+				gitViews: {
+					"task-a": { activeTab: "uncommitted", collapsedDirectories: ["src"] },
+					"task-b": { activeTab: "compare", collapsedDirectories: ["docs"] },
+				},
+			});
+		await store.initialize({ read: async () => empty, patch }, collectLegacyUiPreferences(null), vi.fn());
+		store.writeGitView("task-a", { activeTab: "compare" });
+		store.writeGitView("task-a", { collapsedDirectories: ["src"] });
+		store.writeGitView("task-b", { activeTab: "compare" });
+		store.writeGitView("task-a", { activeTab: "uncommitted" });
+		await Promise.resolve();
+		expect(patch).toHaveBeenCalledTimes(1);
+		store.apply({
+			...empty,
+			revision: 2,
+			gitViews: {
+				"task-a": { activeTab: "compare", collapsedDirectories: ["remote"] },
+				"task-b": { collapsedDirectories: ["docs"] },
+			},
+		});
+		expect(store.readGitView("task-a")).toEqual({ activeTab: "uncommitted", collapsedDirectories: ["src"] });
+		expect(store.readGitView("task-b")).toEqual({ activeTab: "compare", collapsedDirectories: ["docs"] });
+		releaseFirst({ ...empty, revision: 1, gitViews: { "task-a": { activeTab: "compare" } } });
+		await vi.waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
+		expect(store.readGitView("task-a")).toEqual({ activeTab: "uncommitted", collapsedDirectories: ["src"] });
+		releaseSecond({
+			...empty,
+			revision: 3,
+			gitViews: {
+				"task-a": { activeTab: "compare", collapsedDirectories: ["src"] },
+				"task-b": { collapsedDirectories: ["docs"] },
+			},
+		});
+		await store.flush();
+		expect(patch.mock.calls).toEqual([
+			[{ mode: "patch", values: {}, gitViews: { "task-a": { activeTab: "compare" } } }],
+			[{ mode: "patch", values: {}, gitViews: { "task-a": { collapsedDirectories: ["src"] } } }],
+			[{ mode: "patch", values: {}, gitViews: { "task-b": { activeTab: "compare" } } }],
+			[{ mode: "patch", values: {}, gitViews: { "task-a": { activeTab: "uncommitted" } } }],
+		]);
+		expect(store.readGitView("task-a")).toEqual({ activeTab: "uncommitted", collapsedDirectories: ["src"] });
+		expect(store.readGitView("task-b")).toEqual({ activeTab: "compare", collapsedDirectories: ["docs"] });
+	});
+
+	it("validates Git view writes and rolls back failed pending fields without blocking later writes", async () => {
+		const store = new SharedUiPreferencesStore();
+		const onError = vi.fn();
+		const patch = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("offline"))
+			.mockResolvedValueOnce({
+				...empty,
+				revision: 2,
+				gitViews: { task: { activeTab: "compare", collapsedDirectories: [] } },
+			});
+		await store.initialize(
+			{
+				read: async () => ({
+					...empty,
+					revision: 1,
+					gitViews: { task: { activeTab: "compare", collapsedDirectories: ["src"] } },
+				}),
+				patch,
+			},
+			collectLegacyUiPreferences(null),
+			onError,
+		);
+		store.writeGitView("", { activeTab: "compare" });
+		store.writeGitView("task", {});
+		expect(onError).toHaveBeenCalledTimes(1);
+		expect(patch).not.toHaveBeenCalled();
+		store.writeGitView("task", { activeTab: "uncommitted" });
+		expect(store.readGitView("task")).toEqual({ activeTab: "uncommitted", collapsedDirectories: ["src"] });
+		await store.flush();
+		expect(onError).toHaveBeenCalledTimes(2);
+		expect(store.readGitView("task")).toEqual({ activeTab: "compare", collapsedDirectories: ["src"] });
+		store.writeGitView("task", { collapsedDirectories: [] });
+		await store.flush();
+		expect(store.readGitView("task")).toEqual({ activeTab: "compare", collapsedDirectories: [] });
 	});
 
 	it("uses the seed response as authority and reports failed saves without poisoning later changes", async () => {

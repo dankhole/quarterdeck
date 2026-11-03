@@ -127,21 +127,25 @@ export function FileTreePanel({
 	onSelectPath,
 	panelFlex,
 	navigateToFile,
+	collapsedDirectories,
+	onCollapsedDirectoriesChange,
 }: {
 	projectFiles: RuntimeWorkdirFileChange[] | null;
 	selectedPath: string | null;
 	onSelectPath: (path: string) => void;
 	panelFlex?: string;
 	navigateToFile?: (nav: FileNavigation) => void;
+	collapsedDirectories?: ReadonlySet<string>;
+	onCollapsedDirectoriesChange?: (directories: ReadonlySet<string>) => void;
 }): React.ReactElement {
-	const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(() => new Set());
+	const [localCollapsedDirs, setLocalCollapsedDirs] = useState<ReadonlySet<string>>(() => new Set());
+	const collapsedDirs = collapsedDirectories ?? localCollapsedDirs;
 	const toggleDirectory = (path: string) => {
-		setCollapsedDirs((previous) => {
-			const next = new Set(previous);
-			if (next.has(path)) next.delete(path);
-			else next.add(path);
-			return next;
-		});
+		const next = new Set(collapsedDirs);
+		if (next.has(path)) next.delete(path);
+		else next.add(path);
+		if (onCollapsedDirectoriesChange) onCollapsedDirectoriesChange(next);
+		else setLocalCollapsedDirs(next);
 	};
 	const referencedPaths = useMemo(() => {
 		return projectFiles?.map((file) => file.path) ?? [];

@@ -135,6 +135,7 @@ The home grid uses dnd-kit with dedicated pointer/keyboard handles; the compact 
 
 - Renders `GitView` in home or task context.
 - Includes its own changed-file tree and internal tabs: Uncommitted, Compare.
+- Remembers the last tab and changed-file folder expansion per project/task creation identity (with a separate home scope), including across Git-view remounts and reloads. Both tabs share that task’s folder choices. New scopes default to Uncommitted with expanded folders; explicit file/compare navigation still selects its target tab.
 - Git history is a nested panel controlled by `SurfaceNavigationProvider`, not a separate main view.
 - **Pop out Compare** opens a separate Compare-only window pinned to the current project/task, selected refs, and comparison options. The main window can then show the agent terminal or another task without retargeting the comparison. Ref names remain selected while their contents may update.
 - The detached viewer is read-only: it does not mount the full application, terminal/session providers, editable Files workspaces, draft recovery, or agent-send/comment controls. Code-navigation results open a read-only file preview in that window. Closing it leaves the main window and agents running.
@@ -200,9 +201,10 @@ The storage adapter maps remembered preference keys to the shared store; the enu
 | `DetailSidebar` | Last written sidebar; empty string means collapsed |
 | `DetailLastSidebarTab` | Last task-tied sidebar |
 | `DetailSidePanelRatio` | Home/task side-panel width |
-| `GitViewActiveTab` | Current Git tab |
 | `GitViewFileTreeRatio` | Git changed-file tree width |
 | `DetailFileBrowserTreePanelRatio` | FilesView tree width |
+
+The shared UI-preference `gitViews` map owns task-scoped Git tab and collapsed-directory choices. The old global `GitViewActiveTab` value is not restored because it cannot identify the task it belonged to. An open view keeps its own choices; saved state seeds later visits rather than retargeting an active review from another window.
 
 Legacy `DetailActivePanel` and `DetailLastTaskTab` remain supported by migration helpers in `use-card-detail-layout.ts`. Main-view and sidebar keys are still written, but `loadMainView()` and `loadSidebar()` do not restore navigation on mount. `loadLastSidebarTab()` still seeds the remembered task sidebar, including the old `changes` → `task_column` mapping.
 

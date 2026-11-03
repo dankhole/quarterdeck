@@ -49,11 +49,22 @@ export const runtimeCollapsedProjectGroupsSchema = z
 	)
 	.refine((groups) => Object.keys(groups).length <= 32, "Too many organization preferences.");
 
+export const runtimeGitViewPreferenceSchema = z.strictObject({
+	activeTab: z.enum(["uncommitted", "compare"]).optional(),
+	collapsedDirectories: z.array(z.string().min(1).max(4_096)).max(512).optional(),
+});
+export type RuntimeGitViewPreference = z.infer<typeof runtimeGitViewPreferenceSchema>;
+
+export const runtimeGitViewsSchema = z
+	.record(z.string().min(1).max(1_024), runtimeGitViewPreferenceSchema)
+	.refine((views) => Object.keys(views).length <= 256, "Too many Git view preferences.");
+
 export const runtimeUiPreferencesSchema = z
 	.strictObject({
 		revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 		values: runtimeUiPreferenceValuesSchema,
 		collapsedProjectGroups: runtimeCollapsedProjectGroupsSchema,
+		gitViews: runtimeGitViewsSchema.optional(),
 	})
 	.refine(
 		(preferences) => new TextEncoder().encode(JSON.stringify(preferences)).byteLength <= MAX_UI_PREFERENCES_BYTES,
@@ -66,6 +77,7 @@ export const runtimeUiPreferencesPatchSchema = z
 		mode: z.enum(["patch", "seed"]),
 		values: runtimeUiPreferenceValuesSchema,
 		collapsedProjectGroups: runtimeCollapsedProjectGroupsSchema.optional(),
+		gitViews: runtimeGitViewsSchema.optional(),
 	})
 	.refine(
 		(patch) => new TextEncoder().encode(JSON.stringify(patch)).byteLength <= MAX_UI_PREFERENCES_BYTES,

@@ -6,9 +6,8 @@ import { arePathListsEqual } from "@/hooks/git/git-diff-data";
 import {
 	type GitViewTab,
 	getLastSelectedPath,
+	gitViewPreferenceScopeKey,
 	isTaskBaseRefResolved,
-	loadGitViewTab,
-	persistGitViewTab,
 	setLastSelectedPath,
 } from "@/hooks/git/git-view";
 import { type UseConflictResolutionResult, useConflictResolution } from "@/hooks/git/use-conflict-resolution";
@@ -18,6 +17,7 @@ import {
 	type UseGitViewCompareResult,
 	useGitViewCompare,
 } from "@/hooks/git/use-git-view-compare";
+import { useGitViewPreferences } from "@/hooks/git/use-git-view-preferences";
 import { useReviewDraft } from "@/hooks/git/use-review-draft";
 import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import { clampBetween } from "@/resize/resize-persistence";
@@ -67,7 +67,10 @@ export function useGitView({
 	pendingFileNavigation,
 	onFileNavigationConsumed,
 }: UseGitViewOptions): UseGitViewResult {
-	const [activeTab, setActiveTabState] = useState<GitViewTab>(loadGitViewTab);
+	const taskId = selectedCard?.card.id ?? null;
+	const { activeTab, setActiveTab, collapsedDirectories, setCollapsedDirectories } = useGitViewPreferences(
+		gitViewPreferenceScopeKey(currentProjectId, taskId, selectedCard?.card.createdAt),
+	);
 	const [fileTreeVisible, setFileTreeVisible] = useState(true);
 	const [fileTreeRatio, setFileTreeRatioState] = useState(() =>
 		loadResizePreference(GIT_VIEW_FILE_TREE_RATIO_PREFERENCE),
@@ -79,11 +82,8 @@ export function useGitView({
 	const [visibleDiffPaths, setVisibleDiffPaths] = useState<readonly string[]>([]);
 
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
-	const pendingCompareNavigationRef = useRef(pendingCompareNavigation);
-	pendingCompareNavigationRef.current = pendingCompareNavigation;
 	const { startDrag: startFileTreeResize } = useResizeDrag();
 
-	const taskId = selectedCard?.card.id ?? null;
 	const repositoryInfo = useTaskRepositoryInfoValue(taskId, selectedCard?.card.baseRef);
 	const repositoryScope = useMemo(
 		() => ({
@@ -143,13 +143,6 @@ export function useGitView({
 
 	const fileTreePercent = `${(fileTreeRatio * 100).toFixed(1)}%`;
 	const contentPercent = `${((1 - fileTreeRatio) * 100).toFixed(1)}%`;
-
-	// --- Tab management ---
-
-	const setActiveTab = useCallback((tab: GitViewTab) => {
-		setActiveTabState(tab);
-		persistGitViewTab(tab);
-	}, []);
 
 	// --- Data fetching ---
 
@@ -283,15 +276,14 @@ export function useGitView({
 	useEffect(() => {
 		setSelectedPathRaw(null);
 		setVisibleDiffPaths([]);
-		if (!pendingCompareNavigationRef.current) {
-			setActiveTab("uncommitted");
-		}
-	}, [currentProjectId, setActiveTab]);
+	}, [currentProjectId]);
 
 	return {
 		repositoryScope,
 		activeTab,
 		setActiveTab,
+		collapsedDirectories,
+		setCollapsedDirectories,
 		fileTreeVisible,
 		setFileTreeVisible,
 		fileTreePercent,
@@ -321,6 +313,8 @@ export interface UseGitViewResult {
 	repositoryScope: FileBrowserScopeOptions;
 	activeTab: GitViewTab;
 	setActiveTab: (tab: GitViewTab) => void;
+	collapsedDirectories: ReadonlySet<string>;
+	setCollapsedDirectories: (directories: ReadonlySet<string>) => void;
 	fileTreeVisible: boolean;
 	setFileTreeVisible: React.Dispatch<React.SetStateAction<boolean>>;
 	fileTreePercent: string;
