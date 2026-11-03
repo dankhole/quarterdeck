@@ -8,6 +8,7 @@ import { DeferredDiffRows } from "./deferred-diff-rows";
 import { DiffContextRows } from "./diff-context-rows";
 import type { CollapsedContextBlock, ExpandedBlockState, UnifiedDiffRow } from "./diff-parser";
 import { buildDiffDisplayGroups, INCREMENTAL_EXPAND_STEP, INCREMENTAL_EXPAND_THRESHOLD } from "./diff-parser";
+import { DiffSymbolScope, useDiffSymbolText } from "./diff-symbol-highlighting";
 import type { HighlightedLineCache } from "./syntax-highlighting";
 
 export type {
@@ -45,39 +46,30 @@ export function DiffRowText({
 	highlightedLineHtml: string | null;
 	highlightCache: HighlightedLineCache | null;
 }): React.ReactElement {
-	if (!row.segments) {
-		if (highlightedLineHtml) {
-			return <span className="font-mono kb-diff-text" dangerouslySetInnerHTML={{ __html: highlightedLineHtml }} />;
-		}
-		return <span className="font-mono kb-diff-text">{row.text || " "}</span>;
-	}
-
-	return (
-		<span className="font-mono kb-diff-text">
-			{row.segments.map((segment) => {
+	const html = useMemo(() => {
+		const escapeText = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+		if (!row.segments) return highlightedLineHtml ?? escapeText(row.text || " ");
+		return row.segments
+			.map((segment) => {
 				const className =
 					segment.tone === "added"
 						? "kb-diff-segment-added"
 						: segment.tone === "removed"
 							? "kb-diff-segment-removed"
-							: undefined;
-				const highlightedSegmentHtml = highlightCache?.get(segment.text) ?? null;
-				if (highlightedSegmentHtml) {
-					return (
-						<span
-							key={segment.key}
-							className={className}
-							dangerouslySetInnerHTML={{ __html: highlightedSegmentHtml }}
-						/>
-					);
-				}
-				return (
-					<span key={segment.key} className={className}>
-						{segment.text || " "}
-					</span>
-				);
-			})}
-		</span>
+							: "";
+				const content = highlightCache?.get(segment.text) ?? escapeText(segment.text || " ");
+				return `<span class="${className}">${content}</span>`;
+			})
+			.join("");
+	}, [row, highlightedLineHtml, highlightCache]);
+	const symbolText = useDiffSymbolText(row.text, html);
+	return (
+		<span
+			ref={symbolText.ref}
+			className="font-mono kb-diff-text"
+			data-symbol-active={symbolText.active || undefined}
+			dangerouslySetInnerHTML={{ __html: symbolText.html }}
+		/>
 	);
 }
 
@@ -237,7 +229,7 @@ export const ReadOnlyUnifiedDiff = memo(function ReadOnlyUnifiedDiff({
 	};
 
 	return (
-		<div className="kb-diff-readonly">
+		<DiffSymbolScope className="kb-diff-readonly" identity={rows} path={path}>
 			<style href="quarterdeck-editor-highlights" precedence="editor">
 				{quarterdeckHighlightStyle.module?.getRules()}
 			</style>
@@ -270,6 +262,6 @@ export const ReadOnlyUnifiedDiff = memo(function ReadOnlyUnifiedDiff({
 					</div>
 				);
 			})}
-		</div>
+		</DiffSymbolScope>
 	);
 });

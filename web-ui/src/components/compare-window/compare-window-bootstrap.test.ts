@@ -19,6 +19,23 @@ describe("Compare surface bootstrap", () => {
 			target,
 		});
 	});
+	it("admits explicit working-copy review only through the detached surface", () => {
+		const workingCopy: CompareWindowTarget = {
+			...target,
+			reviewMode: "uncommitted",
+			sourceRef: "HEAD",
+			targetRef: "HEAD",
+			includeUncommitted: true,
+			threeDotDiff: false,
+		};
+		expect(resolveBrowserSurface(new URL(buildCompareWindowPath(workingCopy), "http://localhost"))).toEqual({
+			kind: "compare",
+			target: workingCopy,
+		});
+		expect(
+			resolveBrowserSurface(new URL(`${buildCompareWindowPath(target)}&reviewMode=uncommitted`, "http://localhost")),
+		).toEqual({ kind: "invalid-compare" });
+	});
 	it("leaves ordinary project URLs in the normal app", () => {
 		expect(resolveBrowserSurface(new URL("http://localhost/p1"))).toEqual({ kind: "app" });
 	});

@@ -27,7 +27,7 @@ connection.onRequest(InitializeRequest.type, (params) => {
 });
 connection.onNotification(DidOpenTextDocumentNotification.type, ({ textDocument }) => {
 	documents.set(textDocument.uri, textDocument);
-	record("open", { version: textDocument.version, content: textDocument.text });
+	record("open", { version: textDocument.version, content: textDocument.text, languageId: textDocument.languageId });
 });
 connection.onNotification(DidCloseTextDocumentNotification.type, ({ textDocument }) => { documents.delete(textDocument.uri); record("close"); });
 const locations = async ({ textDocument }) => {
@@ -40,7 +40,7 @@ const locations = async ({ textDocument }) => {
 	return [{ uri, range: { start: { line, character: 0 }, end: { line, character: 6 } } }];
 };
 connection.onRequest(DefinitionRequest.type, locations);
-connection.onRequest(ReferencesRequest.type, locations);
+connection.onRequest(ReferencesRequest.type, (params) => process.env.LSP_TEST_LOCATIONS ? JSON.parse(process.env.LSP_TEST_LOCATIONS) : locations(params));
 connection.onRequest(HoverRequest.type, ({ textDocument }) => ({ contents: { kind: "plaintext", value: documents.get(textDocument.uri)?.text ?? "" } }));
 connection.onRequest(ShutdownRequest.type, async () => {
 	record("shutdown");

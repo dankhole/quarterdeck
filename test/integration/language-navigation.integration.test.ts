@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -107,6 +107,53 @@ describe("language navigation process and filesystem ownership", () => {
 		).toEqual(["open", "close", "open", "close"]);
 		expect(recorded.filter((event) => event.event === "close")).toHaveLength(2);
 		expect(await readFile(join(root, "source.ts"), "utf8")).toBe("const target = 0;");
+	});
+
+	it("optionally excludes references in comments using the synchronized source, without filtering definitions", async () => {
+		const content = "// target\nconst target = 1;\n/* target */";
+		const uri = pathToFileURL(await realpath(join(root, "source.ts"))).href;
+		server.env = {
+			...server.env,
+			LSP_TEST_LOCATIONS: JSON.stringify([
+				{ uri, range: { start: { line: 0, character: 3 }, end: { line: 0, character: 9 } } },
+				{ uri, range: { start: { line: 1, character: 6 }, end: { line: 1, character: 12 } } },
+				{ uri, range: { start: { line: 2, character: 3 }, end: { line: 2, character: 9 } } },
+			]),
+		};
+		const request = { ...input, content, ignoreComments: true };
+		const filtered = await manager.navigate("references", scope(), config(), request);
+		expect(filtered).toMatchObject({
+			status: "ok",
+			ignoreComments: true,
+			truncated: false,
+			locations: [{ path: "source.ts", range: { start: { line: 1, character: 6 } } }],
+		});
+		const unfiltered = await manager.navigate("references", scope(), config(), { ...request, ignoreComments: false });
+		expect(unfiltered.status === "ok" && unfiltered.locations).toHaveLength(3);
+		expect(unfiltered).not.toHaveProperty("ignoreComments");
+		const definition = await manager.navigate("definition", scope(), config(), request);
+		expect(definition.status === "ok" && definition.locations).toHaveLength(1);
+		expect(definition).not.toHaveProperty("ignoreComments");
+	});
+
+	it.each(["cs", "csx"])("synchronizes .%s files with the canonical C# language ID", async (extension) => {
+		const path = `Source.${extension}`;
+		await writeFile(join(root, path), "class Target {}");
+		server.extensions = [`.${extension}`];
+		for (const operation of ["definition", "references"] as const) {
+			expect(
+				await manager.navigate(operation, scope(), config(), {
+					...input,
+					path,
+					content: "class Target {}",
+					position: { line: 0, character: 6 },
+				}),
+			).toMatchObject({ status: "ok", locations: [{ path }] });
+		}
+		await manager.close();
+		const opened = (await readEvents()).filter((event) => event.event === "open");
+		expect(opened).toHaveLength(2);
+		expect(opened.map((event) => event.languageId)).toEqual(["csharp", "csharp"]);
 	});
 
 	it.each(["", "x", "\0"])("checks only bytes read after a file shrinks to %j", async (content) => {

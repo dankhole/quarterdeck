@@ -8,6 +8,7 @@ export interface UseRuntimeProjectChangesResult {
 	changes: RuntimeWorkdirChangesResponse | null;
 	isLoading: boolean;
 	isRuntimeAvailable: boolean;
+	error: Error | null;
 	refresh: () => Promise<void>;
 }
 
@@ -49,14 +50,18 @@ export function useRuntimeProjectChanges(
 		enabled: hasProjectScope,
 		queryFn,
 		isDataEqual: areWorkdirChangesRevisionsEqual,
+		retainDataOnError: true,
 	});
 
 	const refresh = useCallback(async () => {
 		if (!hasProjectScope) {
 			return;
 		}
-		await changesQuery.refetch();
-	}, [changesQuery.refetch, hasProjectScope]);
+		const changes = await changesQuery.refetch();
+		// Explicit refresh also re-presents unchanged metadata to the existing file-diff scheduler.
+		// This lets failed content reads retry; stale/unmounted refetches return null.
+		if (changes) changesQuery.setData(changes);
+	}, [changesQuery.refetch, changesQuery.setData, hasProjectScope]);
 	const previousStateVersionRef = useRef(stateVersion);
 
 	useEffect(() => {
@@ -99,6 +104,7 @@ export function useRuntimeProjectChanges(
 			changes: null,
 			isLoading: false,
 			isRuntimeAvailable: false,
+			error: null,
 			refresh,
 		};
 	}
@@ -112,6 +118,7 @@ export function useRuntimeProjectChanges(
 		changes: visibleChanges,
 		isLoading: visibleIsLoading,
 		isRuntimeAvailable: visibleIsRuntimeAvailable,
+		error: shouldHideDuringTransition ? null : changesQuery.error,
 		refresh,
 	};
 }

@@ -20,6 +20,8 @@ const selectedPathSchema = z
 /** Navigation data only. Repository paths and task authority come from runtime state. */
 export const compareWindowTargetSchema = z
 	.strictObject({
+		/** Absent means the original Compare semantics, including literal WORKTREE refs. */
+		reviewMode: z.literal("uncommitted").optional(),
 		projectId: identitySchema,
 		taskId: identitySchema.nullable(),
 		taskCreatedAt: z.number().int().nonnegative().optional(),
@@ -31,6 +33,14 @@ export const compareWindowTargetSchema = z
 	})
 	.refine((target) =>
 		target.taskId === null ? target.taskCreatedAt === undefined : target.taskCreatedAt !== undefined,
+	)
+	.refine(
+		(target) =>
+			target.reviewMode !== "uncommitted" ||
+			(target.sourceRef === "HEAD" &&
+				target.targetRef === "HEAD" &&
+				target.includeUncommitted &&
+				!target.threeDotDiff),
 	);
 
 export type CompareWindowTarget = z.infer<typeof compareWindowTargetSchema>;
@@ -47,6 +57,7 @@ export function buildCompareWindowPath(input: CompareWindowTarget): string {
 		includeUncommitted: String(target.includeUncommitted),
 		threeDotDiff: String(target.threeDotDiff),
 	});
+	if (target.reviewMode !== undefined) query.set("reviewMode", target.reviewMode);
 	if (target.taskId !== null) {
 		query.set("taskId", target.taskId);
 		query.set("taskCreatedAt", String(target.taskCreatedAt));
@@ -60,6 +71,7 @@ export function parseCompareWindowTarget(url: URL): CompareWindowTarget | null {
 	if (url.hash || url.username || url.password || !/^\/[^/]+$/u.test(url.pathname)) return null;
 	const allowed = new Set([
 		"surface",
+		"reviewMode",
 		"taskId",
 		"taskCreatedAt",
 		"sourceRef",
@@ -80,6 +92,7 @@ export function parseCompareWindowTarget(url: URL): CompareWindowTarget | null {
 		const createdAt = url.searchParams.get("taskCreatedAt");
 		if (createdAt !== null && !/^(?:0|[1-9]\d*)$/u.test(createdAt)) return null;
 		const result = compareWindowTargetSchema.safeParse({
+			...(url.searchParams.has("reviewMode") ? { reviewMode: url.searchParams.get("reviewMode") } : {}),
 			projectId: decodeURIComponent(url.pathname.slice(1)),
 			taskId: url.searchParams.get("taskId"),
 			...(createdAt === null ? {} : { taskCreatedAt: Number(createdAt) }),

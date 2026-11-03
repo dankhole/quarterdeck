@@ -105,6 +105,28 @@ describe("useCodeNavigation", () => {
 		expect(current.result).toMatchObject({ status: "locations", locations: [{ path: "src/target.ts" }] });
 		expect(showAppToast).not.toHaveBeenCalled();
 	});
+	it("opens a single definition directly but keeps multiple, truncated, and usage results", async () => {
+		const onNavigate = vi.fn();
+		const location = { path: "src/target.ts", range: context.selection.range };
+		await render({ ...createOptions(), onNavigate });
+		definition.mockResolvedValue({ status: "ok", documentVersion: 12, locations: [location], truncated: false });
+		await act(async () => current.actions[0]!.onSelect(context));
+		expect(onNavigate).toHaveBeenCalledExactlyOnceWith(location);
+		expect(current.result).toBeNull();
+		onNavigate.mockClear();
+		for (const response of [
+			{ locations: [location, location], truncated: false },
+			{ locations: [location], truncated: true },
+		]) {
+			definition.mockResolvedValue({ status: "ok", documentVersion: 12, ...response });
+			await act(async () => current.actions[0]!.onSelect(context));
+			expect(current.result?.status).toBe("locations");
+		}
+		references.mockResolvedValue({ status: "ok", documentVersion: 12, locations: [location], truncated: false });
+		await act(async () => current.actions[1]!.onSelect(context));
+		expect(current.result?.status).toBe("locations");
+		expect(onNavigate).not.toHaveBeenCalled();
+	});
 	it("drops an in-flight result after a scope change even when path and content match", async () => {
 		let resolve!: (response: CodeNavigationResponse) => void;
 		definition.mockReturnValue(
@@ -271,6 +293,115 @@ describe("useCodeNavigation", () => {
 			expect(current.result?.status).not.toBe("error");
 			expect(current.result?.status).not.toBe("unavailable");
 		});
+	});
+
+	it("reruns usages from the captured symbol context, not a preview selection, including empty results", async () => {
+		references.mockResolvedValue({ status: "ok", documentVersion: 12, locations: [], truncated: false });
+		await render(createOptions());
+		await act(async () => current.actions[1]!.onSelect(context));
+		expect(current.referencesOptions.ignoreComments).toBe(false);
+		expect(current.referencesOptions.disabled).toBe(false);
+		references.mockResolvedValue({
+			status: "ok",
+			documentVersion: 12,
+			locations: [],
+			truncated: false,
+			ignoreComments: true,
+		});
+		await act(async () => current.referencesOptions.onToggle());
+		expect(references).toHaveBeenLastCalledWith({
+			taskId: "task",
+			path: context.path,
+			content: context.content,
+			position: context.position,
+			documentVersion: context.documentVersion,
+			includeDeclaration: true,
+			ignoreComments: true,
+		});
+		expect(current.result).toMatchObject({ status: "locations", locations: [] });
+		expect(current.referencesOptions.ignoreComments).toBe(true);
+		await act(async () => current.referencesOptions.onToggle());
+		expect(references.mock.lastCall![0]).not.toHaveProperty("ignoreComments");
+	});
+	it.each([undefined, false])("requires an explicit true acknowledgement for filtered usages (%s)", async (ack) => {
+		references.mockResolvedValue({
+			status: "ok",
+			documentVersion: 12,
+			locations: [],
+			truncated: false,
+			ignoreComments: ack,
+		});
+		await render(createOptions());
+		await act(async () => current.actions[1]!.onSelect(context));
+		await act(async () => current.referencesOptions.onToggle());
+		expect(current.result).toMatchObject({
+			status: "unavailable",
+			message: expect.stringMatching(/Upgrade.*runtime/),
+		});
+		expect(current.referencesOptions.disabled).toBe(false);
+	});
+	it("allows toggling while busy and drops stale unfiltered or filtered replies", async () => {
+		const pending: Array<(response: CodeNavigationResponse) => void> = [];
+		references.mockImplementation(() => new Promise<CodeNavigationResponse>((resolve) => pending.push(resolve)));
+		await render(createOptions());
+		await act(async () => current.actions[1]!.onSelect(context));
+		expect(current.referencesOptions.disabled).toBe(false);
+		await act(async () => current.referencesOptions.onToggle());
+		await act(async () => current.referencesOptions.onToggle());
+		await act(async () => pending[2]!({ status: "ok", documentVersion: 12, locations: [], truncated: false }));
+		await act(async () =>
+			pending[1]!({ status: "unavailable", documentVersion: 12, message: "stale filtered failure" }),
+		);
+		await act(async () =>
+			pending[0]!({
+				status: "ok",
+				documentVersion: 12,
+				locations: [{ path: "stale.ts", range: context.selection.range }],
+				truncated: false,
+			}),
+		);
+		expect(current.result).toMatchObject({ status: "locations", locations: [] });
+		expect(showAppToast).not.toHaveBeenCalled();
+	});
+	it.each(["path", "content", "eligibility", "scope", "project", "config"])(
+		"disables captured usages reruns after %s changes",
+		async (change) => {
+			references.mockResolvedValue({ status: "ok", documentVersion: 12, locations: [], truncated: false });
+			const options = createOptions();
+			await render(options);
+			await act(async () => current.actions[1]!.onSelect(context));
+			await render({
+				...options,
+				...(change === "path" ? { source: { ...options.source!, path: "preview.ts" } } : {}),
+				...(change === "content" ? { source: { ...options.source!, content: "changed" } } : {}),
+				...(change === "eligibility" ? { source: { ...options.source!, eligibility: "incomplete" as const } } : {}),
+				...(change === "scope" ? { scope: { taskId: "different" } } : {}),
+				...(change === "project" ? { projectId: "other" } : {}),
+				...(change === "config" ? { config: { ...options.config!, codeNavigationEnabled: false } } : {}),
+			});
+			expect(current.referencesOptions.disabled).toBe(true);
+			await act(async () => current.referencesOptions.onToggle());
+			expect(references).toHaveBeenCalledTimes(1);
+		},
+	);
+	it("does not send the usages filter to definition or hover", async () => {
+		references.mockResolvedValue({
+			status: "ok",
+			documentVersion: 12,
+			locations: [],
+			truncated: false,
+			ignoreComments: true,
+		});
+		definition.mockResolvedValue({ status: "ok", documentVersion: 12, locations: [], truncated: false });
+		hover.mockResolvedValue({ status: "ok", documentVersion: 12, contents: "type" });
+		await render(createOptions());
+		await act(async () => current.actions[1]!.onSelect(context));
+		await act(async () => current.referencesOptions.onToggle());
+		await act(async () => current.actions[0]!.onSelect(context));
+		await act(async () => current.actions[2]!.onSelect(context));
+		expect(definition.mock.lastCall![0]).not.toHaveProperty("ignoreComments");
+		expect(hover.mock.lastCall![0]).not.toHaveProperty("ignoreComments");
+		expect(current.result).toMatchObject({ status: "hover", contents: "type" });
 	});
 
 	it("preserves the completed result list while visiting files, and clears it on a scope change", async () => {

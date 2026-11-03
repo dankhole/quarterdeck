@@ -84,7 +84,8 @@ describe("desktop preload bridge", () => {
 			runtimeGeneration: generation,
 			target,
 		});
-		expect(Object.keys(bridge).sort()).toEqual(["openCompareWindow", "version"]);
+		expect(Object.keys(bridge).sort()).toEqual(["openCompareWindow", "supportsUncommittedReview", "version"]);
+		expect(bridge.supportsUncommittedReview).toBe(true);
 		expect(mainBridge).not.toHaveProperty("openCompareWindow");
 		expect(await required(bridge.openCompareWindow)({ ...target, projectId: "../outside" })).toEqual({
 			kind: "failed",
@@ -94,6 +95,29 @@ describe("desktop preload bridge", () => {
 		expect(await required(bridge.openCompareWindow)(target)).toEqual({ kind: "failed" });
 		invoke.mockRejectedValueOnce(new Error("unavailable"));
 		expect(await required(bridge.openCompareWindow)(target)).toEqual({ kind: "failed" });
+	});
+
+	it("validates and forwards the additive working-copy review mode without adding viewer authority", async () => {
+		const { bootstrap, ipc, invoke } = fixture();
+		const bridge = createDesktopCompareBridge(bootstrap, ipc, documentId);
+		const target = {
+			projectId: "project-1",
+			taskId: null,
+			reviewMode: "uncommitted" as const,
+			sourceRef: "HEAD",
+			targetRef: "HEAD",
+			includeUncommitted: true,
+			threeDotDiff: false,
+		};
+		invoke.mockResolvedValue({ kind: "opened" });
+		expect(await bridge.openCompareWindow(target)).toEqual({ kind: "opened" });
+		expect(invoke).toHaveBeenCalledWith(DESKTOP_COMPARE_OPEN_CHANNEL, {
+			documentId,
+			runtimeGeneration: generation,
+			target,
+		});
+		expect(await bridge.openCompareWindow({ ...target, targetRef: "main" })).toEqual({ kind: "failed" });
+		expect(invoke).toHaveBeenCalledOnce();
 	});
 
 	it("gives Compare documents only immutable non-secret transport bootstrap", () => {

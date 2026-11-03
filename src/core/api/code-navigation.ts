@@ -60,6 +60,7 @@ export const codeNavigationRequestSchema = codeNavigationScopeSchema.extend({
 	documentVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 	content: z.string().max(5_242_880),
 	includeDeclaration: z.boolean().optional(),
+	ignoreComments: z.boolean().optional(),
 });
 export const codeNavigationLocationSchema = z.object({ path: z.string(), range: codeNavigationRangeSchema });
 const failureSchema = z.object({
@@ -73,6 +74,8 @@ export const codeNavigationResponseSchema = z.union([
 		locations: z.array(codeNavigationLocationSchema),
 		documentVersion: z.number(),
 		truncated: z.boolean(),
+		/** Acknowledges comment filtering; absent on older runtimes. */
+		ignoreComments: z.boolean().optional(),
 	}),
 	failureSchema,
 ]);

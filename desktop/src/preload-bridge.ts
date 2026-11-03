@@ -134,6 +134,7 @@ export function createDesktopCompareBridge(
 	const generation = bootstrap.runtimeGeneration;
 	return Object.freeze<DesktopCompareBridge>({
 		version: QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION,
+		supportsUncommittedReview: true,
 		openCompareWindow: async (target: unknown) => {
 			const parsed = compareWindowTargetSchema.safeParse(target);
 			if (!parsed.success) return { kind: "failed" };

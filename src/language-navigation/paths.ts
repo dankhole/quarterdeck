@@ -84,6 +84,8 @@ export function languageIdForPath(filePath: string): string {
 		pyi: "python",
 		rs: "rust",
 		go: "go",
+		cs: "csharp",
+		csx: "csharp",
 		c: "c",
 		h: "c",
 		cpp: "cpp",

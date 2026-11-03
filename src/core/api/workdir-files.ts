@@ -191,6 +191,7 @@ export const runtimeWorkdirTextSearchRequestSchema = runtimeWorkdirSearchScopeSc
 	query: z.string().min(1).max(500),
 	caseSensitive: z.boolean().optional(),
 	isRegex: z.boolean().optional(),
+	ignoreComments: z.boolean().optional(),
 	limit: z.number().int().positive().max(500).optional(),
 });
 export type RuntimeWorkdirTextSearchRequest = z.infer<typeof runtimeWorkdirTextSearchRequestSchema>;
@@ -198,6 +199,8 @@ export type RuntimeWorkdirTextSearchRequest = z.infer<typeof runtimeWorkdirTextS
 export const runtimeWorkdirTextSearchMatchSchema = z.object({
 	line: z.number().int().nonnegative(),
 	content: z.string(),
+	/** UTF-16 columns of surviving occurrences, when comment classification succeeded. */
+	ranges: z.array(z.object({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative() })).optional(),
 });
 export type RuntimeWorkdirTextSearchMatch = z.infer<typeof runtimeWorkdirTextSearchMatchSchema>;
 
@@ -212,5 +215,6 @@ export const runtimeWorkdirTextSearchResponseSchema = z.object({
 	files: z.array(runtimeWorkdirTextSearchFileSchema),
 	totalMatches: z.number().int().nonnegative(),
 	truncated: z.boolean(),
+	ignoreComments: z.boolean().optional(),
 });
 export type RuntimeWorkdirTextSearchResponse = z.infer<typeof runtimeWorkdirTextSearchResponseSchema>;

@@ -339,12 +339,14 @@ export function createChangesOps(ctx: ProjectApiContext): ChangesOps {
 					files: [],
 					totalMatches: 0,
 					truncated: false,
+					...(input.ignoreComments ? { ignoreComments: true } : {}),
 				} satisfies RuntimeWorkdirTextSearchResponse;
 			}
 			return (await searchWorkdirText(cwd, input.query, {
 				noIndex: folderOnly,
 				caseSensitive: input.caseSensitive,
 				isRegex: input.isRegex,
+				ignoreComments: input.ignoreComments,
 				limit: input.limit,
 				ref: input.ref,
 			})) satisfies RuntimeWorkdirTextSearchResponse;

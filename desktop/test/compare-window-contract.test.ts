@@ -28,6 +28,43 @@ describe("Compare window navigation contract", () => {
 		}
 	});
 
+	it("keeps legacy WORKTREE branch refs historical and old Compare links unchanged", () => {
+		const historical = { ...target, sourceRef: "WORKTREE", includeUncommitted: false };
+		const path = buildCompareWindowPath(historical);
+		expect(path).not.toContain("reviewMode");
+		expect(parseCompareWindowTarget(new URL(path, "app://quarterdeck"))).toEqual(historical);
+	});
+
+	it("round trips explicit HEAD versus working-copy review in home and task scopes", () => {
+		for (const scope of [target, { ...target, taskId: null, taskCreatedAt: undefined }]) {
+			const input: CompareWindowTarget = {
+				...scope,
+				reviewMode: "uncommitted",
+				sourceRef: "HEAD",
+				targetRef: "HEAD",
+				includeUncommitted: true,
+				threeDotDiff: false,
+			};
+			for (const origin of ["https://localhost:8443", "app://quarterdeck"])
+				expect(parseCompareWindowTarget(new URL(buildCompareWindowPath(input), origin))).toEqual(input);
+			for (const replacement of [
+				{ sourceRef: "WORKTREE" },
+				{ targetRef: "main" },
+				{ includeUncommitted: false },
+				{ threeDotDiff: true },
+				{ reviewMode: "compare" },
+			])
+				expect(compareWindowTargetSchema.safeParse({ ...input, ...replacement }).success).toBe(false);
+		}
+		const path = buildCompareWindowPath(target);
+		for (const suffix of [
+			"&reviewMode=uncommitted",
+			"&reviewMode=compare",
+			"&reviewMode=uncommitted&reviewMode=uncommitted",
+		])
+			expect(parseCompareWindowTarget(new URL(path + suffix, "app://quarterdeck"))).toBeNull();
+	});
+
 	it("rejects ambiguous parameters, malformed booleans, identity and path traversal", () => {
 		const path = buildCompareWindowPath(target);
 		for (const suffix of ["&surface=compare", "&sourceRef=other", "&url=https://evil.test", "#fragment"]) {

@@ -35,6 +35,9 @@ export interface UseGitDiffDataResult {
 	readonly isRuntimeAvailable: boolean;
 	readonly isChangesPending: boolean;
 	readonly hasNoChanges: boolean;
+	readonly isRefreshing: boolean;
+	readonly changesError: string | null;
+	readonly refresh: () => Promise<void>;
 	readonly uncommittedChanges: RuntimeWorkdirChangesResponse | null;
 }
 
@@ -50,7 +53,7 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 	});
 
 	const isUncommittedActive = activeTab === "uncommitted";
-	const { changes: uncommittedChanges, isRuntimeAvailable: uncommittedAvailable } = useRuntimeProjectChanges(
+	const uncommittedQuery = useRuntimeProjectChanges(
 		isUncommittedActive ? (taskId ?? null) : null,
 		isUncommittedActive ? baseDerivedProjectId : null,
 		isUncommittedActive ? baseRef : null,
@@ -84,7 +87,7 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 			}),
 		[compare.sourceRef, compare.targetRef, compareDiffMode, compareIncludeUncommitted, isCompareActive],
 	);
-	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = useRuntimeProjectChanges(
+	const compareQuery = useRuntimeProjectChanges(
 		isCompareActive && hasCompareRefs ? (taskId ?? null) : null,
 		isCompareActive && hasCompareRefs ? compareProjectId : null,
 		isCompareActive ? baseRef : null,
@@ -98,6 +101,9 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 		compareDiffMode,
 	);
 
+	const { changes: uncommittedChanges, isRuntimeAvailable: uncommittedAvailable } = uncommittedQuery;
+	const { changes: compareChanges, isRuntimeAvailable: compareAvailable } = compareQuery;
+	const activeQuery = isUncommittedActive ? uncommittedQuery : compareQuery;
 	const uncommittedFiles = uncommittedChanges?.files ?? null;
 	const compareFiles = compareChanges?.files ?? null;
 	const activeFiles: RuntimeWorkdirFileChange[] | null = useMemo(
@@ -134,7 +140,8 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 		isRuntimeAvailable,
 		activeFiles,
 	});
-	const hasNoChanges = isRuntimeAvailable && activeFiles !== null && activeFiles.length === 0;
+	const hasNoChanges =
+		isRuntimeAvailable && !activeQuery.isLoading && activeFiles !== null && activeFiles.length === 0;
 
 	return {
 		hasCompareRefs,
@@ -144,6 +151,9 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 		isRuntimeAvailable,
 		isChangesPending,
 		hasNoChanges,
+		isRefreshing: activeQuery.isLoading && activeFiles !== null,
+		changesError: activeQuery.error?.message ?? null,
+		refresh: activeQuery.refresh,
 		uncommittedChanges,
 	};
 }

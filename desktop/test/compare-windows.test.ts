@@ -143,6 +143,30 @@ describe("desktop Compare window ownership", () => {
 		f.owner.dispose();
 	});
 
+	it("opens explicit Uncommitted review through the same transport-only admitted viewer", async () => {
+		const f = fixture();
+		const workingCopy: CompareWindowTarget = {
+			...target,
+			reviewMode: "uncommitted",
+			sourceRef: "HEAD",
+			targetRef: "HEAD",
+			includeUncommitted: true,
+			threeDotDiff: false,
+		};
+		expect(await f.invoke({ ...f.payload, target: workingCopy })).toEqual({ kind: "opened" });
+		const viewer = native.windows[1];
+		expect(f.registry.get(viewer.webContents.id)?.documentUrl).toBe(
+			`app://quarterdeck${buildCompareWindowPath(workingCopy)}`,
+		);
+		expect(f.registry.get(viewer.webContents.id)?.role).toBe("compare");
+		expect(await f.invoke({ ...f.payload, target: { ...workingCopy, threeDotDiff: true } })).toEqual({
+			kind: "unavailable",
+		});
+		expect(native.windows).toHaveLength(2);
+		expect(f.mainWindow.destroyed).toBe(false);
+		f.owner.dispose();
+	});
+
 	it("rejects wrong documents, generations, frames, Compare senders and renderer-provided destinations", async () => {
 		const f = fixture();
 		for (const payload of [

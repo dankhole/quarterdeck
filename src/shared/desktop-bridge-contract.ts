@@ -147,5 +147,7 @@ export interface DesktopBridge {
 export const QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION = 1;
 export interface DesktopCompareBridge {
 	readonly version: typeof QUARTERDECK_DESKTOP_COMPARE_BRIDGE_VERSION;
+	/** Optional additive capability: older shells accept only legacy Compare payloads. */
+	readonly supportsUncommittedReview?: true;
 	readonly openCompareWindow: (target: CompareWindowTarget) => Promise<CompareWindowOpenResponse>;
 }

@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { relative } from "node:path";
 import type { Hover, MarkedString } from "vscode-languageserver-protocol";
 import type {
 	CodeNavigationHoverResponse,
@@ -14,6 +15,7 @@ import { assertMutableWorkdirPath, normalizeWorkdirRelativePath } from "../workd
 import { resolveLanguageServerCommand } from "./command";
 import { LanguageNavigationError, type LanguageNavigationFailureMetadata } from "./failure";
 import { mapNavigationLocations, resolveLanguageRoot, selectLanguageServer } from "./paths";
+import { filterReferenceComments } from "./reference-comments";
 import { LanguageSession, type NavigationDocument } from "./session";
 
 export interface CodeNavigationConfig {
@@ -103,12 +105,24 @@ export class LanguageNavigationManager {
 					? await session.definition(document)
 					: await session.references(document, input.includeDeclaration ?? true);
 			const mapped = await mapNavigationLocations(root, result);
+			const ignoreComments = operation === "references" && input.ignoreComments === true;
+			if (ignoreComments) {
+				mapped.locations = await filterReferenceComments(root, mapped.locations, {
+					path: normalizeWorkdirRelativePath(relative(root, document.path)),
+					content: input.content,
+				});
+			}
 			this.record(scope.projectId, "request_completed", {
 				operation,
 				...(serverId ? { serverId } : {}),
 				resultCount: mapped.locations.length,
 			});
-			return { status: "ok", ...mapped, documentVersion: input.documentVersion };
+			return {
+				status: "ok",
+				...mapped,
+				...(ignoreComments ? { ignoreComments: true } : {}),
+				documentVersion: input.documentVersion,
+			};
 		} catch (error) {
 			return this.failure(scope.projectId, input.documentVersion, error, operation, serverId);
 		}

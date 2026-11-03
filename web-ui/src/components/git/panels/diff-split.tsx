@@ -11,6 +11,7 @@ import {
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
 import { getDiffScrollLines } from "@/components/shared/diff-scroll-target";
+import { DiffSymbolScope } from "@/components/shared/diff-symbol-highlighting";
 import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
@@ -116,10 +117,14 @@ export const SplitDiff = memo(function SplitDiff({
 	onEditComment,
 	onCancelEditComment,
 	readOnlyReview = false,
+	currentHunkRows,
+	fullContext = false,
 }: {
 	path: string;
 	agentContextSource?: string;
 	readOnlyReview?: boolean;
+	currentHunkRows?: ReadonlySet<string>;
+	fullContext?: boolean;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
@@ -138,10 +143,10 @@ export const SplitDiff = memo(function SplitDiff({
 	const anchoredComments = useMemo(() => indexAnchoredComments(path, comments, lookup), [path, comments, lookup]);
 	const displayItems = useMemo(
 		() =>
-			buildDiffDisplayGroups(rows).map((item) =>
-				item.type === "rows" ? { ...item, pairs: pairRowsForSplit(item.rows) } : item,
+			(fullContext && rows.length > 0 ? [{ type: "rows" as const, rows }] : buildDiffDisplayGroups(rows)).map(
+				(item) => (item.type === "rows" ? { ...item, pairs: pairRowsForSplit(item.rows) } : item),
 			),
-		[rows],
+		[rows, fullContext],
 	);
 
 	const renderSide = (row: UnifiedDiffRow, side: "left" | "right"): React.ReactElement => {
@@ -173,14 +178,17 @@ export const SplitDiff = memo(function SplitDiff({
 			<div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
 				<div
 					className={rowClass}
+					data-current-difference={currentHunkRows?.has(row.key) || undefined}
 					data-diff-line={rowLineNumber}
 					data-diff-side={row.variant === "removed" ? "removed" : "current"}
 					data-code-navigation-side={side === "left" ? "old" : "new"}
 					style={canClickRow ? undefined : { cursor: "default" }}
 					onClick={
 						canClickRow
-							? () => {
-									onAddComment(path, rowLineNumber, row.text, row.variant, anchorRevision);
+							? (event) => {
+									if (event.target instanceof Element && event.target.closest(".kb-diff-line-number")) {
+										onAddComment(path, rowLineNumber, row.text, row.variant, anchorRevision);
+									}
 								}
 							: undefined
 					}
@@ -227,7 +235,7 @@ export const SplitDiff = memo(function SplitDiff({
 	);
 
 	return (
-		<div className="kb-diff-split-grid-shell">
+		<DiffSymbolScope className="kb-diff-split-grid-shell" identity={rows} path={path}>
 			<style href="quarterdeck-editor-highlights" precedence="editor">
 				{quarterdeckHighlightStyle.module?.getRules()}
 			</style>
@@ -289,6 +297,6 @@ export const SplitDiff = memo(function SplitDiff({
 					),
 				)}
 			</div>
-		</div>
+		</DiffSymbolScope>
 	);
 });

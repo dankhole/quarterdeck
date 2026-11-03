@@ -40,10 +40,12 @@ export interface UseAllFileDiffContentOptions {
 }
 
 export interface FileLoadingState {
-	/** Map of file path -> true when a file's diff has been fetched (or failed). */
+	/** Paths whose diff has been fetched successfully, including empty responses. */
 	loaded: ReadonlySet<string>;
-	/** Map of file path -> true when a file's diff is currently being fetched. */
+	/** Paths whose diff is currently being fetched. */
 	loading: ReadonlySet<string>;
+	/** Latest fetch failure per path. A refresh failure may coexist with loaded, cached content. */
+	errors?: ReadonlyMap<string, string>;
 }
 
 export interface UseAllFileDiffContentResult {
@@ -53,7 +55,7 @@ export interface UseAllFileDiffContentResult {
 	fileLoadingState: FileLoadingState;
 }
 
-const EMPTY_LOADING_STATE: FileLoadingState = { loaded: new Set(), loading: new Set() };
+const EMPTY_LOADING_STATE: FileLoadingState = { loaded: new Set(), loading: new Set(), errors: new Map() };
 const EMPTY_PRIORITY_PATHS: readonly string[] = [];
 const DEFAULT_BACKGROUND_PREFETCH_LIMIT = 4;
 
@@ -70,7 +72,12 @@ function areSetsEqual(previous: ReadonlySet<string>, next: ReadonlySet<string>):
 }
 
 function areLoadingStatesEqual(previous: FileLoadingState, next: FileLoadingState): boolean {
-	return areSetsEqual(previous.loaded, next.loaded) && areSetsEqual(previous.loading, next.loading);
+	return (
+		areSetsEqual(previous.loaded, next.loaded) &&
+		areSetsEqual(previous.loading, next.loading) &&
+		(previous.errors?.size ?? 0) === (next.errors?.size ?? 0) &&
+		Array.from(previous.errors ?? []).every(([path, error]) => next.errors?.get(path) === error)
+	);
 }
 
 function buildDiffRequestKey({
@@ -155,6 +162,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			enrichedFilesRef.current = null;
 			inFlightRequestsRef.current.clear();
 			forceFetchPathsRef.current.clear();
+			setFileLoadingState(EMPTY_LOADING_STATE);
 			abortRef.current?.abort();
 			abortRef.current = null;
 		}
@@ -173,10 +181,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			if (!projectId) return;
 
 			const cache = cacheRef.current;
-			const queue = [
-				...priorityFiles.map((file) => ({ file, isPriority: true })),
-				...prefetchFiles.map((file) => ({ file, isPriority: false })),
-			];
+			const queue = [...priorityFiles, ...prefetchFiles];
 
 			if (queue.length === 0) return;
 
@@ -188,13 +193,13 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 						loading.add(file.path);
 					}
 				}
-				const next = { loaded: prev.loaded, loading };
+				const next = { loaded: prev.loaded, loading, errors: prev.errors };
 				return areLoadingStatesEqual(prev, next) ? prev : next;
 			});
 
 			const trpcClient = getRuntimeTrpcClient(projectId);
 
-			for (const { file, isPriority } of queue) {
+			for (const file of queue) {
 				if (signal.aborted || !isMountedRef.current) return;
 
 				const cacheKey = buildDiffCacheKey(file.path, mode, fromRef, toRef);
@@ -230,16 +235,19 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 						inFlightRequestsRef.current.set(requestKey, request);
 					}
 					diff = await request;
-				} catch {
-					const existing = cache.get(cacheKey);
-					// Preserve previously loaded content during background refresh failures.
-					if (existing) {
-						diff = existing;
-					} else if (isPriority) {
-						diff = { oldText: null, newText: null };
-					} else {
-						continue;
-					}
+				} catch (error) {
+					if (signal.aborted || !isMountedRef.current) return;
+
+					// Failed requests must not masquerade as empty content or replace a good snapshot.
+					setFileLoadingState((prev) => {
+						const errors = new Map(prev.errors);
+						errors.set(file.path, error instanceof Error ? error.message : "Failed to load file diff.");
+						const loading = new Set(prev.loading);
+						loading.delete(file.path);
+						const next = { loaded: prev.loaded, loading, errors };
+						return areLoadingStatesEqual(prev, next) ? prev : next;
+					});
+					continue;
 				}
 
 				if (signal.aborted || !isMountedRef.current) return;
@@ -253,7 +261,9 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 					loaded.add(file.path);
 					const loading = new Set(prev.loading);
 					loading.delete(file.path);
-					const next = { loaded, loading };
+					const errors = new Map(prev.errors);
+					errors.delete(file.path);
+					const next = { loaded, loading, errors };
 					return areLoadingStatesEqual(prev, next) ? prev : next;
 				});
 				setEnrichedFiles((prevFiles) => {
@@ -341,10 +351,12 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 			return initial.files;
 		});
 		setFileLoadingState((prev) => {
-			const next = { loaded: initial.loaded, loading: new Set<string>() };
+			const currentPaths = new Set(files.map((file) => file.path));
+			const errors = new Map(Array.from(prev.errors ?? []).filter(([path]) => currentPaths.has(path)));
+			const next = { loaded: initial.loaded, loading: new Set<string>(), errors };
 			return areLoadingStatesEqual(prev, next) ? prev : next;
 		});
-	}, [files, filesRevision, projectId, mode, fromRef, toRef]);
+	}, [files, filesRevision, projectId, mode, fromRef, toRef, contextKey]);
 
 	useEffect(() => {
 		if (!files || files.length === 0 || !projectId) {
@@ -368,7 +380,7 @@ export function useAllFileDiffContent(options: UseAllFileDiffContentOptions): Us
 
 		if (plan.priorityFiles.length === 0 && plan.prefetchFiles.length === 0) {
 			setFileLoadingState((prev) => {
-				const next = { loaded: prev.loaded, loading: new Set<string>() };
+				const next = { loaded: prev.loaded, loading: new Set<string>(), errors: prev.errors };
 				return areLoadingStatesEqual(prev, next) ? prev : next;
 			});
 			return;

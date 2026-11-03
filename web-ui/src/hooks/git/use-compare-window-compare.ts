@@ -23,7 +23,10 @@ export function useCompareWindowCompare(
 		if (!response.ok) throw new Error(response.error ?? "Could not load comparison refs.");
 		return response;
 	}, [target.projectId, target.taskId, baseRef]);
-	const refs = useTrpcQuery({ enabled: context.status === "ready", queryFn: refsQuery });
+	const refs = useTrpcQuery({
+		enabled: context.status === "ready" && target.reviewMode !== "uncommitted",
+		queryFn: refsQuery,
+	});
 	const worktreeBranches = useMemo(() => {
 		const branches = new Map<string, string>();
 		if (context.status === "ready" && context.task && context.branch)

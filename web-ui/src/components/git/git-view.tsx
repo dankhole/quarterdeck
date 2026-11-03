@@ -106,16 +106,19 @@ export function GitView({
 	} = useGitView({ ...hookOptions, reviewVisible: !gitHistoryPanel });
 
 	const handlePopOutCompare = () => {
-		if (!hookOptions.currentProjectId || !compare.sourceRef || !compare.targetRef || isOpeningCompare) return;
+		const sourceRef = activeTab === "uncommitted" ? "HEAD" : compare.sourceRef;
+		const targetRef = activeTab === "uncommitted" ? "HEAD" : compare.targetRef;
+		if (!hookOptions.currentProjectId || !sourceRef || !targetRef || isOpeningCompare) return;
 		setIsOpeningCompare(true);
 		void openCompareWindow({
 			projectId: hookOptions.currentProjectId,
 			taskId: hookOptions.selectedCard?.card.id ?? null,
 			...(hookOptions.selectedCard ? { taskCreatedAt: hookOptions.selectedCard.card.createdAt } : {}),
-			sourceRef: compare.sourceRef,
-			targetRef: compare.targetRef,
-			includeUncommitted: compare.includeUncommitted,
-			threeDotDiff: compare.threeDotDiff,
+			...(activeTab === "uncommitted" ? { reviewMode: "uncommitted" as const } : {}),
+			sourceRef,
+			targetRef,
+			includeUncommitted: activeTab === "uncommitted" || compare.includeUncommitted,
+			threeDotDiff: activeTab === "compare" && compare.threeDotDiff,
 			...(selectedPath ? { selectedPath } : {}),
 		})
 			.catch((error: unknown) => {
@@ -180,13 +183,17 @@ export function GitView({
 
 				{branchStatusSlot}
 
-				{activeTab === "compare" && !gitHistoryPanel ? (
-					<Tooltip content="Pop out Compare">
+				{!gitHistoryPanel ? (
+					<Tooltip content={activeTab === "compare" ? "Pop out Compare" : "Pop out Uncommitted review"}>
 						<button
 							type="button"
-							aria-label="Pop out Compare"
+							aria-label={activeTab === "compare" ? "Pop out Compare" : "Pop out Uncommitted review"}
 							onClick={handlePopOutCompare}
-							disabled={!hasCompareRefs || !hookOptions.currentProjectId || isOpeningCompare}
+							disabled={
+								(activeTab === "compare" && !hasCompareRefs) ||
+								!hookOptions.currentProjectId ||
+								isOpeningCompare
+							}
 							className="flex items-center justify-center w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 disabled:opacity-35 disabled:cursor-not-allowed"
 						>
 							<ExternalLink size={14} />
@@ -295,7 +302,7 @@ export function GitView({
 												activeTab === "uncommitted" || compare.includeUncommitted
 													? "live-worktree"
 													: "revision",
-											mode: compare.threeDotDiff ? "three_dot" : "two_dot",
+											mode: activeTab === "compare" && compare.threeDotDiff ? "three_dot" : "two_dot",
 										},
 									}}
 									agentContextSource={

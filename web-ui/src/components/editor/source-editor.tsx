@@ -27,6 +27,7 @@ import {
 } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { Kbd } from "@/components/ui/kbd";
 import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import {
 	createSourceEditorActionContext,
@@ -37,6 +38,7 @@ import {
 	sourceEditorOffset,
 } from "./source-editor-context";
 
+import { SOURCE_EDITOR_NAVIGATION_SHORTCUTS, sourceEditorNavigation } from "./source-editor-navigation";
 import { quarterdeckEditorTheme, quarterdeckHighlightStyle } from "./source-presentation";
 
 const noLanguage: Extension = [];
@@ -52,6 +54,8 @@ export interface SourceEditorProps {
 	wordWrap: boolean;
 	scrollToLine?: number | null;
 	scrollToRange?: SourceEditorRange | null;
+	/** Results previews reveal a range without taking focus from the usages list. */
+	focusOnScrollToRange?: boolean;
 	actions?: readonly SourceEditorAction[];
 	onScrollToRangeConsumed?: () => void;
 	onChange: (value: string) => void;
@@ -74,6 +78,7 @@ function createExtensions(input: {
 	ignoreUpdateRef: MutableRefObject<boolean>;
 	documentVersionRef: MutableRefObject<number>;
 	lineSeparator: "\n" | "\r\n";
+	navigation: Extension;
 }): Extension[] {
 	return [
 		quarterdeckEditorTheme,
@@ -92,11 +97,14 @@ function createExtensions(input: {
 		rectangularSelection(),
 		crosshairCursor(),
 		highlightActiveLine(),
-		highlightSelectionMatches(),
+		// Lexical whole-word matches, not semantic language-server references.
+		highlightSelectionMatches({ highlightWordAroundCursor: true }),
 		scrollPastEnd(),
 		EditorState.lineSeparator.of(input.lineSeparator),
 		EditorState.readOnly.of(input.readOnly),
 		EditorView.editable.of(!input.readOnly),
+		input.readOnly ? EditorView.contentAttributes.of({ tabindex: "0" }) : [],
+		input.navigation,
 		input.wordWrap ? EditorView.lineWrapping : [],
 		input.languageExtension,
 		EditorView.updateListener.of((update) => {
@@ -132,6 +140,7 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 		wordWrap,
 		scrollToLine,
 		scrollToRange,
+		focusOnScrollToRange = true,
 		actions,
 		onChange,
 		onSave,
@@ -148,6 +157,9 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 	pathRef.current = path;
 	const onChangeRef = useRef(onChange);
 	const onSaveRef = useRef(onSave);
+	const actionsRef = useRef(actions);
+	actionsRef.current = actions;
+	const menuContextRef = useRef<SourceEditorActionContext | null>(null);
 	const lineSeparator = useMemo(() => detectSourceEditorLineSeparator(value), [value]);
 	const sourceLanguage = useSourceLanguage(language, path);
 	const languageCompartment = useMemo(() => new Compartment(), []);
@@ -191,6 +203,17 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 				ignoreUpdateRef,
 				documentVersionRef,
 				lineSeparator,
+				navigation: sourceEditorNavigation({
+					isEnabled: (id) => actionsRef.current?.some((action) => action.id === id && !action.disabled) ?? false,
+					run: (id, view, position) => {
+						const action = actionsRef.current?.find((candidate) => candidate.id === id);
+						if (!action || action.disabled) return false;
+						action.onSelect(
+							createSourceEditorActionContext(view.state, pathRef.current, documentVersionRef.current, position),
+						);
+						return true;
+					},
+				}),
 			}),
 		[path, readOnly, wordWrap, lineSeparator, languageCompartment],
 	);
@@ -259,23 +282,41 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 			selection: { anchor, head },
 			effects: EditorView.scrollIntoView(anchor, { y: "center" }),
 		});
-		view.focus();
+		if (focusOnScrollToRange) view.focus();
 		onScrollToRangeConsumed?.();
-	}, [path, scrollToRange, onScrollToRangeConsumed]);
+	}, [path, scrollToRange, focusOnScrollToRange, onScrollToRangeConsumed]);
 
 	const editor = (
 		<div
 			ref={hostRef}
 			className={cn("min-h-0 flex-1 overflow-hidden", readOnly && "cursor-default")}
 			data-testid="source-editor"
-			onContextMenu={(event) => {
+			onContextMenuCapture={(event) => {
 				const view = viewRef.current;
+				menuContextRef.current = null;
 				if (!view || !actions?.length) return;
-				const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-				const selection = view.state.selection.main;
-				if (position != null && (selection.empty || position < selection.from || position > selection.to)) {
+				// Capture before Radix opens the menu and moves focus. Keyboard context
+				// menus have no pointer coordinates and should use the existing caret.
+				const keyboard = event.button === 0 && event.clientX === 0 && event.clientY === 0;
+				const position = keyboard
+					? view.state.selection.main.head
+					: view.posAtCoords({ x: event.clientX, y: event.clientY });
+				if (position === null) {
+					event.preventDefault();
+					return;
+				}
+				const insideSelection = view.state.selection.ranges.some(
+					(selection) => !selection.empty && position >= selection.from && position < selection.to,
+				);
+				if (!keyboard && !insideSelection) {
 					view.dispatch({ selection: { anchor: position } });
 				}
+				menuContextRef.current = createSourceEditorActionContext(
+					view.state,
+					path,
+					documentVersionRef.current,
+					position,
+				);
 			}}
 		/>
 	);
@@ -290,16 +331,25 @@ export const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(fu
 						<ContextMenu.Item
 							key={action.id}
 							disabled={action.disabled}
-							className="rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:text-text-tertiary data-[disabled]:cursor-default"
+							className="flex items-center justify-between gap-6 rounded-sm px-2 py-1.5 text-[13px] text-text-primary cursor-pointer outline-none data-[highlighted]:bg-surface-3 data-[disabled]:text-text-tertiary data-[disabled]:cursor-default"
 							onSelect={() => {
+								const context = menuContextRef.current;
 								const view = viewRef.current;
-								if (view)
-									action.onSelect(
-										createSourceEditorActionContext(view.state, path, documentVersionRef.current),
-									);
+								if (
+									!action.disabled &&
+									context &&
+									view &&
+									context.path === path &&
+									context.documentVersion === documentVersionRef.current
+								) {
+									action.onSelect(context);
+								}
 							}}
 						>
-							{action.label}
+							<span>{action.label}</span>
+							{SOURCE_EDITOR_NAVIGATION_SHORTCUTS[action.id] && (
+								<Kbd>{SOURCE_EDITOR_NAVIGATION_SHORTCUTS[action.id]}</Kbd>
+							)}
 						</ContextMenu.Item>
 					))}
 				</ContextMenu.Content>

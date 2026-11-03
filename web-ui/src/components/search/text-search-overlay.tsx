@@ -5,7 +5,7 @@ import { SearchOverlayShell } from "@/components/search/search-overlay-shell.js"
 import { SearchResultPreview } from "@/components/search/search-result-preview";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { useTextSearch } from "@/hooks/search/use-text-search.js";
-import type { RuntimeWorkdirTextSearchFile } from "@/runtime/types";
+import type { RuntimeWorkdirTextSearchFile, RuntimeWorkdirTextSearchMatch } from "@/runtime/types";
 
 export interface TextSearchOverlayProps {
 	projectId: string | null;
@@ -18,7 +18,28 @@ function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function highlightMatches(content: string, query: string, isRegex: boolean, caseSensitive: boolean): React.ReactNode {
+function highlightMatches(
+	content: string,
+	query: string,
+	isRegex: boolean,
+	caseSensitive: boolean,
+	ranges?: RuntimeWorkdirTextSearchMatch["ranges"],
+): React.ReactNode {
+	if (ranges) {
+		let offset = 0;
+		const parts: React.ReactNode[] = [];
+		for (const [index, range] of ranges.entries()) {
+			parts.push(<span key={`p${index}`}>{content.slice(offset, range.start)}</span>);
+			parts.push(
+				<span key={`m${index}`} className="bg-amber-500/30 text-amber-200">
+					{content.slice(range.start, range.end)}
+				</span>,
+			);
+			offset = range.end;
+		}
+		parts.push(<span key="tail">{content.slice(offset)}</span>);
+		return parts;
+	}
 	if (!query) return content;
 	try {
 		const flags = caseSensitive ? "g" : "gi";
@@ -119,6 +140,15 @@ function TextSearchOverlayContent({
 				>
 					.*
 				</button>
+				<button
+					type="button"
+					aria-pressed={search.ignoreComments}
+					onClick={search.toggleIgnoreComments}
+					className={`rounded px-2 py-1 text-xs ${search.ignoreComments ? "bg-zinc-600 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
+					title="Ignore matches in recognized comment syntax. Unknown languages are retained."
+				>
+					Ignore comments
+				</button>
 			</div>
 
 			{search.totalMatches > 0 && (
@@ -133,7 +163,13 @@ function TextSearchOverlayContent({
 				<div className="flex items-center justify-center py-8 text-sm text-zinc-500">Searching...</div>
 			)}
 
-			{!search.isLoading && search.hasSearched && search.results.length === 0 && (
+			{search.error && (
+				<p role="alert" className="px-4 py-3 text-sm text-status-orange">
+					{search.error}
+				</p>
+			)}
+
+			{!search.isLoading && !search.error && search.hasSearched && search.results.length === 0 && (
 				<div className="flex items-center justify-center py-8 text-sm text-zinc-500">No results found</div>
 			)}
 
@@ -212,7 +248,7 @@ function FileGroup({
 					>
 						<span className="text-zinc-500 font-mono text-xs w-10 text-right shrink-0">{match.line}</span>
 						<span className="text-zinc-300 truncate">
-							{highlightMatches(match.content, query, isRegex, caseSensitive)}
+							{highlightMatches(match.content, query, isRegex, caseSensitive, match.ranges)}
 						</span>
 					</div>
 				);

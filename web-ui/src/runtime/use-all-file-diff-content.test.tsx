@@ -80,6 +80,8 @@ function HookHarness({
 	files,
 	filesRevision,
 	projectId = "project-1",
+	taskId = "task-1",
+	baseRef = "main",
 	priorityPaths,
 	prefetchRemaining,
 	backgroundPrefetchLimit,
@@ -88,6 +90,8 @@ function HookHarness({
 	files: RuntimeWorkdirFileChange[];
 	filesRevision: number;
 	projectId?: string;
+	taskId?: string;
+	baseRef?: string;
 	priorityPaths?: readonly string[];
 	prefetchRemaining?: boolean;
 	backgroundPrefetchLimit?: number;
@@ -95,8 +99,8 @@ function HookHarness({
 }): null {
 	const result = useAllFileDiffContent({
 		projectId,
-		taskId: "task-1",
-		baseRef: "main",
+		taskId,
+		baseRef,
 		mode: "working_copy",
 		files,
 		filesRevision,
@@ -136,6 +140,126 @@ describe("useAllFileDiffContent", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
+	});
+
+	async function renderHarness(props: Omit<Parameters<typeof HookHarness>[0], "onResult">): Promise<void> {
+		await act(async () => {
+			root.render(
+				<HookHarness
+					{...props}
+					onResult={(result) => {
+						latestResult = result;
+					}}
+				/>,
+			);
+			await flushAsync();
+		});
+	}
+
+	it("distinguishes initial failures from successfully fetched empty content without automatic retry", async () => {
+		getFileDiffQueryMock
+			.mockRejectedValueOnce(new Error("diff unavailable"))
+			.mockResolvedValueOnce({ path: "src/empty.ts", oldText: null, newText: null });
+		const props = {
+			files: [createFile("src/failed.ts"), createFile("src/empty.ts")],
+			filesRevision: 1,
+			priorityPaths: ["src/failed.ts", "src/empty.ts"],
+			prefetchRemaining: false,
+		};
+
+		await renderHarness(props);
+		expect(latestResult?.fileLoadingState.errors?.get("src/failed.ts")).toBe("diff unavailable");
+		expect(latestResult?.fileLoadingState.loaded.has("src/failed.ts")).toBe(false);
+		expect(latestResult?.fileLoadingState.loaded.has("src/empty.ts")).toBe(true);
+		expect(latestResult?.fileLoadingState.errors?.has("src/empty.ts")).toBe(false);
+		expect(latestResult?.fileLoadingState.loading.size).toBe(0);
+		expect(latestResult?.enrichedFiles?.map((file) => file.newText)).toEqual([null, null]);
+
+		await renderHarness(props);
+		expect(getFileDiffQueryMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("clears an initial failure after a later source revision succeeds", async () => {
+		getFileDiffQueryMock
+			.mockRejectedValueOnce("transport closed")
+			.mockResolvedValueOnce(createDiff("old\n", "recovered\n"));
+		const props = { files: [createFile("src/a.ts")], filesRevision: 1, priorityPaths: ["src/a.ts"] };
+
+		await renderHarness(props);
+		expect(latestResult?.fileLoadingState.errors?.get("src/a.ts")).toBe("Failed to load file diff.");
+
+		await renderHarness({ ...props, filesRevision: 2 });
+		expect(getFileDiffQueryMock).toHaveBeenCalledTimes(2);
+		expect(latestResult?.fileLoadingState.errors?.size).toBe(0);
+		expect(latestResult?.fileLoadingState.loaded.has("src/a.ts")).toBe(true);
+		expect(latestResult?.enrichedFiles?.[0]?.newText).toBe("recovered\n");
+	});
+
+	it("removes failed paths from error state when files are removed", async () => {
+		getFileDiffQueryMock.mockRejectedValue(new Error("unavailable"));
+		await renderHarness({ files: [createFile("src/a.ts"), createFile("src/b.ts")], filesRevision: 1 });
+		expect(latestResult?.fileLoadingState.errors?.size).toBe(2);
+
+		await renderHarness({ files: [createFile("src/b.ts")], filesRevision: 2, prefetchRemaining: false });
+		expect(Array.from(latestResult?.fileLoadingState.errors?.keys() ?? [])).toEqual(["src/b.ts"]);
+
+		await renderHarness({ files: [], filesRevision: 3 });
+		expect(latestResult?.fileLoadingState.errors?.size).toBe(0);
+	});
+
+	it.each(["projectId", "taskId", "baseRef"] as const)(
+		"clears errors and cached content when %s changes with the same files array",
+		async (contextField) => {
+			getFileDiffQueryMock
+				.mockResolvedValueOnce(createDiff("old cached\n", "cached\n"))
+				.mockRejectedValueOnce(new Error("refresh unavailable"));
+			const props = {
+				files: [createFile("src/a.ts", "revision-1")],
+				filesRevision: 1,
+				priorityPaths: ["src/a.ts"],
+			};
+			await renderHarness(props);
+			const changedFiles = [createFile("src/a.ts", "revision-2")];
+			await renderHarness({ ...props, files: changedFiles, filesRevision: 2 });
+			expect(latestResult?.fileLoadingState.errors?.get("src/a.ts")).toBe("refresh unavailable");
+			expect(latestResult?.enrichedFiles?.[0]?.newText).toBe("cached\n");
+
+			const pending = createDeferred<RuntimeFileDiffResponse>();
+			getFileDiffQueryMock.mockReturnValueOnce(pending.promise);
+			await renderHarness({ ...props, files: changedFiles, filesRevision: 2, [contextField]: "new-context" });
+			expect(latestResult?.fileLoadingState.errors?.size).toBe(0);
+			expect(latestResult?.fileLoadingState.loaded.size).toBe(0);
+			expect(latestResult?.enrichedFiles?.[0]?.newText).toBeNull();
+
+			await act(async () => {
+				pending.resolve(createDiff("old new context\n", "new context\n"));
+				await flushAsync();
+			});
+			expect(latestResult?.enrichedFiles?.[0]?.newText).toBe("new context\n");
+		},
+	);
+
+	it.each(["context", "revision", "removal"] as const)("ignores stale failures after a %s change", async (change) => {
+		const stale = createDeferred<RuntimeFileDiffResponse>();
+		getFileDiffQueryMock
+			.mockReturnValueOnce(stale.promise)
+			.mockResolvedValueOnce(createDiff("old current\n", "current\n"));
+		const props = { files: [createFile("src/a.ts")], filesRevision: 1, priorityPaths: ["src/a.ts", "src/b.ts"] };
+		await renderHarness(props);
+		await renderHarness({
+			...props,
+			...(change === "context" ? { taskId: "new-task" } : {}),
+			...(change === "revision" ? { files: [createFile("src/a.ts", "revision-2")], filesRevision: 2 } : {}),
+			...(change === "removal" ? { files: [createFile("src/b.ts")], filesRevision: 2 } : {}),
+		});
+		expect(latestResult?.enrichedFiles?.[0]?.newText).toBe("current\n");
+
+		await act(async () => {
+			stale.reject(new Error("stale failure"));
+			await flushAsync();
+		});
+		expect(latestResult?.fileLoadingState.errors?.size).toBe(0);
+		expect(latestResult?.enrichedFiles?.[0]?.newText).toBe("current\n");
 	});
 
 	it("fetches the selected priority path before non-selected paths", async () => {
@@ -430,6 +554,18 @@ describe("useAllFileDiffContent", () => {
 		expect(latestResult?.enrichedFiles?.[1]).toBe(firstB);
 		expect(latestResult?.enrichedFiles?.[0]?.newText).toBe("new a\n");
 		expect(latestResult?.enrichedFiles?.[1]?.newText).toBe("new b\n");
+		expect(latestResult?.fileLoadingState.errors?.get("src/b.ts")).toBe("boom");
+		expect(latestResult?.fileLoadingState.loaded.has("src/b.ts")).toBe(true);
+
+		getFileDiffQueryMock.mockResolvedValueOnce(createDiff("old b\n", "recovered b\n"));
+		await renderHarness({
+			files: [createFile("src/a.ts"), createFile("src/b.ts", "src/b.ts:3")],
+			filesRevision: 3,
+			priorityPaths: ["src/b.ts"],
+			prefetchRemaining: false,
+		});
+		expect(latestResult?.fileLoadingState.errors?.size).toBe(0);
+		expect(latestResult?.enrichedFiles?.[1]?.newText).toBe("recovered b\n");
 	});
 
 	it("retries an uncached background prefetch failure when the file becomes priority", async () => {
@@ -463,6 +599,7 @@ describe("useAllFileDiffContent", () => {
 		});
 		expect(latestResult?.enrichedFiles?.[1]?.newText).toBeNull();
 		expect(latestResult?.fileLoadingState.loaded.has("src/b.ts")).toBe(false);
+		expect(latestResult?.fileLoadingState.errors?.get("src/b.ts")).toBe("background boom");
 
 		await act(async () => {
 			root.render(
@@ -481,6 +618,7 @@ describe("useAllFileDiffContent", () => {
 		await waitForExpectation(() => {
 			expect(getRequestedPaths()).toEqual(["src/a.ts", "src/b.ts", "src/b.ts"]);
 			expect(latestResult?.enrichedFiles?.[1]?.newText).toBe("new b after retry\n");
+			expect(latestResult?.fileLoadingState.errors?.has("src/b.ts")).toBe(false);
 		});
 	});
 

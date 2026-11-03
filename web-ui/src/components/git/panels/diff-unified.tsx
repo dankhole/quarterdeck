@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { type MouseEvent, memo, useMemo } from "react";
 import { createSourceLineCache } from "@/components/editor/source-line-highlighting";
 import { quarterdeckHighlightStyle } from "@/components/editor/source-presentation";
 import { DeferredDiffRows } from "@/components/shared/deferred-diff-rows";
@@ -11,6 +11,7 @@ import {
 	useIncrementalExpand,
 } from "@/components/shared/diff-renderer";
 import { getDiffScrollLines } from "@/components/shared/diff-scroll-target";
+import { DiffSymbolScope } from "@/components/shared/diff-symbol-highlighting";
 import { useSourceLanguage } from "@/hooks/editor/use-source-language";
 import { AgentDiffHunkAction } from "./agent-diff-hunk-action";
 
@@ -38,10 +39,14 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 	onEditComment,
 	onCancelEditComment,
 	readOnlyReview = false,
+	currentHunkRows,
+	fullContext = false,
 }: {
 	path: string;
 	agentContextSource?: string;
 	readOnlyReview?: boolean;
+	currentHunkRows?: ReadonlySet<string>;
+	fullContext?: boolean;
 	oldText: string | null | undefined;
 	newText: string;
 	comments: Map<string, DiffLineComment>;
@@ -58,7 +63,10 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 	);
 	const { rows, revision: anchorRevision } = lookup;
 	const anchoredComments = useMemo(() => indexAnchoredComments(path, comments, lookup), [path, comments, lookup]);
-	const displayItems = useMemo(() => buildDiffDisplayGroups(rows), [rows]);
+	const displayItems = useMemo(
+		() => (fullContext && rows.length > 0 ? [{ type: "rows" as const, rows }] : buildDiffDisplayGroups(rows)),
+		[rows, fullContext],
+	);
 
 	const renderRow = (row: UnifiedDiffRow): React.ReactElement => {
 		const rowKey = !readOnlyReview && row.lineNumber != null ? commentKey(path, row.lineNumber, row.variant) : null;
@@ -76,8 +84,10 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 		const highlightedLineHtml = row.lineNumber == null || row.segments ? null : highlightCache.get(row.text);
 
 		const handleRowClick = canClickRow
-			? () => {
-					onAddComment(path, row.lineNumber!, row.text, row.variant, anchorRevision);
+			? (event: MouseEvent<HTMLDivElement>) => {
+					if (event.target instanceof Element && event.target.closest(".kb-diff-line-number")) {
+						onAddComment(path, row.lineNumber!, row.text, row.variant, anchorRevision);
+					}
 				}
 			: undefined;
 
@@ -85,6 +95,7 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 			<div key={row.key}>
 				<div
 					className={rowClass}
+					data-current-difference={currentHunkRows?.has(row.key) || undefined}
 					data-diff-line={row.lineNumber ?? undefined}
 					data-diff-side={row.variant === "removed" ? "removed" : "current"}
 					data-code-navigation-side={row.variant === "removed" ? "old" : "new"}
@@ -118,7 +129,7 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 	};
 
 	return (
-		<>
+		<DiffSymbolScope identity={rows} path={path}>
 			<style href="quarterdeck-editor-highlights" precedence="editor">
 				{quarterdeckHighlightStyle.module?.getRules()}
 			</style>
@@ -166,6 +177,6 @@ export const UnifiedDiff = memo(function UnifiedDiff({
 					</div>
 				);
 			})}
-		</>
+		</DiffSymbolScope>
 	);
 });

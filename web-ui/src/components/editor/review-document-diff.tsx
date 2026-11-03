@@ -12,6 +12,9 @@ export interface ReviewInteractions extends DiffCommentCallbacks {
 	comments: Map<string, DiffLineComment>;
 	readOnlyReview?: boolean;
 	agentContextSource?: string;
+	/** Focused presentation hints; they do not grant editing capabilities. */
+	currentHunkRows?: ReadonlySet<string>;
+	fullContext?: boolean;
 }
 
 /** Owns patch versus full-content admission; a patch is never treated as a complete editable file. */

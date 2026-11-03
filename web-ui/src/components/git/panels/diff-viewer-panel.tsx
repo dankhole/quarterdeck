@@ -42,6 +42,7 @@ import {
 	InlineComment,
 	isCommentAnchorValid,
 } from "./diff-viewer-utils";
+import { FocusedReviewPanel } from "./focused-review-panel";
 
 export type { DiffLineComment, DiffViewMode } from "./diff-viewer-utils";
 
@@ -51,7 +52,32 @@ function arePathListsEqual(previous: readonly string[], next: readonly string[])
 	return previous.length === next.length && previous.every((path, index) => path === next[index]);
 }
 
-export function DiffViewerPanel({
+export interface DiffViewerPanelProps {
+	projectFiles: RuntimeWorkdirFileChange[] | null;
+	reviewScope: ReviewScope;
+	agentContextSource?: string;
+	selectedPath: string | null;
+	onSelectedPathChange: (path: string) => void;
+	onVisiblePathsChange?: (paths: string[]) => void;
+	onSendToTerminal?: (formatted: string) => Promise<{ ok: boolean; message?: string }>;
+	onRollbackFile?: (path: string) => void;
+	comments: Map<string, DiffLineComment>;
+	reviewDraftKey?: string;
+	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
+	viewMode?: DiffViewMode;
+	navigateToFile?: (nav: FileNavigation) => void;
+	fileLoadingState?: FileLoadingState;
+	codeNavigationConfig?: CodeNavigationConfig | null;
+	readOnlyReview?: boolean;
+	/** Focused review is always read-only; inline remains the default. */
+	presentation?: "inline" | "focused";
+}
+
+export function DiffViewerPanel(props: DiffViewerPanelProps): React.ReactElement {
+	return props.presentation === "focused" ? <FocusedReviewPanel {...props} /> : <InlineDiffViewerPanel {...props} />;
+}
+
+function InlineDiffViewerPanel({
 	projectFiles,
 	reviewScope,
 	agentContextSource,
@@ -68,25 +94,7 @@ export function DiffViewerPanel({
 	fileLoadingState,
 	codeNavigationConfig,
 	readOnlyReview = false,
-}: {
-	projectFiles: RuntimeWorkdirFileChange[] | null;
-	reviewScope: ReviewScope;
-	agentContextSource?: string;
-	selectedPath: string | null;
-	onSelectedPathChange: (path: string) => void;
-	onVisiblePathsChange?: (paths: string[]) => void;
-	onSendToTerminal?: (formatted: string) => Promise<{ ok: boolean; message?: string }>;
-	onRollbackFile?: (path: string) => void;
-	comments: Map<string, DiffLineComment>;
-	reviewDraftKey?: string;
-	onCommentsChange: (comments: Map<string, DiffLineComment>) => void;
-	viewMode?: DiffViewMode;
-	navigateToFile?: (nav: FileNavigation) => void;
-	/** Per-file loading state from useAllFileDiffContent. When provided, shows per-file skeletons. */
-	fileLoadingState?: FileLoadingState;
-	codeNavigationConfig?: CodeNavigationConfig | null;
-	readOnlyReview?: boolean;
-}): React.ReactElement {
+}: DiffViewerPanelProps): React.ReactElement {
 	const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
 	const [confirmClear, setConfirmClear] = useState(false);
 	const lastReportedVisiblePathsRef = useRef<string[]>([]);
@@ -261,6 +269,7 @@ export function DiffViewerPanel({
 		(path: string): boolean => {
 			// New per-file loading state (batch mode from git-view).
 			if (fileLoadingState) {
+				if (fileLoadingState.errors?.has(path)) return false;
 				// If the file is in the loaded set, it's done.
 				if (fileLoadingState.loaded.has(path)) return false;
 				// If it's in the loading set, it's actively being fetched.
@@ -312,7 +321,13 @@ export function DiffViewerPanel({
 			const group = groupsByPath.get(comment.filePath);
 			let reason: string | null = null;
 			if (!group) reason = projectFiles === null ? "Waiting for diff" : "Outdated — file no longer in this diff";
-			else if (isFileLoading(comment.filePath)) reason = "Waiting for diff";
+			else if (
+				isFileLoading(comment.filePath) ||
+				(fileLoadingState?.errors?.has(comment.filePath) &&
+					fileByPath.get(comment.filePath)?.oldText == null &&
+					fileByPath.get(comment.filePath)?.newText == null)
+			)
+				reason = "Waiting for diff";
 			else if (
 				!group.entries.some((entry) => {
 					const lookup = anchorLookups.get(entry.id);
@@ -323,7 +338,16 @@ export function DiffViewerPanel({
 			else if (expandedPaths[comment.filePath] === false) reason = "File collapsed";
 			return reason ? [{ key, comment, reason }] : [];
 		});
-	}, [comments, groupsByPath, projectFiles, isFileLoading, expandedPaths, anchorLookups]);
+	}, [
+		comments,
+		groupsByPath,
+		projectFiles,
+		isFileLoading,
+		expandedPaths,
+		anchorLookups,
+		fileLoadingState,
+		fileByPath,
+	]);
 
 	return (
 		<div
@@ -403,6 +427,7 @@ export function DiffViewerPanel({
 						const hasBinaryEntry = group.entries.some((entry) => entry.isBinary);
 						const file = fileByPath.get(group.path);
 						if (!file) return null;
+						const loadError = fileLoadingState?.errors?.get(group.path);
 						const fileStatus = file.status;
 						const canRollback = fileStatus !== "renamed" && fileStatus !== "copied";
 						return (
@@ -490,6 +515,14 @@ export function DiffViewerPanel({
 										className="rounded-b-md border-x border-b border-border bg-surface-1"
 										style={{ overflow: "hidden" }}
 									>
+										{loadError ? (
+											<p role="status" className="px-4 py-3 text-xs text-status-orange">
+												{file.oldText != null || file.newText != null
+													? "Could not refresh diff. Showing previously loaded content."
+													: "Could not load diff. Refresh to try again."}{" "}
+												{loadError}
+											</p>
+										) : null}
 										{isFileLoading(group.path) ? (
 											<div className="px-4 py-6">
 												<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "95%" }} />
@@ -498,7 +531,7 @@ export function DiffViewerPanel({
 												<div className="kb-skeleton h-3 rounded-sm mb-2" style={{ width: "78%" }} />
 												<div className="kb-skeleton h-3 rounded-sm" style={{ width: "85%" }} />
 											</div>
-										) : (
+										) : loadError && file.oldText == null && file.newText == null ? null : (
 											group.entries.map((entry) => (
 												<div key={entry.id} className="kb-diff-entry">
 													<ReviewDocumentDiff

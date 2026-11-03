@@ -109,6 +109,8 @@ export function FilesView({
 	} | null>(null);
 	const [pendingScrollLine, setPendingScrollLine] = useState<number | null>(null);
 	const contentRowRef = useRef<HTMLDivElement | null>(null);
+	const editorSurfaceRef = useRef<HTMLDivElement | null>(null);
+	const navigationFocusTransferredRef = useRef(false);
 	const contentScopeKeyRef = useRef(fileBrowserData.contentScopeKey);
 	contentScopeKeyRef.current = fileBrowserData.contentScopeKey;
 	const { startDrag: startFileTreeResize } = useResizeDrag();
@@ -127,11 +129,27 @@ export function FilesView({
 		saveFileContent: fileBrowserData.saveFileContent,
 	});
 
+	const handleCodeNavigate = useCallback(
+		(location: CodeNavigationLocation) => {
+			navigationFocusTransferredRef.current = true;
+			setPendingScrollLine(null);
+			setPendingCodeLocation({ scopeKey: fileBrowserData.contentScopeKey, location });
+			if (location.path !== fileBrowserData.selectedPath) editorWorkspace.handleAutosaveFocusChange();
+			fileBrowserData.onSelectNavigationTarget(location.path);
+		},
+		[
+			fileBrowserData.contentScopeKey,
+			fileBrowserData.selectedPath,
+			fileBrowserData.onSelectNavigationTarget,
+			editorWorkspace.handleAutosaveFocusChange,
+		],
+	);
 	const codeNavigation = useCodeNavigation({
 		projectId,
 		scopeKey: fileBrowserData.contentScopeKey,
 		scope: fileBrowserData.searchScope,
 		config: codeNavigationConfig,
+		onNavigate: handleCodeNavigate,
 		source: editorWorkspace.activeTab
 			? {
 					path: editorWorkspace.activeTab.path,
@@ -146,24 +164,13 @@ export function FilesView({
 				}
 			: null,
 	});
+	useEffect(() => {
+		if (codeNavigation.result) navigationFocusTransferredRef.current = false;
+	}, [codeNavigation.result]);
 	const agentEditorActions = useAgentEditorActions();
 	const editorActions = useMemo(
 		() => [...codeNavigation.actions, ...agentEditorActions],
 		[codeNavigation.actions, agentEditorActions],
-	);
-	const handleCodeNavigate = useCallback(
-		(location: CodeNavigationLocation) => {
-			setPendingScrollLine(null);
-			setPendingCodeLocation({ scopeKey: fileBrowserData.contentScopeKey, location });
-			if (location.path !== fileBrowserData.selectedPath) editorWorkspace.handleAutosaveFocusChange();
-			fileBrowserData.onSelectNavigationTarget(location.path);
-		},
-		[
-			fileBrowserData.contentScopeKey,
-			fileBrowserData.selectedPath,
-			fileBrowserData.onSelectNavigationTarget,
-			editorWorkspace.handleAutosaveFocusChange,
-		],
 	);
 	const pendingCodeRange =
 		pendingCodeLocation?.scopeKey === fileBrowserData.contentScopeKey &&
@@ -405,6 +412,10 @@ export function FilesView({
 						</>
 					)}
 					<div
+						ref={editorSurfaceRef}
+						role="region"
+						aria-label="File code navigation"
+						tabIndex={-1}
 						style={{
 							display: "flex",
 							flexDirection: "column",
@@ -444,8 +455,17 @@ export function FilesView({
 						{codeNavigation.result ? (
 							<CodeNavigationResults
 								result={codeNavigation.result}
+								referencesOptions={codeNavigation.referencesOptions}
 								onDismiss={codeNavigation.dismiss}
 								onNavigate={handleCodeNavigate}
+								readFile={fileBrowserData.getFileContent}
+								onRestoreFocus={() => {
+									if (navigationFocusTransferredRef.current) return;
+									const surface = editorSurfaceRef.current;
+									(surface?.querySelector<HTMLElement>(".cm-content") ?? surface)?.focus({
+										preventScroll: true,
+									});
+								}}
 							/>
 						) : null}
 					</div>

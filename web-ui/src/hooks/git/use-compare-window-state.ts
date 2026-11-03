@@ -77,6 +77,7 @@ export function useCompareWindowState(target: CompareWindowTarget): CompareWindo
 	if (initialState.isError && scopedSnapshot === null) {
 		return {
 			status: "error",
+			recoverable: true,
 			message: `Could not load the captured project's state: ${initialState.error?.message ?? "Unknown runtime read error."}`,
 		};
 	}

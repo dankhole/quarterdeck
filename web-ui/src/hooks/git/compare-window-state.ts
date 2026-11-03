@@ -4,7 +4,7 @@ import type { CompareWindowTarget } from "../../../../src/shared/compare-window-
 
 export type CompareWindowContext =
 	| { readonly status: "loading" }
-	| { readonly status: "error"; readonly message: string }
+	| { readonly status: "error"; readonly message: string; readonly recoverable?: true }
 	| {
 			readonly status: "ready";
 			readonly project: RuntimeProjectSummary;
@@ -28,6 +28,7 @@ export function resolveCompareWindowContext(input: {
 	if (input.streamError || input.isRuntimeDisconnected) {
 		return {
 			status: "error",
+			recoverable: true,
 			message: input.streamError ?? "The runtime is disconnected. Reconnect to continue reviewing.",
 		};
 	}

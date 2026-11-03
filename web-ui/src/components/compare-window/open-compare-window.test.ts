@@ -89,6 +89,49 @@ describe("openCompareWindow", () => {
 		expect(window.open).not.toHaveBeenCalled();
 	});
 
+	it("requires an explicit desktop capability for Uncommitted but still accepts old Compare bridges", async () => {
+		const workingCopy: CompareWindowTarget = {
+			...target,
+			reviewMode: "uncommitted",
+			sourceRef: "HEAD",
+			targetRef: "HEAD",
+			includeUncommitted: true,
+			threeDotDiff: false,
+		};
+		const open = vi.fn().mockResolvedValue({ kind: "opened" });
+		vi.stubGlobal("quarterdeckDesktop", {});
+		vi.stubGlobal("quarterdeckDesktopCompare", { version: 1, openCompareWindow: open });
+		await expect(openCompareWindow(workingCopy)).rejects.toThrow("Update Quarterdeck");
+		expect(open).not.toHaveBeenCalled();
+		await openCompareWindow(target);
+		expect(open).toHaveBeenCalledWith(target);
+		vi.stubGlobal("quarterdeckDesktopCompare", {
+			version: 1,
+			supportsUncommittedReview: true,
+			openCompareWindow: open,
+		});
+		await openCompareWindow(workingCopy);
+		expect(open).toHaveBeenLastCalledWith(workingCopy);
+		expect(window.open).not.toHaveBeenCalled();
+	});
+
+	it("round trips explicit browser working-copy mode through the startup handshake", async () => {
+		const workingCopy: CompareWindowTarget = {
+			...target,
+			reviewMode: "uncommitted",
+			sourceRef: "HEAD",
+			targetRef: "HEAD",
+			includeUncommitted: true,
+			threeDotDiff: false,
+		};
+		const pending = openCompareWindow(workingCopy);
+		expect(new URL(String(vi.mocked(window.open).mock.calls[0]?.[0])).searchParams.get("reviewMode")).toBe(
+			"uncommitted",
+		);
+		announceCompareWindowReady(workingCopy);
+		await expect(pending).resolves.toBeUndefined();
+	});
+
 	it("reports an unavailable desktop open", async () => {
 		vi.stubGlobal("quarterdeckDesktop", {});
 		vi.stubGlobal("quarterdeckDesktopCompare", {

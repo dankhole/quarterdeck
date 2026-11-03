@@ -111,6 +111,7 @@
     "ora": "^9.4.1",
     "p-limit": "^7.3.2",
     "proper-lockfile": "^4.1.2",
+    "refractor": "^5.0.0",
     "semver": "^7.8.5",
     "tree-kill": "^1.2.2",
     "vscode-languageserver-protocol": "^3.18.4",

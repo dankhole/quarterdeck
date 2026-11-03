@@ -54,6 +54,8 @@ vi.mock("@/components/git/panels/file-browser-tree-panel", () => ({
 vi.mock("@/components/editor/source-editor", () => ({
 	SourceEditor: (props: SourceEditorProps) => (
 		<div
+			className="cm-content"
+			tabIndex={-1}
 			data-editor-path={props.path}
 			data-read-only={String(props.readOnly)}
 			data-range={JSON.stringify(props.scrollToRange)}
@@ -334,6 +336,58 @@ describe("FilesView", () => {
 		expect(container.querySelector("[data-editor-path]")).toBeNull();
 	});
 
+	it("floats multiple definitions above Files and restores the source editor on Escape", async () => {
+		rpc.definition.mockResolvedValue({
+			status: "ok",
+			documentVersion: 1,
+			locations: [target, { ...target, path: "src/second.ts" }],
+			truncated: false,
+		});
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness />
+				</TooltipProvider>,
+			),
+		);
+		await act(async () => button("src/app.ts").click());
+		await act(async () => button("Go to Definition").click());
+		const popup = document.querySelector('[role="dialog"]');
+		expect(popup).not.toBeNull();
+		expect(container.contains(popup)).toBe(false);
+		expect(container.querySelector("[data-editor-path]")?.getAttribute("data-editor-path")).toBe("src/app.ts");
+		expect(document.activeElement?.getAttribute("role")).toBe("listbox");
+		await act(async () =>
+			document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+		);
+		await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+		expect(document.activeElement).toBe(container.querySelector(".cm-content"));
+		expect(rpc.saveFileContent).not.toHaveBeenCalled();
+	});
+	it("closes the popup and opens the selected definition at its exact range", async () => {
+		rpc.definition.mockResolvedValue({
+			status: "ok",
+			documentVersion: 1,
+			locations: [target, { ...target, path: "src/second.ts" }],
+			truncated: false,
+		});
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<Harness />
+				</TooltipProvider>,
+			),
+		);
+		await act(async () => button("src/app.ts").click());
+		await act(async () => button("Go to Definition").click());
+		await act(async () => document.querySelector<HTMLButtonElement>('[role="option"]')!.click());
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+		const editor = container.querySelector("[data-editor-path]");
+		expect(editor?.getAttribute("data-editor-path")).toBe(target.path);
+		expect(editor?.getAttribute("data-read-only")).toBe("true");
+		expect(JSON.parse(editor?.getAttribute("data-range") ?? "null")).toEqual(target.range);
+	});
 	it("opens an excluded dependency result read-only at its complete range and permits revisiting its tab", async () => {
 		await act(async () =>
 			root.render(
@@ -348,7 +402,8 @@ describe("FilesView", () => {
 		expect(rpc.definition).toHaveBeenCalledWith(
 			expect.objectContaining({ content: expect.stringContaining("// draft") }),
 		);
-		await act(async () => button("Line 1, column 22").click());
+		// A single definition opens directly, without a second click in a results list.
+		expect(document.querySelector('[aria-label="Code navigation results"]')).toBeNull();
 
 		const editor = container.querySelector("[data-editor-path]");
 		expect(editor?.getAttribute("data-editor-path")).toBe(target.path);

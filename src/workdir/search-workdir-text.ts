@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import type { RuntimeWorkdirTextSearchFile, RuntimeWorkdirTextSearchResponse } from "../core";
 import { GIT_INSPECTION_OPTIONS, runGit, validateGitRef } from "./git-utils.js";
+import { createTextSearchCommentFilter } from "./text-search-comment-filter.js";
 
 const DEFAULT_LIMIT = 100;
 
@@ -9,6 +10,7 @@ interface SearchWorkdirTextOptions {
 	noIndex?: boolean;
 	caseSensitive?: boolean;
 	isRegex?: boolean;
+	ignoreComments?: boolean;
 	limit?: number;
 	ref?: string;
 }
@@ -18,9 +20,16 @@ export async function searchWorkdirText(
 	query: string,
 	options: SearchWorkdirTextOptions = {},
 ): Promise<RuntimeWorkdirTextSearchResponse> {
-	const { caseSensitive = false, isRegex = false, limit = DEFAULT_LIMIT, ref } = options;
-	if (ref && !validateGitRef(ref)) {
-		return { query, files: [], totalMatches: 0, truncated: false };
+	const { caseSensitive = false, isRegex = false, limit = DEFAULT_LIMIT, ignoreComments = false } = options;
+	let { ref } = options;
+	const acknowledgment = ignoreComments ? { ignoreComments: true } : {};
+	const emptyResponse = { query, files: [], totalMatches: 0, truncated: false, ...acknowledgment };
+	if (ref && !validateGitRef(ref)) return emptyResponse;
+	if (ignoreComments && ref) {
+		// Capture symbolic refs once so both greps and classification see the same revision.
+		const captured = await runGit(cwd, ["rev-parse", "--verify", `${ref}^{tree}`], GIT_INSPECTION_OPTIONS);
+		if (!captured.ok || !/^[a-f0-9]{40,64}$/u.test(captured.stdout.trim())) return emptyResponse;
+		ref = captured.stdout.trim();
 	}
 
 	const args: string[] = ["grep", "-n", "--null", "--no-color", "-I"];
@@ -39,7 +48,7 @@ export async function searchWorkdirText(
 
 	// Exit code 1 = no matches found
 	if (!result.ok && result.exitCode === 1) {
-		return { query, files: [], totalMatches: 0, truncated: false };
+		return emptyResponse;
 	}
 
 	// Exit code 2 = bad regex or other git grep error
@@ -52,7 +61,33 @@ export async function searchWorkdirText(
 
 	// Other failures = return empty results
 	if (!result.ok) {
-		return { query, files: [], totalMatches: 0, truncated: false };
+		return emptyResponse;
+	}
+
+	let keepLine: ReturnType<typeof createTextSearchCommentFilter> | undefined;
+	if (ignoreComments) {
+		// Keep matching delegated to Git (including POSIX ERE semantics). A
+		// separate occurrence stream lets a line survive if any match is code.
+		// Git's --only-matching --column reports the first match column plus
+		// prior consumed bytes, not each later match start. Instead ask Git to
+		// mark exact spans with fixed color delimiters; reconstruct and validate
+		// the unchanged text before trusting those UTF-16 positions.
+		const occurrenceArgs = [
+			"-c",
+			"color.grep.matchSelected=red",
+			"-c",
+			"color.grep.selected=",
+			"-c",
+			"color.grep.filename=",
+			"-c",
+			"color.grep.lineNumber=",
+			"grep",
+			"--color=always",
+			"--no-column",
+			...args.slice(1).filter((arg) => arg !== "--no-color"),
+		];
+		const occurrences = await runGit(cwd, occurrenceArgs, { trimStdout: false, ...GIT_INSPECTION_OPTIONS });
+		if (occurrences.ok) keepLine = createTextSearchCommentFilter(cwd, occurrences.stdout, ref);
 	}
 
 	const lines = result.stdout.split(/\r?\n/u);
@@ -69,7 +104,7 @@ export async function searchWorkdirText(
 			continue;
 		}
 
-		if (totalMatches >= limit) {
+		if (!ignoreComments && totalMatches >= limit) {
 			truncated = true;
 			break;
 		}
@@ -91,6 +126,12 @@ export async function searchWorkdirText(
 		}
 
 		const content = remainder.slice(separatorIndex + 1);
+		const filtered = keepLine ? await keepLine(filepath, lineNumber, content) : undefined;
+		if (filtered && !filtered.keep) continue;
+		if (ignoreComments && totalMatches >= limit) {
+			truncated = true;
+			break;
+		}
 
 		let fileEntry = fileMap.get(filepath);
 		if (!fileEntry) {
@@ -98,7 +139,7 @@ export async function searchWorkdirText(
 			fileMap.set(filepath, fileEntry);
 		}
 
-		fileEntry.matches.push({ line: lineNumber, content });
+		fileEntry.matches.push({ line: lineNumber, content, ...(filtered?.ranges ? { ranges: filtered.ranges } : {}) });
 		totalMatches++;
 	}
 
@@ -107,5 +148,6 @@ export async function searchWorkdirText(
 		files: [...fileMap.values()],
 		totalMatches,
 		truncated,
+		...acknowledgment,
 	};
 }

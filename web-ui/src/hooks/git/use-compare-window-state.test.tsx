@@ -101,6 +101,7 @@ describe("Compare initial authoritative hydration", () => {
 		await act(async () => read.reject(new Error("Project read failed")));
 		expect(context).toEqual({
 			status: "error",
+			recoverable: true,
 			message: "Could not load the captured project's state: Project read failed",
 		});
 	});

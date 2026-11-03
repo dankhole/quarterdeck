@@ -44,6 +44,20 @@ export const quarterdeckEditorTheme = EditorView.theme(
 		".cm-cursor": {
 			borderLeftColor: "var(--color-text-primary)",
 		},
+		".cm-content[data-definition-link]": {
+			cursor: "pointer",
+		},
+		".cm-selectionMatch": {
+			backgroundColor: "rgba(0, 132, 255, 0.18)",
+		},
+		".cm-selectionMatch-main": {
+			backgroundColor: "rgba(0, 132, 255, 0.28)",
+			outline: "1px solid rgba(0, 132, 255, 0.5)",
+		},
+		".cm-searchMatch .cm-selectionMatch": {
+			backgroundColor: "transparent",
+			outline: "none",
+		},
 		".cm-searchMatch": {
 			backgroundColor: "rgba(210, 153, 34, 0.48)",
 			outline: "1px solid rgba(210, 153, 34, 0.5)",

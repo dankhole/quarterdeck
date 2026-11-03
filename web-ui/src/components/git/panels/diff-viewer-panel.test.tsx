@@ -91,7 +91,11 @@ describe("DiffViewerPanel", () => {
 			expect(rowSpy).toHaveBeenCalledTimes(2);
 			expect(container.textContent).toContain("const c = 3;");
 			const addedRow = container.querySelector(".kb-diff-row-added");
-			await act(async () => addedRow?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+			await act(async () =>
+				addedRow
+					?.querySelector(".kb-diff-comment-gutter")
+					?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+			);
 			expect([...onCommentsChange.mock.calls[0]![0].values()][0]).toMatchObject({
 				filePath: "a.ts",
 				lineText: "const a = 2;",
@@ -480,7 +484,9 @@ describe("DiffViewerPanel", () => {
 			const send = vi.fn(async () => ({ ok: true }));
 			await act(async () => root.render(<ReviewHarness onSend={send} viewMode={viewMode} />));
 			await act(async () =>
-				container.querySelector(".kb-diff-row-added")?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+				container
+					.querySelector(".kb-diff-row-added .kb-diff-comment-gutter")
+					?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
 			);
 			expect(button("Add comment")?.disabled).toBe(true);
 			const editor = container.querySelector("textarea")!;
@@ -803,7 +809,7 @@ describe("DiffViewerPanel", () => {
 			);
 			await act(async () =>
 				container
-					.querySelector('[data-diff-line="2"][data-code-navigation-side="new"]')
+					.querySelector('[data-diff-line="2"][data-code-navigation-side="new"] .kb-diff-comment-gutter')
 					?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
 			);
 			await type("Original repeated line");
@@ -822,7 +828,7 @@ describe("DiffViewerPanel", () => {
 			expect(detached().textContent).toContain("Original repeated line");
 			await act(async () =>
 				container
-					.querySelector('[data-diff-line="2"][data-code-navigation-side="new"]')
+					.querySelector('[data-diff-line="2"][data-code-navigation-side="new"] .kb-diff-comment-gutter')
 					?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
 			);
 			expect(container.querySelectorAll(".kb-diff-inline-comment")).toHaveLength(2);

@@ -2,7 +2,13 @@ import { useCallback, useRef, useState } from "react";
 import { showAppToast } from "@/components/app-toaster";
 import type { SourceEditorAction, SourceEditorActionContext } from "@/components/editor/source-editor-context";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
-import { CODE_NAVIGATION_LABELS, type CodeNavigationConfig, type CodeNavigationResult } from "./code-navigation";
+import type { CodeNavigationLocation } from "@/runtime/types";
+import {
+	CODE_NAVIGATION_LABELS,
+	type CodeNavigationConfig,
+	type CodeNavigationReferencesOptions,
+	type CodeNavigationResult,
+} from "./code-navigation";
 import { diffCodeNavigationUnavailableReason } from "./diff-code-navigation";
 import type { ReviewDocument } from "./review-document";
 import { useCodeNavigation } from "./use-code-navigation";
@@ -11,6 +17,7 @@ export interface DiffCodeNavigationOptions {
 	projectId: string | null;
 	scope: WorkdirSearchScope;
 	config: CodeNavigationConfig | null;
+	onNavigate?: (location: CodeNavigationLocation) => void;
 }
 
 export interface DiffCodeNavigationTarget {
@@ -21,6 +28,7 @@ export interface DiffCodeNavigationTarget {
 export interface UseDiffCodeNavigationResult {
 	actions: readonly SourceEditorAction[];
 	result: CodeNavigationResult | null;
+	referencesOptions: CodeNavigationReferencesOptions;
 	documentVersion: number;
 	dismiss: () => void;
 	select: (action: SourceEditorAction, target: DiffCodeNavigationTarget) => void;
@@ -95,6 +103,7 @@ export function useDiffCodeNavigation(
 	);
 	return {
 		actions: shared.actions,
+		referencesOptions: shared.referencesOptions,
 		result: denied?.version === documentVersion ? denied.result : shared.result,
 		documentVersion,
 		dismiss,

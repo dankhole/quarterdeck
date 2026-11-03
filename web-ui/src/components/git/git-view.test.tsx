@@ -103,11 +103,70 @@ describe("GitView Compare pop-out", () => {
 		await render();
 		expect(container.querySelector<HTMLButtonElement>('[aria-label="Pop out Compare"]')?.disabled).toBe(true);
 	});
-	it("does not expose the button in Uncommitted", async () => {
+	it("opens Uncommitted as HEAD versus live working copy, independently of Compare refs", async () => {
 		mocks.tab = "uncommitted";
+		mocks.sourceRef = "";
+		mocks.targetRef = "";
 		await render();
-		expect(container.querySelector('[aria-label="Pop out Compare"]')).toBeNull();
+		const button = container.querySelector<HTMLButtonElement>('[aria-label="Pop out Uncommitted review"]');
+		expect(button?.disabled).toBe(false);
+		await act(async () => button?.click());
+		expect(mocks.open).toHaveBeenCalledWith({
+			projectId: "project",
+			taskId: null,
+			reviewMode: "uncommitted",
+			sourceRef: "HEAD",
+			targetRef: "HEAD",
+			includeUncommitted: true,
+			threeDotDiff: false,
+			selectedPath: "src/app.ts",
+		});
 	});
+
+	it.each(["compare", "uncommitted"])("captures the task incarnation when opening %s", async (tab) => {
+		mocks.tab = tab;
+		const card = {
+			id: "task",
+			title: "Task",
+			prompt: "Review task",
+			baseRef: "main",
+			createdAt: 123,
+			updatedAt: 123,
+		};
+		const column = { id: "review" as const, title: "Review", cards: [card] };
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<GitView currentProjectId="project" selectedCard={{ card, column, allColumns: [column] }} />
+				</TooltipProvider>,
+			),
+		);
+		const label = tab === "compare" ? "Pop out Compare" : "Pop out Uncommitted review";
+		await act(async () => container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.click());
+		expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ taskId: "task", taskCreatedAt: 123 }));
+	});
+
+	it.each(["success", "failure"])(
+		"leaves main comment drafts and ownership untouched on pop-out %s",
+		async (outcome) => {
+			mocks.comments.set("draft", {
+				filePath: "src/app.ts",
+				lineNumber: 1,
+				lineText: "x",
+				variant: "added",
+				comment: "Keep this draft",
+				editing: false,
+			});
+			if (outcome === "failure") mocks.open.mockRejectedValue(new Error("Blocked"));
+			await render();
+			await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Pop out Compare"]')?.click());
+			expect(mocks.comments.get("draft")?.comment).toBe("Keep this draft");
+			const props = mocks.viewer.mock.calls.at(-1)?.[0] as ComponentProps<typeof DiffViewerPanel>;
+			expect(props.comments).toBe(mocks.comments);
+			expect(props.reviewDraftKey).toBe("window-scoped-review");
+			expect(mocks.open.mock.calls[0]?.[0]).not.toHaveProperty("comments");
+		},
+	);
 	it("distinguishes a committed WORKTREE branch from live Compare content and Uncommitted", async () => {
 		mocks.sourceRef = "WORKTREE";
 		const currentDocument = () => {

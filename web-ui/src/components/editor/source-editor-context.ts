@@ -39,13 +39,14 @@ export function createSourceEditorActionContext(
 	state: EditorState,
 	path: string,
 	documentVersion: number,
+	position = state.selection.main.head,
 ): SourceEditorActionContext {
 	const selection = state.selection.main;
 	return {
 		path,
 		content: state.sliceDoc(),
 		documentVersion,
-		position: sourceEditorPosition(state, selection.head),
+		position: sourceEditorPosition(state, position),
 		selection: {
 			from: selection.from,
 			to: selection.to,

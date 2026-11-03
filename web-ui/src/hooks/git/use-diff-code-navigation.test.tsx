@@ -106,6 +106,32 @@ describe("useDiffCodeNavigation", () => {
 			expect(showAppToast).not.toHaveBeenCalled();
 		},
 	);
+	it("threads the usages option and reruns the captured new-side position, fencing a later source refresh", async () => {
+		references.mockImplementation(async (input) => ({
+			status: "ok",
+			documentVersion: input.documentVersion,
+			locations: [],
+			truncated: false,
+			ignoreComments: input.ignoreComments,
+		}));
+		await render();
+		await run(1);
+		expect(current.referencesOptions.ignoreComments).toBe(false);
+		const original = references.mock.lastCall![0];
+		await act(async () => current.referencesOptions.onToggle());
+		expect(references).toHaveBeenLastCalledWith({ ...original, ignoreComments: true });
+		expect(current.result).toMatchObject({ status: "locations", locations: [] });
+		const staleToggle = current.referencesOptions.onToggle;
+		const changed: ReviewDocument = {
+			...documentSnapshot(),
+			content: { kind: "text", oldText: "old", newText: "changed()" },
+		};
+		await render(changed);
+		expect(current.referencesOptions.disabled).toBe(true);
+		await act(async () => staleToggle());
+		expect(references).toHaveBeenCalledTimes(2);
+	});
+
 	it("explains old sides, historical snapshots, and disabled config without sending requests", async () => {
 		await render();
 		expect(showAppToast).not.toHaveBeenCalled();

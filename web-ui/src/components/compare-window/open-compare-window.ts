@@ -32,6 +32,8 @@ export async function openCompareWindow(input: CompareWindowTarget): Promise<voi
 			typeof bridge.openCompareWindow !== "function"
 		)
 			throw new Error("This desktop version cannot open Compare windows. Update Quarterdeck.");
+		if (target.reviewMode === "uncommitted" && bridge.supportsUncommittedReview !== true)
+			throw new Error("This desktop version cannot open Uncommitted reviews. Update Quarterdeck.");
 		const response = await bridge.openCompareWindow(target);
 		if (response.kind !== "opened")
 			throw new Error("Could not open the Compare window. Check the desktop runtime and try again.");

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeWorkdirChangesResponse } from "../../../src/core";
+import {
+	type RuntimeWorkdirChangesResponse,
+	runtimeWorkdirTextSearchRequestSchema,
+	runtimeWorkdirTextSearchResponseSchema,
+} from "../../../src/core";
 import type * as DirectoryListing from "../../../src/workdir/workdir-directory-listing";
 
 const worktreeMocks = vi.hoisted(() => ({
@@ -25,6 +29,7 @@ const listingMocks = vi.hoisted(() => ({
 	searchFolder: vi.fn(),
 	searchFilePaths: vi.fn(),
 	searchWorkdirFiles: vi.fn(),
+	searchText: vi.fn(),
 }));
 
 const fileMutationMocks = vi.hoisted(() => ({
@@ -119,6 +124,10 @@ vi.mock("../../../src/workdir/search-workdir-files.js", () => ({
 	invalidateWorkdirFileListCache: vi.fn(),
 	searchWorkdirFiles: listingMocks.searchWorkdirFiles,
 	searchFilePaths: listingMocks.searchFilePaths,
+}));
+
+vi.mock("../../../src/workdir/search-workdir-text.js", () => ({
+	searchWorkdirText: listingMocks.searchText,
 }));
 
 vi.mock("../../../src/workdir/search-workdir-folder-files.js", () => ({
@@ -453,6 +462,29 @@ describe("createProjectApi loadChanges", () => {
 });
 
 describe("createProjectApi paged file listing", () => {
+	it("accepts optional comment-search capability fields without requiring them from older peers", () => {
+		expect(runtimeWorkdirTextSearchRequestSchema.parse({ query: "needle", ignoreComments: true })).toMatchObject({
+			ignoreComments: true,
+		});
+		const response = { query: "needle", files: [], totalMatches: 0, truncated: false };
+		const ranged = {
+			...response,
+			ignoreComments: true,
+			totalMatches: 1,
+			files: [
+				{
+					path: "app.ts",
+					matches: [{ line: 1, content: "const needle = 1; // needle", ranges: [{ start: 6, end: 12 }] }],
+				},
+			],
+		};
+		expect(runtimeWorkdirTextSearchResponseSchema.parse(ranged)).toEqual(ranged);
+		expect(runtimeWorkdirTextSearchResponseSchema.parse(response)).toEqual(response);
+		expect(runtimeWorkdirTextSearchResponseSchema.parse({ ...response, ignoreComments: true })).toEqual({
+			...response,
+			ignoreComments: true,
+		});
+	});
 	const projectScope = { projectId: "project-1", projectPath: "/tmp/repo" };
 	const page = {
 		directory: "src",
@@ -532,6 +564,40 @@ describe("createProjectApi paged file listing", () => {
 			hiddenCount: 0,
 		});
 		expect(listingMocks.listPage).not.toHaveBeenCalled();
+	});
+
+	it.each([true, false])("forwards comment filtering for folderOnly=%s text search", async (folderOnly) => {
+		projectStateMocks.loadProjectScopeById.mockResolvedValue({ folderOnly });
+		const response = { query: "needle", files: [], totalMatches: 0, truncated: false, ignoreComments: true };
+		listingMocks.searchText.mockResolvedValueOnce(response);
+		const api = createProjectApi(createProjectDeps());
+		expect(
+			await api.searchText(projectScope, { query: "needle", ignoreComments: true, isRegex: true, limit: 4 }),
+		).toEqual(response);
+		expect(listingMocks.searchText).toHaveBeenLastCalledWith("/tmp/repo", "needle", {
+			noIndex: folderOnly,
+			caseSensitive: undefined,
+			isRegex: true,
+			ignoreComments: true,
+			limit: 4,
+			ref: undefined,
+		});
+	});
+
+	it("acknowledges enabled filtering for unavailable task search without changing off responses", async () => {
+		const api = createProjectApi(createProjectDeps());
+		for (const ignoreComments of [true, undefined]) {
+			worktreeMocks.resolveTaskWorkingDirectory.mockRejectedValueOnce(
+				new Error("Task worktree not found for task task-1"),
+			);
+			expect(await api.searchText(projectScope, { query: "needle", taskId: "task-1", ignoreComments })).toEqual({
+				query: "needle",
+				files: [],
+				totalMatches: 0,
+				truncated: false,
+				...(ignoreComments ? { ignoreComments: true } : {}),
+			});
+		}
 	});
 
 	it("uses the bounded folder scan for folder quick-open and reports truncation", async () => {

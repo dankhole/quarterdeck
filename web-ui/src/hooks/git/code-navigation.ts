@@ -17,6 +17,12 @@ export const CODE_NAVIGATION_LABELS: Record<CodeNavigationOperation, string> = {
 	hover: "Show Type Information",
 };
 
+export interface CodeNavigationReferencesOptions {
+	ignoreComments: boolean;
+	disabled: boolean;
+	onToggle: () => void;
+}
+
 export type CodeNavigationResult =
 	| { status: "busy"; operation: CodeNavigationOperation }
 	| { status: "unavailable" | "error"; operation: CodeNavigationOperation; message: string }
