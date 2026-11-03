@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { showAppToast } from "@/components/app-toaster";
 import type { SourceEditorAction, SourceEditorActionContext } from "@/components/editor/source-editor-context";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -59,7 +60,15 @@ export function useCodeNavigation(options: UseCodeNavigationOptions): UseCodeNav
 	const run = useCallback(
 		async (operation: CodeNavigationOperation, context: SourceEditorActionContext) => {
 			const requestId = ++requestRef.current;
-			const setResult = (next: CodeNavigationResult) => setOutcome({ scopeKey, configKey, result: next });
+			const setResult = (next: CodeNavigationResult) => {
+				setOutcome({ scopeKey, configKey, result: next });
+				if (next.status === "unavailable" || next.status === "error") {
+					showAppToast({
+						intent: "danger",
+						message: `${CODE_NAVIGATION_LABELS[operation]}: ${next.message}`,
+					});
+				}
+			};
 			const unavailable = codeNavigationUnavailableReason({ projectId, scope, source, config });
 			if (unavailable) {
 				setResult({ status: "unavailable", operation, message: unavailable });

@@ -11,11 +11,13 @@ import {
 	useDiffCodeNavigation,
 } from "./use-diff-code-navigation";
 
-const { definition, references, hover } = vi.hoisted(() => ({
+const { definition, references, hover, showAppToast } = vi.hoisted(() => ({
 	definition: vi.fn(),
 	references: vi.fn(),
 	hover: vi.fn(),
+	showAppToast: vi.fn(),
 }));
+vi.mock("@/components/app-toaster", () => ({ showAppToast }));
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
 		project: {
@@ -72,6 +74,7 @@ describe("useDiffCodeNavigation", () => {
 		definition.mockReset();
 		references.mockReset();
 		hover.mockReset();
+		showAppToast.mockReset();
 	});
 	afterEach(() => {
 		act(() => root.unmount());
@@ -100,14 +103,20 @@ describe("useDiffCodeNavigation", () => {
 				}),
 			);
 			expect(current.result?.status).toBe(index === 2 ? "hover" : "locations");
+			expect(showAppToast).not.toHaveBeenCalled();
 		},
 	);
 	it("explains old sides, historical snapshots, and disabled config without sending requests", async () => {
 		await render();
+		expect(showAppToast).not.toHaveBeenCalled();
 		await act(async () =>
 			current.select(current.actions[0]!, { context: null, unavailableReason: DIFF_OLD_SIDE_UNAVAILABLE }),
 		);
 		expect(current.result).toMatchObject({ status: "unavailable", message: expect.stringContaining("old/base") });
+		expect(showAppToast).toHaveBeenLastCalledWith({
+			intent: "danger",
+			message: `Go to Definition: ${DIFF_OLD_SIDE_UNAVAILABLE}`,
+		});
 		const historical: ReviewDocument = {
 			...documentSnapshot(),
 			revisions: { ...documentSnapshot().revisions, head: "main", headSource: "revision" },
@@ -115,6 +124,10 @@ describe("useDiffCodeNavigation", () => {
 		await render(historical);
 		await run(0, historical);
 		expect(current.result).toMatchObject({ status: "unavailable", message: expect.stringContaining("historical") });
+		expect(showAppToast).toHaveBeenLastCalledWith({
+			intent: "danger",
+			message: expect.stringMatching(/^Go to Definition: .*historical/),
+		});
 		await render(documentSnapshot(), { ...createOptions(), config: null });
 		await run();
 		expect(current.result).toMatchObject({
@@ -122,6 +135,7 @@ describe("useDiffCodeNavigation", () => {
 			message: expect.stringContaining("Enable Code Navigation"),
 		});
 		expect(definition).not.toHaveBeenCalled();
+		expect(showAppToast).toHaveBeenCalledTimes(3);
 	});
 	it.each(["content", "oldContent", "scope", "config", "revisions"])(
 		"rejects pending and completed results when %s changes",
@@ -268,6 +282,7 @@ describe("useDiffCodeNavigation", () => {
 		await render({ ...documentSnapshot(), content: { kind: "text", oldText: "old", newText: "updated()" } });
 		await act(async () => current.select(current.actions[0]!, target));
 		expect(definition).not.toHaveBeenCalled();
+		expect(showAppToast).not.toHaveBeenCalled();
 	});
 	it("ignores completion after unmount", async () => {
 		let resolve!: (response: CodeNavigationResponse) => void;

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { showAppToast } from "@/components/app-toaster";
 import type { SourceEditorAction, SourceEditorActionContext } from "@/components/editor/source-editor-context";
 import type { WorkdirSearchScope } from "@/hooks/search/search-scope";
 import { CODE_NAVIGATION_LABELS, type CodeNavigationConfig, type CodeNavigationResult } from "./code-navigation";
@@ -77,15 +78,14 @@ export function useDiffCodeNavigation(
 				const operation = (Object.keys(CODE_NAVIGATION_LABELS) as Array<keyof typeof CODE_NAVIGATION_LABELS>).find(
 					(key) => action.id === `code-navigation-${key}`,
 				);
-				if (operation)
+				if (operation) {
+					const reason = message ?? "Right-click a symbol in the diff text to choose its position.";
 					setDenied({
 						version: documentVersion,
-						result: {
-							status: "unavailable",
-							operation,
-							message: message ?? "Right-click a symbol in the diff text to choose its position.",
-						},
+						result: { status: "unavailable", operation, message: reason },
 					});
+					showAppToast({ intent: "danger", message: `${CODE_NAVIGATION_LABELS[operation]}: ${reason}` });
+				}
 				return;
 			}
 			setDenied(null);
