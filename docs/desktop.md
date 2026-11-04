@@ -147,6 +147,8 @@ Keep shared runtime admission, process/write fences, graceful shutdown, backup s
 
 The desktop maintainer owns Electron, bundled Node, Forge, signing/notarization tools, and native-module compatibility together. Review upstream releases and security advisories at least monthly and handle relevant security fixes promptly instead of waiting for feature releases. Keep exact versions and archive checksums in the desktop manifests; update its separate lockfile without importing Electron into the npm runtime dependencies.
 
+The ASAR-scoped `glob` and `minimatch` overrides in `desktop/package.json` bridge upstream ranges that exclude the security-fixed majors (GHSA-3g3m-2fjr-6pw4 and GHSA-g3hv-75wg-m249). ASAR uses the retained async `glob()` and `minimatch()` APIs. Keep these overrides scoped to ASAR; remove them only when upstream accepts patched versions and both the desktop audit and fresh packaging checks pass. Do not use `npm audit fix --force` to downgrade Forge as a substitute.
+
 For an upgrade, read upstream migration and security notes, rebuild each supported native architecture, verify helper Node/native ABI and paired runtime/browser identity, and repeat the affected protocol, clipboard, launch, shutdown, and packaged-provider checks. Changes to Electron, signing tools, entitlements, fuses, or update behavior also require signed-install and npm replacement evidence before promotion. Record the candidate and any unsupported host combinations in the validation ledger. Do not relax fuses or provider compatibility gates to make an upgrade pass.
 
 ## Isolated validation

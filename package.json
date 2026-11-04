@@ -89,7 +89,7 @@
     "@types/proper-lockfile": "^4.1.4",
     "@types/semver": "^7.8.0",
     "@types/ws": "^8.18.1",
-    "@vitest/coverage-v8": "^5.0.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "@xterm/addon-serialize": "0.14.0",
     "esbuild": "^0.28.2",
     "husky": "^9.1.7",
@@ -97,7 +97,7 @@
     "playwright-core": "1.63.0-alpha-2026-08-31",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.3"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.241",
@@ -116,6 +116,6 @@
     "tree-kill": "^1.2.2",
     "vscode-languageserver-protocol": "^3.18.4",
     "ws": "^8.21.3",
-    "zod": "^4.6.2"
+    "zod": "^4.6.6"
   }
 }
