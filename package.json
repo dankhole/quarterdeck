@@ -100,7 +100,7 @@
     "vitest": "^5.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.241",
+    "@anthropic-ai/claude-agent-sdk": "0.3.319",
     "@trpc/client": "^11.18.0",
     "@trpc/server": "^11.18.0",
     "@xterm/headless": "6.0.0",
