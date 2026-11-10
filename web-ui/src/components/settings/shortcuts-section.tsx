@@ -1,4 +1,4 @@
-// Settings section: project script shortcuts + prompt shortcut defaults reset.
+// Settings section: project-scoped shell command shortcuts.
 import * as RadixPopover from "@radix-ui/react-popover";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -45,9 +45,11 @@ function ShortcutIconComponent({ icon, size = 14 }: { icon: string | undefined; 
 function ShortcutIconPicker({
 	value,
 	onSelect,
+	disabled,
 }: {
 	value: string | undefined;
 	onSelect: (icon: RuntimeShortcutPickerIconId) => void;
+	disabled: boolean;
 }): React.ReactElement {
 	const [open, setOpen] = useState(false);
 	const selectedOption = getRuntimeShortcutPickerOption(value);
@@ -58,7 +60,8 @@ function ShortcutIconPicker({
 				<button
 					type="button"
 					aria-label={`Shortcut icon: ${selectedOption.label}`}
-					className="inline-flex items-center gap-1 h-7 px-1.5 rounded-md border border-border bg-surface-2 text-text-primary hover:bg-surface-3"
+					disabled={disabled}
+					className="inline-flex items-center gap-1 h-9 px-2 rounded-md border border-border bg-surface-2 text-text-primary hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus disabled:opacity-40"
 				>
 					<ShortcutIconComponent icon={value} size={14} />
 					<ChevronDown size={12} />
@@ -104,20 +107,7 @@ function ShortcutIconPicker({
 // Section component
 // ---------------------------------------------------------------------------
 
-export function ShortcutsSection({
-	fields,
-	setField,
-	disabled,
-	sectionRef,
-	showResetDefaultShortcuts,
-	isResettingDefaultShortcuts,
-	onResetDefaultShortcuts,
-}: SettingsSectionProps & {
-	sectionRef: React.Ref<HTMLHeadingElement>;
-	showResetDefaultShortcuts: boolean;
-	isResettingDefaultShortcuts: boolean;
-	onResetDefaultShortcuts: () => void;
-}): React.ReactElement {
+export function ShortcutsSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
 	const [pendingScrollIndex, setPendingScrollIndex] = useState<number | null>(null);
 	const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
 
@@ -141,11 +131,11 @@ export function ShortcutsSection({
 	}, [pendingScrollIndex, fields.shortcuts]);
 
 	return (
-		<>
-			<div className="flex items-center justify-between mt-3 mb-2">
-				<h6 ref={sectionRef} className="font-semibold text-text-primary m-0">
-					Script shortcuts
-				</h6>
+		<section aria-labelledby="settings-command-shortcuts-heading" className="space-y-4">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<h3 id="settings-command-shortcuts-heading" className="text-base font-semibold text-text-primary m-0">
+					Shell command shortcuts
+				</h3>
 				<Button
 					variant="ghost"
 					size="sm"
@@ -165,21 +155,27 @@ export function ShortcutsSection({
 					}}
 					disabled={disabled}
 				>
-					Add
+					Add command
 				</Button>
 			</div>
+			<p className="m-0 text-sm leading-6 text-text-secondary">
+				Run shell commands from this project's top bar. These are separate from global prompt shortcuts, which send
+				instructions to an agent. Command changes take effect after Save changes.
+			</p>
 
 			{fields.shortcuts.map((shortcut, shortcutIndex) => (
 				<div
 					key={shortcutIndex}
+					role="group"
+					aria-label={`Command shortcut ${shortcutIndex + 1}`}
 					ref={(node) => {
 						rowRefs.current[shortcutIndex] = node;
 					}}
-					className="settings-row grid gap-2 mb-1"
-					style={{ gridTemplateColumns: "max-content 1fr 2fr auto" }}
+					className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-3 rounded-md border border-border p-3"
 				>
 					<ShortcutIconPicker
 						value={shortcut.icon}
+						disabled={disabled}
 						onSelect={(icon) =>
 							setField(
 								"shortcuts",
@@ -189,39 +185,31 @@ export function ShortcutsSection({
 							)
 						}
 					/>
-					<input
-						name={`project-shortcut-label-${shortcutIndex}`}
-						value={shortcut.label}
-						onChange={(event) =>
-							setField(
-								"shortcuts",
-								fields.shortcuts.map((item, itemIndex) =>
-									itemIndex === shortcutIndex ? { ...item, label: event.target.value } : item,
-								),
-							)
-						}
-						placeholder="Label"
-						className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-					/>
-					<input
-						name={`project-shortcut-command-${shortcutIndex}`}
-						value={shortcut.command}
-						onChange={(event) =>
-							setField(
-								"shortcuts",
-								fields.shortcuts.map((item, itemIndex) =>
-									itemIndex === shortcutIndex ? { ...item, command: event.target.value } : item,
-								),
-							)
-						}
-						placeholder="Command"
-						className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-					/>
+					<label className="min-w-0 text-sm font-medium leading-6 text-text-primary">
+						Button label
+						<input
+							name={`project-shortcut-label-${shortcutIndex}`}
+							disabled={disabled}
+							value={shortcut.label}
+							onChange={(event) =>
+								setField(
+									"shortcuts",
+									fields.shortcuts.map((item, itemIndex) =>
+										itemIndex === shortcutIndex ? { ...item, label: event.target.value } : item,
+									),
+								)
+							}
+							placeholder="Label"
+							className="mt-1 h-9 w-full rounded-md border border-border bg-surface-2 px-2 text-sm font-normal text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-40"
+						/>
+					</label>
 					<Button
 						variant="ghost"
 						size="sm"
 						icon={<X size={14} />}
 						aria-label={`Remove shortcut ${shortcut.label}`}
+						disabled={disabled}
+						className="col-start-3 row-start-1"
 						onClick={() =>
 							setField(
 								"shortcuts",
@@ -229,28 +217,29 @@ export function ShortcutsSection({
 							)
 						}
 					/>
+					<label className="col-span-3 row-start-2 min-w-0 text-sm font-medium leading-6 text-text-primary">
+						Shell command
+						<input
+							name={`project-shortcut-command-${shortcutIndex}`}
+							disabled={disabled}
+							value={shortcut.command}
+							onChange={(event) =>
+								setField(
+									"shortcuts",
+									fields.shortcuts.map((item, itemIndex) =>
+										itemIndex === shortcutIndex ? { ...item, command: event.target.value } : item,
+									),
+								)
+							}
+							placeholder="Command"
+							className="mt-1 h-9 w-full rounded-md border border-border bg-surface-2 px-2 font-mono text-sm font-normal text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none disabled:opacity-40"
+						/>
+					</label>
 				</div>
 			))}
 			{fields.shortcuts.length === 0 ? (
-				<p className="text-text-secondary text-[13px]">No shortcuts configured.</p>
+				<p className="m-0 text-sm leading-6 text-text-secondary">No shell command shortcuts configured.</p>
 			) : null}
-
-			{showResetDefaultShortcuts ? (
-				<>
-					<h6 className="font-semibold text-text-primary mt-4 mb-2">Default Prompt Shortcuts</h6>
-					<p className="text-text-secondary text-[13px] mt-0 mb-2">
-						Restore the built-in default prompt shortcuts (Commit and Squash Merge), replacing any customizations.
-					</p>
-					<Button
-						variant="default"
-						size="sm"
-						disabled={disabled || isResettingDefaultShortcuts}
-						onClick={onResetDefaultShortcuts}
-					>
-						{isResettingDefaultShortcuts ? "Restoring..." : "Restore defaults"}
-					</Button>
-				</>
-			) : null}
-		</>
+		</section>
 	);
 }

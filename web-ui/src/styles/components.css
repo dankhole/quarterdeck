@@ -178,16 +178,32 @@
 	border-radius: 999px;
 }
 
-/* Count settings only, so headings and conditional help text do not shift stripes. */
+/* Settings use spacing and explicit groups, not alternating row backgrounds. */
+.runtime-settings {
+	font-size: 14px;
+	line-height: 1.5;
+}
+
 .runtime-settings .settings-row {
-	padding: 10px 12px;
+	min-width: 0;
 	border-radius: var(--radius-md);
 }
 
-.runtime-settings .settings-row:nth-child(even of .settings-row) {
-	background-color: color-mix(in srgb, var(--color-surface-2) 60%, transparent);
+.runtime-settings .settings-row + .settings-row {
+	margin-top: 16px;
 }
 
-.runtime-settings .settings-harness-row:nth-child(even of .settings-harness-row) > button:not(:hover) {
-	background-color: var(--color-surface-1);
+.runtime-settings :is(p, label, legend) {
+	overflow-wrap: anywhere;
+}
+
+.runtime-settings :is(button, input, select, textarea, summary, a):focus-visible {
+	outline: 2px solid var(--color-border-focus);
+	outline-offset: 3px;
+}
+
+.runtime-settings .settings-group + .settings-group {
+	margin-top: 24px;
+	padding-top: 24px;
+	border-top: 1px solid var(--color-border);
 }

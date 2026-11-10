@@ -1,8 +1,9 @@
 // Consolidated form-state management for the settings dialog.
 //
 // Adding a new config field that flows through the main Save button requires:
-//   1. Add it to SettingsFormValues (type) and resolveInitialValues (mapping)
-//   2. Add the JSX control in runtime-settings-dialog.tsx
+//   1. Add it to SettingsFormValues, FIELD_SCOPES, and resolveInitialValues
+//      in settings-form.ts (type, persistence scope, and initial value).
+//   2. Add the control to the appropriate settings category section.
 //
 // The dirty check, reset-on-open, and save payload are handled automatically.
 // Domain logic (types, initial values, equality) lives in `./settings-form.ts`.
@@ -10,10 +11,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import {
-	areFormValuesEqual,
+	getChangedSettingsScopes,
 	reconcileSettingsFormValues,
 	resolveInitialValues,
 	type SettingsFormValues,
+	type SettingsSaveScope,
 } from "./settings-form";
 
 export type { SettingsFormValues } from "./settings-form";
@@ -30,6 +32,8 @@ export interface UseSettingsFormResult {
 	setField: <K extends keyof SettingsFormValues>(key: K, value: SettingsFormValues[K]) => void;
 	/** Whether any field has been changed from its initial (server) value. */
 	hasUnsavedChanges: boolean;
+	/** Persistence destinations changed anywhere in the form, including hidden pages. */
+	changedScopes: SettingsSaveScope[];
 }
 
 export function useSettingsForm(config: RuntimeConfigResponse | null, open: boolean): UseSettingsFormResult {
@@ -58,10 +62,10 @@ export function useSettingsForm(config: RuntimeConfigResponse | null, open: bool
 		);
 	}, [open, initialValues]);
 
-	const hasUnsavedChanges = useMemo(() => {
-		if (!config) return false;
-		return !areFormValuesEqual(fields, initialValues);
-	}, [config, fields, initialValues]);
+	const changedScopes = useMemo(
+		() => (config ? getChangedSettingsScopes(fields, initialValues) : []),
+		[config, fields, initialValues],
+	);
 
-	return { fields, setField, hasUnsavedChanges };
+	return { fields, setField, hasUnsavedChanges: changedScopes.length > 0, changedScopes };
 }

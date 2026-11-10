@@ -22,7 +22,7 @@ On native Windows, run the installer from PowerShell:
 
 Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`.
 
-Claude launch permissions are configurable under Settings → Harnesses → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
+Claude launch permissions are configurable under Settings → All projects → Agents → Claude Code for new or restarted sessions. Quarterdeck can inherit Claude's configured default or explicitly start in Claude's native default, accept-edits, plan, auto-preview, don't-ask, or bypass mode; provider-managed policy remains authoritative.
 
 When creating a Claude Code task, you can choose a starting model alias (Fable, Opus, Sonnet, or Haiku) and an effort level (low, medium, high, extra high, or max); Claude default inherits your configured Claude settings. Codex new-task choices apply only to a fresh conversation, because a Codex thread keeps its model on resume. Claude task choices also apply on resume, restart, and startup recovery, because `claude --resume` otherwise reverts to the configured default. Task choices replace any `--model` or `--effort` in the configured Claude arguments.
 
@@ -106,6 +106,19 @@ The endpoint must accept OpenAI-style `/v1/chat/completions`. Base URLs ending i
 
 To keep the configuration across shell sessions, add the exports to the shell startup file or launcher environment that starts Quarterdeck. Open a new shell—or reload that environment—then restart Quarterdeck so the runtime receives the new values.
 
+## Settings scope
+
+Settings groups categories by where changes apply:
+
+- **All projects** controls shared agent, notification, terminal, editor, code-navigation, and agent prompt-shortcut preferences.
+- **Project: _name_** controls only the named project's task-creation defaults and command shortcuts. Command shortcuts run shell commands; agent prompt shortcuts send prompts to an agent.
+- **This desktop** contains native environment preferences when using the desktop app.
+- **Tools** contains diagnostics, AI setup guidance, and troubleshooting actions.
+
+An open Settings dialog stays tied to its original project even if the selected project changes. If that project is removed or its folder becomes unavailable, the dialog blocks form saves—including all-project preferences—rather than transferring drafts to another project. Restore the folder's availability, or cancel and reopen Settings for an available project.
+
+Moving between categories keeps your unsaved edits. **Save changes** saves the form's edits across categories; **Cancel** discards those drafts. Actions labelled **now** or described as saving immediately are separate and are not undone by Cancel. Configuration-file links are secondary actions, not the indication of which project you are editing.
+
 ## Everyday Workflow
 
 1. Add projects.
@@ -120,7 +133,7 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
    Add cards manually or paste prompts into the sidebar. You can split a list into multiple unstarted cards, then start each task individually.
 
-   In **Settings → Project → Task creation**, set **Use isolated worktree by default** for this project. It starts enabled and seeds new tasks only; override **Use isolated worktree** on an individual task without changing the project default. Existing tasks are unchanged, and folder projects always run directly in their folder. Without isolation, concurrent tasks share the main checkout and may cause file conflicts.
+   In **Settings → Project: _name_ → Task creation**, choose **Default task workspace**: **Shared project checkout** or **Isolated worktree**, then **Save changes**. Git projects start with isolated worktrees selected. This seeds new tasks only; override **Use isolated worktree** on an individual task without changing the project default. Existing tasks are unchanged, and folder projects always run directly in their folder. Without isolation, concurrent tasks share the main checkout and may cause file conflicts.
 
 3. Start agents.
 

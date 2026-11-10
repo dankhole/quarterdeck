@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveInitialValues } from "@/hooks/settings/settings-form";
 import type { LspServerConfig } from "@/runtime/types";
 import { CodeNavigationSection } from "./code-navigation-section";
+import type { SettingsSectionProps } from "./settings-section-props";
 
 const check = vi.hoisted(() => vi.fn());
 vi.mock("@/runtime/trpc-client", () => ({
@@ -33,12 +34,12 @@ describe("language-server command availability settings", () => {
 		act(() => root.unmount());
 		container.remove();
 	});
-	function render(servers: LspServerConfig[]) {
+	function render(servers: LspServerConfig[], setField: SettingsSectionProps["setField"] = vi.fn()) {
 		act(() =>
 			root.render(
 				<CodeNavigationSection
 					fields={{ ...resolveInitialValues(null), lspServers: servers }}
-					setField={vi.fn()}
+					setField={setField}
 					disabled={false}
 					projectId="project"
 				/>,
@@ -47,9 +48,29 @@ describe("language-server command availability settings", () => {
 	}
 	function buttons() {
 		return Array.from(container.querySelectorAll("button")).filter(
-			(button) => button.textContent === "Check command",
+			(button) => button.textContent === "Check command now",
 		);
 	}
+	it("groups server settings under a readable heading and explains immediate command checks", () => {
+		render([server]);
+		expect(container.querySelector("h3")?.textContent).toContain("Language server navigation");
+		expect(container.querySelector("h4")?.textContent).toContain("Test");
+		expect(container.textContent).toContain("without starting it or saving changes");
+		expect(container.textContent).toContain("changes take effect when you choose Save changes");
+		expect(check).not.toHaveBeenCalled();
+	});
+	it("restores default templates into the draft without an immediate command check", () => {
+		const setField = vi.fn();
+		render([server], setField);
+		expect(container.textContent).toContain("Restore default templates only changes this draft");
+		const restore = Array.from(container.querySelectorAll("button")).find(
+			(button) => button.textContent === "Restore default templates",
+		);
+		expect(restore?.getAttribute("aria-describedby")).toBe("code-navigation-draft-help");
+		act(() => restore?.click());
+		expect(setField).toHaveBeenCalledExactlyOnceWith("lspServers", expect.any(Array));
+		expect(check).not.toHaveBeenCalled();
+	});
 	it("passes the server environment and keeps distinct results for the same command", async () => {
 		check
 			.mockResolvedValueOnce({ available: true, message: "Found in old PATH" })

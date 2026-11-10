@@ -8,23 +8,19 @@ import { resetAllTerminalRenderers } from "@/terminal/terminal-pool";
 import { notificationAudioPlayer } from "@/utils/notification-audio";
 import type { SettingsSectionProps } from "./settings-section-props";
 
-// ---------------------------------------------------------------------------
-// AI Features
-// ---------------------------------------------------------------------------
-
 export function AiFeaturesSection({ llmConfigured }: { llmConfigured: boolean }): React.ReactElement {
 	return (
-		<>
-			<h6 className="font-semibold text-text-primary mt-4 mb-1 flex items-center gap-1.5">
-				<Sparkles size={14} />
-				AI Features
-			</h6>
+		<section aria-labelledby="settings-ai-heading" className="mt-6 space-y-2 border-t border-border pt-6">
+			<h3 id="settings-ai-heading" className="m-0 flex items-center gap-2 text-base font-semibold text-text-primary">
+				<Sparkles size={16} />
+				AI features
+			</h3>
 			{!llmConfigured ? (
-				<div className="mb-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-secondary">
+				<div className="rounded-md border border-border bg-surface-2 p-3 text-sm leading-6 text-text-secondary break-words">
 					AI text generation tries your saved Codex/ChatGPT login first, then your saved Claude Code login. To
-					configure an optional fallback gateway, set <code className="text-[12px]">QUARTERDECK_LLM_BASE_URL</code>{" "}
-					and <code className="text-[12px]">QUARTERDECK_LLM_API_KEY</code>, and explicitly choose{" "}
-					<code className="text-[12px]">QUARTERDECK_LLM_MODEL</code>. An existing team gateway, local{" "}
+					configure an optional fallback gateway, set <code>QUARTERDECK_LLM_BASE_URL</code> and{" "}
+					<code>QUARTERDECK_LLM_API_KEY</code>, and explicitly choose <code>QUARTERDECK_LLM_MODEL</code>. An
+					existing team gateway, local{" "}
 					<a
 						href="https://docs.litellm.ai/"
 						target="_blank"
@@ -36,18 +32,14 @@ export function AiFeaturesSection({ llmConfigured }: { llmConfigured: boolean })
 					, or another OpenAI-compatible endpoint works. Restart Quarterdeck after changing its environment.
 				</div>
 			) : (
-				<p className="text-text-secondary text-[13px] mt-0 mb-2">
+				<p className="m-0 text-sm leading-6 text-text-secondary">
 					Titles, branch names, and commit messages try your saved Codex/ChatGPT login first, then your saved
 					Claude Code login, then the configured gateway. Explicit task-title provider overrides still apply.
 				</p>
 			)}
-		</>
+		</section>
 	);
 }
-
-// ---------------------------------------------------------------------------
-// Notifications
-// ---------------------------------------------------------------------------
 
 const NOTIFICATION_EVENTS = [
 	["permission", "Permissions", "Task is waiting for approval"],
@@ -59,53 +51,60 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 	const masterOff = !fields.audibleNotificationsEnabled || disabled;
 
 	return (
-		<>
-			<h6 className="font-semibold text-text-primary mt-4 mb-2">Notifications</h6>
+		<section aria-labelledby="settings-notifications-heading" className="space-y-4">
+			<h3 id="settings-notifications-heading" className="m-0 text-base font-semibold text-text-primary">
+				Notification sounds
+			</h3>
 			<SettingsSwitch
 				checked={fields.audibleNotificationsEnabled}
 				onCheckedChange={(v) => setField("audibleNotificationsEnabled", v)}
 				disabled={disabled}
 				label="Play sounds when tasks need attention"
 			/>
-			<div className={cn("settings-row flex items-center gap-2 text-[13px]", masterOff && "opacity-40")}>
+			<div className={cn("settings-row flex items-start gap-3 text-sm leading-6", masterOff && "opacity-40")}>
 				<SettingsCheckbox
 					id="audible-notification-only-when-hidden"
 					checked={fields.audibleNotificationsOnlyWhenHidden}
 					onCheckedChange={(v) => setField("audibleNotificationsOnlyWhenHidden", v)}
 					disabled={masterOff}
+					className="mt-1"
 				/>
 				<label htmlFor="audible-notification-only-when-hidden" className="cursor-pointer">
-					<span className="text-text-primary">Only when tab is hidden</span>
-					<span className="text-text-tertiary"> — skip sounds while you're looking at the board</span>
+					<span className="block font-medium text-text-primary">Only when tab is hidden</span>
+					<span className="block text-text-secondary">Skip sounds while you're looking at the board.</span>
 				</label>
 			</div>
-			<div className="settings-row flex items-center gap-3">
-				<Volume2 size={14} className={cn("text-text-secondary", masterOff && "opacity-40")} />
-				<input
-					name="audible-notification-volume"
-					type="range"
-					min={0}
-					max={100}
-					step={1}
-					value={Math.round(fields.audibleNotificationVolume * 100)}
-					onChange={(e) => setField("audibleNotificationVolume", Number(e.target.value) / 100)}
-					disabled={masterOff}
-					className="flex-1 h-1.5 accent-accent disabled:opacity-40"
-				/>
-				<span
-					className={cn("text-[13px] text-text-secondary w-8 text-right tabular-nums", masterOff && "opacity-40")}
-				>
-					{Math.round(fields.audibleNotificationVolume * 100)}%
-				</span>
+			<div className="settings-row">
+				<label htmlFor="audible-notification-volume" className="block mb-2 text-sm font-medium text-text-primary">
+					Sound volume
+				</label>
+				<div className="flex items-center gap-3">
+					<Volume2 size={16} className={cn("shrink-0 text-text-secondary", masterOff && "opacity-40")} />
+					<input
+						id="audible-notification-volume"
+						name="audible-notification-volume"
+						type="range"
+						min={0}
+						max={100}
+						step={1}
+						value={Math.round(fields.audibleNotificationVolume * 100)}
+						onChange={(e) => setField("audibleNotificationVolume", Number(e.target.value) / 100)}
+						disabled={masterOff}
+						className="min-w-0 flex-1 h-1.5 accent-accent disabled:opacity-40"
+					/>
+					<span
+						className={cn("text-sm text-text-secondary w-10 text-right tabular-nums", masterOff && "opacity-40")}
+					>
+						{Math.round(fields.audibleNotificationVolume * 100)}%
+					</span>
+				</div>
 			</div>
-			{/* Per-event grid: Enabled | Mute project viewed | Event label */}
-			<div className={cn("settings-row", masterOff && "opacity-40")}>
-				<div className="grid grid-cols-[auto_auto_1fr] gap-x-4 gap-y-2 items-center text-[13px]">
-					{/* Header row */}
-					<span className="text-text-tertiary text-[12px] font-medium">Enabled</span>
-					<span className="text-text-tertiary text-[12px] font-medium">Mute project viewed</span>
-					<span />
-					{/* Event rows */}
+			<fieldset className={cn("m-0 min-w-0 border-0 border-t border-border p-0 pt-4", masterOff && "opacity-40")}>
+				<legend className="text-sm font-medium text-text-primary pr-2">Sounds by event</legend>
+				<div className="grid grid-cols-[auto_minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-4 items-start text-sm leading-6">
+					<span className="font-medium text-text-secondary">Enabled</span>
+					<span className="text-center font-medium text-text-secondary">Mute while viewing project</span>
+					<span className="font-medium text-text-secondary">Event</span>
 					{NOTIFICATION_EVENTS.map(([key, label, description]) => (
 						<NotificationEventRow
 							key={key}
@@ -130,8 +129,8 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 						/>
 					))}
 				</div>
-			</div>
-			<div className="mt-3">
+			</fieldset>
+			<div className="border-t border-border pt-4">
 				<Button
 					size="sm"
 					disabled={masterOff}
@@ -155,10 +154,13 @@ export function NotificationsSection({ fields, setField, disabled }: SettingsSec
 							});
 					}}
 				>
-					Test sound
+					Test sound now
 				</Button>
+				<p className="mt-2 mb-0 text-sm leading-6 text-text-secondary">
+					Play a preview immediately at the selected volume, without saving changes.
+				</p>
 			</div>
-		</>
+		</section>
 	);
 }
 
@@ -189,21 +191,22 @@ function NotificationEventRow({
 				checked={enabled}
 				onCheckedChange={onEnabledChange}
 				disabled={disabled}
+				className="mt-1"
 			/>
-			<div className="flex justify-center">
+			<div className="flex justify-center pt-1">
 				<SettingsCheckbox
 					id={`audible-notification-suppress-${eventKey}`}
 					checked={suppressCurrentProject}
 					onCheckedChange={onSuppressChange}
 					disabled={rowOff}
 				/>
+				<label className="sr-only" htmlFor={`audible-notification-suppress-${eventKey}`}>
+					Mute {label.toLowerCase()} sounds while viewing the project
+				</label>
 			</div>
-			<label
-				htmlFor={`audible-notification-${eventKey}`}
-				className={cn("flex items-center gap-1 cursor-pointer", rowOff && "opacity-40")}
-			>
-				<span className="text-text-primary">{label}</span>
-				<span className="text-text-tertiary">— {description}</span>
+			<label htmlFor={`audible-notification-${eventKey}`} className={cn("cursor-pointer", rowOff && "opacity-40")}>
+				<span className="block font-medium text-text-primary">{label}</span>
+				<span className="block text-text-secondary">{description}</span>
 			</label>
 		</>
 	);
@@ -211,8 +214,10 @@ function NotificationEventRow({
 
 export function TerminalSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
 	return (
-		<>
-			<h6 className="font-semibold text-text-primary mt-4 mb-2">Terminal</h6>
+		<section aria-labelledby="settings-terminal-heading" className="space-y-4">
+			<h3 id="settings-terminal-heading" className="m-0 text-base font-semibold text-text-primary">
+				Terminal
+			</h3>
 			<SettingsSwitch
 				checked={fields.shellAutoRestartEnabled}
 				onCheckedChange={(v) => setField("shellAutoRestartEnabled", v)}
@@ -230,11 +235,11 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 					min={100}
 					max={900}
 				/>
-				<p className="text-text-secondary text-[13px] mt-1 mb-0">
+				<p className="text-text-secondary text-sm leading-6 mt-1 mb-0">
 					CSS font weight for terminal text. Lower values are thinner. Typical range: 300–400.
 				</p>
 			</div>
-			<div className="settings-row">
+			<div className="border-t border-border pt-4">
 				<Button
 					size="sm"
 					onClick={() => {
@@ -246,13 +251,14 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 						});
 					}}
 				>
-					Reset terminal rendering
+					Reset window terminal rendering now
 				</Button>
-				<p className="text-text-secondary text-[13px] mt-2 mb-0">
-					Clear cached font textures and re-render all terminals. Use this if terminal text looks blurry or
-					distorted after moving between monitors.
+				<p className="text-text-secondary text-sm leading-6 mt-2 mb-0">
+					Immediately clear cached font textures and re-render all terminals in this window. Use this if terminal
+					text looks blurry or distorted after moving between monitors. Other windows and running agents are
+					unchanged. This does not save form changes.
 				</p>
 			</div>
-		</>
+		</section>
 	);
 }

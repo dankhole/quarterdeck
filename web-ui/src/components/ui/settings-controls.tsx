@@ -2,7 +2,7 @@
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixSwitch from "@radix-ui/react-switch";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { cn } from "@/components/ui/cn";
 
@@ -21,20 +21,33 @@ export function SettingsSwitch({
 	description?: React.ReactNode;
 	className?: string;
 }): React.ReactElement {
+	const id = useId();
+	const labelId = `${id}-label`;
+	const descriptionId = `${id}-description`;
+
 	return (
 		<div className={cn("settings-row", className)}>
-			<div className="flex items-center gap-2">
+			<label htmlFor={id} className="flex items-start gap-3 cursor-pointer has-disabled:cursor-default">
 				<RadixSwitch.Root
+					id={id}
+					aria-labelledby={labelId}
+					aria-describedby={description != null ? descriptionId : undefined}
 					checked={checked}
 					disabled={disabled}
 					onCheckedChange={onCheckedChange}
-					className="relative h-5 w-9 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer disabled:opacity-40"
+					className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-surface-4 data-[state=checked]:bg-accent cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-border-focus disabled:cursor-default disabled:opacity-40"
 				>
 					<RadixSwitch.Thumb className="block h-4 w-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 data-[state=checked]:translate-x-[18px]" />
 				</RadixSwitch.Root>
-				<span className="text-[13px] text-text-primary">{label}</span>
-			</div>
-			{description != null ? <p className="text-text-secondary text-[13px] mt-1 mb-0">{description}</p> : null}
+				<span id={labelId} className="min-w-0 text-sm font-medium leading-6 text-text-primary">
+					{label}
+				</span>
+			</label>
+			{description != null ? (
+				<p id={descriptionId} className="text-text-secondary text-sm leading-6 mt-1 mb-0 pl-12">
+					{description}
+				</p>
+			) : null}
 		</div>
 	);
 }
@@ -59,7 +72,7 @@ export function SettingsCheckbox({
 			disabled={disabled}
 			onCheckedChange={(v) => onCheckedChange(v === true)}
 			className={cn(
-				"flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40",
+				"flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-border-focus disabled:cursor-default disabled:opacity-40",
 				className,
 			)}
 		>
@@ -107,8 +120,8 @@ export function NumericSettingsInput({
 	};
 
 	return (
-		<div className="flex items-center justify-between gap-3">
-			<label htmlFor={id} className="text-text-primary text-[13px] shrink-0">
+		<div className="flex flex-wrap items-center justify-between gap-3">
+			<label htmlFor={id} className="text-text-primary text-sm font-medium">
 				{label}
 			</label>
 			<input

@@ -6,8 +6,8 @@
 //   1. Add it to GLOBAL_CONFIG_FIELDS below (1 line)
 //   2. Add z.boolean() to runtimeConfigResponseSchema in src/core/api/config.ts
 //   3. Add z.boolean().optional() to runtimeConfigSaveRequestSchema in that file
-//   4. Add to SettingsFormValues type and resolveInitialValues() in
-//      web-ui/src/hooks/settings/settings-form.ts (the single mapping point)
+//   4. Add to SettingsFormValues, FIELD_SCOPES, and resolveInitialValues() in
+//      web-ui/src/hooks/settings/settings-form.ts (type, scope, and initial value)
 //   5. Add the JSX control in the appropriate web-ui/src/components/settings/ section
 //   6. Consume in the owning feature
 //   7. Update test/utilities/runtime-config-factory.ts and affected config tests

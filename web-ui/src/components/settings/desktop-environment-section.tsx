@@ -28,10 +28,10 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 			JSON.stringify(snapshot.appliedDirectories) !== JSON.stringify(preferences.extraExecutableDirectories));
 
 	return (
-		<section className="mt-4 text-[13px]" aria-labelledby="desktop-environment-heading">
-			<h5 id="desktop-environment-heading" className="font-semibold text-text-primary mb-2">
-				Runtime Environment
-			</h5>
+		<section className="space-y-4 text-sm leading-6" aria-labelledby="desktop-environment-heading">
+			<h3 id="desktop-environment-heading" className="m-0 text-base font-semibold text-text-primary">
+				Executable discovery
+			</h3>
 			{snapshot?.ownership === "attached" ? (
 				<p className="text-text-secondary">
 					This runtime belongs to the CLI. Change its shell environment and restart the owning CLI to apply it.
@@ -46,16 +46,19 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 								disabled={disabled}
 								onCheckedChange={(enabled) => void request({ kind: "set-login-shell-import", enabled })}
 							/>
-							<label htmlFor="desktop-import-login-shell">Import login-shell environment</label>
+							<label htmlFor="desktop-import-login-shell" className="font-medium text-text-primary">
+								Import login-shell environment (saves immediately)
+							</label>
 						</div>
 						<p className="text-text-secondary mt-1 mb-2">
 							Enabled by default so agents receive exported provider settings, including LiteLLM, from your
 							shell. Runs shell startup files, which may request Keychain access. Disable it to troubleshoot
 							startup.
 						</p>
-						<p className="text-text-secondary my-2">
-							Environment changes save immediately, separately from Save below. Refresh Environment or restart
-							Quarterdeck to apply them. Refresh protects unsaved work and confirms live sessions.
+						<p className="text-text-secondary mt-4 mb-0">
+							Environment changes save immediately, separately from Save changes. Cancel will not undo them.
+							Refresh environment now or restart Quarterdeck to apply them. Refresh protects unsaved work and
+							confirms live sessions.
 						</p>
 						{snapshot ? (
 							<p className="text-text-secondary my-2">
@@ -69,12 +72,16 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 							</p>
 						) : null}
 					</div>
-					<div className="settings-row">
+					<div className="mt-6 border-t border-border pt-6">
+						<h3 className="mt-0 mb-2 text-base font-semibold text-text-primary">Extra executable folders</h3>
+						<p className="mt-0 mb-4 text-text-secondary">
+							Add or reset folders to save this desktop's executable search paths immediately. Apply saved
+							changes with Refresh environment now.
+						</p>
 						{preferences ? (
 							<>
-								<p className="font-semibold mb-1">Extra executable folders</p>
 								{preferences.extraExecutableDirectories.length ? (
-									<ul className="list-disc pl-5 text-text-secondary font-mono text-xs break-all">
+									<ul className="list-disc pl-5 text-text-secondary font-mono text-sm leading-6 break-all">
 										{preferences.extraExecutableDirectories.map((directory) => (
 											<li key={directory}>{directory}</li>
 										))}
@@ -95,21 +102,21 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 								disabled={disabled || !preferences?.extraExecutableDirectories.length}
 								onClick={() => void request({ kind: "reset-folders" })}
 							>
-								Reset folders
+								Reset folders now
 							</Button>
 							<Button size="sm" disabled={busy || !snapshot} onClick={() => void request({ kind: "refresh" })}>
-								Refresh Environment
+								Refresh environment now
 							</Button>
 						</div>
 					</div>
 					{snapshot && !preferences ? (
-						<div className="mt-2">
-							<p className="text-status-orange">
+						<div className="mt-6 border-t border-border pt-6">
+							<p className="mt-0 text-status-orange">
 								Saved environment settings could not be read. Reset clears saved folders and disables shell
 								import.
 							</p>
 							<Button size="sm" disabled={busy} onClick={() => void request({ kind: "reset-preferences" })}>
-								Reset environment settings
+								Reset environment settings now
 							</Button>
 						</div>
 					) : null}

@@ -26,7 +26,7 @@ interface AppDialogsProps {
 }
 
 export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactElement {
-	const { currentProjectId, currentProjectAvailability } = useProjectNavigationContext();
+	const { currentProjectId, currentProjectAvailability, projects } = useProjectNavigationContext();
 	const isProjectUnavailable = currentProjectAvailability?.status === "unavailable";
 	const { projectGit } = useProjectSyncContext();
 	const projectRuntime = useProjectRuntimeContext();
@@ -69,6 +69,7 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 			<RuntimeSettingsDialog
 				open={dialog.isSettingsOpen}
 				projectId={projectRuntime.settingsProjectId}
+				projects={projects}
 				initialConfig={projectRuntime.settingsRuntimeProjectConfig}
 				initialSection={dialog.settingsInitialSection}
 				onOpenChange={(nextOpen) => {

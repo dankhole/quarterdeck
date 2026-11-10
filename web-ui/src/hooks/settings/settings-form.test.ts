@@ -3,7 +3,12 @@
 import { describe, expect, it } from "vitest";
 import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 import type { SettingsFormValues } from "./settings-form";
-import { areFormValuesEqual, reconcileSettingsFormValues, resolveInitialValues } from "./settings-form";
+import {
+	buildSettingsSaveRequest,
+	getChangedSettingsScopes,
+	reconcileSettingsFormValues,
+	resolveInitialValues,
+} from "./settings-form";
 
 // ---------------------------------------------------------------------------
 // resolveInitialValues
@@ -46,32 +51,32 @@ describe("resolveInitialValues", () => {
 });
 
 // ---------------------------------------------------------------------------
-// areFormValuesEqual
+// getChangedSettingsScopes
 // ---------------------------------------------------------------------------
 
-describe("areFormValuesEqual", () => {
+describe("getChangedSettingsScopes", () => {
 	function makeValues(overrides: Partial<SettingsFormValues> = {}): SettingsFormValues {
 		return { ...resolveInitialValues(null), ...overrides };
 	}
 
-	it("returns true for identical values", () => {
+	it("reports no changes for identical values", () => {
 		const a = makeValues();
 		const b = makeValues();
-		expect(areFormValuesEqual(a, b)).toBe(true);
+		expect(getChangedSettingsScopes(a, b)).toEqual([]);
 	});
 
 	it("detects changes to the project isolation default", () => {
-		expect(areFormValuesEqual(makeValues(), makeValues({ defaultUseWorktree: false }))).toBe(false);
+		expect(getChangedSettingsScopes(makeValues(), makeValues({ defaultUseWorktree: false }))).not.toEqual([]);
 	});
 
 	it("detects generated worktree preference changes", () => {
-		expect(areFormValuesEqual(makeValues(), makeValues({ showGeneratedWorktrees: true }))).toBe(false);
+		expect(getChangedSettingsScopes(makeValues(), makeValues({ showGeneratedWorktrees: true }))).not.toEqual([]);
 	});
 
 	it("detects primitive field changes", () => {
 		const a = makeValues();
 		const b = { ...makeValues(), shellAutoRestartEnabled: !a.shellAutoRestartEnabled };
-		expect(areFormValuesEqual(a, b)).toBe(false);
+		expect(getChangedSettingsScopes(a, b)).not.toEqual([]);
 	});
 
 	it("detects nested audibleNotificationEvents changes", () => {
@@ -81,7 +86,7 @@ describe("areFormValuesEqual", () => {
 			...b.audibleNotificationEvents,
 			permission: !a.audibleNotificationEvents.permission,
 		};
-		expect(areFormValuesEqual(a, b)).toBe(false);
+		expect(getChangedSettingsScopes(a, b)).not.toEqual([]);
 	});
 
 	it("detects nested audibleNotificationSuppressCurrentProject changes", () => {
@@ -91,22 +96,52 @@ describe("areFormValuesEqual", () => {
 			...b.audibleNotificationSuppressCurrentProject,
 			review: !a.audibleNotificationSuppressCurrentProject.review,
 		};
-		expect(areFormValuesEqual(a, b)).toBe(false);
+		expect(getChangedSettingsScopes(a, b)).not.toEqual([]);
+	});
+
+	it("treats absent and empty shortcut icons as equal, including during reconciliation", () => {
+		const initial = makeValues({ shortcuts: [{ label: "Run", command: "npm test" }] });
+		const current = makeValues({ shortcuts: [{ label: "Run", command: "npm test", icon: "" }] });
+		expect(getChangedSettingsScopes(current, initial)).toEqual([]);
+		const next = makeValues({ shortcuts: [{ label: "Updated", command: "npm test" }] });
+		expect(reconcileSettingsFormValues(current, initial, next).shortcuts).toEqual(next.shortcuts);
 	});
 
 	it("detects shortcuts array changes", () => {
 		const a = makeValues();
 		const b = makeValues();
 		b.shortcuts = [{ label: "test", command: "echo hello" }];
-		expect(areFormValuesEqual(a, b)).toBe(false);
+		expect(getChangedSettingsScopes(a, b)).not.toEqual([]);
 	});
 
 	it("compares language server settings structurally and detects nested changes", () => {
 		const a = makeValues();
 		const b = makeValues({ lspServers: structuredClone(a.lspServers) });
-		expect(areFormValuesEqual(a, b)).toBe(true);
+		expect(getChangedSettingsScopes(a, b)).toEqual([]);
 		b.lspServers[0]!.args.push("--extra");
-		expect(areFormValuesEqual(a, b)).toBe(false);
+		expect(getChangedSettingsScopes(a, b)).not.toEqual([]);
+	});
+});
+
+describe("settings save scopes", () => {
+	it("reports global, project, and mixed changes including nested controls", () => {
+		const initial = resolveInitialValues(null);
+		expect(getChangedSettingsScopes(initial, initial)).toEqual([]);
+		expect(getChangedSettingsScopes({ ...initial, defaultUseWorktree: false }, initial)).toEqual(["project"]);
+		expect(getChangedSettingsScopes({ ...initial, lspServers: [] }, initial)).toEqual(["global"]);
+		expect(
+			getChangedSettingsScopes({ ...initial, worktreeSetupScript: "npm ci", terminalFontWeight: 600 }, initial),
+		).toEqual(["global", "project"]);
+	});
+
+	it("omits project controls without a destination and preserves every field with one", () => {
+		const fields = { ...resolveInitialValues(null), worktreeSetupScript: "npm ci", defaultUseWorktree: false };
+		const global = buildSettingsSaveRequest(fields, false);
+		expect(global).not.toHaveProperty("shortcuts");
+		expect(global).not.toHaveProperty("worktreeSetupScript");
+		expect(global).not.toHaveProperty("defaultUseWorktree");
+		expect(global).toHaveProperty("worktreeSystemPromptTemplate");
+		expect(buildSettingsSaveRequest(fields, true)).toBe(fields);
 	});
 });
 

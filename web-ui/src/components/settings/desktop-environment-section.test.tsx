@@ -75,6 +75,18 @@ describe("desktop environment Settings section", () => {
 		expect(bridge.getSnapshot).not.toHaveBeenCalled();
 	});
 
+	it("explains immediate desktop saves separately from the main settings form", async () => {
+		await render();
+		expect(container.querySelector("h3")?.textContent).toContain("Executable discovery");
+		expect(container.querySelector('label[for="desktop-import-login-shell"]')?.textContent).toContain(
+			"saves immediately",
+		);
+		expect(container.textContent).toContain("save immediately, separately from Save changes");
+		expect(container.textContent).toContain("Cancel will not undo them");
+		expect(button("Refresh environment now")).toBeInstanceOf(HTMLButtonElement);
+		expect(bridge.request).not.toHaveBeenCalled();
+	});
+
 	it("saves the import choice through native intent and shows that refresh is pending", async () => {
 		vi.mocked(bridge.request).mockResolvedValue({
 			outcome: "saved",
@@ -94,7 +106,7 @@ describe("desktop environment Settings section", () => {
 		await render();
 		await act(async () => button("Add folders…").click());
 		expect(bridge.request).toHaveBeenLastCalledWith({ kind: "add-folders" });
-		await act(async () => button("Refresh Environment").click());
+		await act(async () => button("Refresh environment now").click());
 		expect(bridge.request).toHaveBeenLastCalledWith({ kind: "refresh" });
 	});
 
@@ -123,7 +135,7 @@ describe("desktop environment Settings section", () => {
 		vi.mocked(bridge.getSnapshot).mockResolvedValue(snapshot({ preferences: null }));
 		await render();
 		expect(button("Add folders…").disabled).toBe(true);
-		await act(async () => button("Reset environment settings").click());
+		await act(async () => button("Reset environment settings now").click());
 		expect(bridge.request).toHaveBeenCalledWith({ kind: "reset-preferences" });
 	});
 

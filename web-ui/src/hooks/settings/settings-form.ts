@@ -7,7 +7,7 @@
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import { areRuntimeProjectShortcutsEqual } from "@runtime-shortcuts";
-import type { RuntimeConfigResponse, RuntimeProjectShortcut } from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeConfigSaveRequest, RuntimeProjectShortcut } from "@/runtime/types";
 
 // ---------------------------------------------------------------------------
 // Form values type — the set of fields managed by the save/dirty/reset cycle
@@ -39,6 +39,47 @@ export interface SettingsFormValues {
 	shortcuts: RuntimeProjectShortcut[];
 	worktreeSetupScript: string;
 	defaultUseWorktree: boolean;
+}
+
+export type SettingsSaveScope = "global" | "project";
+
+/** Every main-form field declares its persistence scope, including future additions. */
+const FIELD_SCOPES = {
+	shellAutoRestartEnabled: "global",
+	claudeLaunchPermissionMode: "global",
+	codexApprovalsReviewer: "global",
+	terminalFontWeight: "global",
+	fileEditorAutosaveMode: "global",
+	codeNavigationEnabled: "global",
+	showGeneratedWorktrees: "global",
+	lspServers: "global",
+	audibleNotificationsEnabled: "global",
+	audibleNotificationVolume: "global",
+	audibleNotificationEvents: "global",
+	audibleNotificationsOnlyWhenHidden: "global",
+	audibleNotificationSuppressCurrentProject: "global",
+	worktreeSystemPromptTemplate: "global",
+	shortcuts: "project",
+	worktreeSetupScript: "project",
+	defaultUseWorktree: "project",
+} as const satisfies Record<keyof SettingsFormValues, SettingsSaveScope>;
+
+export function getChangedSettingsScopes(
+	current: SettingsFormValues,
+	initial: SettingsFormValues,
+): SettingsSaveScope[] {
+	const changed = new Set<SettingsSaveScope>();
+	for (const key of Object.keys(FIELD_SCOPES) as Array<keyof SettingsFormValues>) {
+		if (!areSettingsFieldValuesEqual(key, current, initial)) changed.add(FIELD_SCOPES[key]);
+	}
+	return (["global", "project"] as const).filter((scope) => changed.has(scope));
+}
+
+/** A global save must not carry project defaults without a project destination. */
+export function buildSettingsSaveRequest(fields: SettingsFormValues, hasProject: boolean): RuntimeConfigSaveRequest {
+	if (hasProject) return fields;
+	const { shortcuts: _shortcuts, worktreeSetupScript: _setup, defaultUseWorktree: _workspace, ...global } = fields;
+	return global;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,38 +114,29 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 }
 
 // ---------------------------------------------------------------------------
-// Equality — matches the prior hand-written dirty check exactly
+// Equality — shared by scope indicators, dirty checks, and server reconciliation
 // ---------------------------------------------------------------------------
 
-export function areFormValuesEqual(a: SettingsFormValues, b: SettingsFormValues): boolean {
-	// Primitive fields — reference equality (object/array fields need a skip + custom check)
-	const objectKeys = new Set<keyof SettingsFormValues>([
-		"audibleNotificationEvents",
-		"audibleNotificationSuppressCurrentProject",
-		"shortcuts",
-		"lspServers",
-	]);
-	for (const key of Object.keys(a) as Array<keyof SettingsFormValues>) {
-		if (objectKeys.has(key)) continue;
-		if (a[key] !== b[key]) return false;
+function areSettingsFieldValuesEqual(
+	key: keyof SettingsFormValues,
+	a: SettingsFormValues,
+	b: SettingsFormValues,
+): boolean {
+	switch (key) {
+		case "shortcuts":
+			return areRuntimeProjectShortcutsEqual(a.shortcuts, b.shortcuts);
+		case "lspServers":
+			return JSON.stringify(a.lspServers) === JSON.stringify(b.lspServers);
+		case "audibleNotificationEvents":
+		case "audibleNotificationSuppressCurrentProject":
+			return (
+				a[key].permission === b[key].permission &&
+				a[key].review === b[key].review &&
+				a[key].failure === b[key].failure
+			);
+		default:
+			return a[key] === b[key];
 	}
-	// Notification events — field-by-field
-	const ae = a.audibleNotificationEvents;
-	const be = b.audibleNotificationEvents;
-	if (ae.permission !== be.permission || ae.review !== be.review || ae.failure !== be.failure) {
-		return false;
-	}
-	// Suppress current project — field-by-field
-	const as = a.audibleNotificationSuppressCurrentProject;
-	const bs = b.audibleNotificationSuppressCurrentProject;
-	if (as.permission !== bs.permission || as.review !== bs.review || as.failure !== bs.failure) {
-		return false;
-	}
-	// Shortcuts — custom structural equality
-	return (
-		areRuntimeProjectShortcutsEqual(a.shortcuts, b.shortcuts) &&
-		JSON.stringify(a.lspServers) === JSON.stringify(b.lspServers)
-	);
 }
 
 /** Reconcile server changes while preserving fields edited in an open form. */
@@ -115,7 +147,7 @@ export function reconcileSettingsFormValues(
 ): SettingsFormValues {
 	const result = { ...next };
 	for (const key of Object.keys(current) as Array<keyof SettingsFormValues>) {
-		if (JSON.stringify(current[key]) !== JSON.stringify(previous[key])) {
+		if (!areSettingsFieldValuesEqual(key, current, previous)) {
 			Object.assign(result, { [key]: current[key] });
 		}
 	}

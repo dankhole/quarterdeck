@@ -20,7 +20,7 @@ Hook paths are under `web-ui/src/hooks/git` unless qualified; component paths ar
 
 ## Generated worktrees
 
-Generated worktree folders are hidden from the Files tree by default. Use **Settings → Editor → Show generated worktrees**, then **Save**, to reveal them. This is a saved app-wide preference shared across projects, home/task workspaces, and branch views; there is no per-tree toggle.
+Generated worktree folders are hidden from the Files tree by default. Use **Settings → All projects → Terminal & editor → Show generated worktrees**, then **Save changes**, to reveal them. This is a saved app-wide preference shared across projects, home/task workspaces, and branch views; there is no per-tree toggle.
 
 ## Syntax highlighting
 

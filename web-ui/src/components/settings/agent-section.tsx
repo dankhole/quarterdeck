@@ -76,40 +76,46 @@ export function HarnessSection({
 	const piSettingsSummary = `Exactly ${piSupportedVersion} · Native Pi execution`;
 
 	return (
-		<>
-			<h6 className="font-semibold text-text-primary mt-4 mb-1">Harnesses</h6>
-			<p className="text-text-secondary text-[13px] mt-0 mb-3">
-				Quarterdeck checks the <code className="text-[12px] bg-surface-3 px-1 rounded">PATH</code> inherited from
-				the shell that launched it to detect Claude, Codex, and Pi. Choose a harness in the new task dialog;
-				unavailable harnesses are shown there with install or upgrade status.
+		<section aria-labelledby="settings-agents-heading">
+			<h3 id="settings-agents-heading" className="m-0 mb-2 text-base font-semibold text-text-primary">
+				Agent launch settings
+			</h3>
+			<p className="text-text-secondary text-sm leading-6 mt-0 mb-3">
+				Quarterdeck checks the <code className="text-sm bg-surface-3 px-1 rounded">PATH</code> inherited from the
+				shell that launched it to detect Claude, Codex, and Pi. Choose a harness in the new task dialog; unavailable
+				harnesses are shown there with install or upgrade status.
 			</p>
 
 			<RadixCollapsible.Root
 				open={claudeSettingsExpanded}
 				onOpenChange={setClaudeSettingsExpanded}
-				className="settings-harness-row mt-2"
+				className="settings-harness-row mt-4"
 			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
-						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-3 text-left text-sm text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
 					>
 						<span className="min-w-0">
 							<span className="block font-medium">Claude Code</span>
-							<span className="block truncate text-[12px] text-text-secondary">{claudeSettingsSummary}</span>
+							<span className="block text-sm leading-6 text-text-secondary">{claudeSettingsSummary}</span>
 						</span>
 						<ClaudeChevron size={16} className="shrink-0 text-text-secondary" />
 					</button>
 				</RadixCollapsible.Trigger>
 				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
 					<div className="px-3 py-3">
-						<div className="flex items-center justify-between gap-3">
-							<label htmlFor="runtime-settings-claude-permission-mode" className="text-text-primary text-[13px]">
+						<div className="flex flex-wrap items-center justify-between gap-3">
+							<label
+								htmlFor="runtime-settings-claude-permission-mode"
+								className="text-text-primary text-sm font-medium"
+							>
 								Launch permissions
 							</label>
 							<select
 								id="runtime-settings-claude-permission-mode"
 								name="claudeLaunchPermissionMode"
+								aria-describedby="runtime-settings-claude-permission-help"
 								value={fields.claudeLaunchPermissionMode}
 								onChange={(event) =>
 									setField(
@@ -118,7 +124,7 @@ export function HarnessSection({
 									)
 								}
 								disabled={disabled}
-								className="h-7 min-w-40 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+								className="h-9 min-w-0 max-w-full rounded-md border border-border bg-surface-2 px-2 text-sm text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
 							>
 								{Object.entries(CLAUDE_PERMISSION_MODE_LABELS).map(([value, label]) => (
 									<option key={value} value={value}>
@@ -127,7 +133,10 @@ export function HarnessSection({
 								))}
 							</select>
 						</div>
-						<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						<p
+							id="runtime-settings-claude-permission-help"
+							className="text-text-secondary text-sm leading-6 mt-1 mb-0"
+						>
 							{fields.claudeLaunchPermissionMode === "inherit"
 								? "Uses Claude's configured default mode without a Quarterdeck override."
 								: fields.claudeLaunchPermissionMode === "default"
@@ -149,32 +158,33 @@ export function HarnessSection({
 			<RadixCollapsible.Root
 				open={codexSettingsExpanded}
 				onOpenChange={setCodexSettingsExpanded}
-				className="settings-harness-row mt-2"
+				className="settings-harness-row mt-4"
 			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
-						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-3 text-left text-sm text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
 					>
 						<span className="min-w-0">
 							<span className="block font-medium">Codex</span>
-							<span className="block truncate text-[12px] text-text-secondary">{codexSettingsSummary}</span>
+							<span className="block text-sm leading-6 text-text-secondary">{codexSettingsSummary}</span>
 						</span>
 						<CodexChevron size={16} className="shrink-0 text-text-secondary" />
 					</button>
 				</RadixCollapsible.Trigger>
 				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
 					<div className="px-3 py-3">
-						<div className="flex items-center justify-between gap-3">
+						<div className="flex flex-wrap items-center justify-between gap-3">
 							<label
 								htmlFor="runtime-settings-codex-approvals-reviewer"
-								className="text-text-primary text-[13px]"
+								className="text-text-primary text-sm font-medium"
 							>
 								Launch permissions
 							</label>
 							<select
 								id="runtime-settings-codex-approvals-reviewer"
 								name="codexApprovalsReviewer"
+								aria-describedby="runtime-settings-codex-permission-help"
 								value={fields.codexApprovalsReviewer}
 								onChange={(event) =>
 									setField(
@@ -183,7 +193,7 @@ export function HarnessSection({
 									)
 								}
 								disabled={disabled}
-								className="h-7 min-w-40 rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
+								className="h-9 min-w-0 max-w-full rounded-md border border-border bg-surface-2 px-2 text-sm text-text-primary outline-none hover:border-border-bright focus:border-border-focus disabled:opacity-40"
 							>
 								<option value="inherit">Inherit Codex config</option>
 								<option value="user">Ask me</option>
@@ -191,7 +201,10 @@ export function HarnessSection({
 								<option value="dangerously_bypass">Dangerously bypass approvals and sandbox</option>
 							</select>
 						</div>
-						<p className="text-text-secondary text-[13px] mt-1 mb-0">
+						<p
+							id="runtime-settings-codex-permission-help"
+							className="text-text-secondary text-sm leading-6 mt-1 mb-0"
+						>
 							{fields.codexApprovalsReviewer === "inherit"
 								? "Uses the reviewer selected by Codex configuration without a Quarterdeck override."
 								: fields.codexApprovalsReviewer === "user"
@@ -207,22 +220,22 @@ export function HarnessSection({
 			<RadixCollapsible.Root
 				open={piSettingsExpanded}
 				onOpenChange={setPiSettingsExpanded}
-				className="settings-harness-row mt-2"
+				className="settings-harness-row mt-4"
 			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
-						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-3 text-left text-sm text-text-primary hover:border-border-bright hover:bg-surface-3 data-[state=open]:rounded-b-none"
 					>
 						<span className="min-w-0">
 							<span className="block font-medium">Pi</span>
-							<span className="block truncate text-[12px] text-text-secondary">{piSettingsSummary}</span>
+							<span className="block text-sm leading-6 text-text-secondary">{piSettingsSummary}</span>
 						</span>
 						<PiChevron size={16} className="shrink-0 text-text-secondary" />
 					</button>
 				</RadixCollapsible.Trigger>
 				<RadixCollapsible.Content className="overflow-hidden rounded-b-md border-x border-b border-border bg-surface-1">
-					<div className="space-y-3 px-3 py-3 text-[13px] text-text-secondary">
+					<div className="space-y-4 px-3 py-3 text-sm leading-6 text-text-secondary">
 						<p className="m-0">
 							Quarterdeck supports exactly Pi {piSupportedVersion}. Newer Pi releases remain unavailable until
 							the lifecycle and resume contract is validated and Quarterdeck moves this version deliberately.
@@ -238,16 +251,16 @@ export function HarnessSection({
 			<RadixCollapsible.Root
 				open={systemPromptExpanded}
 				onOpenChange={setSystemPromptExpanded}
-				className="settings-harness-row mt-2"
+				className="settings-harness-row mt-6 border-t border-border pt-6"
 			>
 				<RadixCollapsible.Trigger asChild>
 					<button
 						type="button"
-						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-left text-[13px] text-text-primary hover:border-border-bright hover:bg-surface-3"
+						className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-3 py-3 text-left text-sm text-text-primary hover:border-border-bright hover:bg-surface-3"
 					>
 						<span className="min-w-0">
 							<span className="block font-medium">Worktree context prompt</span>
-							<span className="block truncate text-[12px] text-text-secondary">
+							<span className="block text-sm leading-6 text-text-secondary">
 								{isCustomized ? "Custom launch context template" : "Default launch context template"}
 							</span>
 						</span>
@@ -255,8 +268,8 @@ export function HarnessSection({
 					</button>
 				</RadixCollapsible.Trigger>
 				<RadixCollapsible.Content className="mt-2">
-					<div className="flex items-center justify-between gap-3">
-						<p className="text-text-secondary text-[13px] my-0">
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<p className="text-text-secondary text-sm leading-6 my-0">
 							Sent to worktree-launched harnesses as Claude system-prompt context or Codex developer
 							instructions.
 						</p>
@@ -265,29 +278,34 @@ export function HarnessSection({
 								type="button"
 								onClick={handleResetToDefault}
 								disabled={disabled}
-								className="shrink-0 text-[12px] text-accent hover:text-accent-hover bg-transparent border-none p-0 cursor-pointer disabled:opacity-40"
+								className="shrink-0 text-sm text-accent hover:text-accent-hover bg-transparent border-none p-0 cursor-pointer disabled:opacity-40"
 							>
-								Reset to default
+								Use default template
 							</button>
 						) : null}
 					</div>
-					<p className="text-text-secondary text-[13px] mt-1 mb-2">
-						Supports <code className="text-[12px] bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
-						<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{project_path}}"}</code>, and{" "}
-						<code className="text-[12px] bg-surface-3 px-1 rounded">{"{{detached_head_note}}"}</code>{" "}
-						placeholders.
+					<p
+						id="runtime-settings-worktree-system-prompt-help"
+						className="text-text-secondary text-sm leading-6 mt-1 mb-2"
+					>
+						Use default template only changes this draft. It takes effect when you choose Save changes. Supports{" "}
+						<code className="text-sm bg-surface-3 px-1 rounded">{"{{cwd}}"}</code>,{" "}
+						<code className="text-sm bg-surface-3 px-1 rounded">{"{{project_path}}"}</code>, and{" "}
+						<code className="text-sm bg-surface-3 px-1 rounded">{"{{detached_head_note}}"}</code> placeholders.
 					</p>
 					<textarea
 						id="runtime-settings-worktree-system-prompt"
+						aria-label="Worktree context prompt template"
+						aria-describedby="runtime-settings-worktree-system-prompt-help"
 						value={fields.worktreeSystemPromptTemplate}
 						onChange={(e) => setField("worktreeSystemPromptTemplate", e.target.value)}
 						disabled={disabled}
 						rows={8}
-						className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-[13px] text-text-primary font-mono leading-relaxed resize-y focus:border-border-focus focus:outline-none disabled:opacity-40"
+						className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-text-primary font-mono leading-relaxed resize-y focus:border-border-focus focus:outline-none disabled:opacity-40"
 						placeholder="System prompt template for worktree harnesses..."
 					/>
 				</RadixCollapsible.Content>
 			</RadixCollapsible.Root>
-		</>
+		</section>
 	);
 }

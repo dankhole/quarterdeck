@@ -61,9 +61,9 @@ function ServerEditor({
 		>
 			<DialogHeader title="Language server" />
 			<DialogBody>
-				<p className="mt-0 mb-3 text-[13px] text-text-secondary">
+				<p className="mt-0 mb-4 text-sm leading-6 text-text-secondary">
 					Use an installed executable or an absolute executable path. Arguments are passed directly, without a
-					shell.
+					shell. Apply server updates the settings draft; Save changes saves it for all projects.
 				</p>
 				<SettingsSwitch
 					disabled={false}
@@ -72,39 +72,39 @@ function ServerEditor({
 					label="Enable this server"
 				/>
 				{SERVER_FIELDS.map(({ key, label, placeholder }) => (
-					<label key={key} className="block mt-3 text-[13px] text-text-primary">
+					<label key={key} className="block mt-4 text-sm font-medium leading-6 text-text-primary">
 						{label}
 						<input
 							value={draft[key]}
 							onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
 							placeholder={placeholder}
 							spellCheck={false}
-							className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-xs focus:border-border-focus focus:outline-none"
+							className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-2 font-mono text-sm font-normal leading-6 focus:border-border-focus focus:outline-none"
 						/>
 					</label>
 				))}
-				<label className="block mt-3 text-[13px] text-text-primary">
+				<label className="block mt-4 text-sm font-medium leading-6 text-text-primary">
 					Initialization options (optional JSON)
 					<textarea
 						rows={3}
 						value={draft.initializationOptions}
 						onChange={(event) => setDraft({ ...draft, initializationOptions: event.target.value })}
 						spellCheck={false}
-						className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-xs focus:border-border-focus focus:outline-none"
+						className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-2 font-mono text-sm font-normal leading-6 focus:border-border-focus focus:outline-none"
 					/>
 				</label>
-				<label className="block mt-3 text-[13px] text-text-primary">
+				<label className="block mt-4 text-sm font-medium leading-6 text-text-primary">
 					Environment variables (optional JSON object)
 					<textarea
 						rows={2}
 						value={draft.env}
 						onChange={(event) => setDraft({ ...draft, env: event.target.value })}
 						spellCheck={false}
-						className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-xs focus:border-border-focus focus:outline-none"
+						className="mt-1 w-full rounded-md border border-border bg-surface-2 px-2 py-2 font-mono text-sm font-normal leading-6 focus:border-border-focus focus:outline-none"
 					/>
 				</label>
 				{error ? (
-					<p role="alert" className="mb-0 text-xs text-status-red">
+					<p role="alert" className="mb-0 text-sm leading-6 text-status-red">
 						{error}
 					</p>
 				) : null}
@@ -157,10 +157,10 @@ export function CodeNavigationSection({
 		});
 	};
 	return (
-		<section aria-labelledby="code-navigation-settings-heading" className="mt-4">
-			<h6 id="code-navigation-settings-heading" className="font-semibold text-text-primary mb-2">
-				Code Navigation
-			</h6>
+		<section aria-labelledby="code-navigation-settings-heading" className="space-y-4">
+			<h3 id="code-navigation-settings-heading" className="m-0 text-base font-semibold text-text-primary">
+				Language server navigation
+			</h3>
 			<SettingsSwitch
 				checked={fields.codeNavigationEnabled}
 				onCheckedChange={(value) => setField("codeNavigationEnabled", value)}
@@ -168,19 +168,27 @@ export function CodeNavigationSection({
 				label="Enable code navigation"
 				description="Use your installed language servers for definitions, references, and type information in live Files workspaces and new-side WORKTREE diffs. Servers start when you request navigation."
 			/>
-			<div className="mt-3 space-y-2">
+			<div className="space-y-4">
 				{fields.lspServers.map((server, index) => (
-					<div key={server.id} className="settings-row rounded-md border border-border p-3">
+					<div key={server.id} className="rounded-md border border-border p-4">
 						<div className="flex flex-wrap items-center gap-2">
-							<span className="flex-1 text-[13px] text-text-primary">
+							<h4 className="m-0 min-w-0 flex-1 text-sm font-semibold leading-6 text-text-primary">
 								{server.label}{" "}
-								<span className="text-xs text-text-tertiary">{server.enabled ? "Enabled" : "Disabled"}</span>
-							</span>
-							<Button size="sm" disabled={disabled} onClick={() => setEditing({ index, server })}>
+								<span className="font-normal text-text-secondary">
+									{server.enabled ? "Enabled" : "Disabled"}
+								</span>
+							</h4>
+							<Button
+								size="sm"
+								aria-label={`Edit ${server.label}`}
+								disabled={disabled}
+								onClick={() => setEditing({ index, server })}
+							>
 								Edit
 							</Button>
 							<Button
 								size="sm"
+								aria-label={`Remove ${server.label}`}
 								disabled={disabled}
 								onClick={() =>
 									setField(
@@ -192,26 +200,26 @@ export function CodeNavigationSection({
 								Remove
 							</Button>
 						</div>
-						<p className="my-1 break-all font-mono text-xs text-text-secondary">
+						<p className="mt-3 mb-1 break-all font-mono text-sm leading-6 text-text-secondary">
 							{server.command} {server.args.map((arg) => JSON.stringify(arg)).join(" ")}
 						</p>
-						<p className="my-1 text-xs text-text-tertiary">{server.extensions.join(", ")}</p>
-						<div className="mt-2 flex flex-wrap items-center gap-2">
+						<p className="my-1 text-sm leading-6 text-text-secondary">{server.extensions.join(", ")}</p>
+						<div className="mt-4 flex flex-wrap items-center gap-3">
 							<Button
 								size="sm"
 								disabled={disabled || commandChecks[commandCheckKey(server)] === "Checking executable…"}
 								onClick={() => void checkCommand(server)}
 							>
-								Check command
+								Check command now
 							</Button>
-							<span role="status" className="text-xs text-text-secondary">
+							<span role="status" className="text-sm leading-6 text-text-secondary">
 								{commandChecks[commandCheckKey(server)] ?? "Command availability has not been checked."}
 							</span>
 						</div>
 					</div>
 				))}
 			</div>
-			<div className="mt-2 flex flex-wrap gap-2">
+			<div className="flex flex-wrap gap-2">
 				<Button
 					size="sm"
 					icon={<Plus size={14} />}
@@ -224,14 +232,16 @@ export function CodeNavigationSection({
 					size="sm"
 					icon={<RotateCcw size={14} />}
 					disabled={disabled}
+					aria-describedby="code-navigation-draft-help"
 					onClick={() => setField("lspServers", structuredClone(CONFIG_DEFAULTS.lspServers))}
 				>
 					Restore default templates
 				</Button>
 			</div>
-			<p className="mb-0 text-xs text-text-secondary">
-				Quarterdeck does not install language servers. Check command verifies the executable without starting it.
-				Changes take effect after Save.
+			<p id="code-navigation-draft-help" className="m-0 text-sm leading-6 text-text-secondary">
+				Quarterdeck does not install language servers. Check command now immediately verifies the executable without
+				starting it or saving changes. Restore default templates only changes this draft, just like adding, editing,
+				or removing servers. These changes take effect when you choose Save changes.
 			</p>
 			{editing ? (
 				<ServerEditor
