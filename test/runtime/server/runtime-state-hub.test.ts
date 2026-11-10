@@ -436,6 +436,31 @@ describe("RuntimeStateHub", () => {
 		}
 	});
 
+	it("delivers operation errors only to clients viewing the originating project", async () => {
+		const hub = new RuntimeStateHubImpl(
+			createDependencies({
+				buildProjectsPayload: vi.fn(async () => createProjectsResponse()),
+				buildProjectStateSnapshot: vi.fn(async () => createProjectStateResponse()),
+				listManagedProjects: vi.fn(() => []),
+			}),
+		);
+		const ownProject = createRuntimeClient();
+		const otherProject = createRuntimeClient();
+		const global = createRuntimeClient();
+		const { clients } = hub as unknown as RuntimeStateHubInternals;
+		clients.registerProjectClient("project-1", ownProject.client, "client-1");
+		clients.registerProjectClient("project-2", otherProject.client, "client-2");
+		clients.registerGlobalClient(global.client);
+		try {
+			hub.broadcastProjectError("project-1", "AI title generation failed. Try again.");
+			expect(ownProject.messages).toEqual([{ type: "error", message: "AI title generation failed. Try again." }]);
+			expect(otherProject.messages).toEqual([]);
+			expect(global.messages).toEqual([]);
+		} finally {
+			await hub.close();
+		}
+	});
+
 	it("broadcasts an already-committed authoritative snapshot without rebuilding it", async () => {
 		const buildProjectStateSnapshot = vi.fn(async () => createProjectStateResponse());
 		const hub = new RuntimeStateHubImpl(

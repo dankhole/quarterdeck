@@ -135,7 +135,8 @@ describe("callCodex", () => {
 		const modelIndex = args.indexOf("--model");
 		expect(args[modelIndex + 1]).toBe("gpt-6-luna");
 		const reasoningConfig = args.find((arg) => arg.startsWith("model_reasoning_effort="));
-		expect(reasoningConfig).toBe('model_reasoning_effort="none"');
+		// A real title request receives 403 in workspaces that disallow `none`.
+		expect(reasoningConfig).toBe('model_reasoning_effort="low"');
 		const developerConfig = args.find((arg) => arg.startsWith("developer_instructions="));
 		expect(developerConfig).toContain("Return only a concise title");
 		expect(developerConfig).toContain("Do not use tools or inspect files");

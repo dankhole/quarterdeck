@@ -591,6 +591,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				automaticTitleGeneration,
 				boardCommands: deps.boardCommands,
 				diagnostics: deps.diagnostics,
+				publishError: ({ projectId, message }) => deps.runtimeStateHub.broadcastProjectError(projectId, message),
 				publishTitleUpdated: ({ projectId, taskId, title }) =>
 					applyRuntimeMutationEffects(
 						deps.runtimeStateHub,

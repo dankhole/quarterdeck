@@ -64,8 +64,6 @@ export function useAppSideEffects({
 		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
 		projectName: projectNavigation.navigationProjectName ?? null,
 		latestTaskReadyForReview: projectStream.latestTaskReadyForReview,
-		streamError: projectStream.streamError,
-		isRuntimeDisconnected: projectStream.isRuntimeDisconnected,
 		notificationProjects: projectNotifications.notificationProjects,
 		audibleNotificationsEnabled: projectRuntime.audibleNotificationsEnabled,
 		audibleNotificationVolume: projectRuntime.audibleNotificationVolume,

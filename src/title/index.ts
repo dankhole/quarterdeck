@@ -16,5 +16,12 @@ export {
 	callLlm,
 	isLlmConfigured,
 } from "./llm-client";
-export { generateBranchName, generateTaskTitle, type TaskTitleGenerationOptions } from "./title-generator";
+export {
+	generateBranchName,
+	generateTaskTitle,
+	generateTaskTitleResult,
+	type TaskTitleGenerationOptions,
+	type TaskTitleGenerationResult,
+	TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+} from "./title-generator";
 export { buildTitleThreadContext } from "./title-thread-context";

@@ -316,7 +316,7 @@ export const projectRouter = t.router({
 		}),
 	regenerateTaskTitle: projectProcedure
 		.input(z.object({ taskId: z.string() }))
-		.output(z.object({ ok: z.boolean(), title: z.string().nullable() }))
+		.output(z.object({ ok: z.boolean(), title: z.string().nullable(), error: z.string().optional() }))
 		.mutation(async ({ ctx, input }) => await ctx.projectApi.regenerateTaskTitle(ctx.projectScope, input.taskId)),
 	updateTaskTitle: projectProcedure
 		.input(z.object({ taskId: z.string(), title: z.string().min(1).max(200) }))

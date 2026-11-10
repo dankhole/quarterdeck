@@ -9,6 +9,7 @@ import type {
 } from "../../../src/core";
 import { createTaskTitleService, type TaskTitleServiceDependencies } from "../../../src/server/task-title-service";
 import type { ProjectBoardCommandService } from "../../../src/state";
+import { type TaskTitleGenerationResult, TITLE_GENERATION_UNAVAILABLE_MESSAGE } from "../../../src/title";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
 const scope = { projectId: "project-1", projectPath: "/project" };
@@ -93,7 +94,7 @@ function harness() {
 	const readRecent = vi.fn<ConversationReadService["readRecent"]>().mockResolvedValue(history());
 	const generateTitle = vi
 		.fn<NonNullable<TaskTitleServiceDependencies["generateTitle"]>>()
-		.mockResolvedValue("Search and Recommendation UX");
+		.mockResolvedValue({ title: "Search and Recommendation UX" });
 	const publishTitleUpdated = vi.fn();
 	const setGeneratedTaskTitle = vi
 		.fn<ProjectBoardCommandService["setGeneratedTaskTitle"]>()
@@ -166,12 +167,12 @@ describe("task title service", () => {
 	it("allows explicit regeneration during ongoing tool activity in the same session", async () => {
 		const h = harness();
 		h.setSession(createTestTaskSessionSummary({ ...h.getSession(), state: "running" }));
-		const pendingTitle = deferred<string | null>();
+		const pendingTitle = deferred<TaskTitleGenerationResult>();
 		h.generateTitle.mockReturnValue(pendingTitle.promise);
 		const pending = h.service.regenerate(scope, "task-1");
 		await vi.waitFor(() => expect(h.generateTitle).toHaveBeenCalledOnce());
 		h.setSession(createTestTaskSessionSummary({ ...h.getSession(), lastHookAt: 30 }));
-		pendingTitle.resolve("Search and Recommendation UX");
+		pendingTitle.resolve({ title: "Search and Recommendation UX" });
 		await expect(pending).resolves.toEqual({ ok: true, title: "Search and Recommendation UX" });
 	});
 	it("uses recent provider conversation when stored summaries and final message are empty", async () => {
@@ -246,7 +247,7 @@ describe("task title service", () => {
 		"rejects a result when the session is %s during generation",
 		async (scenario) => {
 			const h = harness();
-			const pendingTitle = deferred<string | null>();
+			const pendingTitle = deferred<TaskTitleGenerationResult>();
 			h.generateTitle.mockReturnValue(pendingTitle.promise);
 			const pending = h.service.regenerate(scope, "task-1");
 			await vi.waitFor(() => expect(h.generateTitle).toHaveBeenCalledOnce());
@@ -257,7 +258,7 @@ describe("task title service", () => {
 					...(scenario === "launch replaced" ? { sessionInstanceId: "launch-2" } : {}),
 				}),
 			);
-			pendingTitle.resolve("Late title");
+			pendingTitle.resolve({ title: "Late title" });
 			await expect(pending).resolves.toEqual({ ok: false, title: null });
 			expect(h.setGeneratedTaskTitle).not.toHaveBeenCalled();
 			expect(h.publishTitleUpdated).not.toHaveBeenCalled();
@@ -288,9 +289,25 @@ describe("task title service", () => {
 		expect(h.publishTitleUpdated).not.toHaveBeenCalled();
 	});
 
+	it.each(["initial", "followup"])(
+		"reports %s model failure without persisting the fallback as success",
+		async (mode) => {
+			const h = harness();
+			if (mode === "initial") h.readRecent.mockResolvedValue(history([]));
+			h.generateTitle.mockResolvedValue({ title: h.card.title, error: TITLE_GENERATION_UNAVAILABLE_MESSAGE });
+			await expect(h.service.regenerate(scope, "task-1")).resolves.toEqual({
+				ok: false,
+				title: null,
+				error: TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+			});
+			expect(h.setGeneratedTaskTitle).not.toHaveBeenCalled();
+			expect(h.publishTitleUpdated).not.toHaveBeenCalled();
+		},
+	);
+
 	it("does not publish an unchanged generated title", async () => {
 		const h = harness();
-		h.generateTitle.mockResolvedValue(h.card.title);
+		h.generateTitle.mockResolvedValue({ title: h.card.title });
 		await expect(h.service.regenerate(scope, "task-1")).resolves.toEqual({
 			ok: true,
 			title: h.card.title,

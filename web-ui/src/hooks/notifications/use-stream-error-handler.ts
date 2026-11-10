@@ -1,25 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { notifyError, showAppToast } from "@/components/app-toaster";
-import { parseRemovedProjectPathFromStreamError } from "@/hooks/project/use-project-navigation";
+import { parseRemovedProjectPathFromStreamError } from "@/hooks/project/project-navigation";
 
-interface UseStreamErrorHandlerInput {
-	streamError: string | null;
-	isRuntimeDisconnected: boolean;
-}
-
-/**
- * Handles stream errors from the runtime state stream by showing appropriate
- * toast notifications (removed project, disconnection, or generic error).
+/** Handle each explicit runtime error message, not changes to the last-error state.
+ * Transport disconnections have their own persistent fallback and do not enter here.
  */
-export function useStreamErrorHandler({ streamError, isRuntimeDisconnected }: UseStreamErrorHandlerInput): void {
-	const lastStreamErrorRef = useRef<string | null>(null);
-
-	useEffect(() => {
-		if (!streamError) {
-			lastStreamErrorRef.current = null;
-			return;
-		}
-		const removedPath = parseRemovedProjectPathFromStreamError(streamError);
+export function useStreamErrorHandler(): (message: string) => void {
+	return useCallback((message: string) => {
+		const removedPath = parseRemovedProjectPathFromStreamError(message);
 		if (removedPath !== null) {
 			showAppToast(
 				{
@@ -32,16 +20,8 @@ export function useStreamErrorHandler({ streamError, isRuntimeDisconnected }: Us
 				},
 				`project-removed-${removedPath || "unknown"}`,
 			);
-			lastStreamErrorRef.current = null;
 			return;
 		}
-		if (isRuntimeDisconnected) {
-			lastStreamErrorRef.current = streamError;
-			return;
-		}
-		if (lastStreamErrorRef.current !== streamError) {
-			notifyError(streamError, { key: `error:${streamError}` });
-		}
-		lastStreamErrorRef.current = streamError;
-	}, [isRuntimeDisconnected, streamError]);
+		notifyError(message);
+	}, []);
 }

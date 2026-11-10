@@ -2,7 +2,12 @@ import type { RuntimeBoardCard } from "../core";
 import { createTaggedLogger, normalizeDiagnosticErrorClass } from "../core";
 import type { RuntimeDiagnostics } from "../diagnostics";
 import type { ProjectBoardCommandScope, ProjectBoardCommandService, ProjectBoardPostCommitListener } from "../state";
-import { type AutomaticTitleGenerationRunner, generateTaskTitle as generateTaskTitleWithProvider } from "../title";
+import {
+	type AutomaticTitleGenerationRunner,
+	generateTaskTitleResult,
+	type TaskTitleGenerationResult,
+	TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+} from "../title";
 
 const log = createTaggedLogger("automatic-title");
 const MAX_CONCURRENT_TITLE_REQUESTS = 3;
@@ -13,8 +18,9 @@ export interface AutomaticTaskTitleSchedulerDependencies {
 	automaticTitleGeneration: AutomaticTitleGenerationRunner;
 	boardCommands: Pick<ProjectBoardCommandService, "setGeneratedTaskTitle">;
 	publishTitleUpdated: (input: { projectId: string; taskId: string; title: string }) => Promise<void> | void;
+	publishError: (input: { projectId: string; taskId: string; message: string }) => Promise<void> | void;
 	diagnostics?: Pick<RuntimeDiagnostics, "recordEvent">;
-	generateTaskTitle?: (prompt: string) => Promise<string | null>;
+	generateTaskTitle?: (prompt: string) => Promise<TaskTitleGenerationResult>;
 }
 
 /**
@@ -28,7 +34,8 @@ export function scheduleAutomaticTaskTitle(
 	card: AutomaticTitleCard,
 ): Promise<void> | null {
 	const generation = dependencies.automaticTitleGeneration.runIfIdle(projectScope.projectId, card.id, async () => {
-		const title = await (dependencies.generateTaskTitle ?? generateTaskTitleWithProvider)(card.prompt);
+		const generated = await (dependencies.generateTaskTitle ?? generateTaskTitleResult)(card.prompt);
+		const { title } = generated;
 		if (!title) {
 			dependencies.diagnostics?.recordEvent(
 				"task.title_generation_no_result",
@@ -36,6 +43,11 @@ export function scheduleAutomaticTaskTitle(
 				{ projectId: projectScope.projectId, taskId: card.id },
 				{ level: "warn", essential: true },
 			);
+			await dependencies.publishError({
+				projectId: projectScope.projectId,
+				taskId: card.id,
+				message: generated.error ?? TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+			});
 			return;
 		}
 
@@ -60,8 +72,15 @@ export function scheduleAutomaticTaskTitle(
 			taskId: card.id,
 			title,
 		});
+		if (generated.error) {
+			await dependencies.publishError({
+				projectId: projectScope.projectId,
+				taskId: card.id,
+				message: `${generated.error} A local title was used instead.`,
+			});
+		}
 		dependencies.diagnostics?.recordEvent(
-			"task.title_generation_completed",
+			generated.error ? "task.title_generation_fallback" : "task.title_generation_completed",
 			{},
 			{ projectId: projectScope.projectId, taskId: card.id },
 			{ essential: true },
@@ -77,7 +96,7 @@ export function scheduleAutomaticTaskTitle(
 		{ projectId: projectScope.projectId, taskId: card.id },
 		{ essential: true },
 	);
-	return generation.catch((error) => {
+	return generation.catch(async (error) => {
 		const errorClass = error instanceof Error ? normalizeDiagnosticErrorClass(error.name) : "UnknownError";
 		log.warn("Automatic task title generation failed", {
 			projectId: projectScope.projectId,
@@ -90,6 +109,16 @@ export function scheduleAutomaticTaskTitle(
 			{ projectId: projectScope.projectId, taskId: card.id },
 			{ level: "warn", essential: true },
 		);
+		// Notification delivery must not turn a handled fire-and-forget failure into a rejection.
+		try {
+			await dependencies.publishError({
+				projectId: projectScope.projectId,
+				taskId: card.id,
+				message: "Could not generate or save the task title. Try Auto-generate title again.",
+			});
+		} catch {
+			// The recorder above remains the evidence when the transport itself is unavailable.
+		}
 	});
 }
 

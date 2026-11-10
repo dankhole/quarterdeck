@@ -76,7 +76,8 @@ function formatErrorMessage(value: unknown): string {
 	}
 }
 
-export function installGlobalErrorCapture(): () => void {
+/** The optional UI callback receives only uncaught failures, never intercepted console logs. */
+export function installGlobalErrorCapture(onUnexpectedError?: (error: unknown) => void): () => void {
 	if (installed) return () => {};
 	installed = true;
 
@@ -88,12 +89,14 @@ export function installGlobalErrorCapture(): () => void {
 			event.message || "Unknown error",
 			event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : undefined,
 		);
+		if (!event.defaultPrevented) onUnexpectedError?.(event.error);
 	};
 	window.addEventListener("error", onError);
 
 	// --- Unhandled promise rejections ---
 	const onRejection = (event: PromiseRejectionEvent): void => {
 		notify("error", "unhandled-rejection", formatErrorMessage(event.reason));
+		if (!event.defaultPrevented) onUnexpectedError?.(event.reason);
 	};
 	window.addEventListener("unhandledrejection", onRejection);
 

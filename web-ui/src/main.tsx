@@ -10,11 +10,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { initializeBrowserDiagnostics, recordBrowserLog } from "@/diagnostics";
 import { registerBrowserServiceWorker } from "@/service-worker-registration";
 import { installGlobalErrorCapture, setGlobalErrorCallback } from "@/utils/global-error-capture";
+import { createUnexpectedErrorNotifier } from "@/utils/unexpected-error-notification";
 import "@/styles/globals.css";
 
 initializeBrowserDiagnostics();
 setGlobalErrorCallback(recordBrowserLog);
-installGlobalErrorCapture();
+installGlobalErrorCapture(createUnexpectedErrorNotifier());
 void registerBrowserServiceWorker();
 
 const root = document.getElementById("root");

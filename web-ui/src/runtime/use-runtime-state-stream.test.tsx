@@ -2,6 +2,7 @@ import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "@runtime-contract";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { notifyError, showAppToast } from "@/components/app-toaster";
 import { createInitialBoardData } from "@/data/board-data";
 import * as boardCache from "@/runtime/project-board-cache";
 import * as preloadCache from "@/runtime/project-preload-cache";
@@ -23,6 +24,7 @@ vi.mock("@/runtime/runtime-state-stream-transport", () => ({
 		return transport;
 	},
 }));
+vi.mock("@/components/app-toaster", () => ({ notifyError: vi.fn(), showAppToast: vi.fn() }));
 vi.mock("@/diagnostics", () => ({
 	handleBrowserDiagnosticsStreamMessage: () => false,
 	recordBrowserEvent: vi.fn(),
@@ -68,6 +70,45 @@ describe("runtime state stream", () => {
 		expect(transport.dispose).not.toHaveBeenCalled();
 		expect(state.hasReceivedSnapshot).toBe(true);
 		expect(state.streamError).toBeNull();
+	});
+
+	it("notifies each explicit error occurrence, including identical later failures", async () => {
+		const message = "Automatic title generation failed. Check your text-generation settings and retry.";
+		await act(async () => callbacks.onMessage({ type: "error", message }));
+		expect(state.streamError).toBe(message);
+		expect(notifyError).toHaveBeenCalledExactlyOnceWith(message);
+		await act(async () => callbacks.onMessage({ type: "error", message }));
+		expect(state.streamError).toBe(message);
+		expect(notifyError).toHaveBeenCalledTimes(2);
+		// React may batch state updates; message delivery must not lose occurrences.
+		await act(async () => {
+			callbacks.onMessage({ type: "error", message });
+			callbacks.onMessage({ type: "error", message });
+		});
+		expect(notifyError).toHaveBeenCalledTimes(4);
+	});
+
+	it("does not add error toasts for transport disconnection or successful snapshots", async () => {
+		await act(async () => callbacks.onDisconnected("Runtime stream disconnected."));
+		await act(async () => callbacks.onMessage(snapshot()));
+		expect(notifyError).not.toHaveBeenCalled();
+		expect(showAppToast).not.toHaveBeenCalled();
+	});
+
+	it("preserves the removed-project notification wording and stable toast identity", async () => {
+		await act(async () =>
+			callbacks.onMessage({ type: "error", message: "Project no longer exists on disk and was removed: /repo" }),
+		);
+		expect(showAppToast).toHaveBeenCalledExactlyOnceWith(
+			{
+				intent: "danger",
+				icon: "warning-sign",
+				message: "Project no longer exists and was removed: /repo",
+				timeout: 6000,
+			},
+			"project-removed-/repo",
+		);
+		expect(notifyError).not.toHaveBeenCalled();
 	});
 
 	it("invalidates inactive project caches after a metadata change and keeps its identity", async () => {

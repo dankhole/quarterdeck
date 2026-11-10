@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { findTrashTaskIds } from "@/hooks/board/trash-workflow";
-import { useAudibleNotifications, useReviewReadyNotifications, useStreamErrorHandler } from "@/hooks/notifications";
+import { useAudibleNotifications, useReviewReadyNotifications } from "@/hooks/notifications";
 import type { ProjectNotificationContextValue, ProjectRuntimeStreamContextValue } from "@/providers/project-provider";
 import type { ProjectRuntimeContextValue } from "@/providers/project-runtime-provider";
 import type { BoardData } from "@/types";
@@ -11,8 +11,6 @@ interface UseAppProjectNotificationEffectsInput {
 	navigationCurrentProjectId: string | null;
 	projectName: string | null;
 	latestTaskReadyForReview: ProjectRuntimeStreamContextValue["latestTaskReadyForReview"];
-	streamError: ProjectRuntimeStreamContextValue["streamError"];
-	isRuntimeDisconnected: ProjectRuntimeStreamContextValue["isRuntimeDisconnected"];
 	notificationProjects: ProjectNotificationContextValue["notificationProjects"];
 	audibleNotificationsEnabled: ProjectRuntimeContextValue["audibleNotificationsEnabled"];
 	audibleNotificationVolume: ProjectRuntimeContextValue["audibleNotificationVolume"];
@@ -27,8 +25,6 @@ export function useAppProjectNotificationEffects({
 	navigationCurrentProjectId,
 	projectName,
 	latestTaskReadyForReview,
-	streamError,
-	isRuntimeDisconnected,
 	notificationProjects,
 	audibleNotificationsEnabled,
 	audibleNotificationVolume,
@@ -54,6 +50,4 @@ export function useAppProjectNotificationEffects({
 		currentProjectId,
 		suppressedTaskIds: trashTaskIdSet,
 	});
-
-	useStreamErrorHandler({ streamError, isRuntimeDisconnected });
 }

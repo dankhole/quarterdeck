@@ -7,7 +7,7 @@ import {
 	createAutomaticTaskTitlePostCommitListener,
 	scheduleAutomaticTaskTitle,
 } from "../../../src/server/automatic-task-title-scheduler";
-import { AutomaticTitleGenerationCoordinator } from "../../../src/title";
+import { AutomaticTitleGenerationCoordinator, TITLE_GENERATION_UNAVAILABLE_MESSAGE } from "../../../src/title";
 
 function createState(): RuntimeProjectStateResponse {
 	const board: RuntimeBoardData = {
@@ -61,14 +61,16 @@ function createHarness(generateTaskTitle: (prompt: string) => Promise<string | n
 		replayed: false,
 	}));
 	const publishTitleUpdated = vi.fn();
+	const publishError = vi.fn();
 	const dependencies: AutomaticTaskTitleSchedulerDependencies = {
 		automaticTitleGeneration: new AutomaticTitleGenerationCoordinator(),
 		boardCommands: { setGeneratedTaskTitle },
 		publishTitleUpdated,
+		publishError,
 		diagnostics,
-		generateTaskTitle,
+		generateTaskTitle: async (prompt) => ({ title: await generateTaskTitle(prompt) }),
 	};
-	return { dependencies, diagnostics, publishTitleUpdated, recordEvent, setGeneratedTaskTitle };
+	return { dependencies, diagnostics, publishTitleUpdated, publishError, recordEvent, setGeneratedTaskTitle };
 }
 
 const scope = { projectId: "project-1", projectPath: "/project" };
@@ -160,6 +162,52 @@ describe("automatic task title scheduler", () => {
 		expect(JSON.stringify(harness.recordEvent.mock.calls)).not.toContain(card.prompt);
 	});
 
+	it("persists the initial fallback but reports the model failure visibly", async () => {
+		const h = createHarness(vi.fn());
+		h.dependencies.generateTaskTitle = async () => ({
+			title: "Local Title",
+			error: TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+		});
+		await scheduleAutomaticTaskTitle(h.dependencies, scope, card);
+		expect(h.setGeneratedTaskTitle).toHaveBeenCalledWith(scope, card.id, card.createdAt, "Local Title");
+		expect(h.publishError).toHaveBeenCalledWith({
+			projectId: scope.projectId,
+			taskId: card.id,
+			message: `${TITLE_GENERATION_UNAVAILABLE_MESSAGE} A local title was used instead.`,
+		});
+		expect(h.recordEvent).toHaveBeenCalledWith(
+			"task.title_generation_fallback",
+			{},
+			{ projectId: scope.projectId, taskId: card.id },
+			{ essential: true },
+		);
+	});
+
+	it("does not notify about a fallback discarded after a concurrent edit", async () => {
+		const h = createHarness(vi.fn());
+		h.dependencies.generateTaskTitle = async () => ({
+			title: "Local Title",
+			error: TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+		});
+		h.setGeneratedTaskTitle.mockResolvedValue({
+			state: createState(),
+			changed: false,
+			acceptedChange: false,
+			replayed: false,
+		});
+		await scheduleAutomaticTaskTitle(h.dependencies, scope, card);
+		expect(h.publishError).not.toHaveBeenCalled();
+	});
+
+	it("reports a missing result and contains notification delivery failures", async () => {
+		const h = createHarness(vi.fn(async () => null));
+		await scheduleAutomaticTaskTitle(h.dependencies, scope, card);
+		expect(h.publishError).toHaveBeenCalledOnce();
+		expect(h.setGeneratedTaskTitle).not.toHaveBeenCalled();
+		h.publishError.mockRejectedValue(new Error("private transport error"));
+		await expect(scheduleAutomaticTaskTitle(h.dependencies, scope, card)).resolves.toBeUndefined();
+	});
+
 	it("deduplicates overlapping post-commit deliveries", async () => {
 		const deferred = createDeferred<string | null>();
 		const generateTaskTitle = vi.fn(() => deferred.promise);
@@ -187,6 +235,12 @@ describe("automatic task title scheduler", () => {
 			{ projectId: "project-1", taskId: "task-1" },
 			{ level: "warn", essential: true },
 		);
+		expect(harness.publishError).toHaveBeenCalledWith({
+			projectId: scope.projectId,
+			taskId: card.id,
+			message: "Could not generate or save the task title. Try Auto-generate title again.",
+		});
+		expect(JSON.stringify(harness.publishError.mock.calls)).not.toContain("private persistence details");
 		expect(JSON.stringify(harness.recordEvent.mock.calls)).not.toContain("private persistence details");
 	});
 });

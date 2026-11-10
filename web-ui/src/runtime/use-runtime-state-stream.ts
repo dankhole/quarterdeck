@@ -1,6 +1,7 @@
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "@runtime-contract";
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import { handleBrowserDiagnosticsStreamMessage, recordBrowserEvent } from "@/diagnostics";
+import { useStreamErrorHandler } from "@/hooks/notifications/use-stream-error-handler";
 import { invalidateProjectBoardCache } from "@/runtime/project-board-cache";
 import { consumeProjectPreload, invalidateProjectPreload } from "@/runtime/project-preload-cache";
 import { invalidateRuntimeConfig } from "@/runtime/runtime-config-invalidation";
@@ -48,6 +49,7 @@ export interface UseRuntimeStateStreamResult {
 }
 
 export function useRuntimeStateStream(requestedProjectId: string | null): UseRuntimeStateStreamResult {
+	const handleStreamError = useStreamErrorHandler();
 	const streamGenerationRef = useRef(0);
 	// invalidateRuntimeConfig() is for config that may actually have changed:
 	// the very first snapshot this hook ever sees, and any snapshot that
@@ -172,6 +174,7 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 				if (handleBrowserDiagnosticsStreamMessage(payload)) {
 					return;
 				}
+				if (payload.type === "error") handleStreamError(payload.message);
 				const result = resolveStreamMessage(payload, {
 					activeProjectId,
 				});
@@ -193,7 +196,7 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 		return () => {
 			transport?.dispose();
 		};
-	}, [requestedProjectId]);
+	}, [handleStreamError, requestedProjectId]);
 
 	const applyOrganization = useCallback(
 		(organization: ProjectOrganization) => dispatch({ type: "organization_updated", organization }),

@@ -105,6 +105,7 @@ export interface RuntimeStateHub extends IRuntimeBroadcaster {
 	configureNotificationPresentation?: (runtimeGeneration: string) => void;
 	trackTerminalManager: (projectId: string, manager: TerminalSessionManager) => void;
 	broadcastRuntimeProjectStateSnapshot: (projectId: string, state: RuntimeProjectStateResponse) => void;
+	broadcastProjectError: (projectId: string, message: string) => void;
 	handleUpgrade: (
 		request: IncomingMessage,
 		socket: Parameters<WebSocketServer["handleUpgrade"]>[1],
@@ -455,6 +456,11 @@ export class RuntimeStateHubImpl extends Disposable implements RuntimeStateHub {
 	): void => {
 		this.markProjectPublication(projectId);
 		this.clients.broadcastToProject(projectId, buildTaskTitleUpdatedMessage(projectId, taskId, title, options));
+	};
+
+	/** User-facing operation failure, not a projection of diagnostic logs. */
+	broadcastProjectError = (projectId: string, message: string): void => {
+		this.clients.broadcastToProject(projectId, { type: "error", message });
 	};
 
 	broadcastTaskBaseRefUpdated = (projectId: string, taskId: string, baseRef: string): void => {

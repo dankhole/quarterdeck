@@ -15,7 +15,9 @@ const log = createTaggedLogger("codex-helper");
 const CODEX_BINARY = "codex";
 const CODEX_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 const CODEX_MAX_BUFFER_BYTES = 1_000_000;
-const CODEX_TITLE_REASONING_EFFORT = "none";
+// `none` can be rejected by workspace policy even when the selected model is
+// available. Use the lowest reasoning level accepted by the normal Codex lane.
+const CODEX_TITLE_REASONING_EFFORT = "low";
 
 interface CodexCallOptions {
 	systemPrompt: string;

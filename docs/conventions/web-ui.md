@@ -6,7 +6,7 @@
 
 - Quarterdeck web-ui uses Tailwind CSS v4 for styling, Radix UI for accessible headless primitives, and Lucide React for icons.
 - Custom UI primitives live in `src/components/ui/` (button, dialog, tooltip, kbd, spinner, cn utility).
-- Toast notifications use `sonner`. Import `{ toast }` from `"sonner"` or use `showAppToast` from `@/components/app-toaster`.
+- Toast notifications use `sonner` through `showAppToast` or `notifyError` from `@/components/app-toaster`. Explicit runtime errors notify at message ingestion, not by observing the last error string (identical later failures must still notify). Uncaught UI failures receive a coalesced, content-safe toast with Diagnostics guidance in browser and desktop mode; console logs remain diagnostic-only to avoid duplicate notices and background-warning spam.
 
 ## Styling mental model
 

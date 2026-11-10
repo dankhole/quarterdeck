@@ -2,7 +2,7 @@ import type { ConversationEntry, ConversationReadService } from "../conversation
 import type { RuntimeBoardData, RuntimeTaskSessionSummary } from "../core";
 import { findCardInBoard } from "../core";
 import type { ProjectBoardCommandScope, ProjectBoardCommandService } from "../state";
-import { buildTitleThreadContext, generateTaskTitle } from "../title";
+import { buildTitleThreadContext, generateTaskTitleResult } from "../title";
 
 export interface TaskTitleServiceDependencies {
 	boardCommands: Pick<ProjectBoardCommandService, "setGeneratedTaskTitle">;
@@ -10,7 +10,7 @@ export interface TaskTitleServiceDependencies {
 	loadBoard: (projectId: string) => Promise<RuntimeBoardData>;
 	getSessionReader: (scope: ProjectBoardCommandScope) => Promise<(taskId: string) => RuntimeTaskSessionSummary | null>;
 	publishTitleUpdated: (input: { projectId: string; taskId: string; title: string }) => Promise<void> | void;
-	generateTitle?: typeof generateTaskTitle;
+	generateTitle?: typeof generateTaskTitleResult;
 }
 
 /** Explicit regeneration only; provider history remains the only transcript store. */
@@ -19,7 +19,7 @@ export function createTaskTitleService(deps: TaskTitleServiceDependencies) {
 		async regenerate(
 			scope: ProjectBoardCommandScope,
 			taskId: string,
-		): Promise<{ ok: boolean; title: string | null }> {
+		): Promise<{ ok: boolean; title: string | null; error?: string }> {
 			const board = await deps.loadBoard(scope.projectId);
 			const card = findCardInBoard(board, taskId);
 			if (!card) return { ok: false, title: null };
@@ -59,11 +59,14 @@ export function createTaskTitleService(deps: TaskTitleServiceDependencies) {
 				entries.some((entry) => entry.type === "message" && entry.text.trim()) || Boolean(finalMessage?.trim());
 			const context = buildTitleThreadContext({ prompt: card.prompt, entries, finalMessage });
 			if (!context) return { ok: false, title: null };
-			const title = await (deps.generateTitle ?? generateTaskTitle)(context, {
+			const generated = await (deps.generateTitle ?? generateTaskTitleResult)(context, {
 				mode: hasActivity ? "followup" : "initial",
 				currentTitle: card.title,
 			});
-			if (!title || !isCurrent()) return { ok: false, title: null };
+			if (!isCurrent()) return { ok: false, title: null };
+			if (generated.error) return { ok: false, title: null, error: generated.error };
+			const { title } = generated;
+			if (!title) return { ok: false, title: null };
 			const result = await deps.boardCommands.setGeneratedTaskTitle(
 				scope,
 				taskId,

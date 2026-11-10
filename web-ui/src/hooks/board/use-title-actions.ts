@@ -27,7 +27,7 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 							"[title-actions] regenerate returned ok=false — server could not generate a title; check runtime logs tagged 'title-gen', 'codex-helper', or 'llm-client'",
 							{ taskId, projectId: currentProjectId, result },
 						);
-						showAppToast({ message: "Could not regenerate title", intent: "danger" });
+						showAppToast({ message: result.error ?? "Could not regenerate title", intent: "danger" });
 					}
 				})
 				.catch((err: unknown) => {
@@ -49,15 +49,20 @@ export function useTitleActions({ currentProjectId }: UseTitleActionsInput): Use
 				return;
 			}
 			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			void trpcClient.project.updateTaskTitle.mutate({ taskId, title }).catch((err: unknown) => {
-				console.error("[title-actions] update mutation threw", {
-					taskId,
-					projectId: currentProjectId,
-					titleLength: title.length,
-					error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
+			void trpcClient.project.updateTaskTitle
+				.mutate({ taskId, title })
+				.then((result) => {
+					if (!result.ok) showAppToast({ message: "Could not update title", intent: "danger" });
+				})
+				.catch((err: unknown) => {
+					console.error("[title-actions] update mutation threw", {
+						taskId,
+						projectId: currentProjectId,
+						titleLength: title.length,
+						error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
+					});
+					showAppToast({ message: "Could not update title", intent: "danger" });
 				});
-				showAppToast({ message: "Could not update title", intent: "danger" });
-			});
 		},
 		[currentProjectId],
 	);

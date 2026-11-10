@@ -19,8 +19,10 @@ vi.mock("../../src/title/claude-client", () => ({
 import {
 	generateBranchName,
 	generateTaskTitle,
+	generateTaskTitleResult,
 	_testing as llmTesting,
 	resetGenerationHelperPolicyForTests,
+	TITLE_GENERATION_UNAVAILABLE_MESSAGE,
 } from "../../src/title";
 
 beforeEach(() => {
@@ -146,9 +148,8 @@ describe("generateTaskTitle", () => {
 		expect(codexMocks.callCodex).toHaveBeenCalledWith(
 			expect.objectContaining({
 				userPrompt: "make automatic title generation more reliable",
-				// Capped by the caller's own 6s title budget, not Codex's own 20s default; see
-				// generation-helper.ts's per-provider budget clamp.
-				timeoutMs: 6_000,
+				// CLI startup and inference receive the helper's normal 20-second budget.
+				timeoutMs: 20_000,
 				model: "gpt-6-luna",
 			}),
 		);
@@ -189,6 +190,34 @@ describe("generateTaskTitle", () => {
 		expect(claudeMocks.callClaude).toHaveBeenCalledOnce();
 	});
 
+	it("reports model failure alongside a usable initial fallback", async () => {
+		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("private network details"));
+		await expect(generateTaskTitleResult("fix authentication bug")).resolves.toEqual({
+			title: "Fix Authentication Bug",
+			error: TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+		});
+	});
+
+	it("reports model failure rather than calling an unchanged followup a success", async () => {
+		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+		await expect(
+			generateTaskTitleResult("fix authentication bug", { mode: "followup", currentTitle: "Existing Title" }),
+		).resolves.toEqual({
+			title: "Existing Title",
+			error: TITLE_GENERATION_UNAVAILABLE_MESSAGE,
+		});
+	});
+
+	it("does not report an error for intentionally local generation", async () => {
+		process.env.QUARTERDECK_TITLE_PROVIDER = "local";
+		await expect(generateTaskTitleResult("fix authentication bug")).resolves.toEqual({
+			title: "Fix Authentication Bug",
+		});
+		await expect(
+			generateTaskTitleResult("fix authentication bug", { mode: "followup", currentTitle: "Existing Title" }),
+		).resolves.toEqual({ title: "Existing Title" });
+	});
+
 	it("supports a local-only title provider", async () => {
 		process.env.QUARTERDECK_TITLE_PROVIDER = "local";
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -223,7 +252,7 @@ describe("generateTaskTitle", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("allows six seconds for task-title generation", async () => {
+	it("allows twenty seconds for task-title generation", async () => {
 		const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(new AbortController().signal);
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
 			new Response(JSON.stringify({ choices: [{ message: { content: "Fix Auth Bug" } }] }), { status: 200 }),
@@ -231,7 +260,7 @@ describe("generateTaskTitle", () => {
 
 		await generateTaskTitle("fix the authentication bug in login.ts");
 
-		expect(timeoutSpy).toHaveBeenCalledWith(6_000);
+		expect(timeoutSpy).toHaveBeenCalledWith(20_000);
 	});
 
 	it("builds the chat completions URL from a v1 base URL", async () => {

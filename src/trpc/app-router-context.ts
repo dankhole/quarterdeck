@@ -323,7 +323,7 @@ export interface RuntimeTrpcContext {
 		regenerateTaskTitle: (
 			scope: RuntimeTrpcProjectScope,
 			taskId: string,
-		) => Promise<{ ok: boolean; title: string | null }>;
+		) => Promise<{ ok: boolean; title: string | null; error?: string }>;
 		setFocusedTask: (scope: RuntimeTrpcProjectScope, taskId: string | null) => void;
 		setDocumentVisible: (scope: RuntimeTrpcProjectScope, clientId: string, isDocumentVisible: boolean) => void;
 		stashPush: (

@@ -37,7 +37,9 @@ CRITICAL RULES:
 - Your entire response must be the branch name and nothing else.`;
 
 const MAX_BRANCH_PROMPT_LENGTH = 1200;
-const TITLE_GENERATION_TIMEOUT_MS = 6_000;
+// Saved-login CLIs include process startup and authentication before inference.
+// Use the helper's normal call budget rather than cutting these calls off at six seconds.
+const TITLE_GENERATION_TIMEOUT_MS = 20_000;
 const DEFAULT_CODEX_TITLE_MODEL = "gpt-6-luna";
 const DEFAULT_CLAUDE_TITLE_MODEL = "haiku";
 
@@ -77,10 +79,28 @@ export interface TaskTitleGenerationOptions {
 	currentTitle?: string | null;
 }
 
+export interface TaskTitleGenerationResult {
+	title: string | null;
+	/** Safe, user-facing explanation; never contains provider output or credentials. */
+	error?: string;
+}
+
+export const TITLE_GENERATION_UNAVAILABLE_MESSAGE =
+	"AI title generation failed. Check your Codex or Claude sign-in, or the configured LLM connection, and try again.";
+
+/** Retains the string-only API for callers that deliberately accept a local fallback. */
 export async function generateTaskTitle(
 	prompt: string,
 	options: TaskTitleGenerationOptions = {},
 ): Promise<string | null> {
+	return (await generateTaskTitleResult(prompt, options)).title;
+}
+
+/** Keeps model failure distinct from a usable fallback or unchanged title. */
+export async function generateTaskTitleResult(
+	prompt: string,
+	options: TaskTitleGenerationOptions = {},
+): Promise<TaskTitleGenerationResult> {
 	const followup = options.mode === "followup";
 	const currentTitle = options.currentTitle?.trim() || null;
 	const titleProvider = resolveTitleProvider();
@@ -93,7 +113,7 @@ export async function generateTaskTitle(
 	});
 	if (prompt.trim().length === 0) {
 		log.warn("Title generation skipped: prompt is empty after trim");
-		return followup ? currentTitle : null;
+		return { title: followup ? currentTitle : null };
 	}
 
 	const titleContext = limitTitleContext(prompt, MAX_TITLE_CONTEXT_LENGTH);
@@ -111,15 +131,20 @@ export async function generateTaskTitle(
 			claudeModel: resolveClaudeTitleModel(),
 			normalize: normalizeTitle,
 		});
-		if (title) return title;
+		if (title) return { title };
 	}
 	// A failed refresh must not replace a useful existing title with transcript keywords.
-	if (followup) return currentTitle;
+	if (followup) {
+		return {
+			title: currentTitle,
+			...(titleProvider !== "local" ? { error: TITLE_GENERATION_UNAVAILABLE_MESSAGE } : {}),
+		};
+	}
 
 	const fallbackTitle = createFallbackTaskTitle(prompt);
 	if (titleProvider === "local") {
 		log.debug("Title generated", { title: fallbackTitle, provider: "local" });
-		return fallbackTitle;
+		return { title: fallbackTitle };
 	}
 	log.warn("Remote title generation unavailable — using prompt-derived fallback", {
 		promptLength: prompt.length,
@@ -128,7 +153,7 @@ export async function generateTaskTitle(
 		llmConfigured,
 		fallbackTitle,
 	});
-	return fallbackTitle;
+	return { title: fallbackTitle, error: TITLE_GENERATION_UNAVAILABLE_MESSAGE };
 }
 
 export async function generateBranchName(prompt: string): Promise<string | null> {
