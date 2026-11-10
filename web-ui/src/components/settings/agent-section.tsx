@@ -72,7 +72,7 @@ export function HarnessSection({
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
 	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
-	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "1.4.0";
+	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "1.5.2";
 	const piSettingsSummary = `Exactly ${piSupportedVersion} · Native Pi execution`;
 
 	return (

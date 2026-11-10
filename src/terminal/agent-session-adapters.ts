@@ -535,7 +535,7 @@ const codexAdapter: AgentSessionAdapter = {
 	},
 };
 
-// Pi 1.4.0 consumes the next token for these native options even if it starts with
+// Pi 1.5.2 consumes the next token for these native options even if it starts with
 // "--". Do not mistake a literal value (notably a system prompt) for a TUI option.
 const PI_VALUE_OPTIONS = new Set([
 	"--provider",

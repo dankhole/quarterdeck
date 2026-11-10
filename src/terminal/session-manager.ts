@@ -482,12 +482,16 @@ export class TerminalSessionManager implements TerminalSessionService {
 		if (!entry) {
 			return true;
 		}
-		const previousOutcome = entry.launchMonitor?.outcome?.status ?? null;
+		// Explicit stop retires the live writer immediately, before its PTY exit callback.
+		if (entry.active?.session.wasInterrupted()) {
+			return false;
+		}
+		const previousIdentityOutcome = entry.launchMonitor?.identityOutcome?.status ?? null;
 		markTaskSessionLaunchReady(entry.launchMonitor, metadata);
-		const mismatch = entry.launchMonitor?.outcome;
+		const mismatch = entry.launchMonitor?.identityOutcome;
 		if (
 			mismatch?.status === "identity_mismatch" &&
-			previousOutcome !== "identity_mismatch" &&
+			previousIdentityOutcome !== "identity_mismatch" &&
 			!entry.pendingStartupRecoveryToken
 		) {
 			const summary = this.store.getSummary(taskId);

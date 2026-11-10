@@ -14,7 +14,7 @@ export interface FakeAgentInvocation {
 const FAKE_AGENT_VERSION_OUTPUT: Record<FakeAgentProvider, string> = {
 	claude: "2.1.198 (Claude Code)",
 	codex: "codex-cli 0.157.0",
-	pi: "1.4.0",
+	pi: "1.5.2",
 };
 
 export function parseFakeAgentProvider(value: string | undefined): FakeAgentProvider {
@@ -47,7 +47,7 @@ function findOptionValue(args: readonly string[], optionName: string): string | 
 	return null;
 }
 
-// Pi 1.4.0's native value-taking options consume the next token, even when it
+// Pi 1.5.2's native value-taking options consume the next token, even when it
 // looks like a flag. Keep literal system prompts out of renderer/resume detection.
 const PI_OPTIONS_WITH_VALUES = new Set([
 	"--provider",

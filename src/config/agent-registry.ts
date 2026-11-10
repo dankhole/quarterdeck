@@ -76,7 +76,7 @@ export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosti
 
 const MINIMUM_CODEX_VERSION = "0.157.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
-export const SUPPORTED_PI_VERSION = "1.4.0";
+export const SUPPORTED_PI_VERSION = "1.5.2";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 /**
  * Applies to every agent's `--version` probe and Codex's `features list` probe

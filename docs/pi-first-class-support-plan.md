@@ -1,12 +1,12 @@
 # Pi Desktop Support Contract
 
-Status: maintained on macOS and pinned to exactly Pi `1.4.0`.
+Status: maintained on macOS and pinned to exactly Pi `1.5.2`.
 
 ## Product contract
 
 Pi is a first-class desktop task agent alongside Claude Code and Codex. Quarterdeck preserves Pi selection through task creation, create-and-start, authoritative hydration, project switching, restart, Trash/restore, and startup recovery.
 
-Quarterdeck deliberately accepts exactly Pi `1.4.0`, not an open-ended minimum version. Older or newer versions return a typed availability failure naming the detected and required versions. Advancing the supported version requires a fresh compatibility review and the validation gate below.
+Quarterdeck deliberately accepts exactly Pi `1.5.2`, not an open-ended minimum version. Older or newer versions return a typed availability failure naming the detected and required versions. Advancing the supported version requires a fresh compatibility review and the validation gate below.
 
 The native Pi TUI remains the execution owner. Pi does not participate in the internal structured-execution handoff currently supported for exact Claude Code and Codex sessions.
 
@@ -27,7 +27,7 @@ Pi owns saved trust decisions and tool execution. Quarterdeck does not register 
 ## Recovery contract
 
 - Automatic restart and startup recovery require the exact stored Pi session ID and use `--session <id>`.
-- A targeted resume must report the expected provider session before it becomes authoritative.
+- A targeted resume must report the expected provider session before it becomes authoritative, even when terminal input has cancelled automatic recovery. Pi's missing-folder startup selector runs before extensions load: Continue retains identity, Cancel must not restart, and Fork must fail exact-session admission rather than replace the task's saved session.
 - Missing, mismatched, or unusable stored sessions produce a typed Review/Error result. Quarterdeck never replays an ambiguous prompt or silently starts a different session.
 - `--continue` is available only for an explicit user restart when no exact session ID exists, with the ambiguity disclosed to the user.
 - Browser connection and active-project selection do not own or trigger recovery.
@@ -50,6 +50,19 @@ For every proposed Pi version change:
 6. Use an authenticated provider only with explicit authorization when real provider behavior remains the unresolved risk.
 
 Do not replace this gate with a minimum-version range. Pi versions older than `0.79.0` are below the project-trust security floor, and unvalidated newer versions remain unsupported.
+
+### Native account-free smoke (macOS)
+
+Use an external Node installation, not the desktop app's bundled `nodeHost`. Install the proposed Pi release privately, then run the repo-owned smoke:
+
+```sh
+pi_prefix=$(mktemp -d)
+trap 'rm -rf "$pi_prefix"' EXIT
+npm install --prefix "$pi_prefix" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.5.2
+node --import tsx scripts/pi-compatibility-smoke.ts "$pi_prefix/node_modules/@earendil-works/pi-coding-agent"
+```
+
+The smoke uses native Pi processes and a local synthetic model, with disposable configuration, session history, and Quarterdeck state. It loads the production lifecycle extension, forbids unexpected Node network connections, and never starts Quarterdeck or reads provider credentials. It checks native lifecycle events, trust, fullscreen PTY startup, exact resume, replacement vetoes, and the missing-folder Continue/Fork/Cancel selector. The runtime's separate identity-admission tests must reject Fork's new ID. This does not validate authenticated providers, optional third-party extensions, or other platforms.
 
 ## Ownership references
 

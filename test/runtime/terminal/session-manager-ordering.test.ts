@@ -1389,6 +1389,209 @@ describe("TerminalSessionManager ordering invariants", () => {
 		expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
 	});
 
+	it.each(["pi", "codex", "claude"] as const)(
+		"rejects a %s exact-resume identity mismatch after startup input without adopting its source or restarting",
+		async (agentId) => {
+			const sessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+			const recoveryToken = "recovery-token";
+			manager.beginStartupRecovery("task-1", recoveryToken);
+			const started = await manager.startTaskSessionWithReadiness({
+				taskId: "task-1",
+				agentId,
+				binary: agentId,
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "",
+				resumeConversation: true,
+				resumeSessionId: "expected-session",
+				startupRecoveryToken: recoveryToken,
+			});
+			const waiting = manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000);
+			manager.writeInput("task-1", Buffer.from("\u001b[B\r"));
+			await expect(waiting).resolves.toMatchObject({ status: "user_engaged" });
+			expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+
+			const recordProviderHookHint = vi.fn();
+			const applyProviderHook = vi.spyOn(manager, "applyProviderHook");
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+				conversationSourceHints: { recordProviderHookHint },
+			});
+			await expect(
+				api.ingest({
+					taskId: "task-1",
+					projectId: "project-1",
+					event: "activity",
+					metadata: {
+						source: agentId,
+						hookEventName: agentId === "pi" ? "session_meta" : "SessionStart",
+						sessionInstanceId: started.sessionInstanceId,
+						sessionId: "forked-session",
+						transcriptPath: "/synthetic/forked-session.jsonl",
+					},
+				}),
+			).resolves.toEqual({ ok: true });
+			expect(recordProviderHookHint).not.toHaveBeenCalled();
+			expect(applyProviderHook).not.toHaveBeenCalled();
+			expect(sessions[0]?.stop).toHaveBeenCalledExactlyOnceWith({ interrupted: true });
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "error",
+				resumeSessionId: null,
+				warningMessage: expect.any(String),
+			});
+
+			sessions[0]?.triggerExit(0);
+			manager.attach("task-1", { onState: vi.fn(), onOutput: vi.fn(), onExit: vi.fn() });
+			await vi.advanceTimersByTimeAsync(2_000);
+			expect(ptySessionSpawnMock).toHaveBeenCalledOnce();
+			expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "error",
+				resumeSessionId: null,
+				pid: null,
+			});
+		},
+	);
+
+	it.each(["pi", "codex", "claude"] as const)(
+		"preserves a stopped %s exact resume when a mismatched hook follows startup input before PTY exit",
+		async (agentId) => {
+			const sessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			const recoveryToken = "recovery-token";
+			manager.beginStartupRecovery("task-1", recoveryToken);
+			const started = await manager.startTaskSessionWithReadiness({
+				taskId: "task-1",
+				agentId,
+				binary: agentId,
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "",
+				resumeConversation: true,
+				resumeSessionId: "expected-session",
+				startupRecoveryToken: recoveryToken,
+			});
+			const session = sessions[0];
+			if (!session) throw new Error("Expected a spawned PTY.");
+			// Reflect the production PTY's synchronous explicit-stop fence without firing onExit yet.
+			session.stop.mockImplementation(() => session.wasInterrupted.mockReturnValue(true));
+			manager.writeInput("task-1", Buffer.from("\r"));
+			await expect(
+				manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000),
+			).resolves.toMatchObject({ status: "user_engaged" });
+			manager.stopTaskSession("task-1");
+			const stopped = manager.store.getSummary("task-1");
+			expect(stopped).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				resumeSessionId: "expected-session",
+				pid: 111,
+			});
+			const recordProviderHookHint = vi.fn();
+			const applyProviderHook = vi.spyOn(manager, "applyProviderHook");
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+				conversationSourceHints: { recordProviderHookHint },
+			});
+			await expect(
+				api.ingest({
+					taskId: "task-1",
+					projectId: "project-1",
+					event: "activity",
+					metadata: {
+						source: agentId,
+						hookEventName: agentId === "pi" ? "session_meta" : "SessionStart",
+						sessionInstanceId: started.sessionInstanceId,
+						sessionId: "forked-session",
+						transcriptPath: "/synthetic/forked-session.jsonl",
+					},
+				}),
+			).resolves.toEqual({ ok: true });
+			expect(recordProviderHookHint).not.toHaveBeenCalled();
+			expect(applyProviderHook).not.toHaveBeenCalled();
+			expect(manager.store.getSummary("task-1")).toEqual(stopped);
+			expect(session.stop).toHaveBeenCalledExactlyOnceWith({ interrupted: true });
+			expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+			session.triggerExit(0);
+			await vi.advanceTimersByTimeAsync(2_000);
+			expect(ptySessionSpawnMock).toHaveBeenCalledOnce();
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				state: "awaiting_review",
+				reviewReason: "interrupted",
+				resumeSessionId: "expected-session",
+				pid: null,
+			});
+		},
+	);
+
+	it.each(["pi", "codex", "claude"] as const)(
+		"accepts the matching %s exact-resume identity after startup input cancels retry ownership",
+		async (agentId) => {
+			const sessions = setupMockPtySpawn();
+			const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
+			const recoveryToken = "recovery-token";
+			manager.beginStartupRecovery("task-1", recoveryToken);
+			const started = await manager.startTaskSessionWithReadiness({
+				taskId: "task-1",
+				agentId,
+				binary: agentId,
+				args: [],
+				cwd: "/tmp/task-1",
+				prompt: "",
+				resumeConversation: true,
+				resumeSessionId: "expected-session",
+				startupRecoveryToken: recoveryToken,
+			});
+			manager.writeInput("task-1", Buffer.from("\r"));
+			const recordProviderHookHint = vi.fn();
+			const api = createHooksApi({
+				projects: { getProjectPathById: () => "/tmp/repo" },
+				terminals: {
+					getTerminalManagerForProject: () => manager,
+					ensureTerminalManagerForProject: async () => manager,
+				},
+				conversationSourceHints: { recordProviderHookHint },
+			});
+			await expect(
+				api.ingest({
+					taskId: "task-1",
+					projectId: "project-1",
+					event: "activity",
+					metadata: {
+						source: agentId,
+						hookEventName: agentId === "pi" ? "session_meta" : "SessionStart",
+						sessionInstanceId: started.sessionInstanceId,
+						sessionId: "expected-session",
+						transcriptPath: "/synthetic/expected-session.jsonl",
+					},
+				}),
+			).resolves.toEqual({ ok: true });
+			expect(recordProviderHookHint).toHaveBeenCalledOnce();
+			expect(manager.store.getSummary("task-1")).toMatchObject({
+				resumeSessionId: "expected-session",
+				pid: 111,
+			});
+			expect(manager.store.getSummary("task-1")?.reviewReason).not.toBe("error");
+			expect(sessions[0]?.stop).not.toHaveBeenCalled();
+			expect(manager.isStartupRecoveryCurrent("task-1", recoveryToken)).toBe(false);
+			await expect(
+				manager.waitForTaskSessionLaunch("task-1", started.sessionInstanceId ?? "", 1_000),
+			).resolves.toMatchObject({ status: "user_engaged" });
+		},
+	);
+
 	it("does not cancel startup recovery when a processless task cannot receive input", () => {
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		const recoveryToken = "recovery-token";

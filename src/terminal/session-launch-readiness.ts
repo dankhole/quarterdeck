@@ -27,12 +27,17 @@ export type TaskSessionLaunchReadinessOutcome =
 	  };
 
 type SettledLaunchReadinessOutcome = Exclude<TaskSessionLaunchReadinessOutcome, { status: "timeout" }>;
+type LaunchIdentityOutcome = Extract<TaskSessionLaunchReadinessOutcome, { status: "ready" | "identity_mismatch" }>;
 
 export interface TaskSessionLaunchMonitor {
 	sessionInstanceId: string;
 	expectedSessionId: string | null;
 	pid: number | null;
 	outcome: SettledLaunchReadinessOutcome | null;
+	// Input may settle recovery ownership before the first hook confirms exact resume identity.
+	identityOutcome: LaunchIdentityOutcome | null;
+	// Stop, replacement, and exit close admission even when input already settled ownership.
+	identityAdmissionRetired: boolean;
 	waiters: Set<(outcome: SettledLaunchReadinessOutcome) => void>;
 }
 
@@ -45,6 +50,8 @@ export function createTaskSessionLaunchMonitor(options: {
 		expectedSessionId: options.expectedSessionId?.trim() || null,
 		pid: null,
 		outcome: null,
+		identityOutcome: null,
+		identityAdmissionRetired: false,
 		waiters: new Set(),
 	};
 }
@@ -67,7 +74,12 @@ export function markTaskSessionLaunchReady(
 	monitor: TaskSessionLaunchMonitor | null,
 	metadata: RuntimeHookMetadata | undefined,
 ): void {
-	if (!monitor || monitor.outcome) {
+	if (
+		!monitor ||
+		monitor.identityOutcome ||
+		monitor.identityAdmissionRetired ||
+		(monitor.outcome && (monitor.outcome.status !== "user_engaged" || !monitor.expectedSessionId))
+	) {
 		return;
 	}
 	const incomingInstanceId = metadata?.sessionInstanceId?.trim() || null;
@@ -80,26 +92,29 @@ export function markTaskSessionLaunchReady(
 			return;
 		}
 		if (observedSessionId !== monitor.expectedSessionId) {
-			settleTaskSessionLaunch(monitor, {
+			monitor.identityOutcome = {
 				status: "identity_mismatch",
 				sessionInstanceId: monitor.sessionInstanceId,
 				expectedSessionId: monitor.expectedSessionId,
 				observedSessionId,
-			});
+			};
+			settleTaskSessionLaunch(monitor, monitor.identityOutcome);
 			return;
 		}
 	}
-	settleTaskSessionLaunch(monitor, {
+	monitor.identityOutcome = {
 		status: "ready",
 		sessionInstanceId: monitor.sessionInstanceId,
 		observedSessionId,
-	});
+	};
+	settleTaskSessionLaunch(monitor, monitor.identityOutcome);
 }
 
 export function markTaskSessionLaunchExited(monitor: TaskSessionLaunchMonitor | null, exitCode: number | null): void {
 	if (!monitor) {
 		return;
 	}
+	monitor.identityAdmissionRetired = true;
 	settleTaskSessionLaunch(monitor, {
 		status: "exited",
 		sessionInstanceId: monitor.sessionInstanceId,
@@ -111,6 +126,7 @@ export function markTaskSessionLaunchCancelled(monitor: TaskSessionLaunchMonitor
 	if (!monitor) {
 		return;
 	}
+	monitor.identityAdmissionRetired = true;
 	settleTaskSessionLaunch(monitor, {
 		status: "cancelled",
 		sessionInstanceId: monitor.sessionInstanceId,
@@ -121,6 +137,7 @@ export function markTaskSessionLaunchSuperseded(monitor: TaskSessionLaunchMonito
 	if (!monitor) {
 		return;
 	}
+	monitor.identityAdmissionRetired = true;
 	settleTaskSessionLaunch(monitor, {
 		status: "superseded",
 		sessionInstanceId: monitor.sessionInstanceId,
