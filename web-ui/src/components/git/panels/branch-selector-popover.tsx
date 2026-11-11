@@ -21,11 +21,18 @@ import {
 	Search,
 	Trash2,
 } from "lucide-react";
-import { forwardRef, useRef } from "react";
+import { forwardRef, useEffect, useRef } from "react";
+import {
+	BRANCH_DROPDOWN_CLASS_NAME,
+	BRANCH_TOOLTIP_CLASS_NAME,
+	getBranchFolderPath,
+} from "@/components/git/branch-dropdown-presentation";
 import { CONTEXT_MENU_ITEM_CLASS, copyToClipboard } from "@/components/git/panels/context-menu-utils";
+import { FolderSelectRowButton } from "@/components/shared/folder-select-row";
 import { cn } from "@/components/ui/cn";
-import { Tooltip, TruncateTooltip } from "@/components/ui/tooltip";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useBranchSelectorPopover } from "@/hooks/git/use-branch-selector-popover";
+import { useFolderSelectRows } from "@/hooks/search/use-folder-select-rows";
 import type { RuntimeGitRef } from "@/runtime/types";
 import { formatDetachedWorktreeLabel, getDetachedWorktreeTooltip } from "@/utils/detached-worktree-copy";
 
@@ -77,8 +84,12 @@ interface BranchSelectorPopoverProps {
 	detachedWorktreeHeadCommit?: string | null;
 	/** When true, suppresses right-click context menus on branch items. */
 	disableContextMenu?: boolean;
+	groupBranchesByFolder?: boolean;
 	trigger: React.ReactNode;
 }
+
+const getBranchKey = (gitRef: RuntimeGitRef): string => gitRef.name;
+const getBranchPath = (gitRef: RuntimeGitRef): readonly string[] => getBranchFolderPath(gitRef.name);
 
 export function BranchSelectorPopover({
 	isOpen,
@@ -102,6 +113,7 @@ export function BranchSelectorPopover({
 	detachedWorktreeBaseRef,
 	detachedWorktreeHeadCommit,
 	disableContextMenu,
+	groupBranchesByFolder = false,
 	trigger,
 }: BranchSelectorPopoverProps): React.ReactElement {
 	const {
@@ -141,6 +153,29 @@ export function BranchSelectorPopover({
 		onPull,
 		onPush,
 	});
+	const isSearching = query.trim().length > 0;
+	const localFolders = useFolderSelectRows({
+		items: unpinnedLocal,
+		getKey: getBranchKey,
+		getPath: groupBranchesByFolder ? getBranchPath : undefined,
+		selectedKey: currentBranch,
+		isSearching,
+	});
+	const remoteFolders = useFolderSelectRows({
+		items: filteredRemote,
+		getKey: getBranchKey,
+		getPath: groupBranchesByFolder ? getBranchPath : undefined,
+		selectedKey: currentBranch,
+		isSearching,
+	});
+	const { resetFolders: resetLocalFolders } = localFolders;
+	const { resetFolders: resetRemoteFolders } = remoteFolders;
+	useEffect(() => {
+		if (!isOpen) {
+			resetLocalFolders();
+			resetRemoteFolders();
+		}
+	}, [isOpen, resetLocalFolders, resetRemoteFolders]);
 	const detachedWorktreeLabel = formatDetachedWorktreeLabel(detachedWorktreeBaseRef);
 	const detachedWorktreeTooltip = detachedWorktreeLabel
 		? getDetachedWorktreeTooltip({
@@ -169,7 +204,7 @@ export function BranchSelectorPopover({
 					align="start"
 					sideOffset={4}
 					collisionPadding={8}
-					className="z-50 w-80 rounded-lg border border-border bg-surface-1 shadow-lg"
+					className={cn("z-50 rounded-lg border border-border bg-surface-1 shadow-lg", BRANCH_DROPDOWN_CLASS_NAME)}
 					onOpenAutoFocus={(e) => {
 						e.preventDefault();
 						inputRef.current?.focus();
@@ -292,28 +327,38 @@ export function BranchSelectorPopover({
 								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider">
 									Local
 								</div>
-								{unpinnedLocal.map((gitRef) => (
-									<BranchItem
-										key={gitRef.name}
-										gitRef={gitRef}
-										isCurrent={gitRef.name === currentBranch}
-										worktreeTaskTitle={worktreeBranches.get(gitRef.name)}
-										disableContextMenu={disableContextMenu}
-										onSelect={handleSelectBranch}
-										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
-										onCompare={onCompareWithBranch ? handleCompare : undefined}
-										onMerge={onMergeBranch ? handleMerge : undefined}
-										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
-										onDeleteBranch={onDeleteBranch ? handleDeleteBranch : undefined}
-										onRebase={onRebaseBranch ? handleRebase : undefined}
-										onRename={onRenameBranch ? handleRename : undefined}
-										onReset={onResetToRef ? handleReset : undefined}
-										onTogglePin={onTogglePinBranch}
-										onPull={onPull ? handlePull : undefined}
-										onPush={onPush ? handlePush : undefined}
-										onClose={closePopover}
-									/>
-								))}
+								{localFolders.rows.map((row) =>
+									row.kind === "folder" ? (
+										<FolderSelectRowButton
+											key={row.key}
+											row={row}
+											onToggle={() => localFolders.toggleFolder(row.key)}
+										/>
+									) : (
+										<BranchItem
+											key={row.key}
+											gitRef={row.item}
+											displayName={groupBranchesByFolder && !isSearching ? row.label : undefined}
+											depth={row.depth}
+											isCurrent={row.item.name === currentBranch}
+											worktreeTaskTitle={worktreeBranches.get(row.item.name)}
+											disableContextMenu={disableContextMenu}
+											onSelect={handleSelectBranch}
+											onCheckout={onCheckoutBranch ? handleCheckout : undefined}
+											onCompare={onCompareWithBranch ? handleCompare : undefined}
+											onMerge={onMergeBranch ? handleMerge : undefined}
+											onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
+											onDeleteBranch={onDeleteBranch ? handleDeleteBranch : undefined}
+											onRebase={onRebaseBranch ? handleRebase : undefined}
+											onRename={onRenameBranch ? handleRename : undefined}
+											onReset={onResetToRef ? handleReset : undefined}
+											onTogglePin={onTogglePinBranch}
+											onPull={onPull ? handlePull : undefined}
+											onPush={onPush ? handlePush : undefined}
+											onClose={closePopover}
+										/>
+									),
+								)}
 							</>
 						) : null}
 						{filteredRemote.length > 0 ? (
@@ -321,23 +366,33 @@ export function BranchSelectorPopover({
 								<div className="px-2 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mt-1">
 									Remote
 								</div>
-								{filteredRemote.map((gitRef) => (
-									<BranchItem
-										key={gitRef.name}
-										gitRef={gitRef}
-										isCurrent={false}
-										worktreeTaskTitle={undefined}
-										disableContextMenu={disableContextMenu}
-										onSelect={handleSelectBranch}
-										onCheckout={onCheckoutBranch ? handleCheckout : undefined}
-										onCompare={onCompareWithBranch ? handleCompare : undefined}
-										onMerge={onMergeBranch ? handleMerge : undefined}
-										onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
-										onRebase={onRebaseBranch ? handleRebase : undefined}
-										onReset={onResetToRef ? handleReset : undefined}
-										onClose={closePopover}
-									/>
-								))}
+								{remoteFolders.rows.map((row) =>
+									row.kind === "folder" ? (
+										<FolderSelectRowButton
+											key={row.key}
+											row={row}
+											onToggle={() => remoteFolders.toggleFolder(row.key)}
+										/>
+									) : (
+										<BranchItem
+											key={row.key}
+											gitRef={row.item}
+											displayName={groupBranchesByFolder && !isSearching ? row.label : undefined}
+											depth={row.depth}
+											isCurrent={false}
+											worktreeTaskTitle={undefined}
+											disableContextMenu={disableContextMenu}
+											onSelect={handleSelectBranch}
+											onCheckout={onCheckoutBranch ? handleCheckout : undefined}
+											onCompare={onCompareWithBranch ? handleCompare : undefined}
+											onMerge={onMergeBranch ? handleMerge : undefined}
+											onCreateBranch={onCreateBranch ? handleCreateBranch : undefined}
+											onRebase={onRebaseBranch ? handleRebase : undefined}
+											onReset={onResetToRef ? handleReset : undefined}
+											onClose={closePopover}
+										/>
+									),
+								)}
 							</>
 						) : null}
 						{pinnedLocal.length === 0 && unpinnedLocal.length === 0 && filteredRemote.length === 0 ? (
@@ -385,9 +440,13 @@ export const BranchPillTrigger = forwardRef<
 			aria-label="Switch branch"
 		>
 			<GitBranch size={11} className="shrink-0 text-text-tertiary" />
-			<TruncateTooltip content={label} side="bottom">
-				<span className="truncate">{label}</span>
-			</TruncateTooltip>
+			<Tooltip
+				content={<span className={BRANCH_TOOLTIP_CLASS_NAME}>{label}</span>}
+				side="bottom"
+				delayDuration={150}
+			>
+				<span className="min-w-0 truncate">{label}</span>
+			</Tooltip>
 			{detachedTooltip ? (
 				<Tooltip content={detachedTooltip} side="bottom">
 					<span className="inline-flex shrink-0 text-text-tertiary" role="img" aria-label="Detached worktree">
@@ -414,6 +473,8 @@ export const BranchPillTrigger = forwardRef<
 
 function BranchItem({
 	gitRef,
+	displayName,
+	depth = 0,
 	isCurrent,
 	worktreeTaskTitle,
 	isPinned,
@@ -433,6 +494,8 @@ function BranchItem({
 	onClose,
 }: {
 	gitRef: RuntimeGitRef;
+	displayName?: string;
+	depth?: number;
 	isCurrent: boolean;
 	worktreeTaskTitle: string | undefined;
 	isPinned?: boolean;
@@ -459,6 +522,7 @@ function BranchItem({
 		<button
 			ref={rowRef}
 			type="button"
+			style={depth > 0 ? { paddingLeft: 8 + depth * 16 } : undefined}
 			onClick={(e) => {
 				if (disableContextMenu) {
 					onSelect(gitRef.name);
@@ -479,9 +543,13 @@ function BranchItem({
 			className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-left text-text-secondary hover:bg-surface-2 cursor-pointer"
 		>
 			<GitBranch size={12} className="shrink-0" />
-			<TruncateTooltip content={gitRef.name} side="top">
-				<span className="flex-1 truncate">{shortName}</span>
-			</TruncateTooltip>
+			<Tooltip
+				content={<span className={BRANCH_TOOLTIP_CLASS_NAME}>{gitRef.name}</span>}
+				side="top"
+				delayDuration={150}
+			>
+				<span className="min-w-0 flex-1 truncate">{displayName ?? shortName}</span>
+			</Tooltip>
 			{gitRef.behind && gitRef.behind > 0 ? (
 				<span className="inline-flex items-center gap-px shrink-0 text-[10px] text-status-blue">
 					<ArrowDown size={10} />

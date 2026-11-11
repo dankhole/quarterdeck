@@ -35,6 +35,7 @@ describe("settings navigation", () => {
 			"Agents",
 			"Notifications",
 			"Terminal & editor",
+			"Git branches",
 			"Code navigation",
 			"Prompt shortcuts",
 		]);

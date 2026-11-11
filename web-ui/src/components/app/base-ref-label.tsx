@@ -1,9 +1,18 @@
 import * as RadixPopover from "@radix-ui/react-popover";
 import { Check, Lock, LockOpen, Search } from "lucide-react";
-import { type ReactElement, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	BRANCH_DROPDOWN_CLASS_NAME,
+	BRANCH_TOOLTIP_CLASS_NAME,
+	getBranchFolderPath,
+} from "@/components/git/branch-dropdown-presentation";
+import { FolderSelectRowButton } from "@/components/shared/folder-select-row";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/tooltip";
 import { resolveBranchSelectorSections } from "@/hooks/git/branch-selector-popover";
+import { type FolderSelectRow, getFolderSelectRows } from "@/hooks/search/folder-select";
+import { useFolderSelectRows } from "@/hooks/search/use-folder-select-rows";
 import type { RuntimeGitRef } from "@/runtime/types";
 import type { BoardCard } from "@/types";
 import { resolveTaskBaseRefDisplayState } from "@/utils/task-base-ref-display";
@@ -17,36 +26,57 @@ interface BaseRefLabelProps {
 	requestBranches: () => void;
 	onUpdateBaseRef: (taskId: string, baseRef: string, pinned: boolean) => void;
 	pinnedBranches: string[];
+	groupBranchesByFolder?: boolean;
 }
+
+const getBranchKey = (ref: RuntimeGitRef): string => ref.name;
+const getBranchPath = (ref: RuntimeGitRef): readonly string[] => getBranchFolderPath(ref.name);
 
 interface BaseRefSectionProps {
 	title: string;
-	refs: RuntimeGitRef[];
+	rows: FolderSelectRow<RuntimeGitRef>[];
+	onToggleFolder?: (key: string) => void;
 	currentBaseRef: string;
 	onSelectRef: (refName: string) => void;
 }
 
-function BaseRefSection({ title, refs, currentBaseRef, onSelectRef }: BaseRefSectionProps): ReactElement | null {
-	if (refs.length === 0) {
+function BaseRefSection({
+	title,
+	rows,
+	onToggleFolder,
+	currentBaseRef,
+	onSelectRef,
+}: BaseRefSectionProps): ReactElement | null {
+	if (rows.length === 0) {
 		return null;
 	}
 
 	return (
 		<>
 			<div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">{title}</div>
-			{refs.map((ref) => (
-				<button
-					key={ref.name}
-					type="button"
-					className="flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-left text-xs text-text-secondary hover:bg-surface-2"
-					onClick={() => onSelectRef(ref.name)}
-				>
-					<span className="w-3 shrink-0">
-						{ref.name === currentBaseRef ? <Check size={12} className="text-accent" /> : null}
-					</span>
-					<span className="truncate font-mono">{ref.name}</span>
-				</button>
-			))}
+			{rows.map((row) =>
+				row.kind === "folder" ? (
+					<FolderSelectRowButton key={row.key} row={row} onToggle={() => onToggleFolder?.(row.key)} />
+				) : (
+					<Tooltip
+						key={row.key}
+						content={<span className={cn(BRANCH_TOOLTIP_CLASS_NAME, "font-mono")}>{row.item.name}</span>}
+						delayDuration={150}
+					>
+						<button
+							type="button"
+							className="flex w-full min-w-0 cursor-pointer items-center gap-2 px-3 py-1 text-left text-xs text-text-secondary hover:bg-surface-2"
+							onClick={() => onSelectRef(row.item.name)}
+							style={row.depth > 0 ? { paddingLeft: 12 + row.depth * 16 } : undefined}
+						>
+							<span className="w-3 shrink-0">
+								{row.item.name === currentBaseRef ? <Check size={12} className="text-accent" /> : null}
+							</span>
+							<span className="min-w-0 truncate font-mono">{row.label}</span>
+						</button>
+					</Tooltip>
+				),
+			)}
 		</>
 	);
 }
@@ -60,6 +90,7 @@ export function BaseRefLabel({
 	requestBranches,
 	onUpdateBaseRef,
 	pinnedBranches,
+	groupBranchesByFolder = false,
 }: BaseRefLabelProps): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [filter, setFilter] = useState("");
@@ -99,6 +130,33 @@ export function BaseRefLabel({
 		() => resolveBranchSelectorSections(branches, pinnedBranches, filter),
 		[branches, pinnedBranches, filter],
 	);
+	const isSearching = filter.trim().length > 0;
+	const localFolders = useFolderSelectRows({
+		items: unpinnedLocal,
+		getKey: getBranchKey,
+		getPath: groupBranchesByFolder ? getBranchPath : undefined,
+		selectedKey: baseRefState.baseRef,
+		isSearching,
+	});
+	const remoteFolders = useFolderSelectRows({
+		items: filteredRemote,
+		getKey: getBranchKey,
+		getPath: groupBranchesByFolder ? getBranchPath : undefined,
+		selectedKey: baseRefState.baseRef,
+		isSearching,
+	});
+	const pinnedRows = useMemo(
+		() => getFolderSelectRows({ items: pinnedLocal, getKey: getBranchKey, isSearching: false }),
+		[pinnedLocal],
+	);
+	const { resetFolders: resetLocalFolders } = localFolders;
+	const { resetFolders: resetRemoteFolders } = remoteFolders;
+	useEffect(() => {
+		if (!isOpen) {
+			resetLocalFolders();
+			resetRemoteFolders();
+		}
+	}, [isOpen, resetLocalFolders, resetRemoteFolders]);
 	const hasMatchingRefs = pinnedLocal.length > 0 || unpinnedLocal.length > 0 || filteredRemote.length > 0;
 
 	return (
@@ -116,7 +174,15 @@ export function BaseRefLabel({
 					{baseRefState.isResolved ? (
 						<>
 							{baseRefState.isPinned ? <Lock size={10} className="text-text-quaternary" /> : null}
-							from <span className="font-mono">{baseRefState.baseRef}</span>
+							from{" "}
+							<Tooltip
+								content={
+									<span className={cn(BRANCH_TOOLTIP_CLASS_NAME, "font-mono")}>{baseRefState.baseRef}</span>
+								}
+								delayDuration={150}
+							>
+								<span className="font-mono">{baseRefState.baseRef}</span>
+							</Tooltip>
 							{baseRefDisplay.behindLabel ? (
 								<span className={baseRefDisplay.isBehind ? "text-status-blue" : undefined}>
 									({baseRefDisplay.behindLabel})
@@ -133,7 +199,8 @@ export function BaseRefLabel({
 					side="bottom"
 					align="start"
 					sideOffset={6}
-					className="z-50 w-64 rounded-md border border-border bg-surface-1 shadow-lg"
+					collisionPadding={8}
+					className={cn("z-50 rounded-md border border-border bg-surface-1 shadow-lg", BRANCH_DROPDOWN_CLASS_NAME)}
 					onOpenAutoFocus={(e) => {
 						e.preventDefault();
 						inputRef.current?.focus();
@@ -167,19 +234,21 @@ export function BaseRefLabel({
 								<>
 									<BaseRefSection
 										title="Pinned"
-										refs={pinnedLocal}
+										rows={pinnedRows}
 										currentBaseRef={baseRefState.baseRef ?? ""}
 										onSelectRef={handleSelect}
 									/>
 									<BaseRefSection
 										title="Local"
-										refs={unpinnedLocal}
+										rows={localFolders.rows}
+										onToggleFolder={localFolders.toggleFolder}
 										currentBaseRef={baseRefState.baseRef ?? ""}
 										onSelectRef={handleSelect}
 									/>
 									<BaseRefSection
 										title="Remote"
-										refs={filteredRemote}
+										rows={remoteFolders.rows}
+										onToggleFolder={remoteFolders.toggleFolder}
 										currentBaseRef={baseRefState.baseRef ?? ""}
 										onSelectRef={handleSelect}
 									/>

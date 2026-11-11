@@ -4,6 +4,7 @@ export type SettingsCategoryId =
 	| "agents"
 	| "notifications"
 	| "terminal-editor"
+	| "branches"
 	| "code-navigation"
 	| "prompt-shortcuts"
 	| "task-creation"
@@ -30,6 +31,7 @@ const CATEGORIES: readonly SettingsCategory[] = [
 	{ id: "agents", title: "Agents", scope: "global" },
 	{ id: "notifications", title: "Notifications", scope: "global" },
 	{ id: "terminal-editor", title: "Terminal & editor", scope: "global" },
+	{ id: "branches", title: "Git branches", scope: "global" },
 	{ id: "code-navigation", title: "Code navigation", scope: "global" },
 	{ id: "prompt-shortcuts", title: "Prompt shortcuts", scope: "global" },
 	{ id: "task-creation", title: "Task creation", scope: "project" },

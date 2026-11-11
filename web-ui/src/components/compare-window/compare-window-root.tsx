@@ -121,6 +121,7 @@ function CompareReview({
 			) : (
 				<CompareBar
 					{...compare}
+					groupBranchesByFolder={config?.groupBranchesByFolder ?? false}
 					onSourceRefChange={compare.setSourceRef}
 					onTargetRefChange={compare.setTargetRef}
 					onResetToDefaults={compare.resetToDefaults}

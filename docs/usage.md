@@ -110,7 +110,7 @@ To keep the configuration across shell sessions, add the exports to the shell st
 
 Settings groups categories by where changes apply:
 
-- **All projects** controls shared agent, notification, terminal, editor, code-navigation, and agent prompt-shortcut preferences.
+- **All projects** controls shared agent, notification, terminal, editor, branch-picker, code-navigation, and agent prompt-shortcut preferences.
 - **Project: _name_** controls only the named project's task-creation defaults and command shortcuts. Command shortcuts run shell commands; agent prompt shortcuts send prompts to an agent.
 - **This desktop** contains native environment preferences when using the desktop app.
 - **Tools** contains diagnostics, AI setup guidance, and troubleshooting actions.
@@ -118,6 +118,8 @@ Settings groups categories by where changes apply:
 An open Settings dialog stays tied to its original project even if the selected project changes. If that project is removed or its folder becomes unavailable, the dialog blocks form saves—including all-project preferences—rather than transferring drafts to another project. Restore the folder's availability, or cancel and reopen Settings for an available project.
 
 Moving between categories keeps your unsaved edits. **Save changes** saves the form's edits across categories; **Cancel** discards those drafts. Actions labelled **now** or described as saving immediately are separate and are not undone by Cancel. Configuration-file links are secondary actions, not the indication of which project you are editing.
+
+Enable **Settings → All projects → Git branches → Group branches by folder**, then **Save changes**, to display slash-separated branch names in expandable folders across branch pickers. It is off by default and applies to all projects. Search still matches full branch names and shows flat results. Pinned sections stay flat. Grouping changes only presentation, never branch names or Git actions.
 
 ## Everyday Workflow
 

@@ -28,12 +28,14 @@ import { toErrorMessage } from "@/utils/to-error-message";
 function CommitDiffHeader({
 	commit,
 	branches,
+	groupBranchesByFolder,
 	onLandOnBranch,
 	revertAction,
 }: {
 	commit: RuntimeGitCommit;
 	revertAction?: React.ReactNode;
 	branches: BranchSelectOption[];
+	groupBranchesByFolder: boolean;
 	onLandOnBranch?: (commit: RuntimeGitCommit, targetBranch: string) => void;
 }): React.ReactElement {
 	const isMergeCommit = commit.parentHashes.length > 1;
@@ -89,6 +91,7 @@ function CommitDiffHeader({
 				{onLandOnBranch && branches.length > 0 && !isMergeCommit ? (
 					<BranchSelectDropdown
 						options={branches}
+						groupBranchesByFolder={groupBranchesByFolder}
 						onSelect={(branch) => onLandOnBranch(commit, branch)}
 						size="sm"
 						buttonText="Land on..."
@@ -96,8 +99,6 @@ function CommitDiffHeader({
 						iconSize={12}
 						emptyText="No branches"
 						noResultsText="No matching branches"
-						matchTargetWidth={false}
-						dropdownStyle={{ minWidth: 220 }}
 					/>
 				) : null}
 			</div>
@@ -108,6 +109,7 @@ function CommitDiffHeader({
 interface GitHistoryViewProps {
 	projectId: string | null;
 	gitHistory: UseGitHistoryDataResult;
+	groupBranchesByFolder?: boolean;
 	onCheckoutBranch?: (branch: string) => void;
 	onCreateBranch?: (sourceRef: string) => void;
 	onPullLatest?: () => void;
@@ -121,6 +123,7 @@ interface GitHistoryViewProps {
 export function GitHistoryView({
 	projectId,
 	gitHistory,
+	groupBranchesByFolder = false,
 	onCheckoutBranch,
 	onCreateBranch,
 	onPullLatest,
@@ -395,6 +398,7 @@ export function GitHistoryView({
 							<CommitDiffHeader
 								commit={gitHistory.selectedCommit}
 								branches={branchOptions}
+								groupBranchesByFolder={groupBranchesByFolder}
 								onLandOnBranch={handleLandOnBranch}
 								revertAction={
 									<RevertCommitAction

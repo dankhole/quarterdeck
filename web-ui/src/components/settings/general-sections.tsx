@@ -1,4 +1,4 @@
-// Settings sections: diagnostics, editor, and troubleshooting.
+// Settings sections: diagnostics, editor, branches, and troubleshooting.
 import { Button } from "@/components/ui/button";
 import { SettingsSwitch } from "@/components/ui/settings-controls";
 import {
@@ -72,6 +72,23 @@ export function EditorSection({ fields, setField, disabled }: SettingsSectionPro
 					Controls saves made by the in-app Files editor. Manual save remains available in every mode.
 				</p>
 			</div>
+		</section>
+	);
+}
+
+export function BranchesSection({ fields, setField, disabled }: SettingsSectionProps): React.ReactElement {
+	return (
+		<section aria-labelledby="settings-branches-heading" className="space-y-4">
+			<h3 id="settings-branches-heading" className="m-0 text-base font-semibold text-text-primary">
+				Branch pickers
+			</h3>
+			<SettingsSwitch
+				checked={fields.groupBranchesByFolder}
+				onCheckedChange={(value) => setField("groupBranchesByFolder", value)}
+				disabled={disabled}
+				label="Group branches by folder"
+				description="Show slash-separated branch names in expandable folders. Search still matches full branch names."
+			/>
 		</section>
 	);
 }

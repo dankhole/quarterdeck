@@ -21,6 +21,7 @@ export interface CompareBarProps {
 	onIncludeUncommittedChange: (value: boolean) => void;
 	onThreeDotDiffChange: (value: boolean) => void;
 	pinnedBranches?: string[];
+	groupBranchesByFolder?: boolean;
 	onTogglePinBranch?: (branchName: string) => void;
 }
 
@@ -39,6 +40,7 @@ export function CompareBar({
 	onIncludeUncommittedChange,
 	onThreeDotDiffChange,
 	pinnedBranches,
+	groupBranchesByFolder = false,
 	onTogglePinBranch,
 }: CompareBarProps): React.ReactElement {
 	const [sourcePopoverOpen, setSourcePopoverOpen] = useState(false);
@@ -49,6 +51,7 @@ export function CompareBar({
 			{isBrowsing && <span className="text-[11px] font-medium text-status-purple">Browsing</span>}
 
 			<BranchSelectorPopover
+				groupBranchesByFolder={groupBranchesByFolder}
 				isOpen={sourcePopoverOpen}
 				onOpenChange={setSourcePopoverOpen}
 				branches={branches}
@@ -67,6 +70,7 @@ export function CompareBar({
 			<ArrowRight size={12} className="text-text-tertiary shrink-0" />
 
 			<BranchSelectorPopover
+				groupBranchesByFolder={groupBranchesByFolder}
 				isOpen={targetPopoverOpen}
 				onOpenChange={setTargetPopoverOpen}
 				branches={branches}

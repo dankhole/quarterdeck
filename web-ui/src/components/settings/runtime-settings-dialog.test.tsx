@@ -1108,6 +1108,66 @@ describe("RuntimeSettingsDialog", () => {
 		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ showGeneratedWorktrees: !initial }));
 	});
 
+	it.each([false, true])("saves the global branch folder preference from %s without a project", async (initial) => {
+		await act(async () => {
+			root.render(
+				<RuntimeSettingsDialog
+					open
+					projectId={null}
+					initialConfig={createSavedConfig({ groupBranchesByFolder: initial })}
+					onOpenChange={() => {}}
+				/>,
+			);
+		});
+		await navigateTo("Git branches");
+		expect(document.getElementById("settings-page-branches")?.textContent).toContain("Group branches by folder");
+		const control = findSwitchByLabel(document.body, "Group branches by folder");
+		expect(control?.getAttribute("data-state")).toBe(initial ? "checked" : "unchecked");
+		const saveButton = findButtonByText(document.body, "Save changes");
+		expect(saveButton?.disabled).toBe(true);
+		await act(async () => control!.click());
+		expect(saveButton?.disabled).toBe(false);
+		expect(document.getElementById("settings-unsaved-changes")?.textContent).toContain("All projects");
+		await act(async () => saveButton!.click());
+		expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({ groupBranchesByFolder: !initial }));
+		expect(saveMock.mock.calls[0]?.[0]).not.toHaveProperty("defaultUseWorktree");
+	});
+
+	it("defaults branch folders off for older runtimes, reverts dirty state, and discards cancelled drafts on reopen", async () => {
+		const olderConfig = createSavedConfig();
+		Reflect.deleteProperty(olderConfig, "groupBranchesByFolder");
+		const onOpenChange = vi.fn();
+		const renderDialog = (open: boolean) =>
+			root.render(
+				<RuntimeSettingsDialog
+					open={open}
+					projectId={null}
+					initialConfig={olderConfig}
+					onOpenChange={onOpenChange}
+				/>,
+			);
+		await act(async () => renderDialog(true));
+		await navigateTo("Git branches");
+		const control = findSwitchByLabel(document.body, "Group branches by folder");
+		const saveButton = findButtonByText(document.body, "Save changes");
+		expect(control?.getAttribute("data-state")).toBe("unchecked");
+		await act(async () => control!.click());
+		expect(saveButton?.disabled).toBe(false);
+		await act(async () => control!.click());
+		expect(saveButton?.disabled).toBe(true);
+		await act(async () => control!.click());
+		await act(async () => findButtonByText(document.body, "Cancel")!.click());
+		expect(onOpenChange).toHaveBeenCalledWith(false);
+		expect(saveMock).not.toHaveBeenCalled();
+		await act(async () => renderDialog(false));
+		await act(async () => renderDialog(true));
+		await navigateTo("Git branches");
+		expect(findSwitchByLabel(document.body, "Group branches by folder")?.getAttribute("data-state")).toBe(
+			"unchecked",
+		);
+		expect(findButtonByText(document.body, "Save changes")?.disabled).toBe(true);
+	});
+
 	it("includes file editor autosave mode in save payload", async () => {
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);

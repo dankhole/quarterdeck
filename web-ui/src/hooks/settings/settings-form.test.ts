@@ -33,6 +33,19 @@ describe("resolveInitialValues", () => {
 			resolveInitialValues(createTestRuntimeConfigResponse({ showGeneratedWorktrees: true })).showGeneratedWorktrees,
 		).toBe(true);
 	});
+	it("defaults branch folders off for older runtimes and preserves explicit saved values", () => {
+		expect(resolveInitialValues(null).groupBranchesByFolder).toBe(false);
+		const olderConfig = createTestRuntimeConfigResponse();
+		Reflect.deleteProperty(olderConfig, "groupBranchesByFolder");
+		expect(resolveInitialValues(olderConfig).groupBranchesByFolder).toBe(false);
+		for (const value of [true, false]) {
+			expect(
+				resolveInitialValues(createTestRuntimeConfigResponse({ groupBranchesByFolder: value }))
+					.groupBranchesByFolder,
+			).toBe(value);
+		}
+	});
+
 	it("returns an object with all expected keys", () => {
 		const values = resolveInitialValues(null);
 		expect(values).not.toHaveProperty("showSummaryOnCards");
@@ -71,6 +84,14 @@ describe("getChangedSettingsScopes", () => {
 
 	it("detects generated worktree preference changes", () => {
 		expect(getChangedSettingsScopes(makeValues(), makeValues({ showGeneratedWorktrees: true }))).not.toEqual([]);
+	});
+
+	it("tracks branch folders only as a global change and clears dirtiness when reverted", () => {
+		const initial = makeValues();
+		const grouped = makeValues({ groupBranchesByFolder: true });
+		expect(getChangedSettingsScopes(grouped, initial)).toEqual(["global"]);
+		expect(buildSettingsSaveRequest(grouped, false).groupBranchesByFolder).toBe(true);
+		expect(getChangedSettingsScopes({ ...grouped, groupBranchesByFolder: false }, initial)).toEqual([]);
 	});
 
 	it("detects primitive field changes", () => {

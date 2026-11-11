@@ -61,6 +61,7 @@ export interface GitViewProps extends UseGitViewOptions {
 	/** When provided, renders the git history panel instead of the normal diff content. */
 	gitHistoryPanel?: React.ReactNode;
 	pinnedBranches?: string[];
+	groupBranchesByFolder?: boolean;
 	onTogglePinBranch?: (branchName: string) => void;
 	/** Submit all review comments; only an acknowledged success may clear the sent snapshot. */
 	onSendToTerminal?: (text: string) => Promise<{ ok: boolean; message?: string }>;
@@ -72,6 +73,7 @@ export function GitView({
 	branchStatusSlot,
 	gitHistoryPanel,
 	pinnedBranches,
+	groupBranchesByFolder = false,
 	onTogglePinBranch,
 	onSendToTerminal,
 	...hookOptions
@@ -239,6 +241,7 @@ export function GitView({
 					onIncludeUncommittedChange={compare.setIncludeUncommitted}
 					onThreeDotDiffChange={compare.setThreeDotDiff}
 					pinnedBranches={pinnedBranches}
+					groupBranchesByFolder={groupBranchesByFolder}
 					onTogglePinBranch={onTogglePinBranch}
 				/>
 			)}

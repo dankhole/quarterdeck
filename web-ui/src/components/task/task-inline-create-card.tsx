@@ -48,6 +48,7 @@ export function TaskInlineCreateCard({
 	projectId,
 	branchRef,
 	branchOptions,
+	groupBranchesByFolder = false,
 	onBranchRefChange,
 	defaultBaseRef,
 	onSetDefaultBaseRef,
@@ -68,6 +69,7 @@ export function TaskInlineCreateCard({
 	projectId: string | null;
 	branchRef: string;
 	branchOptions: TaskBranchOption[];
+	groupBranchesByFolder?: boolean;
 	onBranchRefChange: (value: string) => void;
 	defaultBaseRef?: string;
 	onSetDefaultBaseRef?: (value: string | null) => void;
@@ -172,6 +174,7 @@ export function TaskInlineCreateCard({
 					<BranchSelectDropdown
 						id={branchSelectId}
 						options={branchOptions}
+						groupBranchesByFolder={groupBranchesByFolder}
 						selectedValue={branchRef}
 						onSelect={onBranchRefChange}
 						onPopoverOpenChange={setIsBranchPopoverOpen}

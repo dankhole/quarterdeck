@@ -110,6 +110,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),
 	codeNavigationEnabled: boolField(false),
 	showGeneratedWorktrees: boolField(false),
+	groupBranchesByFolder: boolField(false),
 	lspServers: {
 		defaultValue: DEFAULT_LSP_SERVERS,
 		normalize: (value: unknown, fallback: LspServerConfig[]): LspServerConfig[] => {

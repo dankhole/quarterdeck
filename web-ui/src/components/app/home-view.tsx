@@ -142,6 +142,7 @@ export function HomeView({
 						<div className="flex flex-1 min-h-0 min-w-0">
 							{!isProjectUnavailable && navigation.mainView === "git" ? (
 								<GitView
+									groupBranchesByFolder={projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false}
 									codeNavigationConfig={projectRuntime.runtimeProjectConfig}
 									currentProjectId={projectNavigation.currentProjectId}
 									selectedCard={null}
@@ -170,6 +171,9 @@ export function HomeView({
 									gitHistoryPanel={
 										navigation.isGitHistoryOpen ? (
 											<GitHistoryView
+												groupBranchesByFolder={
+													projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false
+												}
 												projectId={projectNavigation.currentProjectId}
 												gitHistory={git.gitHistory}
 												onCheckoutBranch={git.fileBrowserBranchActions.handleCheckoutBranch}
@@ -207,6 +211,9 @@ export function HomeView({
 											branchPillSlot={
 												projectGit?.folderOnly ? undefined : (
 													<BranchSelectorPopover
+														groupBranchesByFolder={
+															projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false
+														}
 														isOpen={git.fileBrowserBranchActions.isBranchPopoverOpen}
 														onOpenChange={git.fileBrowserBranchActions.setBranchPopoverOpen}
 														branches={git.fileBrowserBranchActions.branches}

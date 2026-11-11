@@ -186,6 +186,7 @@ export function ConnectedTopBar({
 				git.topbarBranchLabel ? (
 					<div className="flex items-center gap-1.5">
 						<BranchSelectorPopover
+							groupBranchesByFolder={projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false}
 							isOpen={git.topbarBranchActions.isBranchPopoverOpen}
 							onOpenChange={git.topbarBranchActions.setBranchPopoverOpen}
 							branches={git.topbarBranchActions.branches}
@@ -222,6 +223,7 @@ export function ConnectedTopBar({
 						/>
 						{selectedCard ? (
 							<BaseRefLabel
+								groupBranchesByFolder={projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false}
 								card={selectedCard.card}
 								behindBaseCount={selectedTaskWorktreeSnapshot?.behindBaseCount}
 								behindRemoteBaseCount={selectedTaskWorktreeSnapshot?.behindRemoteBaseCount}

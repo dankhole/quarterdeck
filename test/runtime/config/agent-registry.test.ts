@@ -929,6 +929,35 @@ describe("agent-registry", () => {
 });
 
 describe("buildRuntimeConfigResponse", () => {
+	it.each([true, false])(
+		"projects branch grouping (%s) and remains compatible with older config schemas",
+		async (value) => {
+			const response = await buildRuntimeConfigResponse(
+				createTestRuntimeConfigState({ groupBranchesByFolder: value }),
+			);
+			expect(response.groupBranchesByFolder).toBe(value);
+			expect(runtimeConfigResponseSchema.parse(response).groupBranchesByFolder).toBe(value);
+			const { groupBranchesByFolder: _grouping, ...responseWithoutGrouping } = response;
+			expect(runtimeConfigResponseSchema.safeParse(responseWithoutGrouping).success).toBe(false);
+			expect(runtimeConfigSaveRequestSchema.parse({ groupBranchesByFolder: value })).toEqual({
+				groupBranchesByFolder: value,
+			});
+			expect(runtimeConfigSaveRequestSchema.parse({}).groupBranchesByFolder).toBeUndefined();
+			expect(runtimeConfigSaveRequestSchema.safeParse({ groupBranchesByFolder: "true" }).success).toBe(false);
+			// An older runtime strips the additive setting rather than rejecting the whole save.
+			const legacyRequestSchema = runtimeConfigSaveRequestSchema.omit({ groupBranchesByFolder: true });
+			expect(legacyRequestSchema.parse({ groupBranchesByFolder: value, terminalFontWeight: 400 })).toEqual({
+				terminalFontWeight: 400,
+			});
+			const legacyResponseSchema = runtimeConfigResponseSchema.omit({ groupBranchesByFolder: true });
+			expect(legacyResponseSchema.safeParse(response).success).toBe(true);
+		},
+	);
+
+	it("the shared root config factory derives the disabled branch folder default", () => {
+		expect(createTestRuntimeConfigState().groupBranchesByFolder).toBe(false);
+	});
+
 	it.each([true, false])("projects the project worktree default (%s) as an optional API field", async (value) => {
 		const response = await buildRuntimeConfigResponse(createTestRuntimeConfigState({ defaultUseWorktree: value }));
 		expect(response.defaultUseWorktree).toBe(value);

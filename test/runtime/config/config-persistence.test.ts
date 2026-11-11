@@ -98,6 +98,31 @@ describe("runtime-config persistence", { concurrent: false }, () => {
 		}
 	});
 
+	it("persists branch folder grouping globally, defaults off, and never writes a project override", async () => {
+		const { path: tempHome, cleanup } = createTempDir("quarterdeck-branch-folders-");
+		try {
+			await withTemporaryEnv({ home: tempHome }, async () => {
+				expect((await loadGlobalRuntimeConfig()).groupBranchesByFolder).toBe(false);
+				const configPath = join(tempHome, ".quarterdeck", "config.json");
+				for (const groupBranchesByFolder of [true, false]) {
+					const updated = await updateRuntimeConfig("project-a", { groupBranchesByFolder });
+					expect(updated.groupBranchesByFolder).toBe(groupBranchesByFolder);
+					expect(JSON.parse(readFileSync(configPath, "utf8")).groupBranchesByFolder).toBe(groupBranchesByFolder);
+					expect((await loadGlobalRuntimeConfig()).groupBranchesByFolder).toBe(groupBranchesByFolder);
+					expect((await loadRuntimeConfig("project-b")).groupBranchesByFolder).toBe(groupBranchesByFolder);
+					const projectConfigPath = join(tempHome, ".quarterdeck", "projects", "project-a", "config.json");
+					if (existsSync(projectConfigPath)) {
+						expect(JSON.parse(readFileSync(projectConfigPath, "utf8"))).not.toHaveProperty(
+							"groupBranchesByFolder",
+						);
+					}
+				}
+			});
+		} finally {
+			cleanup();
+		}
+	});
+
 	it("persists the Claude launch permission mode globally", async () => {
 		const { path: tempHome, cleanup: cleanupHome } = createTempDir("quarterdeck-home-claude-permissions-");
 

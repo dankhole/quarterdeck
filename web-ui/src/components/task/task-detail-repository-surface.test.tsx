@@ -8,7 +8,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { CardDetailViewLayoutState, CardDetailViewRepositoryState } from "@/hooks/board/use-card-detail-view";
 import type { UseBranchActionsResult } from "@/hooks/git/use-branch-actions";
 import type { UseFileBrowserDataResult } from "@/hooks/git/use-file-browser-data";
+import type { RuntimeConfigResponse } from "@/runtime/types";
+import { createTestRuntimeConfigResponse } from "@/test-utils/runtime-config-factory";
 import type { BoardCard, BoardColumn, CardSelection } from "@/types";
+
+const mockProjectRuntime = vi.hoisted(() => ({ config: null as RuntimeConfigResponse | null }));
 
 const { mockGitView, mockFilesView, mockBranchPillTrigger, mockBranchSelectorPopover, mockScopeBar } = vi.hoisted(
 	() => ({
@@ -31,7 +35,7 @@ vi.mock("@/providers/board-provider", () => ({
 }));
 
 vi.mock("@/providers/project-runtime-provider", () => ({
-	useProjectRuntimeContext: () => ({ runtimeProjectConfig: null }),
+	useProjectRuntimeContext: () => ({ runtimeProjectConfig: mockProjectRuntime.config }),
 }));
 
 vi.mock("@/components/git", () => ({
@@ -238,6 +242,7 @@ describe("TaskDetailRepositorySurface", () => {
 	let previousActEnvironment: boolean | undefined;
 
 	beforeEach(() => {
+		mockProjectRuntime.config = null;
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -293,11 +298,51 @@ describe("TaskDetailRepositorySurface", () => {
 		expect(mockGitView).toHaveBeenCalledWith(
 			expect.objectContaining({
 				currentProjectId: "project-1",
+				groupBranchesByFolder: false,
 				selectedCard: selection,
 				gitHistoryPanel: repositoryProps.gitHistoryPanel,
 				pinnedBranches: repositoryProps.pinnedBranches,
 				onTogglePinBranch: repositoryProps.onTogglePinBranch,
 			}),
+		);
+	});
+
+	it.each([
+		["enabled", true],
+		["disabled", false],
+		["older runtime without the setting", undefined],
+	] as const)("passes branch grouping to task Git and the Files scope picker: %s", async (_label, enabled) => {
+		mockProjectRuntime.config = createTestRuntimeConfigResponse({ groupBranchesByFolder: enabled ?? false });
+		if (enabled === undefined) Reflect.deleteProperty(mockProjectRuntime.config, "groupBranchesByFolder");
+		const repositoryState = createRepositoryState();
+		repositoryState.taskResolvedScope = { type: "branch_view", ref: "feature/nested/fix", projectId: "project-1" };
+		repositoryState.taskScopeMode = "branch_view";
+		repositoryState.pillBranchLabel = "feature/nested/fix";
+		const props = {
+			detailLayout: createLayoutState(),
+			repositoryState,
+			repositoryProps: createRepositoryProps(),
+			selection: createSelection(),
+			currentProjectId: "project-1",
+			sessionSummary: null,
+		};
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<TaskDetailRepositorySurface {...props} mainView="git" />
+				</TooltipProvider>,
+			),
+		);
+		expect(mockGitView).toHaveBeenCalledWith(expect.objectContaining({ groupBranchesByFolder: enabled ?? false }));
+		await act(async () =>
+			root.render(
+				<TooltipProvider>
+					<TaskDetailRepositorySurface {...props} mainView="files" />
+				</TooltipProvider>,
+			),
+		);
+		expect(mockBranchSelectorPopover).toHaveBeenCalledWith(
+			expect.objectContaining({ groupBranchesByFolder: enabled ?? false }),
 		);
 	});
 

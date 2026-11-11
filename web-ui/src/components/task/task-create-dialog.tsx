@@ -71,6 +71,7 @@ export function TaskCreateDialog({
 	currentBranch,
 	branchRef,
 	branchOptions,
+	groupBranchesByFolder = false,
 	onBranchRefChange,
 	defaultBaseRef,
 	onSetDefaultBaseRef,
@@ -108,6 +109,7 @@ export function TaskCreateDialog({
 	currentBranch: string | null;
 	branchRef: string;
 	branchOptions: BranchSelectOption[];
+	groupBranchesByFolder?: boolean;
 	onBranchRefChange: (value: string) => void;
 	defaultBaseRef?: string;
 	onSetDefaultBaseRef?: (value: string | null) => void;
@@ -253,6 +255,7 @@ export function TaskCreateDialog({
 								<span className="text-[11px] text-text-secondary block mb-1">Base ref</span>
 								<BranchSelectDropdown
 									options={branchOptions}
+									groupBranchesByFolder={groupBranchesByFolder}
 									selectedValue={branchRef}
 									onSelect={onBranchRefChange}
 									disabled={!useWorktree}

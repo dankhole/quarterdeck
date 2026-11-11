@@ -21,6 +21,7 @@ export interface SettingsFormValues {
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	codeNavigationEnabled: boolean;
 	showGeneratedWorktrees: boolean;
+	groupBranchesByFolder: boolean;
 	lspServers: RuntimeConfigResponse["lspServers"];
 	audibleNotificationsEnabled: boolean;
 	audibleNotificationVolume: number;
@@ -52,6 +53,7 @@ const FIELD_SCOPES = {
 	fileEditorAutosaveMode: "global",
 	codeNavigationEnabled: "global",
 	showGeneratedWorktrees: "global",
+	groupBranchesByFolder: "global",
 	lspServers: "global",
 	audibleNotificationsEnabled: "global",
 	audibleNotificationVolume: "global",
@@ -95,6 +97,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		codeNavigationEnabled: config?.codeNavigationEnabled ?? CONFIG_DEFAULTS.codeNavigationEnabled,
 		showGeneratedWorktrees: config?.showGeneratedWorktrees ?? CONFIG_DEFAULTS.showGeneratedWorktrees,
+		groupBranchesByFolder: config?.groupBranchesByFolder ?? CONFIG_DEFAULTS.groupBranchesByFolder,
 		lspServers: config?.lspServers ?? CONFIG_DEFAULTS.lspServers,
 		audibleNotificationsEnabled: config?.audibleNotificationsEnabled ?? CONFIG_DEFAULTS.audibleNotificationsEnabled,
 		audibleNotificationVolume: config?.audibleNotificationVolume ?? CONFIG_DEFAULTS.audibleNotificationVolume,

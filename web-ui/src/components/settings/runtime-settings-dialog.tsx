@@ -6,7 +6,12 @@ import { HarnessSection } from "@/components/settings/agent-section";
 import { CodeNavigationSection } from "@/components/settings/code-navigation-section";
 import { DesktopEnvironmentSection } from "@/components/settings/desktop-environment-section";
 import { AiFeaturesSection, NotificationsSection, TerminalSection } from "@/components/settings/display-sections";
-import { DiagnosticsSection, EditorSection, TroubleshootingSection } from "@/components/settings/general-sections";
+import {
+	BranchesSection,
+	DiagnosticsSection,
+	EditorSection,
+	TroubleshootingSection,
+} from "@/components/settings/general-sections";
 import { PromptShortcutDefaultsSection } from "@/components/settings/prompt-shortcut-defaults-section";
 import {
 	getSettingsCategory,
@@ -146,6 +151,7 @@ function SettingsDialogSession({
 	const pages: Record<SettingsCategoryId, ReactNode> = {
 		agents: <HarnessSection {...sectionProps} config={config} />,
 		notifications: <NotificationsSection {...sectionProps} />,
+		branches: <BranchesSection {...sectionProps} />,
 		"terminal-editor": (
 			<>
 				<TerminalSection {...sectionProps} />

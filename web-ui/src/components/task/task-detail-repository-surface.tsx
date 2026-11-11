@@ -111,6 +111,7 @@ export function TaskDetailRepositorySurface({
 		>
 			{mainView === "git" ? (
 				<GitView
+					groupBranchesByFolder={runtimeProjectConfig?.groupBranchesByFolder ?? false}
 					codeNavigationConfig={runtimeProjectConfig}
 					currentProjectId={currentProjectId}
 					selectedCard={selection}
@@ -165,6 +166,7 @@ export function TaskDetailRepositorySurface({
 							branchPillSlot={
 								repositoryState.pillBranchLabel ? (
 									<BranchSelectorPopover
+										groupBranchesByFolder={runtimeProjectConfig?.groupBranchesByFolder ?? false}
 										isOpen={repositoryState.taskBranchActions.isBranchPopoverOpen}
 										onOpenChange={repositoryState.taskBranchActions.setBranchPopoverOpen}
 										branches={repositoryState.taskBranchActions.branches}

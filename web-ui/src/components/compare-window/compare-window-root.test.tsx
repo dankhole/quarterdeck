@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 	file: vi.fn(),
 	editor: vi.fn(),
 	compare: vi.fn(),
+	config: vi.fn(),
 	viewer: vi.fn(),
 	preferences: vi.fn(),
 	refresh: vi.fn(),
@@ -40,7 +41,7 @@ vi.mock("@/runtime/trpc-client", () => ({
 	}),
 }));
 vi.mock("@/runtime/use-runtime-project-config", () => ({
-	useRuntimeProjectConfig: () => ({ config: { codeNavigationEnabled: true, lspServers: [] } }),
+	useRuntimeProjectConfig: mocks.config,
 }));
 vi.mock("@/hooks/git/use-git-diff-data", () => ({ useGitDiffData: mocks.diff }));
 vi.mock("@/hooks/git/use-diff-code-navigation", () => ({
@@ -213,6 +214,7 @@ describe("standalone Compare root", () => {
 		(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 		vi.clearAllMocks();
 		mocks.navigationRegion = false;
+		mocks.config.mockReturnValue({ config: { codeNavigationEnabled: true, lspServers: [] } });
 		stream = fixture();
 		mocks.stream.mockImplementation(() => stream);
 		mocks.refs.mockResolvedValue({ ok: true, refs: [] });
@@ -276,6 +278,25 @@ describe("standalone Compare root", () => {
 		expect(lastViewer().onRollbackFile).toBeUndefined();
 		expect(mocks.editor).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		{ config: null, expected: false },
+		{ config: {}, expected: false },
+		{ config: { groupBranchesByFolder: false }, expected: false },
+		{ config: { groupBranchesByFolder: true }, expected: true },
+	])(
+		"passes branch folder grouping $expected from config $config while retaining read-only review",
+		async ({ config, expected }) => {
+			mocks.config.mockReturnValue({ config });
+			await render();
+			expect(mocks.config).toHaveBeenCalledWith("p1");
+			expect(lastCompare().groupBranchesByFolder).toBe(expected);
+			expect(mocks.preferences).toHaveBeenCalledWith(true);
+			expect(lastViewer().readOnlyReview).toBe(true);
+			expect(lastViewer().onSendToTerminal).toBeUndefined();
+			expect(lastViewer().onRollbackFile).toBeUndefined();
+		},
+	);
 
 	it("retains captured identity and local choices across prop navigation and authoritative refresh", async () => {
 		await render();

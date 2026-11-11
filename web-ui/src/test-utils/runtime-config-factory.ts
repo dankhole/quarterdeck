@@ -105,6 +105,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,
 	codeNavigationEnabled: CONFIG_DEFAULTS.codeNavigationEnabled,
 	showGeneratedWorktrees: CONFIG_DEFAULTS.showGeneratedWorktrees,
+	groupBranchesByFolder: CONFIG_DEFAULTS.groupBranchesByFolder,
 	lspServers: CONFIG_DEFAULTS.lspServers,
 	defaultBaseRef: CONFIG_DEFAULTS.defaultBaseRef,
 	worktreeSetupScript: CONFIG_DEFAULTS.worktreeSetupScript,

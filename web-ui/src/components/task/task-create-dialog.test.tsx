@@ -27,14 +27,20 @@ vi.mock("@/components/git/branch-select-dropdown", () => ({
 		selectedValue,
 		onSelect,
 		disabled,
+		groupBranchesByFolder,
+		portalContainer,
 	}: {
 		options: Array<{ value: string; label: string }>;
 		selectedValue: string;
 		onSelect: (value: string) => void;
 		disabled?: boolean;
+		groupBranchesByFolder?: boolean;
+		portalContainer?: HTMLElement | null;
 	}) => (
 		<select
 			name="base-ref"
+			data-group-folders={groupBranchesByFolder}
+			data-local-portal={portalContainer !== null && portalContainer !== undefined}
 			aria-label="Base ref"
 			value={selectedValue}
 			onChange={(event) => onSelect(event.currentTarget.value)}
@@ -98,6 +104,7 @@ vi.mock("@/components/task/task-prompt-composer", () => ({
 
 interface HarnessProps {
 	initialPrompt: string;
+	groupBranchesByFolder?: boolean;
 	initialImages?: TaskImage[];
 	onCreate?: (options?: { keepDialogOpen?: boolean }) => string | null;
 	onCreateMultiple?: (prompts: string[]) => string[];
@@ -115,6 +122,7 @@ function createImage(id: string): TaskImage {
 function Harness({
 	initialPrompt,
 	initialImages = [],
+	groupBranchesByFolder,
 	onCreate = () => "task-1",
 	onCreateMultiple = (prompts) => prompts.map((taskPrompt, index) => `${taskPrompt}-${index}`),
 }: HarnessProps): React.ReactElement {
@@ -185,6 +193,7 @@ function Harness({
 			currentBranch="main"
 			branchRef="main"
 			branchOptions={[{ value: "main", label: "main" }]}
+			groupBranchesByFolder={groupBranchesByFolder}
 			onBranchRefChange={() => {}}
 			defaultBaseRef="main"
 			onSetDefaultBaseRef={() => {}}
@@ -358,6 +367,18 @@ describe("TaskCreateDialog", () => {
 		expect(container.querySelector('[data-testid="composer-image-count"]')?.textContent).toBe("0");
 		expect(container.textContent).toContain("New task");
 	});
+
+	it.each([false, true])(
+		"passes folder grouping %s and the dialog-local portal to the branch picker",
+		async (groupBranchesByFolder) => {
+			await act(async () =>
+				root.render(<Harness initialPrompt="Task" groupBranchesByFolder={groupBranchesByFolder} />),
+			);
+			const picker = container.querySelector('select[name="base-ref"]');
+			expect(picker?.getAttribute("data-group-folders")).toBe(String(groupBranchesByFolder));
+			expect(picker?.getAttribute("data-local-portal")).toBe("true");
+		},
+	);
 
 	it("preserves feature-branch selection while isolation disables branch controls", async () => {
 		await act(async () => {

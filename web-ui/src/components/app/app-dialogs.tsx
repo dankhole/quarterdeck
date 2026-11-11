@@ -91,6 +91,7 @@ export function AppDialogs({ savePromptShortcuts }: AppDialogsProps): ReactEleme
 			{!isProjectUnavailable && (
 				<>
 					<TaskCreateDialog
+						groupBranchesByFolder={projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false}
 						open={isInlineTaskCreateOpen}
 						onOpenChange={dialog.handleCreateDialogOpenChange}
 						prompt={newTaskPrompt}

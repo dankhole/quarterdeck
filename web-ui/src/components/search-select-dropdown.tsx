@@ -4,9 +4,12 @@ import { Check, ChevronDown } from "lucide-react";
 import type { CSSProperties, KeyboardEvent, ReactElement, ReactNode, WheelEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { FolderSelectRowButton } from "@/components/shared/folder-select-row";
 import { renderFuzzyHighlightedText } from "@/components/shared/render-fuzzy-highlighted-text";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useFolderSelectRows } from "@/hooks/search/use-folder-select-rows";
 
 export interface SearchSelectOption {
 	value: string;
@@ -14,6 +17,9 @@ export interface SearchSelectOption {
 }
 
 export type RenderOptionAction = (option: SearchSelectOption) => ReactNode;
+
+const getOptionKey = (option: SearchSelectOption): string => option.value;
+const NO_RECOMMENDED_OPTIONS: readonly string[] = [];
 
 const MATCHED_TEXT_STYLE = {
 	color: "var(--color-text-primary)",
@@ -39,16 +45,20 @@ export function SearchSelectDropdown({
 	noResultsText = "No matching results",
 	showSelectedIndicator = false,
 	pinSelectedToTop = true,
-	recommendedOptionValues = [],
+	recommendedOptionValues = NO_RECOMMENDED_OPTIONS,
 	recommendedHeading = "Recommended models",
 	matchTargetWidth = true,
 	collisionPadding = 8,
+	dropdownClassName,
 	dropdownStyle,
 	menuStyle,
 	onPopoverOpenChange,
 	portalContainer,
 	footerAction,
 	renderOptionAction,
+	renderOptionTooltip,
+	getOptionPath,
+	buttonTooltip,
 	ghostUntilOpen = false,
 }: {
 	options: readonly SearchSelectOption[];
@@ -73,6 +83,7 @@ export function SearchSelectDropdown({
 	recommendedHeading?: string;
 	matchTargetWidth?: boolean;
 	collisionPadding?: number;
+	dropdownClassName?: string;
 	dropdownStyle?: CSSProperties;
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
@@ -82,12 +93,16 @@ export function SearchSelectDropdown({
 		onClick: () => void;
 	};
 	renderOptionAction?: RenderOptionAction;
+	renderOptionTooltip?: (option: SearchSelectOption) => ReactNode;
+	/** Present canonical paths as folders without changing search labels or selection values. */
+	getOptionPath?: (option: SearchSelectOption) => readonly string[];
+	buttonTooltip?: ReactNode;
 	/** When true the trigger button renders as a ghost until the popover opens. */
 	ghostUntilOpen?: boolean;
 }): ReactElement {
 	const [isOpen, setIsOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const [activeOptionIndex, setActiveOptionIndex] = useState(0);
+	const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -140,7 +155,19 @@ export function SearchSelectDropdown({
 		return fuzzyMatches.map((entry) => entry.item);
 	}, [fuzzyMatches, orderedOptions, query, recommendedOptionValueSet]);
 	const isSearching = query.trim().length > 0;
-	const showRecommendedSection = !isSearching && recommendedOptionValueSet.size > 0;
+	const showRecommendedSection = !getOptionPath && !isSearching && recommendedOptionValueSet.size > 0;
+	const { rows, toggleFolder, resetFolders } = useFolderSelectRows({
+		items: filteredItems,
+		getKey: getOptionKey,
+		getPath: getOptionPath,
+		selectedKey: selectedValue,
+		isSearching,
+	});
+	const activeOptionIndex = Math.max(
+		0,
+		rows.findIndex((row) => row.key === activeRowKey),
+	);
+	const activeOptionKey = rows[activeOptionIndex]?.key;
 	const recommendedItems = useMemo(
 		() => filteredItems.filter((item) => recommendedOptionValueSet.has(item.value)),
 		[filteredItems, recommendedOptionValueSet],
@@ -149,9 +176,9 @@ export function SearchSelectDropdown({
 		() => filteredItems.filter((item) => !recommendedOptionValueSet.has(item.value)),
 		[filteredItems, recommendedOptionValueSet],
 	);
-	const filteredItemIndexByValue = useMemo(
-		() => new Map(filteredItems.map((item, index) => [item.value, index] as const)),
-		[filteredItems],
+	const visibleItemIndexByValue = useMemo(
+		() => new Map(rows.flatMap((row, index) => (row.kind === "item" ? [[row.item.value, index] as const] : []))),
+		[rows],
 	);
 	const resolvedButtonText = buttonText ?? selectedOption?.label ?? emptyText;
 
@@ -159,38 +186,32 @@ export function SearchSelectDropdown({
 		(nextOpen: boolean) => {
 			setIsOpen(nextOpen);
 			setQuery("");
+			setActiveRowKey(
+				nextOpen && getOptionPath
+					? (rows.find((row) => row.kind === "item" && row.item.value === selectedValue)?.key ?? null)
+					: null,
+			);
 			if (!nextOpen) {
-				setActiveOptionIndex(0);
+				resetFolders();
 			}
 			onPopoverOpenChange?.(nextOpen);
 		},
-		[onPopoverOpenChange],
+		[getOptionPath, onPopoverOpenChange, resetFolders, rows, selectedValue],
 	);
 
 	useEffect(() => {
-		if (filteredItems.length === 0) {
-			setActiveOptionIndex(0);
-			return;
+		if (activeRowKey !== null && !rows.some((row) => row.key === activeRowKey)) {
+			setActiveRowKey(null);
 		}
-		setActiveOptionIndex((currentIndex) => {
-			if (currentIndex >= 0 && currentIndex < filteredItems.length) {
-				return currentIndex;
-			}
-			if (!selectedValue) {
-				return 0;
-			}
-			const selectedIndex = filteredItems.findIndex((option) => option.value === selectedValue);
-			return selectedIndex >= 0 ? selectedIndex : 0;
-		});
-	}, [filteredItems, selectedValue]);
+	}, [activeRowKey, rows]);
 
 	useEffect(() => {
-		if (!isOpen) {
+		if (!isOpen || activeOptionKey === undefined) {
 			return;
 		}
 		const optionElement = optionRefs.current[activeOptionIndex] ?? null;
 		optionElement?.scrollIntoView({ block: "nearest" });
-	}, [activeOptionIndex, isOpen]);
+	}, [activeOptionIndex, activeOptionKey, isOpen]);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -201,7 +222,7 @@ export function SearchSelectDropdown({
 	}, [isOpen]);
 
 	const handleSearchInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-		if (filteredItems.length === 0) {
+		if (rows.length === 0) {
 			if (event.key === "Escape") {
 				event.preventDefault();
 				handleOpenChange(false);
@@ -211,35 +232,40 @@ export function SearchSelectDropdown({
 
 		if (event.key === "ArrowDown") {
 			event.preventDefault();
-			setActiveOptionIndex((currentIndex) => Math.min(currentIndex + 1, filteredItems.length - 1));
+			setActiveRowKey(rows[Math.min(activeOptionIndex + 1, rows.length - 1)]?.key ?? null);
 			return;
 		}
 
 		if (event.key === "ArrowUp") {
 			event.preventDefault();
-			setActiveOptionIndex((currentIndex) => Math.max(currentIndex - 1, 0));
+			setActiveRowKey(rows[Math.max(activeOptionIndex - 1, 0)]?.key ?? null);
 			return;
 		}
 
 		if (event.key === "Home") {
 			event.preventDefault();
-			setActiveOptionIndex(0);
+			setActiveRowKey(rows[0]?.key ?? null);
 			return;
 		}
 
 		if (event.key === "End") {
 			event.preventDefault();
-			setActiveOptionIndex(filteredItems.length - 1);
+			setActiveRowKey(rows[rows.length - 1]?.key ?? null);
 			return;
 		}
 
 		if (event.key === "Enter") {
 			event.preventDefault();
-			const option = filteredItems[activeOptionIndex];
-			if (!option) {
+			const row = rows[activeOptionIndex];
+			if (!row) {
 				return;
 			}
-			onSelect(option.value);
+			if (row.kind === "folder") {
+				setActiveRowKey(row.key);
+				toggleFolder(row.key);
+				return;
+			}
+			onSelect(row.item.value);
 			handleOpenChange(false);
 			return;
 		}
@@ -263,15 +289,16 @@ export function SearchSelectDropdown({
 	}, []);
 
 	const resolvedIcon = icon !== undefined ? icon : undefined;
-	const renderOptionButton = (option: SearchSelectOption): ReactElement => {
-		const optionIndex = filteredItemIndexByValue.get(option.value) ?? 0;
+	const renderOptionButton = (option: SearchSelectOption, label = option.label, depth = 0): ReactElement => {
+		const optionIndex = visibleItemIndexByValue.get(option.value) ?? 0;
+		const optionKey = rows[optionIndex]?.key ?? option.value;
 		const match = fuzzyMatchesByValue.get(option.value);
 		const isSelected = showSelectedIndicator && option.value === selectedValue;
 		const isActive = optionIndex === activeOptionIndex;
 		return (
 			<button
 				type="button"
-				key={option.value}
+				key={optionKey}
 				ref={(node) => {
 					optionRefs.current[optionIndex] = node;
 				}}
@@ -281,15 +308,18 @@ export function SearchSelectDropdown({
 						? "bg-surface-3 text-text-primary"
 						: "text-text-secondary hover:bg-surface-3 hover:text-text-primary",
 				)}
-				onMouseEnter={() => setActiveOptionIndex(optionIndex)}
+				style={depth > 0 ? { paddingLeft: 10 + depth * 16 } : undefined}
+				onMouseEnter={() => setActiveRowKey(optionKey)}
 				onClick={() => {
 					onSelect(option.value);
 					handleOpenChange(false);
 				}}
 			>
-				<span className="flex-1 break-all">
-					{renderFuzzyHighlightedText(option.label, match?.positions, MATCHED_TEXT_STYLE)}
-				</span>
+				<Tooltip content={renderOptionTooltip?.(option)} delayDuration={150}>
+					<span className="min-w-0 flex-1 break-all">
+						{renderFuzzyHighlightedText(label, match?.positions, MATCHED_TEXT_STYLE)}
+					</span>
+				</Tooltip>
 				{renderOptionAction ? (
 					<span
 						className="shrink-0"
@@ -322,12 +352,17 @@ export function SearchSelectDropdown({
 					className={cn(fill && "justify-between text-left", buttonClassName)}
 					style={buttonStyle}
 				>
-					<span className="flex-1 truncate text-left">{resolvedButtonText}</span>
+					<Tooltip content={buttonTooltip} delayDuration={150}>
+						<span className="min-w-0 flex-1 truncate text-left">{resolvedButtonText}</span>
+					</Tooltip>
 				</Button>
 			</RadixPopover.Trigger>
 			<RadixPopover.Portal container={portalContainer}>
 				<RadixPopover.Content
-					className="z-50 max-h-[300px] rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden"
+					className={cn(
+						"z-50 max-h-[300px] rounded-lg border border-border bg-surface-1 shadow-xl overflow-hidden",
+						dropdownClassName,
+					)}
 					onWheelCapture={handleWheelCapture}
 					collisionPadding={collisionPadding}
 					style={{
@@ -343,7 +378,10 @@ export function SearchSelectDropdown({
 							className="h-7 w-full rounded-md border border-border bg-surface-2 px-2 text-xs text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
 							placeholder={placeholder}
 							value={query}
-							onChange={(event) => setQuery(event.target.value)}
+							onChange={(event) => {
+								setQuery(event.target.value);
+								setActiveRowKey(null);
+							}}
 							onKeyDown={handleSearchInputKeyDown}
 						/>
 					</div>
@@ -357,9 +395,36 @@ export function SearchSelectDropdown({
 										{recommendedHeading}
 									</div>
 								) : null}
-								{(showRecommendedSection ? recommendedItems : filteredItems).map((option) =>
-									renderOptionButton(option),
-								)}
+								{showRecommendedSection
+									? recommendedItems.map((option) => renderOptionButton(option))
+									: rows.map((row, index) => {
+											if (row.kind === "folder") {
+												return (
+													<FolderSelectRowButton
+														key={row.key}
+														row={row}
+														ref={(node) => {
+															optionRefs.current[index] = node;
+														}}
+														className={cn(
+															index === activeOptionIndex && "bg-surface-3 text-text-primary",
+														)}
+														onMouseEnter={() => setActiveRowKey(row.key)}
+														onMouseDown={(event) => event.preventDefault()}
+														onToggle={() => {
+															setActiveRowKey(row.key);
+															toggleFolder(row.key);
+															inputRef.current?.focus();
+														}}
+													/>
+												);
+											}
+											const label =
+												getOptionPath && !isSearching && row.item.label.startsWith(row.item.value)
+													? row.label + row.item.label.slice(row.item.value.length)
+													: row.item.label;
+											return renderOptionButton(row.item, label, row.depth);
+										})}
 								{footerAction ? (
 									<div className="border-t border-border p-1">
 										<button

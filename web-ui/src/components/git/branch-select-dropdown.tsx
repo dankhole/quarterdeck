@@ -1,11 +1,18 @@
 import { GitBranch, Pin } from "lucide-react";
 import type { CSSProperties, ReactElement } from "react";
 
+import {
+	BRANCH_DROPDOWN_CLASS_NAME,
+	BRANCH_TOOLTIP_CLASS_NAME,
+	getBranchFolderPath,
+} from "@/components/git/branch-dropdown-presentation";
 import type { RenderOptionAction, SearchSelectOption } from "@/components/search-select-dropdown";
 import { SearchSelectDropdown } from "@/components/search-select-dropdown";
 import { Tooltip } from "@/components/ui/tooltip";
 
 export type BranchSelectOption = SearchSelectOption;
+
+const getBranchPath = (option: BranchSelectOption): readonly string[] => getBranchFolderPath(option.value);
 
 /**
  * Simple branch select dropdown for choosing a branch by name, used in task
@@ -30,16 +37,17 @@ export function BranchSelectDropdown({
 	emptyText = "No branches detected",
 	noResultsText = "No matching branches",
 	showSelectedIndicator = false,
-	matchTargetWidth = true,
 	dropdownStyle,
 	menuStyle,
 	onPopoverOpenChange,
 	portalContainer,
 	defaultValue,
 	onSetDefault,
+	groupBranchesByFolder = false,
 	ghostUntilOpen = false,
 }: {
 	options: readonly BranchSelectOption[];
+	groupBranchesByFolder?: boolean;
 	selectedValue?: string | null;
 	onSelect: (value: string) => void;
 	id?: string;
@@ -53,7 +61,6 @@ export function BranchSelectDropdown({
 	emptyText?: string;
 	noResultsText?: string;
 	showSelectedIndicator?: boolean;
-	matchTargetWidth?: boolean;
 	dropdownStyle?: CSSProperties;
 	menuStyle?: CSSProperties;
 	onPopoverOpenChange?: (isOpen: boolean) => void;
@@ -91,6 +98,7 @@ export function BranchSelectDropdown({
 	return (
 		<SearchSelectDropdown
 			options={options}
+			getOptionPath={groupBranchesByFolder ? getBranchPath : undefined}
 			selectedValue={selectedValue}
 			onSelect={onSelect}
 			id={id}
@@ -105,12 +113,15 @@ export function BranchSelectDropdown({
 			emptyText={emptyText}
 			noResultsText={noResultsText}
 			showSelectedIndicator={showSelectedIndicator}
-			matchTargetWidth={matchTargetWidth}
+			matchTargetWidth={false}
+			dropdownClassName={BRANCH_DROPDOWN_CLASS_NAME}
 			dropdownStyle={dropdownStyle}
 			menuStyle={menuStyle}
 			onPopoverOpenChange={onPopoverOpenChange}
 			portalContainer={portalContainer}
 			renderOptionAction={renderOptionAction}
+			renderOptionTooltip={(option) => <span className={BRANCH_TOOLTIP_CLASS_NAME}>{option.value}</span>}
+			buttonTooltip={selectedValue ? <span className={BRANCH_TOOLTIP_CLASS_NAME}>{selectedValue}</span> : undefined}
 			ghostUntilOpen={ghostUntilOpen}
 		/>
 	);

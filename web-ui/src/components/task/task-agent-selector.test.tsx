@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BranchSelectDropdown } from "@/components/git/branch-select-dropdown";
 import { TaskAgentSelector } from "@/components/task/task-agent-selector";
 import { Dialog, DialogBody, DialogHeader } from "@/components/ui/dialog";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RuntimeAgentId } from "@/runtime/types";
 import type { TaskAgentDisplayOption } from "@/utils/task-agent-display";
 
@@ -247,7 +248,11 @@ describe("TaskAgentSelector", () => {
 		const onBranchSelect = vi.fn();
 
 		await act(async () => {
-			root.render(<BranchSelectHarness onDialogOpenChange={onDialogOpenChange} onBranchSelect={onBranchSelect} />);
+			root.render(
+				<TooltipProvider>
+					<BranchSelectHarness onDialogOpenChange={onDialogOpenChange} onBranchSelect={onBranchSelect} />
+				</TooltipProvider>,
+			);
 		});
 		await waitForRadixEffects();
 

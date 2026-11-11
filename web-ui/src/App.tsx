@@ -399,6 +399,7 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const inlineTaskEditor =
 		editingTaskId && !isProjectUnavailable ? (
 			<TaskInlineCreateCard
+				groupBranchesByFolder={projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false}
 				folderOnly={projectSync.projectGit?.folderOnly}
 				prompt={editTaskPrompt}
 				onPromptChange={setEditTaskPrompt}
@@ -590,6 +591,9 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 							repositoryProps={{
 								gitHistoryPanel: navigation.isGitHistoryOpen ? (
 									<GitHistoryView
+										groupBranchesByFolder={
+											projectRuntime.runtimeProjectConfig?.groupBranchesByFolder ?? false
+										}
 										projectId={projectNavigation.currentProjectId}
 										gitHistory={git.gitHistory}
 										onCreateBranch={git.fileBrowserBranchActions.handleCreateBranchFrom}

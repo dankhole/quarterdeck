@@ -20,12 +20,15 @@ vi.mock("@/components/git/branch-select-dropdown", () => ({
 	BranchSelectDropdown: ({
 		options,
 		onSelect,
+		groupBranchesByFolder,
 	}: {
 		options: { value: string }[];
 		onSelect: (branch: string) => void;
+		groupBranchesByFolder?: boolean;
 	}) => (
 		<button
 			type="button"
+			data-group-folders={groupBranchesByFolder}
 			onClick={() => {
 				const option = options[0];
 				if (option) onSelect(option.value);
@@ -154,6 +157,35 @@ describe("GitHistoryView", () => {
 		expect(mockGitCommitListPanel.mock.calls.at(-1)?.[0]).toMatchObject({ panelWidth: 500 });
 		expect(window.localStorage.getItem(LocalStorageKey.GitHistoryRefsPanelWidth)).toBe("400");
 		expect(window.localStorage.getItem(LocalStorageKey.GitHistoryCommitsPanelWidth)).toBe("500");
+	});
+
+	it.each([false, true])("passes folder grouping %s to the landing picker", async (groupBranchesByFolder) => {
+		const commit: RuntimeGitCommit = {
+			hash: "abc123456789",
+			shortHash: "abc1234",
+			authorName: "Test",
+			authorEmail: "test@example.test",
+			date: "2026-01-01T00:00:00.000Z",
+			message: "Change",
+			parentHashes: ["parent"],
+		};
+		await act(async () =>
+			root.render(
+				<GitHistoryView
+					projectId="project-1"
+					groupBranchesByFolder={groupBranchesByFolder}
+					gitHistory={{
+						...createGitHistory(),
+						viewMode: "commit",
+						selectedCommit: commit,
+						refs: [{ name: "feature/a", type: "branch", hash: "branch", isHead: false }],
+					}}
+				/>,
+			),
+		);
+		expect(container.querySelector("button[data-group-folders]")?.getAttribute("data-group-folders")).toBe(
+			String(groupBranchesByFolder),
+		);
 	});
 
 	it.each([null, { taskId: "task-a", baseRef: "main" }])(
