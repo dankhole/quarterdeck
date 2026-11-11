@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
 import { type DiffLineComment, DiffViewerPanel } from "./diff-viewer-panel";
+import type { DiffViewMode } from "./diff-viewer-utils";
 
 vi.mock("react-hotkeys-hook", () => ({ useHotkeys: () => {} }));
 
@@ -41,7 +42,8 @@ function height(element: Element, cache: WeakMap<Element, number>): number {
 
 function measureHeight(element: Element, cache: WeakMap<Element, number>): number {
 	if (element.matches(".kb-diff-file-header")) return HEADER_HEIGHT;
-	if (element.matches(".kb-diff-split-grid-row, [data-diff-line]")) return ROW_HEIGHT;
+	if (element.matches(".h-0")) return 0;
+	if (element.matches(".kb-diff-split-grid-row, [data-diff-line], .min-h-5")) return ROW_HEIGHT;
 	if (element instanceof HTMLElement && element.style.height && !element.children.length) {
 		return Number.parseFloat(element.style.height);
 	}
@@ -68,7 +70,7 @@ describe("live DiffViewerPanel scroll preservation", () => {
 	const comments = new Map<string, DiffLineComment>();
 	const onSelectedPathChange = vi.fn();
 	const onCommentsChange = vi.fn();
-	let mode: "unified" | "split";
+	let mode: DiffViewMode;
 	let pinnedHeaders: boolean;
 	let geometryMutations: MutationObserver;
 	let heightCache: WeakMap<Element, number>;
@@ -178,7 +180,7 @@ describe("live DiffViewerPanel scroll preservation", () => {
 			previousActEnvironment;
 	});
 
-	it.each(["unified", "split"] as const)(
+	it.each(["unified", "split", "resulting"] as const)(
 		"preserves current content and intra-line pixels after insertion in %s",
 		async (viewMode) => {
 			mode = viewMode;
@@ -200,6 +202,59 @@ describe("live DiffViewerPanel scroll preservation", () => {
 			expect(viewport().scrollTop).toBe(previousScroll + 2 * ROW_HEIGHT);
 		},
 	);
+
+	it("preserves the same reading line when only layout changes", async () => {
+		const files = [file("a.ts", lines(12), lines(12, "old"))];
+		await render(files);
+		await scrollTo(row("a.ts", 6), -7);
+		const previousScroll = viewport().scrollTop;
+		for (const nextMode of ["resulting", "split", "unified"] as const) {
+			mode = nextMode;
+			await render(files);
+			expect(relativeTop(row("a.ts", 6))).toBe(-7);
+		}
+		expect(viewport().scrollTop).toBe(previousScroll);
+	});
+
+	it("keeps the reading line stable when a resulting old block expands and collapses", async () => {
+		mode = "resulting";
+		await render([file("a.ts", lines(12), lines(12, "old"))]);
+		await scrollTo(row("a.ts", 6), -7);
+		const marker = row("a.ts", 6).querySelector<HTMLButtonElement>('button[aria-label^="Show modification"]');
+		expect(marker).not.toBeNull();
+		await act(async () => marker!.click());
+		expect(relativeTop(row("a.ts", 6))).toBe(-7);
+		await scrollTo(row("a.ts", 9), -3);
+		const close = row("a.ts", 9).querySelector<HTMLButtonElement>('button[aria-label^="Hide modification"]');
+		await act(async () => close!.click());
+		expect(relativeTop(row("a.ts", 9))).toBe(-3);
+	});
+
+	it("preserves a closed resulting deletion marker through insertion above it", async () => {
+		mode = "resulting";
+		const old = lines(15);
+		const current = [...old.slice(0, 5), ...old.slice(7)];
+		await render([file("a.ts", current, old)]);
+		await scrollTo(row("a.ts", 6, "removed"), 5);
+		await render([file("a.ts", ["inserted above", ...current], old)]);
+		expect(relativeTop(row("a.ts", 6, "removed"))).toBe(5);
+		expect(row("a.ts", 6, "removed").getBoundingClientRect().height).toBe(0);
+	});
+
+	it("retains an expanded resulting old-side reading anchor when a refresh closes the block", async () => {
+		mode = "resulting";
+		const old = lines(14, "old");
+		const current = lines(8, "replacement");
+		await render([file("a.ts", current, old)]);
+		const marker = section("a.ts").querySelector<HTMLButtonElement>('button[aria-label^="Show modification"]');
+		expect(marker).not.toBeNull();
+		await act(async () => marker!.click());
+		await scrollTo(row("a.ts", 8, "removed"), -4);
+		expect(row("a.ts", 8, "removed").textContent).toContain("old 8");
+		await render([file("a.ts", ["inserted above", ...current], old)]);
+		expect(relativeTop(row("a.ts", 8, "removed"))).toBe(-4);
+		expect(Number.isFinite(viewport().scrollTop)).toBe(true);
+	});
 
 	it("tracks removal above the row and changed preceding file heights/order", async () => {
 		const original = lines(15);
@@ -248,28 +303,32 @@ describe("live DiffViewerPanel scroll preservation", () => {
 		expect(relativeTop(row("a.ts", 6))).toBe(-7);
 	});
 
-	it("lets explicit selected-path navigation and comparison-scope changes win", async () => {
-		const original = lines(14);
-		await render([file("a.ts", original), file("b.ts", lines(10, "destination"))]);
-		await scrollTo(row("a.ts", 8));
-		const beforeScopeChange = viewport().scrollTop;
-		await render(
-			[file("a.ts", ["scope insertion", ...original]), file("b.ts", lines(10, "destination"))],
-			null,
-			"other-repository",
-		);
-		expect(viewport().scrollTop).toBe(beforeScopeChange);
-		await scrollTo(row("a.ts", 8));
-		await render(
-			[
-				file("a.ts", ["navigation insertion", "scope insertion", ...original]),
-				file("b.ts", lines(10, "destination")),
-			],
-			"b.ts",
-			"other-repository",
-		);
-		expect(relativeTop(section("b.ts"))).toBe(12);
-	});
+	it.each(["unified", "resulting"] as const)(
+		"lets explicit navigation and scope changes win in %s",
+		async (viewMode) => {
+			mode = viewMode;
+			const original = lines(14);
+			await render([file("a.ts", original), file("b.ts", lines(10, "destination"))]);
+			await scrollTo(row("a.ts", 8));
+			const beforeScopeChange = viewport().scrollTop;
+			await render(
+				[file("a.ts", ["scope insertion", ...original]), file("b.ts", lines(10, "destination"))],
+				null,
+				"other-repository",
+			);
+			expect(viewport().scrollTop).toBe(beforeScopeChange);
+			await scrollTo(row("a.ts", 8));
+			await render(
+				[
+					file("a.ts", ["navigation insertion", "scope insertion", ...original]),
+					file("b.ts", lines(10, "destination")),
+				],
+				"b.ts",
+				"other-repository",
+			);
+			expect(relativeTop(section("b.ts"))).toBe(12);
+		},
+	);
 
 	it.each(["header", "footer"] as const)("preserves the %s edge when no content row intersects it", async (edge) => {
 		await render([file("a.ts", lines(5)), file("b.ts", lines(6))]);
@@ -299,56 +358,64 @@ describe("live DiffViewerPanel scroll preservation", () => {
 		expect(Number.isFinite(viewport().scrollTop)).toBe(true);
 	});
 
-	it("reveals a shifted deferred target chunk during commit without replaying it over later navigation", async () => {
-		const observers: Array<{ callback: IntersectionObserverCallback; target?: Element }> = [];
-		vi.stubGlobal(
-			"IntersectionObserver",
-			class {
-				entry: (typeof observers)[number];
-				constructor(callback: IntersectionObserverCallback) {
-					this.entry = { callback };
-					observers.push(this.entry);
-				}
-				observe(target: Element) {
-					this.entry.target = target;
-				}
-				disconnect() {}
-			},
-		);
-		const original = lines(250);
-		await render([file("a.ts", original), file("b.ts", lines(10, "destination"))]);
-		expect(host.querySelectorAll("[data-diff-line]")).toHaveLength(10);
-		const anchorChunk = observers[1]!;
-		await act(async () =>
-			anchorChunk.callback(
-				[{ isIntersecting: true, target: anchorChunk.target } as IntersectionObserverEntry],
-				{} as IntersectionObserver,
-			),
-		);
-		await scrollTo(row("a.ts", 120));
-		// Move the anchor to a previously hidden chunk (120 -> 220). Do not
-		// deliver another intersection: only commit-phase targeting can reveal it.
-		const updated = [file("a.ts", [...lines(100, "inserted"), ...original]), file("b.ts", lines(10, "destination"))];
-		await render(updated);
-		expect(row("a.ts", 220).textContent).toContain("line 120");
-		expect(relativeTop(row("a.ts", 220))).toBe(-7);
-		expect(host.querySelectorAll("[data-diff-line]").length).toBeLessThan(300);
-		expect(host.querySelector('[data-diff-scroll-pending="true"]')).toBeNull();
-		await render(updated, "b.ts");
-		expect(relativeTop(section("b.ts"))).toBe(12);
-		await scrollTo(row("b.ts", 4), -3);
-		const navigatedTop = viewport().scrollTop;
-		// A later deferred reveal must not replay a stale pending anchor.
-		const hidden = observers.find((observer) => observer.target?.isConnected && !observer.target.children.length);
-		expect(hidden).toBeDefined();
-		await act(async () =>
-			hidden!.callback(
-				[{ isIntersecting: true, target: hidden!.target } as IntersectionObserverEntry],
-				{} as IntersectionObserver,
-			),
-		);
-		expect(relativeTop(row("b.ts", 4))).toBe(-3);
-		// Revealing 80 estimated 21.2px rows as 20px rows changes prior height.
-		expect(viewport().scrollTop - navigatedTop).toBeCloseTo(80 * (ROW_HEIGHT - 21.2));
-	}, 15_000);
+	it.each(["unified", "resulting"] as const)(
+		"reveals a shifted deferred target without reversing later navigation in %s",
+		async (viewMode) => {
+			mode = viewMode;
+			const observers: Array<{ callback: IntersectionObserverCallback; target?: Element }> = [];
+			vi.stubGlobal(
+				"IntersectionObserver",
+				class {
+					entry: (typeof observers)[number];
+					constructor(callback: IntersectionObserverCallback) {
+						this.entry = { callback };
+						observers.push(this.entry);
+					}
+					observe(target: Element) {
+						this.entry.target = target;
+					}
+					disconnect() {}
+				},
+			);
+			const original = lines(250);
+			await render([file("a.ts", original), file("b.ts", lines(10, "destination"))]);
+			expect(host.querySelectorAll("[data-diff-line]")).toHaveLength(10);
+			const anchorChunk = observers[1]!;
+			await act(async () =>
+				anchorChunk.callback(
+					[{ isIntersecting: true, target: anchorChunk.target } as IntersectionObserverEntry],
+					{} as IntersectionObserver,
+				),
+			);
+			await scrollTo(row("a.ts", 120));
+			// Move the anchor to a previously hidden chunk (120 -> 220). Do not
+			// deliver another intersection: only commit-phase targeting can reveal it.
+			const updated = [
+				file("a.ts", [...lines(100, "inserted"), ...original]),
+				file("b.ts", lines(10, "destination")),
+			];
+			await render(updated);
+			expect(row("a.ts", 220).textContent).toContain("line 120");
+			expect(relativeTop(row("a.ts", 220))).toBe(-7);
+			expect(host.querySelectorAll("[data-diff-line]").length).toBeLessThan(300);
+			expect(host.querySelector('[data-diff-scroll-pending="true"]')).toBeNull();
+			await render(updated, "b.ts");
+			expect(relativeTop(section("b.ts"))).toBe(12);
+			await scrollTo(row("b.ts", 4), -3);
+			const navigatedTop = viewport().scrollTop;
+			// A later deferred reveal must not replay a stale pending anchor.
+			const hidden = observers.find((observer) => observer.target?.isConnected && !observer.target.children.length);
+			expect(hidden).toBeDefined();
+			await act(async () =>
+				hidden!.callback(
+					[{ isIntersecting: true, target: hidden!.target } as IntersectionObserverEntry],
+					{} as IntersectionObserver,
+				),
+			);
+			expect(relativeTop(row("b.ts", 4))).toBe(-3);
+			// Revealing 80 estimated 21.2px rows as 20px rows changes prior height.
+			expect(viewport().scrollTop - navigatedTop).toBeCloseTo(80 * (ROW_HEIGHT - 21.2));
+		},
+		15_000,
+	);
 });

@@ -38,7 +38,11 @@ Complete editors retain multiline tokenizer state. Review rows and inline diff s
 
 ## Compare and uncommitted review
 
-`DiffViewerPanel` supplies complete old/new content to the same presenter. Split/unified mode, comments, context expansion, hunk prompts, selected-file priority, and visible-file reporting retain their existing owners. Compare option changes clear comments tied to the previous comparison. Working-copy review stays immutable; writable content enters the existing live Files scope explicitly.
+`DiffViewerPanel` supplies complete old/new content to the same presenter. The main Git view and separate review window offer **Split**, **Unified**, and **Resulting file** layouts for both Compare and Uncommitted. Uncommitted compares `HEAD` with the live working copy, including staged, unstaged, and untracked changes. Layout selection changes presentation only, not the comparison baseline or review drafts.
+
+Resulting file shows the complete new-side text with green addition markers, blue modification markers, and red deletion markers. Click a marker (or activate it with the keyboard) to reveal or hide its old/new block; hovering does not open it. Deletions retain markers even at file boundaries or when no resulting lines remain. Old-side previews retain old-line identities; resulting lines retain new-line identities. This layout requires complete text and does not reconstruct files from commit-history patches. It uses the existing diff parser, including its normalization of CRLF and omission of newline-at-EOF-only differences.
+
+Comments, context expansion, hunk prompts, selected-file priority, and visible-file reporting retain their existing owners. Compare option changes clear comments tied to the previous comparison. Working-copy review stays immutable; writable content enters the existing live Files scope explicitly.
 
 Live refreshes preserve the visible code line and its intra-line viewport offset in unified and split review, rather than reusing scroll pixels. Line anchors relocate through content edits; a deleted anchor uses the nearest surviving source line, and hidden/collapsed content falls back to a nearby visible line. File headers and footers retain their relative offsets, and disappearing files use a neighboring file when available. Deferred chunks reveal a relocated reading line before settling the anchor. Explicit file navigation and repository/comparison changes take precedence; review anchors are transient presentation state, not durable review history or comment identity.
 

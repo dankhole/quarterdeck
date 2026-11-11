@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 	sourceRef: "feature",
 	targetRef: "main",
 	includeUncommitted: true,
+	threeDotDiff: false,
+	compareBar: vi.fn(),
+	setComments: vi.fn(),
 	viewer: vi.fn(),
 	comments: new Map<string, DiffLineComment>(),
 	hasNoChanges: false,
@@ -22,7 +25,12 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/components/compare-window/open-compare-window", () => ({ openCompareWindow: mocks.open }));
 vi.mock("@/components/app-toaster", () => ({ showAppToast: mocks.toast }));
-vi.mock("@/components/git/git-view-compare-bar", () => ({ CompareBar: () => null }));
+vi.mock("@/components/git/git-view-compare-bar", () => ({
+	CompareBar: (props: unknown) => {
+		mocks.compareBar(props);
+		return null;
+	},
+}));
 vi.mock("@/components/git/panels/diff-viewer-panel", () => ({
 	DiffViewerPanel: (props: ComponentProps<typeof DiffViewerPanel>) => {
 		mocks.viewer(props);
@@ -42,12 +50,13 @@ vi.mock("@/hooks/git/use-git-view", () => ({
 			sourceRef: mocks.sourceRef,
 			targetRef: mocks.targetRef,
 			includeUncommitted: mocks.includeUncommitted,
-			threeDotDiff: false,
+			threeDotDiff: mocks.threeDotDiff,
 		},
 		hasCompareRefs: Boolean(mocks.sourceRef && mocks.targetRef),
 		hasNoChanges: mocks.hasNoChanges,
 		isChangesPending: mocks.isChangesPending,
 		diffComments: mocks.comments,
+		setDiffComments: mocks.setComments,
 		reviewDraftKey: "window-scoped-review",
 		enrichedFiles: [],
 		isRuntimeAvailable: true,
@@ -67,6 +76,7 @@ describe("GitView Compare pop-out", () => {
 		mocks.sourceRef = "feature";
 		mocks.targetRef = "main";
 		mocks.includeUncommitted = true;
+		mocks.threeDotDiff = false;
 		mocks.comments = new Map();
 		mocks.hasNoChanges = false;
 		mocks.isChangesPending = false;
@@ -85,6 +95,60 @@ describe("GitView Compare pop-out", () => {
 			),
 		);
 	}
+	it.each([
+		{ tab: "compare", includeUncommitted: false, threeDotDiff: false },
+		{ tab: "compare", includeUncommitted: true, threeDotDiff: true },
+		{ tab: "uncommitted", includeUncommitted: false, threeDotDiff: true },
+	])("changes only layout for $tab ($includeUncommitted, $threeDotDiff), preserving drafts", async (options) => {
+		mocks.tab = options.tab;
+		mocks.includeUncommitted = options.includeUncommitted;
+		mocks.threeDotDiff = options.threeDotDiff;
+		mocks.comments.set("draft", {
+			filePath: "src/app.ts",
+			lineNumber: 1,
+			lineText: "old line",
+			variant: "removed",
+			comment: "Keep this open edit",
+			editing: true,
+		});
+		await render();
+		const initial = mocks.viewer.mock.calls.at(-1)![0] as ComponentProps<typeof DiffViewerPanel>;
+		const initialCompare = mocks.compareBar.mock.calls.at(-1)?.[0];
+		const select = container.querySelector<HTMLSelectElement>('select[aria-label="Diff layout"]')!;
+		expect(select.value).toBe("split");
+		expect(initial.viewMode).toBe("split");
+		expect(Array.from(select.options, (option) => option.text)).toEqual(["Unified", "Split", "Resulting file"]);
+		for (const layout of ["resulting", "unified", "split"] as const) {
+			await act(async () => {
+				select.value = layout;
+				select.dispatchEvent(new Event("change", { bubbles: true }));
+			});
+			const next = mocks.viewer.mock.calls.at(-1)![0] as ComponentProps<typeof DiffViewerPanel>;
+			expect(next).toEqual({ ...initial, viewMode: layout });
+			expect(next.comments).toBe(mocks.comments);
+			expect(next.reviewDraftKey).toBe("window-scoped-review");
+			expect(next.comments.get("draft")).toMatchObject({ comment: "Keep this open edit", editing: true });
+			expect(mocks.compareBar.mock.calls.at(-1)?.[0]).toEqual(initialCompare);
+		}
+		expect(mocks.setComments).not.toHaveBeenCalled();
+	});
+
+	it("keeps the layout local when switching main tabs without transferring it to a pop-out", async () => {
+		await render();
+		const select = container.querySelector<HTMLSelectElement>('select[aria-label="Diff layout"]')!;
+		await act(async () => {
+			select.value = "resulting";
+			select.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		mocks.tab = "uncommitted";
+		await render();
+		expect((mocks.viewer.mock.calls.at(-1)![0] as ComponentProps<typeof DiffViewerPanel>).viewMode).toBe("resulting");
+		await act(async () =>
+			container.querySelector<HTMLButtonElement>('[aria-label="Pop out Uncommitted review"]')?.click(),
+		);
+		expect(mocks.open.mock.calls[0]?.[0]).not.toHaveProperty("viewMode");
+	});
+
 	it("captures the current project, refs, flags and selected path", async () => {
 		await render();
 		await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Pop out Compare"]')?.click());

@@ -53,8 +53,15 @@ describe("focused review presentation", () => {
 		return element;
 	};
 	const click = async (label: string) => act(async () => button(label).click());
+	const setLayout = async (layout: "unified" | "split" | "resulting") => {
+		const select = container.querySelector<HTMLSelectElement>('select[aria-label="Diff layout"]')!;
+		await act(async () => {
+			select.value = layout;
+			select.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+	};
 
-	it("renders one file, bounds navigation and owns split/unified selection", async () => {
+	it("renders one file, bounds navigation and owns layout selection", async () => {
 		const visible = vi.fn();
 		function Controlled() {
 			const [selectedPath, onSelectedPathChange] = useState("a.ts");
@@ -68,6 +75,7 @@ describe("focused review presentation", () => {
 			);
 		}
 		await act(async () => root.render(<Controlled />));
+		expect(container.querySelector<HTMLSelectElement>('select[aria-label="Diff layout"]')?.value).toBe("unified");
 		expect(container.querySelectorAll("[data-diff-path]")).toHaveLength(1);
 		expect(container.textContent).toContain("File 1 of 2");
 		expect(container.textContent).toContain("Difference 1 of 2");
@@ -92,6 +100,52 @@ describe("focused review presentation", () => {
 		expect(button("Next file").disabled).toBe(true);
 		expect(visible.mock.calls.map(([paths]) => paths)).toEqual([["a.ts"], ["b.ts"]]);
 	});
+
+	it.each(["compare", "working-copy"] as const)(
+		"keeps resulting-file navigation and selection independent of %s comparison semantics",
+		async (kind) => {
+			const reviewScope = {
+				...scope,
+				revisions:
+					kind === "working-copy"
+						? { kind, base: "HEAD", head: "WORKTREE", headSource: "live-worktree" as const }
+						: { kind, base: "main", head: "feature", mode: "three_dot" as const },
+			};
+			await render({
+				reviewScope,
+				projectFiles: [modified("a.ts", "old\nkeep\ndelete\nkeep too\nlast", "new\nkeep\nkeep too\n")],
+			});
+			await click("Next difference");
+			expect(container.textContent).toContain("Difference 2 of 3");
+			const documentKey = container.querySelector("[data-review-document]")?.getAttribute("data-review-document");
+			await setLayout("resulting");
+			expect(container.querySelector<HTMLSelectElement>("select")?.value).toBe("resulting");
+			expect(container.textContent).toContain("Difference 2 of 3");
+			expect(container.querySelector("[data-review-document]")?.getAttribute("data-review-document")).toBe(
+				documentKey,
+			);
+			expect(
+				container.querySelector('[data-diff-side="removed"][data-diff-line="3"][data-current-difference="true"]'),
+			).not.toBeNull();
+			await click("Next difference");
+			expect(container.textContent).toContain("Difference 3 of 3");
+			expect(button("Next difference").disabled).toBe(true);
+			expect(
+				container.querySelector('[data-diff-side="removed"][data-diff-line="5"][data-current-difference="true"]'),
+			).not.toBeNull();
+			await click("Previous difference");
+			await click("Previous difference");
+			expect(container.textContent).toContain("Difference 1 of 3");
+			expect(button("Previous difference").disabled).toBe(true);
+			expect(
+				container.querySelector('[data-diff-side="removed"][data-diff-line="1"][data-current-difference="true"]'),
+			).not.toBeNull();
+			await setLayout("unified");
+			expect(container.textContent).toContain("Difference 1 of 3");
+			expect(props.onSelectedPathChange).not.toHaveBeenCalled();
+			expect(props.onCommentsChange).not.toHaveBeenCalled();
+		},
+	);
 
 	it("preserves a valid hunk and viewport through unchanged refreshes; resets refs", async () => {
 		await render();
@@ -203,6 +257,7 @@ describe("focused review presentation", () => {
 			onRollbackFile: mutate,
 			onSendToTerminal: mutate,
 		});
+		await setLayout("resulting");
 		expect(container.textContent).not.toContain("Draft must survive");
 		expect(container.textContent).not.toContain("Send all comments");
 		expect(container.querySelector(".kb-diff-comment-gutter")).toBeNull();
@@ -239,7 +294,7 @@ describe("focused review presentation", () => {
 		expect(props.onSelectedPathChange).toHaveBeenCalledWith("b.ts");
 	});
 
-	it("reveals offscreen deferred old-side anchors, cancels superseded jumps, and supports split", async () => {
+	it("reveals offscreen deferred old-side anchors, cancels superseded jumps, and switches layouts", async () => {
 		const observe = vi.fn();
 		vi.stubGlobal(
 			"IntersectionObserver",
@@ -289,5 +344,16 @@ describe("focused review presentation", () => {
 			container.querySelector('[data-diff-side="removed"][data-diff-line="500"][data-current-difference="true"]'),
 		).not.toBeNull();
 		expect(scroller.scrollTop).toBeGreaterThan(10000);
+		await setLayout("resulting");
+		expect(
+			container.querySelector('[data-diff-side="removed"][data-diff-line="500"][data-current-difference="true"]'),
+		).not.toBeNull();
+		expect(container.textContent).toContain("Difference 3 of 3");
+		expect(scroller.scrollTop).toBeGreaterThan(10000);
+		await click("Previous difference");
+		expect(
+			container.querySelector('[data-diff-side="removed"][data-diff-line="251"][data-current-difference="true"]'),
+		).not.toBeNull();
+		expect(scroller.scrollTop).toBeGreaterThan(5000);
 	});
 });

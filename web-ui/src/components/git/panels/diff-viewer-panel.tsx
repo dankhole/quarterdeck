@@ -365,6 +365,8 @@ function InlineDiffViewerPanel({
 			<DiffScrollPreserver
 				containerRef={scrollContainerRef}
 				groups={groupedByPath}
+				viewMode={viewMode}
+				onLayoutChange={reportVisiblePaths}
 				selectedPath={selectedPath}
 				scopeKey={JSON.stringify([
 					createFileBrowserContentScopeKey(reviewScope.repository),

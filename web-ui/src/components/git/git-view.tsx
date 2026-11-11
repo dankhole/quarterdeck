@@ -6,7 +6,9 @@ import { openCompareWindow } from "@/components/compare-window/open-compare-wind
 import { CompareBar } from "@/components/git/git-view-compare-bar";
 import { GitViewEmptyPanel, GitViewLoadingPanel } from "@/components/git/git-view-empty";
 import { ConflictResolutionPanel } from "@/components/git/panels/conflict-resolution-panel";
+import { DiffLayoutSelector } from "@/components/git/panels/diff-layout-selector";
 import { DiffViewerPanel } from "@/components/git/panels/diff-viewer-panel";
+import type { DiffViewMode } from "@/components/git/panels/diff-viewer-utils";
 import { FileTreePanel } from "@/components/git/panels/file-tree-panel";
 import { cn } from "@/components/ui/cn";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -75,6 +77,7 @@ export function GitView({
 	...hookOptions
 }: GitViewProps): React.ReactElement {
 	const [isOpeningCompare, setIsOpeningCompare] = useState(false);
+	const [viewMode, setViewMode] = useState<DiffViewMode>("split");
 	const {
 		repositoryScope,
 		activeTab,
@@ -180,6 +183,8 @@ export function GitView({
 				</TabButton>
 
 				<div className="flex-1" />
+
+				{!gitHistoryPanel ? <DiffLayoutSelector viewMode={viewMode} onViewModeChange={setViewMode} /> : null}
 
 				{branchStatusSlot}
 
@@ -319,7 +324,7 @@ export function GitView({
 									onSelectedPathChange={setSelectedPath}
 									onVisiblePathsChange={handleVisibleDiffPathsChange}
 									onRollbackFile={activeTab === "uncommitted" ? handleRollbackFile : undefined}
-									viewMode="split"
+									viewMode={viewMode}
 									comments={diffComments}
 									reviewDraftKey={reviewDraftKey}
 									onCommentsChange={setDiffComments}

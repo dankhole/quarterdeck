@@ -1,7 +1,7 @@
 import { Component, type ReactNode, type RefObject } from "react";
 import { type DiffScrollLine, DiffScrollTargetContext } from "@/components/shared/diff-scroll-target";
 import { relocateDiffLine } from "@/hooks/git/diff-line-anchor";
-import type { FileDiffGroup } from "./diff-viewer-utils";
+import type { DiffViewMode, FileDiffGroup } from "./diff-viewer-utils";
 
 type Position =
 	| { kind: "line"; line: DiffScrollLine; source: string; top: number }
@@ -18,8 +18,11 @@ interface Props {
 	children: ReactNode;
 	containerRef: RefObject<HTMLDivElement | null>;
 	groups: FileDiffGroup[];
+	viewMode: DiffViewMode;
 	scopeKey: string;
 	selectedPath: string | null;
+	/** Re-measure visibility after geometry changes and viewport restoration. */
+	onLayoutChange?: () => void;
 }
 
 function sections(container: HTMLElement): HTMLElement[] {
@@ -72,7 +75,7 @@ export class DiffScrollPreserver extends Component<Props> {
 			this.anchor = null;
 			return null;
 		}
-		if (previous.groups === this.props.groups) return null;
+		if (previous.groups === this.props.groups && previous.viewMode === this.props.viewMode) return null;
 		const anchor = this.capture(previous.groups);
 		if (anchor?.position.kind === "line") {
 			const { line, source } = anchor.position;
@@ -138,6 +141,7 @@ export class DiffScrollPreserver extends Component<Props> {
 		const anchor = this.pending ?? this.anchor;
 		if (anchor) this.restore(anchor);
 		if (!this.pending) this.anchor = this.capture(this.props.groups);
+		this.props.onLayoutChange?.();
 	};
 
 	private capture(groups: FileDiffGroup[]): ScrollAnchor | null {

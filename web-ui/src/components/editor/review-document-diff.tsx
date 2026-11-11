@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { DiffCodeNavigationMenu } from "@/components/git/panels/diff-code-navigation-menu";
+import { ResultingFileDiff } from "@/components/git/panels/diff-resulting-file";
 import { SplitDiff } from "@/components/git/panels/diff-split";
 import { UnifiedDiff } from "@/components/git/panels/diff-unified";
 import type { DiffCommentCallbacks, DiffLineComment, DiffViewMode } from "@/components/git/panels/diff-viewer-utils";
@@ -17,6 +18,14 @@ export interface ReviewInteractions extends DiffCommentCallbacks {
 	fullContext?: boolean;
 }
 
+const readOnlyInteractions: ReviewInteractions = {
+	comments: new Map(),
+	readOnlyReview: true,
+	onAddComment: () => {},
+	onUpdateComment: () => {},
+	onDeleteComment: () => {},
+};
+
 /** Owns patch versus full-content admission; a patch is never treated as a complete editable file. */
 export function ReviewDocumentDiff({
 	document,
@@ -32,14 +41,23 @@ export function ReviewDocumentDiff({
 	const { content, path } = document;
 	const patch = content.kind === "patch" ? content.patch : null;
 	const oldText = content.kind === "text" ? content.oldText : null;
-	const newText = content.kind === "text" && !interactions ? content.newText : null;
+	const newText = content.kind === "text" && !interactions && viewMode !== "resulting" ? content.newText : null;
 	const rows = useMemo(() => {
 		if (patch !== null) return parsePatchToRows(patch);
 		if (newText !== null) return buildUnifiedDiffRows(oldText, newText);
 		return null;
 	}, [patch, oldText, newText]);
 	const interactiveDiff =
-		content.kind === "text" && interactions ? (
+		content.kind === "text" && viewMode === "resulting" ? (
+			<ResultingFileDiff
+				isDeleted={document.newPath === null}
+				key={document.key}
+				path={path}
+				oldText={content.oldText}
+				newText={content.newText}
+				{...(interactions ?? readOnlyInteractions)}
+			/>
+		) : content.kind === "text" && interactions ? (
 			viewMode === "split" ? (
 				<SplitDiff
 					key={document.key}

@@ -20,6 +20,58 @@ describe("review document presentation", () => {
 		vi.restoreAllMocks();
 		delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 	});
+	it("admits resulting-file full text without enabling comments and retains rename metadata", async () => {
+		await act(async () =>
+			root.render(
+				<ReviewDocumentDiff
+					viewMode="resulting"
+					document={createReviewDocument(
+						{
+							repository: { projectId: "p", taskId: null },
+							revisions: { kind: "compare", base: "main", head: "task" },
+						},
+						{ path: "new.ts", previousPath: "old.ts" },
+						{ kind: "text", oldText: "before\n", newText: "after\n" },
+					)}
+				/>,
+			),
+		);
+		expect(host.textContent).toContain("Renamed from old.ts");
+		expect(host.textContent).not.toContain("before");
+		expect(host.querySelector("button[aria-expanded]")).not.toBeNull();
+		expect(host.querySelector(".kb-diff-comment-gutter")).toBeNull();
+	});
+
+	it.each([
+		[{ kind: "text", oldText: "", newText: "" }, undefined, "Empty file"],
+		[{ kind: "text", oldText: "", newText: "" }, "deleted", "Deleted file"],
+		[{ kind: "binary" }, undefined, "Binary file"],
+		[{ kind: "loading" }, undefined, "Loading diff"],
+		[{ kind: "unavailable", message: "Missing snapshot" }, undefined, "Missing snapshot"],
+		[{ kind: "patch", patch: "@@ -1 +1 @@\n-before\n+after\n" }, undefined, "before"],
+	] satisfies [ReviewContent, string | undefined, string][])(
+		"preserves resulting-mode admission for %j",
+		async (content, status, expected) => {
+			await act(async () =>
+				root.render(
+					<ReviewDocumentDiff
+						viewMode="resulting"
+						document={createReviewDocument(
+							{
+								repository: { projectId: "p", taskId: null },
+								revisions: { kind: "compare", base: "main", head: "task" },
+							},
+							{ path: "file.ts", status },
+							content,
+						)}
+					/>,
+				),
+			);
+			expect(host.textContent).toContain(expected);
+			expect(host.querySelector("button[aria-expanded]")).toBeNull();
+		},
+	);
+
 	it.each(["patch", "text"] as const)("retains %s rows across unrelated parent renders", async (kind) => {
 		const highlight = vi.spyOn(EditorState, "create");
 		async function render(value: number) {

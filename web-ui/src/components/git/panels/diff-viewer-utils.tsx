@@ -29,7 +29,7 @@ export interface DiffLineComment {
 	anchorRevision?: string;
 }
 
-export type DiffViewMode = "unified" | "split";
+export type DiffViewMode = "unified" | "split" | "resulting";
 
 export function commentKey(filePath: string, lineNumber: number, variant: DiffLineComment["variant"]): string {
 	return `${filePath}:${variant}:${lineNumber}`;

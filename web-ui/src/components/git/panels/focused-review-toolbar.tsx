@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DiffLayoutSelector } from "./diff-layout-selector";
 import type { DiffViewMode } from "./diff-viewer-utils";
 
 export function FocusedReviewToolbar({
@@ -80,18 +81,9 @@ export function FocusedReviewToolbar({
 						onClick={() => onStepHunk(1)}
 					/>
 				</div>
-				<label className="ml-auto flex items-center gap-2 text-xs text-text-secondary">
-					View
-					<select
-						aria-label="Diff layout"
-						className="rounded-sm border border-border-bright bg-surface-2 px-2 py-1 text-text-primary"
-						value={viewMode}
-						onChange={(event) => onViewModeChange(event.target.value === "split" ? "split" : "unified")}
-					>
-						<option value="unified">Unified</option>
-						<option value="split">Split</option>
-					</select>
-				</label>
+				<div className="ml-auto">
+					<DiffLayoutSelector viewMode={viewMode} onViewModeChange={onViewModeChange} />
+				</div>
 			</nav>
 			<div className="mt-1 flex min-w-0 items-center gap-2 text-xs">
 				<span className="min-w-0 flex-1 truncate text-text-primary" title={path ?? undefined}>

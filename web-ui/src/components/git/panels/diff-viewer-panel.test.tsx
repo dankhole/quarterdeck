@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type DiffLineComment, DiffViewerPanel } from "@/components/git/panels/diff-viewer-panel";
 import * as diffRenderer from "@/components/shared/diff-renderer";
 import type { RuntimeWorkdirFileChange } from "@/runtime/types";
+import type { DiffViewMode } from "./diff-viewer-utils";
 import * as diffViewerUtils from "./diff-viewer-utils";
 
 function createRect(top: number, height = 24): DOMRect {
@@ -276,6 +277,65 @@ describe("DiffViewerPanel", () => {
 		expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["src/b.ts", "src/c.ts"]);
 	});
 
+	it.each(["unified", "split"] as const)(
+		"reports newly visible unloaded files after %s layout and marker geometry changes without scrolling",
+		async (initialLayout) => {
+			const projectFiles: RuntimeWorkdirFileChange[] = [
+				{
+					path: "a.ts",
+					status: "modified",
+					additions: 1,
+					deletions: 30,
+					oldText: Array.from({ length: 30 }, (_, index) => `old ${index}`).join("\n"),
+					newText: "replacement",
+				},
+				{ path: "b.ts", status: "modified", additions: 1, deletions: 0, oldText: null, newText: null },
+				{ path: "c.ts", status: "modified", additions: 1, deletions: 0, oldText: null, newText: null },
+			];
+			const onVisiblePathsChange = vi.fn();
+			const props = {
+				projectFiles,
+				reviewScope: {
+					repository: { projectId: "test", taskId: null },
+					revisions: { kind: "compare" as const, base: "a", head: "b" },
+				},
+				selectedPath: null,
+				onSelectedPathChange: vi.fn(),
+				onVisiblePathsChange,
+				comments: new Map<string, DiffLineComment>(),
+				onCommentsChange: vi.fn(),
+			};
+			vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+				if (this.hasAttribute("data-diff-scroll-container")) return createRect(100, 240);
+				const first = container.querySelector('[data-diff-path="a.ts"]');
+				const firstHeight = first?.querySelector(".kb-diff-row-removed") ? 900 : 80;
+				if (this.dataset.diffPath === "a.ts") return createRect(120, firstHeight);
+				if (this.dataset.diffPath === "b.ts") return createRect(140 + firstHeight, 80);
+				if (this.dataset.diffPath === "c.ts") return createRect(240 + firstHeight, 80);
+				return createRect(0, 0);
+			});
+			await act(async () => root.render(<DiffViewerPanel {...props} viewMode={initialLayout} />));
+			// Drain the initial report's animation frame before changing geometry;
+			// a stale mount callback must not accidentally make this test pass.
+			await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+			expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["a.ts"]);
+			const scroller = container.querySelector<HTMLElement>("[data-diff-scroll-container]")!;
+			expect(scroller.scrollTop).toBe(0);
+			await act(async () => root.render(<DiffViewerPanel {...props} viewMode="resulting" />));
+			expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["a.ts", "b.ts", "c.ts"]);
+			await act(async () =>
+				container.querySelector<HTMLButtonElement>('button[aria-label^="Show modification"]')!.click(),
+			);
+			expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["a.ts"]);
+			await act(async () =>
+				container.querySelector<HTMLButtonElement>('button[aria-label^="Hide modification"]')!.click(),
+			);
+			expect(onVisiblePathsChange).toHaveBeenLastCalledWith(["a.ts", "b.ts", "c.ts"]);
+			expect(scroller.scrollTop).toBe(0);
+			expect(props.onSelectedPathChange).not.toHaveBeenCalled();
+		},
+	);
+
 	it("renders replaced lines side by side in split view", async () => {
 		const projectFiles: RuntimeWorkdirFileChange[] = [
 			{
@@ -441,7 +501,7 @@ describe("DiffViewerPanel", () => {
 		initialComments?: Map<string, DiffLineComment>;
 		projectFiles?: RuntimeWorkdirFileChange[] | null;
 		onSend?: (text: string) => Promise<{ ok: boolean; message?: string }>;
-		viewMode?: "unified" | "split";
+		viewMode?: DiffViewMode;
 	}) {
 		const [comments, setComments] = useState(initialComments);
 		return (
@@ -542,6 +602,31 @@ describe("DiffViewerPanel", () => {
 			expect(container.textContent).not.toContain("Unsent");
 		},
 	);
+
+	it("retains old-side saved drafts and current editor text through resulting-file layout switches", async () => {
+		const send = vi.fn(async (_text: string) => ({ ok: false, message: "Keep drafts" }));
+		const comments = commentMap(makeComment("a.ts", "Current draft", true), {
+			...makeComment("a.ts", "Old-side draft"),
+			variant: "removed",
+			lineText: "old a",
+		});
+		await act(async () => root.render(<ReviewHarness initialComments={comments} onSend={send} />));
+		await type("Latest unsent edit");
+		for (const viewMode of ["resulting", "split", "resulting", "unified"] as const) {
+			await act(async () =>
+				root.render(<ReviewHarness initialComments={comments} onSend={send} viewMode={viewMode} />),
+			);
+			expect(container.textContent).toContain("Old-side draft");
+			expect(container.querySelector("textarea")?.value).toBe("Latest unsent edit");
+			expect(container.textContent).toContain("2 comments across 1 file");
+			expect(container.querySelector('[aria-label="Unanchored review drafts"]')).toBeNull();
+		}
+		expect(send).not.toHaveBeenCalled();
+		await click("Send all comments");
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(send.mock.calls[0]?.[0]).toContain("Old-side draft");
+		expect(send.mock.calls[0]?.[0]).toContain("Latest unsent edit");
+	});
 
 	it("builds one anchor lookup per file and never reparses or serializes file snapshots while typing", async () => {
 		const buildRows = vi.spyOn(diffRenderer, "buildUnifiedDiffRows");
