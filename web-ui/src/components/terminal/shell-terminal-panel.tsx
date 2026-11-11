@@ -13,7 +13,9 @@ export interface ShellTerminalPanelProps {
 	terminalEnabled?: boolean;
 	summary: RuntimeTaskSessionSummary | null;
 	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
+	/** Hide the viewer without terminating the shell process. */
 	onClose?: () => void;
+	onTerminate?: () => void;
 	autoFocus?: boolean;
 	headerTitle?: string;
 	headerSubtitle?: string | null;
@@ -21,7 +23,6 @@ export interface ShellTerminalPanelProps {
 	terminalBackgroundColor?: string;
 	cursorColor?: string;
 	isVisible?: boolean;
-	onConnectionReady?: (taskId: string) => void;
 	launchCommand?: string | null;
 	onLaunchCommand?: () => void;
 	isExpanded?: boolean;
@@ -36,11 +37,11 @@ export function ShellTerminalPanel(props: ShellTerminalPanelProps): ReactElement
 		projectId: props.projectId,
 		enabled: props.terminalEnabled ?? true,
 		onSummary: props.onSummary,
-		onConnectionReady: props.onConnectionReady,
 		onExit: props.onExit,
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
 		sessionStartedAt: props.summary?.startedAt ?? null,
+		sessionInstanceId: props.summary?.sessionInstanceId ?? null,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 	});
@@ -52,6 +53,8 @@ export function ShellTerminalPanel(props: ShellTerminalPanelProps): ReactElement
 			sessionControls={sessionControls}
 			showSessionToolbar={false}
 			onClose={props.onClose}
+			closeLabel="Hide shell"
+			onTerminate={props.onTerminate}
 			headerTitle={props.headerTitle ?? "Shell"}
 			headerSubtitle={props.headerSubtitle ?? null}
 			panelBackgroundColor={props.panelBackgroundColor}

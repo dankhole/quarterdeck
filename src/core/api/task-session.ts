@@ -2,10 +2,18 @@ import { z } from "zod";
 import { CODEX_SESSION_START_SOURCES } from "../codex-session-start-sources.js";
 import { runtimeAgentIdSchema, runtimeTaskImageSchema } from "./shared.js";
 
+export const RUNTIME_HOME_TERMINAL_TASK_ID = "__home_terminal__";
 export const RUNTIME_DETAIL_TERMINAL_TASK_PREFIX = "__detail_terminal__:";
 
 export function getRuntimeDetailTerminalTaskId(taskId: string): string {
 	return `${RUNTIME_DETAIL_TERMINAL_TASK_PREFIX}${taskId}`;
+}
+
+/** Manual detail shells share the checkout owner's task-resource lock. */
+export function getRuntimeTerminalResourceTaskId(taskId: string): string {
+	return taskId.startsWith(RUNTIME_DETAIL_TERMINAL_TASK_PREFIX)
+		? taskId.slice(RUNTIME_DETAIL_TERMINAL_TASK_PREFIX.length)
+		: taskId;
 }
 
 export const runtimeTaskSessionStateSchema = z.enum(["idle", "running", "awaiting_review"]);
@@ -528,6 +536,7 @@ export type RuntimeTaskSessionInputResponse = z.infer<typeof runtimeTaskSessionI
 
 export const runtimeShellSessionStartRequestSchema = z.object({
 	taskId: z.string(),
+	expectedExitedSessionInstanceId: z.string().min(1).optional(),
 	cols: z.number().int().positive().optional(),
 	rows: z.number().int().positive().optional(),
 	projectTaskId: z.string().optional(),
@@ -537,6 +546,7 @@ export type RuntimeShellSessionStartRequest = z.infer<typeof runtimeShellSession
 
 export const runtimeShellSessionStartResponseSchema = z.object({
 	ok: z.boolean(),
+	hadExistingSession: z.boolean(),
 	summary: runtimeTaskSessionSummarySchema.nullable(),
 	shellBinary: z.string().nullable().optional(),
 	error: z.string().optional(),

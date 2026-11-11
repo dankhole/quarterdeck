@@ -24,6 +24,7 @@ interface UsePersistentTerminalSessionInput {
 	autoFocus?: boolean;
 	isVisible?: boolean;
 	sessionStartedAt?: number | null;
+	sessionInstanceId?: string | null;
 	terminalBackgroundColor: string;
 	cursorColor: string;
 }
@@ -51,21 +52,6 @@ function clearMountedTerminal(
 	previousSessionRef.current = null;
 }
 
-function disposeDedicatedShellTerminal(
-	terminalRef: MutableRefObject<TaskTerminalHandle | null>,
-	previousSessionRef: MutableRefObject<{
-		projectId: string;
-		taskId: string;
-		sessionStartedAt: number | null;
-	} | null>,
-): void {
-	const previousSession = previousSessionRef.current;
-	if (previousSession) {
-		disposeDedicatedTerminal(previousSession.projectId, previousSession.taskId);
-	}
-	clearMountedTerminal(terminalRef, previousSessionRef);
-}
-
 export function usePersistentTerminalSession({
 	taskId,
 	projectId,
@@ -76,6 +62,7 @@ export function usePersistentTerminalSession({
 	autoFocus = false,
 	isVisible = true,
 	sessionStartedAt = null,
+	sessionInstanceId = null,
 	terminalBackgroundColor,
 	cursorColor,
 }: UsePersistentTerminalSessionInput): UsePersistentTerminalSessionResult {
@@ -105,103 +92,73 @@ export function usePersistentTerminalSession({
 		onExit,
 	};
 
+	// Appearance changes update the mounted viewer without replacing its sockets.
+	const shellAppearanceRef = useRef({ cursorColor, terminalBackgroundColor });
+	shellAppearanceRef.current = { cursorColor, terminalBackgroundColor };
+
 	useEffect(() => {
-		const isDedicatedShellTerminal = isDedicatedTerminalTaskId(taskId);
-		setIsContentPending(false);
-
-		// Dedicated shell terminals own their session lifecycle directly.
-		// These are workspace-scoped manual shells, not pooled task agent viewers.
-		if (isDedicatedShellTerminal) {
-			if (!enabled) {
-				log.debug("dedicated shell terminal disabled; disposing", { taskId, projectId });
-				disposeDedicatedShellTerminal(terminalRef, previousSessionRef);
-				setLastError(null);
-				setIsLoading(false);
-				setIsStopping(false);
-				return;
-			}
-
-			if (!projectId) {
-				log.warn("dedicated shell terminal cannot show without a project", { taskId });
-				disposeDedicatedShellTerminal(terminalRef, previousSessionRef);
-				setLastError("No project selected.");
-				setIsLoading(false);
-				return;
-			}
-			const container = containerRef.current;
-			if (!container) {
-				log.debug("dedicated shell terminal waiting for container", { taskId, projectId });
-				return;
-			}
-			const previousSession = previousSessionRef.current;
-			const didSessionRestart =
-				previousSession !== null &&
-				previousSession.projectId === projectId &&
-				previousSession.taskId === taskId &&
-				previousSession.sessionStartedAt !== sessionStartedAt;
-
-			const terminal = ensureDedicatedTerminal({
-				taskId,
-				projectId,
-				cursorColor,
-				terminalBackgroundColor,
-			});
-			log.debug("showing dedicated shell terminal", {
-				taskId,
-				projectId,
-				sessionStartedAt,
-				didSessionRestart,
-			});
-			if (didSessionRestart) {
-				terminal.reset();
-			}
-			previousSessionRef.current = {
-				projectId,
-				taskId,
-				sessionStartedAt,
-			};
-			terminalRef.current = terminal;
-			setLastError(null);
-			setIsLoading(true);
-			setIsStopping(false);
-			const unsubscribe = terminal.subscribe({
-				onConnectionReady: (connectedTaskId: string) => {
-					log.debug("dedicated shell terminal connection ready", { taskId: connectedTaskId, projectId });
-					setIsLoading(false);
-					callbackRef.current.onConnectionReady?.(connectedTaskId);
-				},
-				onLastError: (message: string | null) => {
-					if (message) {
-						log.warn("dedicated shell terminal connection error", { taskId, projectId, message });
-					}
-					setLastError(message);
-				},
-				onSummary: (summary: RuntimeTaskSessionSummary) => {
-					callbackRef.current.onSummary?.(projectId, summary);
-				},
-				onExit: (exitTaskId: string, exitCode: number | null) => {
-					log.info("dedicated shell terminal exited", { taskId: exitTaskId, projectId, exitCode });
-					callbackRef.current.onExit?.(exitTaskId, exitCode);
-				},
-			});
-			terminal.attachToStageContainer(container);
-			terminal.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
-			return () => {
-				log.debug("hiding dedicated shell terminal view", { taskId, projectId });
-				unsubscribe();
-				terminal.hide();
-				// This cleanup runs for ordinary React unmounts/remounts while a
-				// shell is still logically open. It is not the shell-close path:
-				// use-terminal-panels disposes the dedicated terminal slot when a
-				// shell is closed or its owning context changes. Park here only to
-				// keep an open shell's xterm host in the live DOM while React removes
-				// this container, preventing WebGL context loss on remount.
-				terminal.park();
-				if (terminalRef.current === terminal) {
-					terminalRef.current = null;
-				}
-			};
+		if (!isDedicatedTerminalTaskId(taskId)) {
+			return;
 		}
+		setIsContentPending(false);
+		if (!enabled || !isVisible || !projectId) {
+			setLastError(enabled && isVisible && !projectId ? "No project selected." : null);
+			setIsLoading(false);
+			setIsStopping(false);
+			return;
+		}
+		const container = containerRef.current;
+		if (!container) {
+			return;
+		}
+		const { cursorColor, terminalBackgroundColor } = shellAppearanceRef.current;
+		const terminal = ensureDedicatedTerminal({
+			taskId,
+			projectId,
+			cursorColor,
+			terminalBackgroundColor,
+		});
+		terminalRef.current = terminal;
+		setLastError(null);
+		setIsLoading(true);
+		setIsStopping(false);
+		const unsubscribe = terminal.subscribe({
+			onConnectionReady: (connectedTaskId: string) => {
+				setIsLoading(false);
+				callbackRef.current.onConnectionReady?.(connectedTaskId);
+			},
+			onLastError: setLastError,
+			onSummary: (summary: RuntimeTaskSessionSummary) => {
+				callbackRef.current.onSummary?.(projectId, summary);
+			},
+			onExit: (exitTaskId: string, exitCode: number | null) => {
+				callbackRef.current.onExit?.(exitTaskId, exitCode);
+			},
+		});
+		terminal.attachToStageContainer(container);
+		return () => {
+			log.debug("disposing dedicated shell viewer", { taskId, projectId });
+			unsubscribe();
+			if (terminalRef.current === terminal) {
+				terminalRef.current = null;
+			}
+			// Only browser resources are released. The runtime retains the shell
+			// process and output; a fresh viewer restores them on reattachment.
+			disposeDedicatedTerminal(projectId, taskId);
+		};
+	}, [enabled, isVisible, projectId, sessionStartedAt, taskId]);
+
+	useEffect(() => {
+		if (isDedicatedTerminalTaskId(taskId)) {
+			terminalRef.current?.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
+		}
+	}, [autoFocus, cursorColor, enabled, isVisible, projectId, sessionStartedAt, taskId, terminalBackgroundColor]);
+
+	useEffect(() => {
+		if (isDedicatedTerminalTaskId(taskId)) {
+			return;
+		}
+		setIsContentPending(false);
 
 		// Shared task terminals are the pooled agent-terminal path.
 		if (!enabled) {
@@ -277,13 +234,51 @@ export function usePersistentTerminalSession({
 	}, [autoFocus, cursorColor, enabled, isVisible, sessionStartedAt, taskId, terminalBackgroundColor, projectId]);
 
 	useEffect(() => {
-		return registerTerminalController(taskId, {
-			input: (text) => terminalRef.current?.input(text) ?? false,
-			paste: (text) => terminalRef.current?.paste(text) ?? false,
-			focus: () => terminalRef.current?.focus(),
-			waitForLikelyPrompt: async (timeoutMs) => await (terminalRef.current?.waitForLikelyPrompt(timeoutMs) ?? false),
-		});
-	}, [taskId]);
+		if (!projectId || !sessionInstanceId || !enabled || (isDedicatedTerminalTaskId(taskId) && !isVisible)) {
+			return;
+		}
+		const terminal = terminalRef.current;
+		if (!terminal) {
+			return;
+		}
+		let active = true;
+		let ready = false;
+		const unregister = registerTerminalController(
+			taskId,
+			{
+				input: (text) => (active && ready ? terminal.input(text) : false),
+				paste: (text) => (active && ready ? terminal.paste(text) : false),
+				focus: () => {
+					if (active) terminal.focus();
+				},
+				waitForLikelyPrompt: async (timeoutMs) =>
+					active && ready && (await terminal.waitForLikelyPrompt(timeoutMs)) && active && ready,
+			},
+			{ projectId, sessionInstanceId, sessionStartedAt },
+			(onReadyChange) => {
+				let transportReady = false;
+				let transportSessionInstanceId: string | null = null;
+				const updateReadiness = () => {
+					ready = transportReady && transportSessionInstanceId === sessionInstanceId;
+					onReadyChange(ready);
+				};
+				return terminal.subscribe({
+					onSummary: (summary) => {
+						transportSessionInstanceId = summary.sessionInstanceId ?? null;
+						updateReadiness();
+					},
+					onConnectionReady: () => {
+						transportReady = true;
+						updateReadiness();
+					},
+				});
+			},
+		);
+		return () => {
+			active = false;
+			unregister();
+		};
+	}, [enabled, isVisible, projectId, sessionInstanceId, sessionStartedAt, taskId]);
 
 	const stopTerminal = useCallback(async () => {
 		const terminal = terminalRef.current;

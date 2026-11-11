@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyError } from "@/components/app-toaster";
 import { usePreferenceStorageEffect } from "@/hooks/settings/use-preference-storage-effect";
 import {
-	collapseAllDetailPanels,
+	type ShellTerminalIntent,
+	ShellTerminalOperations,
+	type ShellTerminalScope,
+} from "@/hooks/terminal/shell-terminal-operations";
+import {
 	computeTerminalPaneHeight,
-	DEFAULT_DETAIL_TERMINAL_PANEL_STATE,
-	type DetailTerminalPanelState,
 	loadBottomTerminalPaneHeight,
 	persistBottomTerminalPaneHeight as persistPaneHeight,
 	resolveShellTerminalGeometry,
@@ -15,7 +17,16 @@ import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey, removeLocalStorageItem } from "@/storage/local-storage-store";
 import { getDetailTerminalTaskId, HOME_TERMINAL_TASK_ID } from "@/terminal/terminal-constants";
+import {
+	getTerminalControllerAttachment,
+	type TerminalControllerAttachment,
+	waitForTerminalController,
+} from "@/terminal/terminal-controller-registry";
+import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { disposeDedicatedTerminal, writeToTerminalBuffer } from "@/terminal/terminal-pool";
+import type { BoardCard, CardSelection } from "@/types";
 import { createClientLogger } from "@/utils/client-logger";
+import { toErrorMessage } from "@/utils/to-error-message";
 
 export {
 	DETAIL_TERMINAL_TASK_PREFIX,
@@ -23,20 +34,7 @@ export {
 	HOME_TERMINAL_TASK_ID,
 } from "@/terminal/terminal-constants";
 
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
-import { disposeDedicatedTerminal, isTerminalSessionRunning, writeToTerminalBuffer } from "@/terminal/terminal-pool";
-import type { BoardCard, CardSelection } from "@/types";
-import { toErrorMessage } from "@/utils/to-error-message";
-
 const log = createClientLogger("terminal-panels");
-
-function buildShellStopKey(projectId: string, taskId: string): string {
-	return `${projectId}:${taskId}`;
-}
-
-interface StartDetailTerminalOptions {
-	showLoading?: boolean;
-}
 
 interface UseTerminalPanelsInput {
 	currentProjectId: string | null;
@@ -45,6 +43,7 @@ interface UseTerminalPanelsInput {
 	configDefaultBaseRef: string;
 	agentCommand: string | null;
 	shellAutoRestartEnabled: boolean;
+	sessions: Record<string, RuntimeTaskSessionSummary>;
 	findCard: (cardId: string) => BoardCard | null;
 	upsertSession: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	sendTaskSessionInput: (
@@ -54,14 +53,12 @@ interface UseTerminalPanelsInput {
 	) => Promise<{ ok: boolean; message?: string }>;
 }
 
-interface PrepareTerminalForShortcutInput {
-	prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
-}
-
 interface PrepareTerminalForShortcutResult {
-	hadExistingOpenTerminal?: boolean;
+	hadExistingSession?: boolean;
 	ok: boolean;
 	targetTaskId?: string;
+	targetSessionInstanceId?: string;
+	isCurrent?: () => boolean;
 	message?: string;
 }
 
@@ -87,15 +84,52 @@ export interface UseTerminalPanelsResult {
 	handleSendAgentCommandToDetailTerminal: () => void;
 	handleRestartHomeTerminal: () => void;
 	handleRestartDetailTerminal: () => void;
-	prepareTerminalForShortcut: (input: PrepareTerminalForShortcutInput) => Promise<PrepareTerminalForShortcutResult>;
+	prepareTerminalForShortcut: () => Promise<PrepareTerminalForShortcutResult>;
 	resetBottomTerminalLayoutCustomizations: () => void;
 	collapseHomeTerminal: () => void;
 	collapseDetailTerminal: () => void;
 	closeHomeTerminal: () => void;
 	closeDetailTerminal: () => void;
+	terminateHomeTerminal: () => void;
+	terminateDetailTerminal: () => void;
 	resetTerminalPanelsState: () => void;
 	handleShellExit: (taskId: string, exitCode: number | null) => void;
 	cancelPendingRestart: (taskId: string) => void;
+}
+
+interface PanelView {
+	contextVersion: number;
+	revision: number;
+	homeOpen: boolean;
+	detailOpen: boolean;
+	homeExpanded: boolean;
+	detailExpanded: boolean;
+	homeShellBinary: string | null;
+	startingTaskId: string | null;
+}
+
+function emptyPanelView(contextVersion: number, revision = 0): PanelView {
+	return {
+		contextVersion,
+		revision,
+		homeOpen: false,
+		detailOpen: false,
+		homeExpanded: false,
+		detailExpanded: false,
+		homeShellBinary: null,
+		startingTaskId: null,
+	};
+}
+
+interface ShellTarget extends ShellTerminalScope {
+	baseRef: string;
+	projectTaskId?: string;
+}
+
+interface ShellStartResult {
+	summary: RuntimeTaskSessionSummary;
+	hadExistingSession: boolean;
+	intent: ShellTerminalIntent;
 }
 
 export function useTerminalPanels({
@@ -105,620 +139,423 @@ export function useTerminalPanels({
 	configDefaultBaseRef,
 	agentCommand,
 	shellAutoRestartEnabled,
+	sessions,
 	findCard,
 	upsertSession,
 	sendTaskSessionInput,
 }: UseTerminalPanelsInput): UseTerminalPanelsResult {
-	const homeTerminalProjectIdRef = useRef<string | null>(null);
-	const detailTerminalSelectionKeyRef = useRef<string | null>(null);
-	const previousDetailTerminalTaskIdRef = useRef<string | null>(null);
-	const detailTerminalProjectIdByTaskIdRef = useRef<Record<string, string>>({});
+	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card.id) : null;
+	const contextRef = useRef({ projectId: currentProjectId, taskId: detailTerminalTaskId, version: 0 });
+	if (contextRef.current.projectId !== currentProjectId || contextRef.current.taskId !== detailTerminalTaskId) {
+		contextRef.current = {
+			projectId: currentProjectId,
+			taskId: detailTerminalTaskId,
+			version: contextRef.current.version + 1,
+		};
+	}
+	const contextVersion = contextRef.current.version;
+	const [storedView, setStoredView] = useState(() => emptyPanelView(contextVersion));
+	const viewRef = useRef(storedView);
+	if (viewRef.current.contextVersion !== contextVersion) {
+		viewRef.current = emptyPanelView(contextVersion, viewRef.current.revision + 1);
+	}
+	const view = storedView.contextVersion === contextVersion ? storedView : viewRef.current;
+	const operationsRef = useRef(new ShellTerminalOperations());
+	const latestSessionsRef = useRef(sessions);
+	latestSessionsRef.current = sessions;
+	const autoRestartEnabledRef = useRef(shellAutoRestartEnabled);
+	autoRestartEnabledRef.current = shellAutoRestartEnabled;
+	const mountedRef = useRef(true);
 	const cancelPendingRestartRef = useRef<((taskId: string) => void) | null>(null);
-	const suppressNextShellExitRef = useRef<((taskId: string) => void) | null>(null);
-	const clearSuppressedShellExitRef = useRef<((taskId: string) => void) | null>(null);
-	const pendingShellStopsRef = useRef<Map<string, Promise<void>>>(new Map());
-	const [isHomeTerminalOpen, setIsHomeTerminalOpen] = useState(false);
-	const [isHomeTerminalStarting, setIsHomeTerminalStarting] = useState(false);
-	const [homeTerminalShellBinary, setHomeTerminalShellBinary] = useState<string | null>(null);
 	const [lastBottomTerminalPaneHeight, setLastBottomTerminalPaneHeight] = useState<number | undefined>(
 		loadBottomTerminalPaneHeight,
 	);
 	usePreferenceStorageEffect(LocalStorageKey.BottomTerminalPaneHeight, () =>
 		setLastBottomTerminalPaneHeight(loadBottomTerminalPaneHeight()),
 	);
-	const [detailTerminalPanelStateByTaskId, setDetailTerminalPanelStateByTaskId] = useState<
-		Record<string, DetailTerminalPanelState>
-	>({});
-	const detailTerminalPanelStateByTaskIdRef = useRef(detailTerminalPanelStateByTaskId);
-	const [isDetailTerminalStarting, setIsDetailTerminalStarting] = useState(false);
-	const [isHomeTerminalExpanded, setIsHomeTerminalExpanded] = useState(false);
-	const detailTerminalTaskId = selectedCard ? getDetailTerminalTaskId(selectedCard.card.id) : null;
-	const currentDetailTerminalPanelState = detailTerminalTaskId
-		? (detailTerminalPanelStateByTaskId[detailTerminalTaskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE)
-		: DEFAULT_DETAIL_TERMINAL_PANEL_STATE;
-	const isDetailTerminalOpen = currentDetailTerminalPanelState.isOpen;
-	const isDetailTerminalExpanded = currentDetailTerminalPanelState.isExpanded;
-	const homeTerminalPaneHeight = computeTerminalPaneHeight(isHomeTerminalExpanded, lastBottomTerminalPaneHeight);
-	const detailTerminalPaneHeight = computeTerminalPaneHeight(isDetailTerminalExpanded, lastBottomTerminalPaneHeight);
 
-	useEffect(() => {
-		detailTerminalPanelStateByTaskIdRef.current = detailTerminalPanelStateByTaskId;
-	}, [detailTerminalPanelStateByTaskId]);
-
-	const updateDetailTerminalPanelState = useCallback(
-		(taskId: string, updater: (previous: DetailTerminalPanelState) => DetailTerminalPanelState) => {
-			setDetailTerminalPanelStateByTaskId((previous) => ({
-				...previous,
-				[taskId]: updater(previous[taskId] ?? DEFAULT_DETAIL_TERMINAL_PANEL_STATE),
-			}));
-		},
-		[],
-	);
-
-	const persistBottomTerminalPaneHeight = useCallback((height: number | undefined) => {
-		if (typeof height !== "number" || !Number.isFinite(height)) {
-			return;
-		}
-		const normalizedHeight = persistPaneHeight(height);
-		setLastBottomTerminalPaneHeight(normalizedHeight);
+	// Keep immediate intent state as well as render state: multiple actions in one turn must converge.
+	const updateView = useCallback((update: (previous: PanelView) => PanelView) => {
+		viewRef.current = update(viewRef.current);
+		setStoredView(viewRef.current);
 	}, []);
 
+	const isVisible = useCallback((taskId: string): boolean => {
+		const context = contextRef.current;
+		return taskId === HOME_TERMINAL_TASK_ID
+			? context.taskId === null && viewRef.current.homeOpen
+			: context.taskId === taskId && viewRef.current.detailOpen;
+	}, []);
+
+	const isCurrentIntent = useCallback(
+		(intent: ShellTerminalIntent, version: number, taskId: string): boolean =>
+			mountedRef.current &&
+			contextRef.current.version === version &&
+			operationsRef.current.isCurrent(intent) &&
+			isVisible(taskId),
+		[isVisible],
+	);
+
+	// Navigation and browser unmount release only viewers. Runtime PTYs outlive browser attachment.
+	useEffect(() => {
+		const projectId = currentProjectId;
+		const taskId = detailTerminalTaskId;
+		return () => {
+			if (!projectId) return;
+			for (const shellTaskId of [HOME_TERMINAL_TASK_ID, ...(taskId ? [taskId] : [])]) {
+				operationsRef.current.cancel({ projectId, taskId: shellTaskId });
+				cancelPendingRestartRef.current?.(shellTaskId);
+				disposeDedicatedTerminal(projectId, shellTaskId);
+			}
+		};
+	}, [currentProjectId, detailTerminalTaskId]);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			operationsRef.current.cancelAll();
+		};
+	}, []);
+
+	const hideTerminal = useCallback(
+		(taskId: string) => {
+			const projectId = contextRef.current.projectId;
+			if (projectId) {
+				operationsRef.current.cancel({ projectId, taskId });
+				cancelPendingRestartRef.current?.(taskId);
+				disposeDedicatedTerminal(projectId, taskId);
+			}
+			updateView((previous) => ({
+				...previous,
+				revision: previous.revision + 1,
+				...(taskId === HOME_TERMINAL_TASK_ID
+					? { homeOpen: false, homeExpanded: false, homeShellBinary: null }
+					: { detailOpen: false, detailExpanded: false }),
+				startingTaskId: previous.startingTaskId === taskId ? null : previous.startingTaskId,
+			}));
+		},
+		[updateView],
+	);
+	const closeHomeTerminal = useCallback(() => hideTerminal(HOME_TERMINAL_TASK_ID), [hideTerminal]);
+	const closeDetailTerminal = useCallback(() => {
+		const taskId = contextRef.current.taskId;
+		if (taskId) hideTerminal(taskId);
+	}, [hideTerminal]);
+
+	const homeTarget: ShellTarget | null = currentProjectId
+		? {
+				projectId: currentProjectId,
+				taskId: HOME_TERMINAL_TASK_ID,
+				baseRef: projectGit?.currentBranch ?? (configDefaultBaseRef || projectGit?.defaultBranch) ?? "HEAD",
+			}
+		: null;
+	const detailTarget: ShellTarget | null =
+		currentProjectId && selectedCard && detailTerminalTaskId
+			? {
+					projectId: currentProjectId,
+					taskId: detailTerminalTaskId,
+					projectTaskId: selectedCard.card.id,
+					baseRef: selectedCard.card.baseRef,
+				}
+			: null;
+
+	const stopShell = useCallback(async (target: ShellTerminalScope) => {
+		log.info("stopping shell terminal", target);
+		const payload = await getRuntimeTrpcClient(target.projectId).runtime.stopTaskSession.mutate({
+			taskId: target.taskId,
+			waitForExit: true,
+		});
+		if (
+			!payload.ok ||
+			payload.didExit !== true ||
+			(payload.outcome !== "exited" && payload.outcome !== "not_running")
+		) {
+			throw new Error(payload.error ?? "Could not confirm that the terminal session stopped. Try again.");
+		}
+		return payload.summary;
+	}, []);
+
+	const startTerminal = useCallback(
+		(
+			target: ShellTarget,
+			options: {
+				restart?: boolean;
+				expectedExitedSessionInstanceId?: string;
+				recoveryAttachment?: TerminalControllerAttachment;
+			} = {},
+		): Promise<ShellStartResult | null> => {
+			const context = contextRef.current;
+			if (
+				context.projectId !== target.projectId ||
+				(target.taskId === HOME_TERMINAL_TASK_ID ? context.taskId !== null : context.taskId !== target.taskId)
+			)
+				return Promise.resolve(null);
+			const version = context.version;
+			const intent = operationsRef.current.begin(target);
+			cancelPendingRestartRef.current?.(target.taskId);
+			updateView((previous) => ({
+				...previous,
+				revision: previous.revision + 1,
+				...(target.taskId === HOME_TERMINAL_TASK_ID ? { homeOpen: true } : { detailOpen: true }),
+				startingTaskId: target.taskId,
+			}));
+			const isCurrentUiIntent = () => isCurrentIntent(intent, version, target.taskId);
+			const isCurrent = () =>
+				isCurrentUiIntent() &&
+				(!options.recoveryAttachment ||
+					(autoRestartEnabledRef.current &&
+						!options.recoveryAttachment.signal.aborted &&
+						getTerminalControllerAttachment(target.taskId, {
+							projectId: target.projectId,
+							sessionInstanceId: options.expectedExitedSessionInstanceId,
+						}) === options.recoveryAttachment));
+			return operationsRef.current
+				.run(target, async () => {
+					if (!isCurrent()) return null;
+					if (options.restart) {
+						const summary = await stopShell(target);
+						if (!isCurrent()) return null;
+						if (summary) upsertSession(target.projectId, summary);
+					}
+					const geometry = await resolveShellTerminalGeometry(target.taskId);
+					if (!isCurrent()) return null;
+					log.info("starting or reattaching shell terminal", target);
+					const payload = await getRuntimeTrpcClient(target.projectId).runtime.startShellSession.mutate({
+						taskId: target.taskId,
+						cols: geometry.cols,
+						rows: geometry.rows,
+						baseRef: target.baseRef,
+						...(target.projectTaskId ? { projectTaskId: target.projectTaskId } : {}),
+						...(options.expectedExitedSessionInstanceId
+							? { expectedExitedSessionInstanceId: options.expectedExitedSessionInstanceId }
+							: {}),
+					});
+					if (!isCurrent()) return null;
+					if (!payload.ok || !payload.summary) {
+						throw new Error(payload.error ?? "Could not start terminal session.");
+					}
+					latestSessionsRef.current = { ...latestSessionsRef.current, [target.taskId]: payload.summary };
+					upsertSession(target.projectId, payload.summary);
+					if (target.taskId === HOME_TERMINAL_TASK_ID) {
+						updateView((previous) => ({
+							...previous,
+							homeShellBinary:
+								typeof payload.shellBinary === "string" && payload.shellBinary.trim()
+									? payload.shellBinary
+									: null,
+						}));
+					}
+					return { summary: payload.summary, hadExistingSession: payload.hadExistingSession, intent };
+				})
+				.catch((error: unknown) => {
+					if (isCurrent()) notifyError(toErrorMessage(error));
+					return null;
+				})
+				.finally(() => {
+					if (isCurrentUiIntent()) updateView((previous) => ({ ...previous, startingTaskId: null }));
+				});
+		},
+		[isCurrentIntent, stopShell, updateView, upsertSession],
+	);
+
+	const handleToggleHomeTerminal = useCallback(() => {
+		if (viewRef.current.homeOpen) closeHomeTerminal();
+		else if (homeTarget) void startTerminal(homeTarget);
+	}, [closeHomeTerminal, homeTarget, startTerminal]);
+	const handleToggleDetailTerminal = useCallback(() => {
+		if (viewRef.current.detailOpen) closeDetailTerminal();
+		else if (detailTarget) void startTerminal(detailTarget);
+	}, [closeDetailTerminal, detailTarget, startTerminal]);
+
+	const terminateTerminal = useCallback(
+		(target: ShellTarget | null) => {
+			if (!target) return;
+			const version = contextRef.current.version;
+			hideTerminal(target.taskId);
+			// Even if navigation follows, explicit termination must finish for its original project/task.
+			void operationsRef.current
+				.run(target, () => stopShell(target))
+				.then((summary) => {
+					if (summary && mountedRef.current && contextRef.current.version === version) {
+						upsertSession(target.projectId, summary);
+					}
+				})
+				.catch((error: unknown) => notifyError(toErrorMessage(error)));
+		},
+		[hideTerminal, stopShell, upsertSession],
+	);
+	const terminateHomeTerminal = useCallback(() => terminateTerminal(homeTarget), [homeTarget, terminateTerminal]);
+	const terminateDetailTerminal = useCallback(
+		() => terminateTerminal(detailTarget),
+		[detailTarget, terminateTerminal],
+	);
+	const handleRestartHomeTerminal = useCallback(() => {
+		if (homeTarget && isVisible(homeTarget.taskId)) void startTerminal(homeTarget, { restart: true });
+	}, [homeTarget, isVisible, startTerminal]);
+	const handleRestartDetailTerminal = useCallback(() => {
+		if (detailTarget && isVisible(detailTarget.taskId)) void startTerminal(detailTarget, { restart: true });
+	}, [detailTarget, isVisible, startTerminal]);
+
+	const { handleShellExit, cancelPendingRestart } = useShellAutoRestart({
+		projectId: currentProjectId,
+		shellAutoRestartEnabled,
+		scopeKey: JSON.stringify([currentProjectId, detailTerminalTaskId, contextVersion, view.revision]),
+		restartHomeTerminal: (expectedExitedSessionInstanceId, recoveryAttachment) =>
+			homeTarget && isVisible(homeTarget.taskId)
+				? startTerminal(homeTarget, { expectedExitedSessionInstanceId, recoveryAttachment }).then(
+						(result) => result !== null,
+					)
+				: Promise.resolve(false),
+		restartDetailTerminal: (cardId, expectedExitedSessionInstanceId, recoveryAttachment) =>
+			detailTarget &&
+			findCard(cardId) &&
+			detailTerminalTaskId === getDetailTerminalTaskId(cardId) &&
+			isVisible(detailTarget.taskId)
+				? startTerminal(detailTarget, { expectedExitedSessionInstanceId, recoveryAttachment }).then(
+						(result) => result !== null,
+					)
+				: Promise.resolve(false),
+		writeToTerminal: (taskId, message) => {
+			if (currentProjectId) writeToTerminalBuffer(currentProjectId, taskId, message);
+		},
+		getTerminalAttachment: (taskId, sessionInstanceId) =>
+			currentProjectId !== null && isVisible(taskId)
+				? getTerminalControllerAttachment(taskId, { projectId: currentProjectId, sessionInstanceId })
+				: null,
+		getSessionSummary: (taskId) => sessions[taskId] ?? null,
+	});
+	cancelPendingRestartRef.current = cancelPendingRestart;
+
+	const prepareTerminalForShortcut = useCallback(async () => {
+		const target = selectedCard ? detailTarget : homeTarget;
+		if (!target) return { ok: false, message: "Select a project first." };
+		const version = contextRef.current.version;
+		const viewerWasOpen = isVisible(target.taskId);
+		const existingSummary = latestSessionsRef.current[target.taskId];
+		const shouldStart =
+			!viewerWasOpen || viewRef.current.startingTaskId === target.taskId || existingSummary?.pid == null;
+		const started =
+			shouldStart || !existingSummary
+				? startTerminal(target)
+				: Promise.resolve({
+						summary: existingSummary,
+						hadExistingSession: true,
+						intent: operationsRef.current.begin(target),
+					});
+		const revision = viewRef.current.revision;
+		const stillCurrent = () =>
+			mountedRef.current &&
+			contextRef.current.version === version &&
+			viewRef.current.revision === revision &&
+			isVisible(target.taskId);
+		const startResult = await started;
+		if (!startResult || !stillCurrent()) {
+			return { ok: false, message: "Terminal preparation was cancelled." };
+		}
+		const targetSessionInstanceId = startResult.summary.sessionInstanceId;
+		if (!targetSessionInstanceId) return { ok: false, message: "Terminal scope is unavailable." };
+		if (startResult.summary.pid === null) return { ok: false, message: "Terminal session is not running." };
+		const targetSessionStartedAt = startResult.summary.startedAt ?? null;
+		const isCurrentSession = () =>
+			stillCurrent() &&
+			operationsRef.current.isCurrent(startResult.intent) &&
+			latestSessionsRef.current[target.taskId]?.sessionInstanceId === targetSessionInstanceId &&
+			(latestSessionsRef.current[target.taskId]?.startedAt ?? null) === targetSessionStartedAt &&
+			latestSessionsRef.current[target.taskId]?.pid != null;
+		const scope = {
+			projectId: target.projectId,
+			sessionInstanceId: targetSessionInstanceId,
+			sessionStartedAt: targetSessionStartedAt,
+		};
+		const attachment = await waitForTerminalController(target.taskId, scope, {
+			signal: startResult.intent.signal,
+			isCurrent: isCurrentSession,
+		});
+		if (!isCurrentSession()) return { ok: false, message: "Terminal preparation was cancelled." };
+		if (!attachment?.ready || attachment.signal.aborted) return { ok: false, message: "Terminal is not connected." };
+		return {
+			hadExistingSession: startResult.hadExistingSession,
+			ok: true,
+			targetTaskId: target.taskId,
+			targetSessionInstanceId,
+			isCurrent: () =>
+				isCurrentSession() &&
+				attachment.ready &&
+				!attachment.signal.aborted &&
+				getTerminalControllerAttachment(target.taskId, scope) === attachment,
+		};
+	}, [detailTarget, homeTarget, isVisible, selectedCard, startTerminal]);
+
+	const persistBottomTerminalPaneHeight = useCallback((height: number | undefined) => {
+		if (typeof height === "number" && Number.isFinite(height)) {
+			setLastBottomTerminalPaneHeight(persistPaneHeight(height));
+		}
+	}, []);
 	const resetBottomTerminalPaneHeight = useCallback(() => {
 		setLastBottomTerminalPaneHeight(undefined);
 		removeLocalStorageItem(LocalStorageKey.BottomTerminalPaneHeight);
 	}, []);
-
 	const resetBottomTerminalLayoutCustomizations = useCallback(() => {
 		resetBottomTerminalPaneHeight();
-		setIsHomeTerminalExpanded(false);
-		setDetailTerminalPanelStateByTaskId(collapseAllDetailPanels);
-	}, [resetBottomTerminalPaneHeight]);
-
-	const waitForPendingShellStop = useCallback(async (projectId: string, taskId: string): Promise<void> => {
-		const pendingStop = pendingShellStopsRef.current.get(buildShellStopKey(projectId, taskId));
-		if (!pendingStop) {
-			return;
-		}
-		// This replaces the old "preserve selection ref" guard: reopening a shell
-		// must wait for the previous PTY stop to finish so startShellSession cannot
-		// observe a still-live process and return the session we're trying to close.
-		log.debug("waiting for previous shell stop before starting", { projectId, taskId });
-		await pendingStop.catch(() => {});
-	}, []);
-
-	const stopShellTerminalSession = useCallback(
-		async ({
-			projectId,
-			reason,
-			taskId,
-			waitForExit,
-		}: {
-			projectId: string;
-			reason: string;
-			taskId: string;
-			waitForExit: boolean;
-		}): Promise<void> => {
-			const stopKey = buildShellStopKey(projectId, taskId);
-			const pendingStop = pendingShellStopsRef.current.get(stopKey);
-			if (pendingStop) {
-				log.debug("shell terminal stop already pending", { projectId, taskId, reason });
-				await pendingStop;
-				return;
-			}
-			cancelPendingRestartRef.current?.(taskId);
-			suppressNextShellExitRef.current?.(taskId);
-			// Shell close/context-switch is an ownership boundary, not a
-			// minimize action. Dispose the browser-side dedicated xterm slot
-			// before stopping the PTY so closed shells do not leave parked
-			// xterm instances, WebGL contexts, sockets, or helper textareas alive.
-			disposeDedicatedTerminal(projectId, taskId);
-			const trpcClient = getRuntimeTrpcClient(projectId);
-			const stopPromise = (async () => {
-				try {
-					log.info("stopping shell terminal", { projectId, taskId, reason, waitForExit });
-					const payload = await trpcClient.runtime.stopTaskSession.mutate({ taskId, waitForExit });
-					if (!payload.ok) {
-						throw new Error(payload.error ?? "Could not stop terminal session.");
-					}
-					if (payload.summary) {
-						upsertSession(projectId, payload.summary);
-					}
-				} finally {
-					clearSuppressedShellExitRef.current?.(taskId);
-				}
-			})();
-			pendingShellStopsRef.current.set(stopKey, stopPromise);
-			const clearPendingStop = () => {
-				if (pendingShellStopsRef.current.get(stopKey) === stopPromise) {
-					pendingShellStopsRef.current.delete(stopKey);
-				}
-			};
-			void stopPromise.then(clearPendingStop, clearPendingStop);
-			await stopPromise;
-		},
-		[upsertSession],
-	);
-
-	const stopShellTerminalSessionInBackground = useCallback(
-		(input: { projectId: string; reason: string; taskId: string; waitForExit: boolean }) => {
-			void stopShellTerminalSession(input).catch((error) => {
-				log.warn("failed to stop shell terminal", {
-					projectId: input.projectId,
-					taskId: input.taskId,
-					reason: input.reason,
-					error: toErrorMessage(error),
-				});
-			});
-		},
-		[stopShellTerminalSession],
-	);
-
-	const closeHomeTerminal = useCallback(() => {
-		// Only stop the backing PTY when we actually opened one for a project.
-		// The ref is populated when the home shell starts; a null ref means the
-		// terminal was never opened (e.g. during project-switch reset), so there
-		// is nothing to stop and asking the runtime to stop it would be a no-op
-		// that surfaces as a "no session" failure.
-		const projectId = homeTerminalProjectIdRef.current;
-		setIsHomeTerminalOpen(false);
-		setIsHomeTerminalExpanded(false);
-		setHomeTerminalShellBinary(null);
-		homeTerminalProjectIdRef.current = null;
-		if (projectId) {
-			stopShellTerminalSessionInBackground({
-				projectId,
-				taskId: HOME_TERMINAL_TASK_ID,
-				reason: "close",
-				waitForExit: true,
-			});
-		}
-	}, [stopShellTerminalSessionInBackground]);
-
-	const closeDetailTerminalByTaskId = useCallback(
-		(taskId: string, reason = "close") => {
-			const wasOpen = detailTerminalPanelStateByTaskIdRef.current[taskId]?.isOpen === true;
-			updateDetailTerminalPanelState(taskId, () => DEFAULT_DETAIL_TERMINAL_PANEL_STATE);
-			const projectId = detailTerminalProjectIdByTaskIdRef.current[taskId] ?? (wasOpen ? currentProjectId : null);
-			delete detailTerminalProjectIdByTaskIdRef.current[taskId];
-			if (detailTerminalTaskId === taskId) {
-				detailTerminalSelectionKeyRef.current = null;
-			}
-			if (projectId) {
-				stopShellTerminalSessionInBackground({ projectId, taskId, reason, waitForExit: true });
-			}
-		},
-		[currentProjectId, detailTerminalTaskId, stopShellTerminalSessionInBackground, updateDetailTerminalPanelState],
-	);
-
-	const closeDetailTerminal = useCallback(() => {
-		if (!detailTerminalTaskId) {
-			detailTerminalSelectionKeyRef.current = null;
-			return;
-		}
-		closeDetailTerminalByTaskId(detailTerminalTaskId);
-	}, [closeDetailTerminalByTaskId, detailTerminalTaskId]);
-
+		updateView((previous) => ({ ...previous, homeExpanded: false, detailExpanded: false }));
+	}, [resetBottomTerminalPaneHeight, updateView]);
 	const collapseHomeTerminal = useCallback(() => {
 		resetBottomTerminalPaneHeight();
 		closeHomeTerminal();
 	}, [closeHomeTerminal, resetBottomTerminalPaneHeight]);
-
 	const collapseDetailTerminal = useCallback(() => {
 		resetBottomTerminalPaneHeight();
 		closeDetailTerminal();
 	}, [closeDetailTerminal, resetBottomTerminalPaneHeight]);
-
 	const setHomeTerminalPaneHeight = useCallback(
 		(height: number | undefined) => {
-			if (isHomeTerminalExpanded) {
-				return;
-			}
-			persistBottomTerminalPaneHeight(height);
+			if (!viewRef.current.homeExpanded) persistBottomTerminalPaneHeight(height);
 		},
-		[isHomeTerminalExpanded, persistBottomTerminalPaneHeight],
+		[persistBottomTerminalPaneHeight],
 	);
-
 	const setDetailTerminalPaneHeight = useCallback(
 		(height: number | undefined) => {
-			if (isDetailTerminalExpanded) {
-				return;
-			}
-			persistBottomTerminalPaneHeight(height);
+			if (!viewRef.current.detailExpanded) persistBottomTerminalPaneHeight(height);
 		},
-		[isDetailTerminalExpanded, persistBottomTerminalPaneHeight],
+		[persistBottomTerminalPaneHeight],
 	);
-
 	const handleToggleExpandHomeTerminal = useCallback(() => {
-		setIsHomeTerminalExpanded((previous) => !previous);
-	}, []);
-
+		updateView((previous) => ({ ...previous, homeExpanded: !previous.homeExpanded }));
+	}, [updateView]);
 	const handleToggleExpandDetailTerminal = useCallback(() => {
-		if (!detailTerminalTaskId) {
-			return;
+		if (contextRef.current.taskId) {
+			updateView((previous) => ({ ...previous, detailExpanded: !previous.detailExpanded }));
 		}
-		updateDetailTerminalPanelState(detailTerminalTaskId, (previous) => ({
-			...previous,
-			isExpanded: !previous.isExpanded,
-		}));
-	}, [detailTerminalTaskId, updateDetailTerminalPanelState]);
-
-	const startHomeTerminalSession = useCallback(async (): Promise<boolean> => {
-		if (!currentProjectId) {
-			return false;
-		}
-		setIsHomeTerminalStarting(true);
-		try {
-			homeTerminalProjectIdRef.current = currentProjectId;
-			await waitForPendingShellStop(currentProjectId, HOME_TERMINAL_TASK_ID);
-			const geometry = await resolveShellTerminalGeometry(HOME_TERMINAL_TASK_ID);
-			const trpcClient = getRuntimeTrpcClient(currentProjectId);
-			log.info("starting home shell terminal", { projectId: currentProjectId, taskId: HOME_TERMINAL_TASK_ID });
-			const payload = await trpcClient.runtime.startShellSession.mutate({
-				taskId: HOME_TERMINAL_TASK_ID,
-				cols: geometry.cols,
-				rows: geometry.rows,
-				baseRef: projectGit?.currentBranch ?? (configDefaultBaseRef || projectGit?.defaultBranch) ?? "HEAD",
-			});
-			if (!payload.ok || !payload.summary) {
-				throw new Error(payload.error ?? "Could not start terminal session.");
-			}
-			upsertSession(currentProjectId, payload.summary);
-			setHomeTerminalShellBinary(
-				typeof payload.shellBinary === "string" && payload.shellBinary.trim() ? payload.shellBinary : null,
-			);
-			return true;
-		} catch (error) {
-			const message = toErrorMessage(error);
-			notifyError(message);
-			return false;
-		} finally {
-			setIsHomeTerminalStarting(false);
-		}
-	}, [
-		configDefaultBaseRef,
-		currentProjectId,
-		upsertSession,
-		projectGit?.currentBranch,
-		projectGit?.defaultBranch,
-		waitForPendingShellStop,
-	]);
-
-	const handleToggleHomeTerminal = useCallback(() => {
-		if (isHomeTerminalOpen) {
-			closeHomeTerminal();
-			return;
-		}
-		if (!currentProjectId) {
-			return;
-		}
-		homeTerminalProjectIdRef.current = currentProjectId;
-		setIsHomeTerminalOpen(true);
-		void startHomeTerminalSession();
-	}, [closeHomeTerminal, currentProjectId, isHomeTerminalOpen, startHomeTerminalSession]);
-
-	const startDetailTerminalForCard = useCallback(
-		async (card: BoardCard, options?: StartDetailTerminalOptions): Promise<boolean> => {
-			if (!currentProjectId) {
-				return false;
-			}
-			const showLoading = options?.showLoading ?? false;
-			if (showLoading) {
-				setIsDetailTerminalStarting(true);
-			}
-			try {
-				const targetTaskId = getDetailTerminalTaskId(card.id);
-				detailTerminalProjectIdByTaskIdRef.current[targetTaskId] = currentProjectId;
-				await waitForPendingShellStop(currentProjectId, targetTaskId);
-				const geometry = await resolveShellTerminalGeometry(targetTaskId);
-				const trpcClient = getRuntimeTrpcClient(currentProjectId);
-				log.info("starting detail shell terminal", {
-					projectId: currentProjectId,
-					taskId: targetTaskId,
-					projectTaskId: card.id,
-				});
-				const payload = await trpcClient.runtime.startShellSession.mutate({
-					taskId: targetTaskId,
-					cols: geometry.cols,
-					rows: geometry.rows,
-					projectTaskId: card.id,
-					baseRef: card.baseRef,
-				});
-				if (!payload.ok || !payload.summary) {
-					throw new Error(payload.error ?? "Could not start detail terminal session.");
-				}
-				upsertSession(currentProjectId, payload.summary);
-				return true;
-			} catch (error) {
-				const message = toErrorMessage(error);
-				notifyError(message);
-				return false;
-			} finally {
-				if (showLoading) {
-					setIsDetailTerminalStarting(false);
-				}
-			}
-		},
-		[currentProjectId, upsertSession, waitForPendingShellStop],
-	);
-
-	const handleToggleDetailTerminal = useCallback(() => {
-		if (!selectedCard) {
-			return;
-		}
-		const targetTaskId = getDetailTerminalTaskId(selectedCard.card.id);
-		if (isDetailTerminalOpen) {
-			closeDetailTerminal();
-			return;
-		}
-		updateDetailTerminalPanelState(targetTaskId, (previous) => ({
-			...previous,
-			isOpen: true,
-		}));
-		void (async () => {
-			const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef}`;
-			detailTerminalSelectionKeyRef.current = selectionKey;
-			const started = await startDetailTerminalForCard(selectedCard.card, { showLoading: true });
-			if (!started && detailTerminalSelectionKeyRef.current === selectionKey) {
-				detailTerminalSelectionKeyRef.current = null;
-			}
-		})();
-	}, [
-		closeDetailTerminal,
-		isDetailTerminalOpen,
-		selectedCard,
-		startDetailTerminalForCard,
-		updateDetailTerminalPanelState,
-	]);
-
-	useEffect(() => {
-		const previousTaskId = previousDetailTerminalTaskIdRef.current;
-		const previousTaskHadShell =
-			previousTaskId !== null &&
-			(detailTerminalPanelStateByTaskIdRef.current[previousTaskId]?.isOpen === true ||
-				detailTerminalProjectIdByTaskIdRef.current[previousTaskId] !== undefined);
-		if (previousTaskId && previousTaskId !== detailTerminalTaskId && previousTaskHadShell) {
-			closeDetailTerminalByTaskId(previousTaskId, "context-change");
-		}
-		previousDetailTerminalTaskIdRef.current = detailTerminalTaskId;
-	}, [closeDetailTerminalByTaskId, detailTerminalTaskId]);
-
-	useEffect(() => {
-		if (selectedCard && isHomeTerminalOpen) {
-			closeHomeTerminal();
-		}
-	}, [closeHomeTerminal, isHomeTerminalOpen, selectedCard]);
-
-	useEffect(() => {
-		if (!isDetailTerminalOpen || !selectedCard) {
-			if (!selectedCard) {
-				detailTerminalSelectionKeyRef.current = null;
-			}
-			return;
-		}
-		const selectionKey = `${selectedCard.card.id}:${selectedCard.card.baseRef}`;
-		if (detailTerminalSelectionKeyRef.current === selectionKey) {
-			return;
-		}
-		detailTerminalSelectionKeyRef.current = selectionKey;
-		void startDetailTerminalForCard(selectedCard.card);
-	}, [isDetailTerminalOpen, selectedCard?.card.baseRef, selectedCard?.card.id, startDetailTerminalForCard]);
-
-	useEffect(() => {
-		if (!isHomeTerminalOpen) {
-			homeTerminalProjectIdRef.current = null;
-			return;
-		}
-		if (!currentProjectId || homeTerminalProjectIdRef.current === currentProjectId) {
-			return;
-		}
-		const previousProjectId = homeTerminalProjectIdRef.current;
-		if (previousProjectId) {
-			stopShellTerminalSessionInBackground({
-				projectId: previousProjectId,
-				taskId: HOME_TERMINAL_TASK_ID,
-				reason: "project-change",
-				waitForExit: true,
-			});
-		}
-		homeTerminalProjectIdRef.current = currentProjectId;
-		void (async () => {
-			const started = await startHomeTerminalSession();
-			if (!started) {
-				closeHomeTerminal();
-			}
-		})();
-	}, [
-		closeHomeTerminal,
-		currentProjectId,
-		isHomeTerminalOpen,
-		startHomeTerminalSession,
-		stopShellTerminalSessionInBackground,
-	]);
-
-	const restartTerminal = useCallback(
-		(taskId: string, startFn: () => Promise<boolean>) => {
-			const projectId =
-				taskId === HOME_TERMINAL_TASK_ID
-					? (homeTerminalProjectIdRef.current ?? currentProjectId)
-					: (detailTerminalProjectIdByTaskIdRef.current[taskId] ?? currentProjectId);
-			if (!projectId) {
-				return;
-			}
-			cancelPendingRestartRef.current?.(taskId);
-			void (async () => {
-				await stopShellTerminalSession({ projectId, taskId, reason: "restart", waitForExit: true });
-				await startFn();
-			})().catch(notifyError);
-		},
-		[currentProjectId, stopShellTerminalSession],
-	);
-
-	const handleRestartHomeTerminal = useCallback(() => {
-		restartTerminal(HOME_TERMINAL_TASK_ID, startHomeTerminalSession);
-	}, [restartTerminal, startHomeTerminalSession]);
-
-	const handleRestartDetailTerminal = useCallback(() => {
-		if (!selectedCard) {
-			return;
-		}
-		const card = selectedCard.card;
-		const targetTaskId = getDetailTerminalTaskId(card.id);
-		restartTerminal(targetTaskId, () => startDetailTerminalForCard(card));
-	}, [restartTerminal, selectedCard, startDetailTerminalForCard]);
-
-	const handleRestartDetailTerminalById = useCallback(
-		(cardId: string) => {
-			const card = findCard(cardId);
-			if (!card) {
-				console.warn(`[shell-auto-restart] Could not find card for id: ${cardId}`);
-				return;
-			}
-			const targetTaskId = getDetailTerminalTaskId(cardId);
-			restartTerminal(targetTaskId, () => startDetailTerminalForCard(card));
-		},
-		[findCard, restartTerminal, startDetailTerminalForCard],
-	);
-
-	const { handleShellExit, cancelPendingRestart, suppressNextExit, clearSuppressedExit } = useShellAutoRestart({
-		shellAutoRestartEnabled,
-		restartHomeTerminal: handleRestartHomeTerminal,
-		restartDetailTerminal: handleRestartDetailTerminalById,
-		writeToTerminal: (taskId, msg) => {
-			if (currentProjectId) {
-				writeToTerminalBuffer(currentProjectId, taskId, msg);
-			}
-		},
-		isSessionRunning: (taskId) => (currentProjectId ? isTerminalSessionRunning(currentProjectId, taskId) : false),
-	});
-	cancelPendingRestartRef.current = cancelPendingRestart;
-	suppressNextShellExitRef.current = suppressNextExit;
-	clearSuppressedShellExitRef.current = clearSuppressedExit;
-
-	const handleSendAgentCommandToHomeTerminal = useCallback(() => {
-		if (!agentCommand) {
-			return;
-		}
-		void sendTaskSessionInput(HOME_TERMINAL_TASK_ID, agentCommand, { intent: "submit", appendNewline: true });
-	}, [agentCommand, sendTaskSessionInput]);
-
-	const handleSendAgentCommandToDetailTerminal = useCallback(() => {
-		if (!agentCommand || !selectedCard) {
-			return;
-		}
-		const terminalTaskId = getDetailTerminalTaskId(selectedCard.card.id);
-		void sendTaskSessionInput(terminalTaskId, agentCommand, { intent: "submit", appendNewline: true });
-	}, [agentCommand, selectedCard, sendTaskSessionInput]);
-
-	const prepareTerminalForShortcut = useCallback(
-		async ({ prepareWaitForTerminalConnectionReady }: PrepareTerminalForShortcutInput) => {
-			let targetTaskId = HOME_TERMINAL_TASK_ID;
-			let hadExistingOpenTerminal = false;
-			let shouldWaitForConnection = false;
-			let waitForTerminalConnectionReady: (() => Promise<void>) | null = null;
-			const activeSelection = selectedCard;
-			if (activeSelection) {
-				targetTaskId = getDetailTerminalTaskId(activeSelection.card.id);
-				const selectionKey = `${activeSelection.card.id}:${activeSelection.card.baseRef}`;
-				const detailWasAlreadyOpenForSelection =
-					isDetailTerminalOpen && detailTerminalSelectionKeyRef.current === selectionKey;
-				hadExistingOpenTerminal = detailWasAlreadyOpenForSelection;
-				shouldWaitForConnection = !detailWasAlreadyOpenForSelection;
-				if (shouldWaitForConnection) {
-					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(targetTaskId);
-					detailTerminalSelectionKeyRef.current = selectionKey;
-					updateDetailTerminalPanelState(targetTaskId, (previous) => ({
-						...previous,
-						isOpen: true,
-					}));
-					const started = await startDetailTerminalForCard(activeSelection.card, { showLoading: true });
-					if (!started) {
-						if (detailTerminalSelectionKeyRef.current === selectionKey) {
-							detailTerminalSelectionKeyRef.current = null;
-						}
-						return {
-							ok: false,
-							message: "Could not open detail terminal.",
-						} satisfies PrepareTerminalForShortcutResult;
-					}
-				}
-			} else {
-				const homeWasAlreadyOpenForProject =
-					isHomeTerminalOpen && homeTerminalProjectIdRef.current === currentProjectId;
-				hadExistingOpenTerminal = homeWasAlreadyOpenForProject;
-				shouldWaitForConnection = !homeWasAlreadyOpenForProject;
-				if (shouldWaitForConnection) {
-					waitForTerminalConnectionReady = prepareWaitForTerminalConnectionReady(HOME_TERMINAL_TASK_ID);
-					homeTerminalProjectIdRef.current = currentProjectId;
-					setIsHomeTerminalOpen(true);
-					const started = await startHomeTerminalSession();
-					if (!started) {
-						closeHomeTerminal();
-						return {
-							ok: false,
-							message: "Could not open terminal.",
-						} satisfies PrepareTerminalForShortcutResult;
-					}
-				}
-			}
-
-			if (shouldWaitForConnection && waitForTerminalConnectionReady) {
-				await waitForTerminalConnectionReady();
-			}
-
-			return {
-				hadExistingOpenTerminal,
-				ok: true,
-				targetTaskId,
-			} satisfies PrepareTerminalForShortcutResult;
-		},
-		[
-			closeHomeTerminal,
-			currentProjectId,
-			isDetailTerminalOpen,
-			isHomeTerminalOpen,
-			selectedCard,
-			startDetailTerminalForCard,
-			startHomeTerminalSession,
-			updateDetailTerminalPanelState,
-		],
-	);
-
-	const closeAllDetailTerminals = useCallback(
-		(reason: string) => {
-			const taskIds = new Set<string>([
-				...Object.keys(detailTerminalPanelStateByTaskIdRef.current),
-				...Object.keys(detailTerminalProjectIdByTaskIdRef.current),
-			]);
-			for (const taskId of taskIds) {
-				closeDetailTerminalByTaskId(taskId, reason);
-			}
-			detailTerminalProjectIdByTaskIdRef.current = {};
-			detailTerminalSelectionKeyRef.current = null;
-			setDetailTerminalPanelStateByTaskId({});
-		},
-		[closeDetailTerminalByTaskId],
-	);
-
+	}, [updateView]);
 	const resetTerminalPanelsState = useCallback(() => {
 		closeHomeTerminal();
-		setIsHomeTerminalStarting(false);
-		setHomeTerminalShellBinary(null);
-		closeAllDetailTerminals("reset");
-		setIsDetailTerminalStarting(false);
-	}, [closeAllDetailTerminals, closeHomeTerminal]);
+		closeDetailTerminal();
+		updateView((previous) => emptyPanelView(contextRef.current.version, previous.revision + 1));
+	}, [closeDetailTerminal, closeHomeTerminal, updateView]);
+	const handleSendAgentCommandToHomeTerminal = useCallback(() => {
+		if (agentCommand) {
+			void sendTaskSessionInput(HOME_TERMINAL_TASK_ID, agentCommand, { intent: "submit", appendNewline: true });
+		}
+	}, [agentCommand, sendTaskSessionInput]);
+	const handleSendAgentCommandToDetailTerminal = useCallback(() => {
+		if (agentCommand && detailTerminalTaskId) {
+			void sendTaskSessionInput(detailTerminalTaskId, agentCommand, { intent: "submit", appendNewline: true });
+		}
+	}, [agentCommand, detailTerminalTaskId, sendTaskSessionInput]);
 
 	return {
 		homeTerminalTaskId: HOME_TERMINAL_TASK_ID,
-		isHomeTerminalOpen,
-		isHomeTerminalStarting,
-		homeTerminalShellBinary,
-		homeTerminalPaneHeight,
-		isDetailTerminalOpen,
+		isHomeTerminalOpen: view.homeOpen,
+		isHomeTerminalStarting: view.startingTaskId === HOME_TERMINAL_TASK_ID,
+		homeTerminalShellBinary: view.homeShellBinary,
+		homeTerminalPaneHeight: computeTerminalPaneHeight(view.homeExpanded, lastBottomTerminalPaneHeight),
+		isDetailTerminalOpen: view.detailOpen,
 		detailTerminalTaskId,
-		isDetailTerminalStarting,
-		detailTerminalPaneHeight,
-		isHomeTerminalExpanded,
-		isDetailTerminalExpanded,
+		isDetailTerminalStarting: detailTerminalTaskId !== null && view.startingTaskId === detailTerminalTaskId,
+		detailTerminalPaneHeight: computeTerminalPaneHeight(view.detailExpanded, lastBottomTerminalPaneHeight),
+		isHomeTerminalExpanded: view.homeExpanded,
+		isDetailTerminalExpanded: view.detailExpanded,
 		setHomeTerminalPaneHeight,
 		setDetailTerminalPaneHeight,
 		handleToggleExpandHomeTerminal,
@@ -735,6 +572,8 @@ export function useTerminalPanels({
 		collapseDetailTerminal,
 		closeHomeTerminal,
 		closeDetailTerminal,
+		terminateHomeTerminal,
+		terminateDetailTerminal,
 		resetTerminalPanelsState,
 		handleShellExit,
 		cancelPendingRestart,

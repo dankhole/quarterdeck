@@ -205,6 +205,25 @@ async function writeShellProof(
 	throw new Error("Manual shell PTY input did not produce its exact synthetic disk marker.");
 }
 
+/** Viewer disposal may change the slot, but must not replace the manual shell. */
+export function assertDesktopManualShellProcessPreserved(
+	before: DesktopManualShellIdentity,
+	after: DesktopManualShellSnapshot,
+): void {
+	if (
+		after.session?.taskId !== before.taskId ||
+		after.session.sessionInstanceId !== before.sessionInstanceId ||
+		after.session.startedAt !== before.startedAt ||
+		after.session.sessionLaunchPath !== before.cwd ||
+		after.session.pid !== before.process.pid ||
+		after.session.agentId !== null ||
+		after.session.state !== "running" ||
+		!after.process ||
+		!sameDesktopProcess(before.process, after.process)
+	)
+		throw new Error("Hiding or reattaching the manual shell replaced its exact process or session.");
+}
+
 export function validateDesktopManualShellSelection(options: {
 	includeAgent?: boolean;
 	showWindow?: boolean;
@@ -364,10 +383,25 @@ export async function exerciseDesktopManualShells(page: Page, driver: DesktopLab
 		const ownerAfterClose = await readOwner(page, driver, nonce);
 		assertOwner(owner, ownerAfterClose);
 		await driver.inspect(`manual-${surface}-hidden-close`);
+		const beforeHide = live;
+		// The panel header follows the top-bar toggle, which also hides the shell.
+		await page.getByRole("button", { name: "Hide shell", exact: true }).last().click();
+		await page.getByRole("button", { name: "Open terminal", exact: true }).waitFor({ state: "visible" });
+		await page.locator("textarea.xterm-helper-textarea").waitFor({ state: "detached" });
+		const hidden = await capture();
+		assertDesktopManualShellProcessPreserved(beforeHide, hidden);
+		if (hidden.dedicatedSlotIds.length !== 0 || hidden.helperTextareas !== 0 || hidden.parkedTextareas !== 0)
+			throw new Error("Hidden manual shell retained browser terminal resources.");
+		live = await open();
+		assertDesktopManualShellProcessPreserved(beforeHide, await capture());
+		if (live.slotId === beforeHide.slotId)
+			throw new Error("Reattaching a hidden shell reused its disposed terminal slot.");
+		const reattachedSlotId = live.slotId;
+		const afterReattachMarker = await writeShellProof(page, driver, live, `${surface}-reattached`);
+		await driver.inspect(`manual-${surface}-reattached`);
 		const closes = [];
 		for (let cycle = 0; cycle < 2; cycle++) {
-			// The last exact button is the shell panel header, after the top toolbar toggle.
-			await page.getByRole("button", { name: "Close terminal", exact: true }).last().click();
+			await page.getByRole("button", { name: "Terminate shell", exact: true }).click();
 			await page.getByRole("button", { name: "Open terminal", exact: true }).waitFor({ state: "visible" });
 			const retired = await waitForDesktopManualShellRetirement(live, {
 				capture,
@@ -398,6 +432,15 @@ export async function exerciseDesktopManualShells(page: Page, driver: DesktopLab
 			ownerBeforeHiddenClose: publicOwner(owner),
 			ownerAfterHiddenClose: publicOwner(ownerAfterClose),
 			documentNonce: nonce,
+			hideAndReattach: {
+				exactProcessPreserved: true,
+				beforeSlotId: beforeHide.slotId,
+				afterSlotId: reattachedSlotId,
+				hiddenDedicatedSlots: hidden.dedicatedSlotIds,
+				hiddenHelperTextareas: hidden.helperTextareas,
+				hiddenParkedTextareas: hidden.parkedTextareas,
+				afterReattachMarker,
+			},
 			closes,
 		});
 		await writeJsonAtomic(join(driver.fixture.manifest.artifactDir, "manual-shells-proof.json"), {

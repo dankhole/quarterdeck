@@ -66,6 +66,10 @@ export class SessionLifecycleController {
 		string,
 		{ launchOperationId: string | null; promise: Promise<TaskSessionStartWithReadinessResult> }
 	>();
+	private readonly inFlightShellStarts = new Map<
+		string,
+		{ cancelled: boolean; promise: Promise<RuntimeTaskSessionSummary> }
+	>();
 	private shuttingDown = false;
 	private lifecycleGeneration = 0;
 
@@ -103,6 +107,12 @@ export class SessionLifecycleController {
 	async startTaskSessionWithReadiness(request: StartTaskSessionRequest): Promise<TaskSessionStartWithReadinessResult> {
 		if (this.shuttingDown) {
 			throw new TaskSessionStartCancelledError();
+		}
+		if (
+			this.inFlightShellStarts.has(request.taskId) ||
+			this.entries.get(request.taskId)?.restartRequest?.kind === "shell"
+		) {
+			throw new Error("A shell session already owns this terminal identity.");
 		}
 		const launchOperationId = request.launchOperationId?.trim() || null;
 		const inFlight = this.inFlightTaskStarts.get(request.taskId);
@@ -217,25 +227,73 @@ export class SessionLifecycleController {
 	}
 
 	async startShellSession(request: StartShellSessionRequest): Promise<RuntimeTaskSessionSummary> {
-		if (this.shuttingDown) {
-			throw new TaskSessionStartCancelledError();
-		}
-		const entry = this.ensureProcessEntry(request.taskId);
-		entry.restartRequest = {
-			kind: "shell",
-			request: cloneStartShellSessionRequest(request),
+		if (this.shuttingDown) throw new TaskSessionStartCancelledError();
+		const existing = this.inFlightShellStarts.get(request.taskId);
+		if (existing) return await existing.promise;
+
+		const frozenRequest = cloneStartShellSessionRequest(request);
+		const generation = this.lifecycleGeneration;
+		// Own the launch before spawning or awaiting process-custody registration.
+		const start: { cancelled: boolean; promise: Promise<RuntimeTaskSessionSummary> } = {
+			cancelled: false,
+			promise: Promise.resolve().then(() =>
+				this.startShellSessionOnce(
+					frozenRequest,
+					() => !start.cancelled && !this.shuttingDown && this.lifecycleGeneration === generation,
+				),
+			),
 		};
-		const currentSummary = this.store.getSummary(request.taskId);
-		if (entry.active && currentSummary?.state === "running") {
-			return currentSummary;
+		this.inFlightShellStarts.set(request.taskId, start);
+		try {
+			return await start.promise;
+		} finally {
+			if (this.inFlightShellStarts.get(request.taskId) === start) this.inFlightShellStarts.delete(request.taskId);
 		}
+	}
 
+	private async startShellSessionOnce(
+		request: StartShellSessionRequest,
+		isLaunchAllowed: () => boolean,
+	): Promise<RuntimeTaskSessionSummary> {
+		if (!isLaunchAllowed()) throw new TaskSessionStartCancelledError();
+		const entry = this.ensureProcessEntry(request.taskId);
+		if (entry.restartRequest?.kind === "task" || this.inFlightTaskStarts.has(request.taskId)) {
+			throw new Error("An agent session already owns this terminal identity.");
+		}
+		const currentSummary = this.store.getSummary(request.taskId);
+		if (
+			request.expectedExitedSessionInstanceId &&
+			(entry.active ||
+				entry.restartRequest?.kind !== "shell" ||
+				entry.suppressAutoRestartOnExit ||
+				currentSummary?.sessionInstanceId !== request.expectedExitedSessionInstanceId ||
+				currentSummary.pid !== null ||
+				currentSummary.state !== "idle" ||
+				currentSummary.reviewReason !== null ||
+				currentSummary.exitCode === 0)
+		) {
+			return currentSummary ?? this.store.ensureEntry(request.taskId);
+		}
+		if (entry.active && entry.suppressAutoRestartOnExit) {
+			throw new Error("Shell session is still shutting down. Wait a moment and try again.");
+		}
+		if (entry.active && currentSummary?.state === "running") return currentSummary;
+
+		entry.restartRequest = { kind: "shell", request: { ...request, expectedExitedSessionInstanceId: undefined } };
+		entry.suppressAutoRestartOnExit = false;
 		teardownActiveSession(entry);
-
-		return spawnShellSession(entry, request, {
-			updateStore: (id, patch) => this.store.update(id, patch),
-			ensureEntry: (id) => this.store.ensureEntry(id),
-		});
+		entry.pendingSessionStart = true;
+		entry.pendingSessionStartSince = Date.now();
+		try {
+			return await spawnShellSession(entry, request, {
+				updateStore: (id, patch) => this.store.update(id, patch),
+				ensureEntry: (id) => this.store.ensureEntry(id),
+				isLaunchAllowed,
+			});
+		} finally {
+			entry.pendingSessionStart = false;
+			entry.pendingSessionStartSince = null;
+		}
 	}
 
 	recoverStaleSession(taskId: string): RuntimeTaskSessionSummary | null {
@@ -282,12 +340,18 @@ export class SessionLifecycleController {
 	}
 
 	stopTaskSession(taskId: string, options?: { preserveStartupRecovery?: boolean }): RuntimeTaskSessionSummary | null {
+		const pendingShellStart = this.inFlightShellStarts.get(taskId);
+		if (pendingShellStart) pendingShellStart.cancelled = true;
 		const entry = this.entries.get(taskId);
 		if (entry && !options?.preserveStartupRecovery) {
 			entry.pendingStartupRecoveryToken = null;
 		}
 		markTaskSessionLaunchCancelled(entry?.launchMonitor ?? null);
 		if (!entry?.active) {
+			if (entry?.restartRequest?.kind === "shell") {
+				entry.suppressAutoRestartOnExit = true;
+				return this.store.update(taskId, { state: "awaiting_review", reviewReason: "interrupted" });
+			}
 			sessionLog.debug("stopTaskSession no-op — no active session", {
 				taskId,
 				hasEntry: Boolean(entry),
@@ -317,14 +381,58 @@ export class SessionLifecycleController {
 		requestedSessionInstanceId?: string,
 		options?: { preserveStartupRecovery?: boolean },
 	): Promise<StopTaskSessionResult> {
+		const pendingShellStart = this.inFlightShellStarts.get(taskId);
+		if (pendingShellStart) {
+			const startedAt = Date.now();
+			const settled = await new Promise<boolean>((resolve) => {
+				const timer = setTimeout(() => resolve(false), timeoutMs);
+				void pendingShellStart.promise.then(
+					() => {
+						clearTimeout(timer);
+						resolve(true);
+					},
+					() => {
+						clearTimeout(timer);
+						resolve(true);
+					},
+				);
+			});
+			if (!settled) {
+				pendingShellStart.cancelled = true;
+				return {
+					summary: this.store.getSummary(taskId),
+					requestedSessionInstanceId: requestedSessionInstanceId ?? null,
+					didExit: false,
+					outcome: "timed_out",
+					error: "Shell session launch did not settle before the stop timeout.",
+				};
+			}
+			timeoutMs = Math.max(0, timeoutMs - (Date.now() - startedAt));
+		}
 		const entry = this.entries.get(taskId);
 		if (!entry?.active) {
+			if (
+				entry?.restartRequest?.kind === "shell" &&
+				requestedSessionInstanceId &&
+				this.store.getSummary(taskId)?.sessionInstanceId !== requestedSessionInstanceId
+			) {
+				return {
+					summary: this.store.getSummary(taskId),
+					requestedSessionInstanceId,
+					didExit: false,
+					outcome: "failed",
+					error: "The requested shell session was replaced before it could be stopped.",
+				};
+			}
 			sessionLog.debug("stopTaskSessionAndWaitForExit no-op — no active entry", {
 				taskId,
 				hasEntry: Boolean(entry),
 			});
 			return {
-				summary: this.store.getSummary(taskId),
+				summary:
+					entry?.restartRequest?.kind === "shell"
+						? this.stopTaskSession(taskId, options)
+						: this.store.getSummary(taskId),
 				requestedSessionInstanceId: requestedSessionInstanceId ?? null,
 				didExit: true,
 				outcome: "not_running",
@@ -409,7 +517,12 @@ export class SessionLifecycleController {
 			entry.pendingStartupRecoveryToken = null;
 			markTaskSessionLaunchCancelled(entry.launchMonitor);
 			if (!entry.active) {
-				if (entry.pendingSessionStart || entry.pendingAutoRestart || this.inFlightTaskStarts.has(entry.taskId)) {
+				if (
+					entry.pendingSessionStart ||
+					entry.pendingAutoRestart ||
+					this.inFlightTaskStarts.has(entry.taskId) ||
+					this.inFlightShellStarts.has(entry.taskId)
+				) {
 					activeTaskIds.push(entry.taskId);
 					if (entry.pendingAutoRestart) {
 						forceInterruptedTaskIds.add(entry.taskId);
@@ -444,7 +557,7 @@ export class SessionLifecycleController {
 
 	async waitForShutdownQuiescence(): Promise<void> {
 		const pending = new Set<Promise<unknown>>();
-		for (const start of this.inFlightTaskStarts.values()) {
+		for (const start of [...this.inFlightTaskStarts.values(), ...this.inFlightShellStarts.values()]) {
 			pending.add(start.promise);
 		}
 		for (const entry of this.entries.values()) {

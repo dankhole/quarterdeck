@@ -1,10 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { showAppToast } from "@/components/app-toaster";
 import { validateNewShortcut } from "@/hooks/settings/shortcut-actions";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
-import { waitForTerminalLikelyPrompt } from "@/terminal/terminal-controller-registry";
-import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
+import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import { toErrorMessage } from "@/utils/to-error-message";
 
 const TERMINAL_INTERRUPT_SEQUENCE = "\u0003";
@@ -18,18 +17,19 @@ interface RuntimeShortcut {
 
 interface UseShortcutActionsInput {
 	currentProjectId: string | null;
+	selectedTaskId: string | null;
+	setMainView: (view: "terminal") => void;
 	selectedShortcutLabel: string | null | undefined;
 	shortcuts: RuntimeShortcut[];
 	refreshRuntimeProjectConfig: () => void;
-	prepareTerminalForShortcut: (input: {
-		prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
-	}) => Promise<{ ok: boolean; targetTaskId?: string; message?: string; hadExistingOpenTerminal?: boolean }>;
-	prepareWaitForTerminalConnectionReady: (taskId: string) => () => Promise<void>;
-	sendTaskSessionInput: (
-		taskId: string,
-		text: string,
-		options: SendTerminalInputOptions,
-	) => Promise<{ ok: boolean; message?: string }>;
+	prepareTerminalForShortcut: () => Promise<{
+		ok: boolean;
+		targetTaskId?: string;
+		targetSessionInstanceId?: string;
+		message?: string;
+		hadExistingSession?: boolean;
+		isCurrent?: () => boolean;
+	}>;
 }
 
 interface UseShortcutActionsResult {
@@ -41,14 +41,29 @@ interface UseShortcutActionsResult {
 
 export function useShortcutActions({
 	currentProjectId,
+	selectedTaskId,
+	setMainView,
 	selectedShortcutLabel,
 	shortcuts,
 	refreshRuntimeProjectConfig,
 	prepareTerminalForShortcut,
-	prepareWaitForTerminalConnectionReady,
-	sendTaskSessionInput,
 }: UseShortcutActionsInput): UseShortcutActionsResult {
 	const [runningShortcutLabel, setRunningShortcutLabel] = useState<string | null>(null);
+	const projectScope = useMemo(
+		() => ({ projectId: currentProjectId, taskId: selectedTaskId }),
+		[currentProjectId, selectedTaskId],
+	);
+	const projectScopeRef = useRef<typeof projectScope | null>(projectScope);
+	const activeRunRef = useRef<object | null>(null);
+	useLayoutEffect(() => {
+		projectScopeRef.current = projectScope;
+		activeRunRef.current = null;
+		setRunningShortcutLabel(null);
+		return () => {
+			projectScopeRef.current = null;
+			activeRunRef.current = null;
+		};
+	}, [projectScope]);
 
 	const existingLabels = useMemo(() => shortcuts.map((s) => s.label), [shortcuts]);
 
@@ -97,36 +112,52 @@ export function useShortcutActions({
 				return;
 			}
 
+			if (projectScopeRef.current !== projectScope) return;
+			const run = {};
+			activeRunRef.current = run;
+			const isCurrentRun = () => projectScopeRef.current === projectScope && activeRunRef.current === run;
+			let isCurrent = isCurrentRun;
 			setRunningShortcutLabel(shortcutLabel);
 			try {
-				const prepared = await prepareTerminalForShortcut({
-					prepareWaitForTerminalConnectionReady,
-				});
+				// Files/Git unmount the detail shell viewer. Reveal its owning surface first;
+				// preparation retains this run's task/project while the viewer reconnects.
+				if (selectedTaskId) setMainView("terminal");
+				if (!isCurrentRun()) return;
+				const prepared = await prepareTerminalForShortcut();
+				if (!isCurrentRun()) return;
+				if (prepared.isCurrent) {
+					isCurrent = () => isCurrentRun() && prepared.isCurrent?.() === true;
+				}
+				if (!isCurrent()) return;
 				if (!prepared.ok || !prepared.targetTaskId) {
 					throw new Error(prepared.message ?? "Could not open terminal.");
 				}
-				const waitForLikelyPrompt = waitForTerminalLikelyPrompt(
-					prepared.targetTaskId,
-					TERMINAL_PROMPT_WAIT_TIMEOUT_MS,
-				);
-				if (prepared.hadExistingOpenTerminal) {
-					const interruptResult = await sendTaskSessionInput(prepared.targetTaskId, TERMINAL_INTERRUPT_SEQUENCE, {
-						intent: "write",
-						appendNewline: false,
-					});
-					if (!interruptResult.ok) {
-						throw new Error(interruptResult.message ?? "Could not interrupt terminal command.");
-					}
+				if (!prepared.isCurrent || !prepared.targetSessionInstanceId) {
+					throw new Error("Terminal scope is unavailable.");
+				}
+				// Capture one exact viewer. Never resolve a task-only controller again for delivery:
+				// home task IDs are shared by projects and a reconnect can replace the session.
+				const targetTaskId = prepared.targetTaskId;
+				const terminalScope = { projectId: currentProjectId, sessionInstanceId: prepared.targetSessionInstanceId };
+				const controller = getTerminalController(targetTaskId, terminalScope);
+				if (!controller) throw new Error("Terminal is not connected.");
+				const scopeIsCurrent = isCurrent;
+				isCurrent = () => scopeIsCurrent() && getTerminalController(targetTaskId, terminalScope) === controller;
+				if (!isCurrent()) return;
+				const waitForLikelyPrompt = controller.waitForLikelyPrompt?.(TERMINAL_PROMPT_WAIT_TIMEOUT_MS);
+				// Observe an abandoned prompt wait too if interrupt delivery fails first.
+				void waitForLikelyPrompt?.catch(() => {});
+				if (!isCurrent()) return;
+				if (prepared.hadExistingSession && !controller.input(TERMINAL_INTERRUPT_SEQUENCE)) {
+					throw new Error("Could not interrupt terminal command.");
 				}
 				await waitForLikelyPrompt;
-				const runResult = await sendTaskSessionInput(prepared.targetTaskId, shortcut.command, {
-					intent: "submit",
-					appendNewline: true,
-				});
-				if (!runResult.ok) {
-					throw new Error(runResult.message ?? "Could not run shortcut command.");
+				if (!isCurrent()) return;
+				if (!controller.input(shortcut.command) || !controller.input("\r")) {
+					throw new Error("Could not run shortcut command.");
 				}
 			} catch (error) {
+				if (!isCurrent()) return;
 				const message = toErrorMessage(error);
 				showAppToast(
 					{
@@ -138,16 +169,13 @@ export function useShortcutActions({
 					`shortcut-run-failed:${shortcut.label}`,
 				);
 			} finally {
-				setRunningShortcutLabel(null);
+				if (activeRunRef.current === run) {
+					activeRunRef.current = null;
+					setRunningShortcutLabel(null);
+				}
 			}
 		},
-		[
-			currentProjectId,
-			prepareTerminalForShortcut,
-			prepareWaitForTerminalConnectionReady,
-			sendTaskSessionInput,
-			shortcuts,
-		],
+		[currentProjectId, prepareTerminalForShortcut, projectScope, selectedTaskId, setMainView, shortcuts],
 	);
 
 	const handleCreateShortcut = useCallback(

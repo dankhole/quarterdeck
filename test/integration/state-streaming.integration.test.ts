@@ -12,7 +12,6 @@ import type {
 	RuntimeProjectBoardCommandExecutionResult,
 	RuntimeProjectStateResponse,
 	RuntimeProjectsResponse,
-	RuntimeShellSessionStartResponse,
 	RuntimeStateStreamProjectStateMessage,
 	RuntimeStateStreamProjectsMessage,
 	RuntimeStateStreamSnapshotMessage,
@@ -257,12 +256,23 @@ describe("state streaming integration", { concurrent: false }, () => {
 		mkdirSync(projectBPath, { recursive: true });
 		initGitRepository(projectAPath);
 		initGitRepository(projectBPath);
+		const fakeBinPath = join(tempHome, "bin");
+		installDeterministicFakeCodex(fakeBinPath);
 
 		const port = await getAvailablePort();
 		const server = await startQuarterdeckServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,
+			extraEnv: {
+				PATH: [fakeBinPath, process.env.PATH].filter(Boolean).join(delimiter),
+				QUARTERDECK_AGENT_LAB: "1",
+				QUARTERDECK_AGENT_LAB_ALLOWED_AGENT_IDS: "codex",
+				QUARTERDECK_AGENT_LAB_SCENARIO: "idle",
+				TMPDIR: tmpdir(),
+				TEMP: tmpdir(),
+				CODEX_HOME: join(tempHome, ".codex"),
+			},
 		});
 
 		let streamA: RuntimeStreamClient | null = null;
@@ -308,20 +318,28 @@ describe("state streaming integration", { concurrent: false }, () => {
 				projectBState.payload.revision,
 			);
 
-			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
+			// Notifications describe board-linked agent tasks, not manual shells.
+			const startTaskResponse = await requestJson<RuntimeTaskSessionStartResponse>({
 				baseUrl: `http://127.0.0.1:${port}`,
 				headers: server.browserHeaders,
-				procedure: "runtime.startShellSession",
+				procedure: "runtime.startTaskSession",
 				type: "mutation",
 				projectId: projectBId,
 				payload: {
 					taskId: startedTaskId,
+					prompt: "Exercise cross-project notification snapshots [agent-lab:idle]",
+					agentId: "codex",
 					baseRef: "HEAD",
+					useWorktree: false,
 				},
 			});
-			expect(startShellResponse.status).toBe(200);
-			expect(startShellResponse.payload.ok).toBe(true);
-			expect(startShellResponse.payload.summary?.state).toBe("running");
+			expect(startTaskResponse.status).toBe(200);
+			expect(startTaskResponse.payload.ok, startTaskResponse.payload.error).toBe(true);
+			expect(startTaskResponse.payload.summary).toMatchObject({
+				taskId: startedTaskId,
+				agentId: "codex",
+				state: "running",
+			});
 
 			streamA = await connectRuntimeStream(
 				`ws://127.0.0.1:${port}/api/runtime/ws?projectId=${encodeURIComponent(projectAId)}`,
@@ -332,9 +350,16 @@ describe("state streaming integration", { concurrent: false }, () => {
 			)) as RuntimeStateStreamSnapshotMessage;
 			expect(
 				snapshot.notificationSummariesByProject?.[projectBId]?.some(
-					(summary) => summary.taskId === startedTaskId && summary.state === "running",
+					(summary) =>
+						summary.taskId === startedTaskId && summary.agentId === "codex" && summary.state === "running",
 				),
 			).toBe(true);
+			expect(snapshot.currentProjectId).toBe(projectAId);
+			expect(
+				snapshot.notificationSummariesByProject?.[projectAId]?.some(
+					(summary) => summary.taskId === startedTaskId,
+				) ?? false,
+			).toBe(false);
 		} finally {
 			if (streamA) {
 				await streamA.close();
@@ -346,7 +371,7 @@ describe("state streaming integration", { concurrent: false }, () => {
 					procedure: "runtime.stopTaskSession",
 					type: "mutation",
 					projectId: projectBId,
-					payload: { taskId: startedTaskId },
+					payload: { taskId: startedTaskId, waitForExit: true },
 				});
 			}
 			await server.stop();

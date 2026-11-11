@@ -94,6 +94,7 @@ vi.mock("../../../src/state/project-state.js", () => ({
 
 vi.mock("../../../src/core/task-board-mutations.js", () => ({
 	findCardInBoard: vi.fn(),
+	getTaskColumnId: vi.fn(() => "review"),
 }));
 
 vi.mock("../../../src/workdir/git-history.js", () => ({
@@ -703,8 +704,10 @@ describe("createProjectApi deleteWorktree", () => {
 		const launching = deferred();
 		const launched = deferred();
 		const shellTaskId = getRuntimeDetailTerminalTaskId("task-1");
+		projectStateMocks.loadProjectState.mockResolvedValue({ board: { columns: [] } });
 		let shellActive = false;
 		const manager = {
+			store: { getSummary: vi.fn(() => null) },
 			startShellSession: vi.fn(async () => {
 				launching.resolve();
 				await launched.promise;

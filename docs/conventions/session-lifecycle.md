@@ -16,6 +16,14 @@ Keep task-agent terminals and shell terminals separate even when they share xter
 - Home and detail shell terminals are dedicated workspace-scoped manual shells with different lifecycle, restart, and exit rules.
 - If an abstraction makes shell surfaces behave like task-agent terminals, split it instead of relying on comments or task-ID prefixes.
 
+## Manual shell lifetime
+
+The runtime owns each manual shell independently of its browser viewer: one home shell per project and one detail shell per task. Open/Run starts lazily or reuses the live shell; hiding, collapsing, navigation, and viewer disconnect must never stop it. Browser terminal disposal releases only the viewer and its sockets. Reattachment uses the existing bounded runtime terminal mirror/restore path, not a second browser output store. Keep this separate from the task-agent pool.
+
+Hide and Terminate are distinct user intents. Explicit termination stops the shell; restart must confirm the old process exited before replacing it. Trash, permanent deletion, project removal, and runtime shutdown retain their existing process-cleanup responsibilities. This is runtime-lifetime persistence, not detached hosting or shell recovery after runtime shutdown.
+
+Browser operations must retain their original project/task identity across asynchronous work. A late start/stop response cannot reopen or change a different panel. Automatic shell restart remains a visible-viewer policy: navigation, hiding, loss of the viewer, or disabling the setting invalidates recovery without stopping the process. Recovery requests carry the exact exited session identity; runtime admission must reject intentional stops and stale instances atomically, so another viewer cannot undo Terminate or replace a newer process. Panel visibility is presentation state, never evidence that a shell is alive or authority to resurrect one after cleanup.
+
 ## Reconciliation
 
 Before adding dynamic UI state tied to session lifecycle—status indicators, transient panels, or auto-triggered actions—check `src/terminal/session-reconciliation.ts` and give stale or orphaned instances a cleanup path. The periodic sweep currently owns dead processes, processless sessions, and stale hook metadata. It is a terminal safety net: routine provider input, completion, exit, and replacement sequences must converge through their normal controller events. A processless unresolved interaction becomes explicit `resolution_unknown`; reconciliation must never silently invent Running or clear a real wait.

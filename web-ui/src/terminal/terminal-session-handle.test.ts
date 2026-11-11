@@ -125,6 +125,18 @@ describe("TerminalSessionHandle", () => {
 		vi.useRealTimers();
 	});
 
+	it("disposes shell sockets without sending stop or calling the runtime stop API", () => {
+		const { handle } = createHandle();
+		handle.connectToTask("__home_terminal__", "project-1");
+		const sockets = socketInstances[0]!;
+		vi.mocked(getRuntimeTrpcClient).mockClear();
+		handle.dispose();
+		expect(sockets.closeAll).toHaveBeenCalledTimes(1);
+		expect(sockets.sendControl).not.toHaveBeenCalled();
+		expect(getRuntimeTrpcClient).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	it("keeps an empty agent restore pending while input is ready, then clears after rendered content", async () => {
 		let hasContent = false;
 		const { handle } = createHandle({ hasRenderedContent: () => hasContent });

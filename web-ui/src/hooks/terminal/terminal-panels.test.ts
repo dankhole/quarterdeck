@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import {
-	collapseAllDetailPanels,
 	computeTerminalPaneHeight,
-	DEFAULT_DETAIL_TERMINAL_PANEL_STATE,
 	EXPANDED_TERMINAL_PANE_HEIGHT,
 	estimateShellTerminalCols,
+	getUnexpectedShellExitInstance,
 	MIN_TERMINAL_COLS,
 } from "./terminal-panels";
 
@@ -43,43 +43,30 @@ describe("computeTerminalPaneHeight", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// collapseAllDetailPanels
-// ---------------------------------------------------------------------------
-
-describe("collapseAllDetailPanels", () => {
-	it("sets isExpanded to false for all entries", () => {
-		const input = {
-			"shell:t1": { isExpanded: true, isOpen: true },
-			"shell:t2": { isExpanded: true, isOpen: false },
-		};
-		const result = collapseAllDetailPanels(input);
-		expect(result["shell:t1"]).toEqual({ isExpanded: false, isOpen: true });
-		expect(result["shell:t2"]).toEqual({ isExpanded: false, isOpen: false });
+describe("getUnexpectedShellExitInstance", () => {
+	const exited = createTestTaskSessionSummary({
+		taskId: "__home_terminal__",
+		agentId: null,
+		sessionInstanceId: "exited-instance",
+		pid: null,
+		state: "idle",
+		reviewReason: null,
+		exitCode: 1,
 	});
-
-	it("preserves already-collapsed entries", () => {
-		const input = {
-			"shell:t1": { isExpanded: false, isOpen: true },
-		};
-		const result = collapseAllDetailPanels(input);
-		expect(result["shell:t1"]).toEqual({ isExpanded: false, isOpen: true });
+	it("requires a positively identified unexpected shell exit", () => {
+		expect(getUnexpectedShellExitInstance(exited)).toBe("exited-instance");
+		expect(getUnexpectedShellExitInstance(null)).toBeNull();
 	});
-
-	it("returns empty object for empty input", () => {
-		expect(collapseAllDetailPanels({})).toEqual({});
-	});
-});
-
-// ---------------------------------------------------------------------------
-// DEFAULT_DETAIL_TERMINAL_PANEL_STATE
-// ---------------------------------------------------------------------------
-
-describe("DEFAULT_DETAIL_TERMINAL_PANEL_STATE", () => {
-	it("has correct default values", () => {
-		expect(DEFAULT_DETAIL_TERMINAL_PANEL_STATE).toEqual({
-			isExpanded: false,
-			isOpen: false,
-		});
+	it.each([
+		{ sessionInstanceId: null },
+		{ agentId: "codex" as const },
+		{ pid: 123 },
+		{ state: "running" as const },
+		{ state: "awaiting_review" as const, reviewReason: "interrupted" as const },
+		{ reviewReason: "interrupted" as const },
+		{ exitCode: null },
+		{ exitCode: 0 },
+	])("rejects intentional, live, ambiguous, and successful exits: %j", (overrides) => {
+		expect(getUnexpectedShellExitInstance({ ...exited, ...overrides })).toBeNull();
 	});
 });

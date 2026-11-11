@@ -45,6 +45,7 @@ export function AgentTerminalPanel(props: AgentTerminalPanelProps): ReactElement
 		autoFocus: props.autoFocus,
 		isVisible: props.isVisible,
 		sessionStartedAt: props.summary?.startedAt ?? null,
+		sessionInstanceId: props.summary?.sessionInstanceId ?? null,
 		terminalBackgroundColor: props.terminalBackgroundColor ?? "var(--color-surface-1)",
 		cursorColor: props.cursorColor ?? "var(--color-text-primary)",
 	});

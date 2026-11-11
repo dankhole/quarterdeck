@@ -7,15 +7,11 @@ import { useBoardContext } from "@/providers/board-provider";
 import { useProjectNavigationContext, useProjectSyncContext } from "@/providers/project-provider";
 import { useProjectRuntimeContext } from "@/providers/project-runtime-provider";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
-import {
-	type UseTerminalConnectionReadyResult,
-	useTerminalConnectionReady,
-} from "@/runtime/use-terminal-connection-ready";
 import { findCardSelection } from "@/state/board-state";
 import { useTaskWorktreeInfoValue, useTaskWorktreeSnapshotValue } from "@/stores/project-metadata-store";
 
 // ---------------------------------------------------------------------------
-// Context value — terminal panel state, connection readiness, and
+// Context value — terminal panel state and
 // home/detail terminal metadata.
 // ---------------------------------------------------------------------------
 
@@ -48,13 +44,11 @@ export interface TerminalContextValue {
 	collapseDetailTerminal: UseTerminalPanelsResult["collapseDetailTerminal"];
 	closeHomeTerminal: UseTerminalPanelsResult["closeHomeTerminal"];
 	closeDetailTerminal: UseTerminalPanelsResult["closeDetailTerminal"];
+	terminateHomeTerminal: UseTerminalPanelsResult["terminateHomeTerminal"];
+	terminateDetailTerminal: UseTerminalPanelsResult["terminateDetailTerminal"];
 	resetTerminalPanelsState: UseTerminalPanelsResult["resetTerminalPanelsState"];
 	handleShellExit: UseTerminalPanelsResult["handleShellExit"];
 	cancelPendingRestart: UseTerminalPanelsResult["cancelPendingRestart"];
-
-	// --- useTerminalConnectionReady ---
-	markTerminalConnectionReady: UseTerminalConnectionReadyResult["markConnectionReady"];
-	prepareWaitForTerminalConnectionReady: UseTerminalConnectionReadyResult["prepareWaitForConnection"];
 
 	// --- Derived terminal metadata ---
 	homeTerminalSummary: RuntimeTaskSessionSummary | null;
@@ -103,12 +97,6 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 	const selectedTaskWorktreeInfo = useTaskWorktreeInfoValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 	const selectedTaskWorktreeSnapshot = useTaskWorktreeSnapshotValue(selectedCard?.card.id, selectedCard?.card.baseRef);
 
-	// --- useTerminalConnectionReady ---
-	const {
-		markConnectionReady: markTerminalConnectionReady,
-		prepareWaitForConnection: prepareWaitForTerminalConnectionReady,
-	} = useTerminalConnectionReady();
-
 	// --- useTerminalPanels ---
 	const {
 		homeTerminalTaskId,
@@ -138,6 +126,8 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 		collapseDetailTerminal,
 		closeHomeTerminal,
 		closeDetailTerminal,
+		terminateHomeTerminal,
+		terminateDetailTerminal,
 		resetTerminalPanelsState,
 		handleShellExit,
 		cancelPendingRestart,
@@ -150,6 +140,7 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 		shellAutoRestartEnabled:
 			!isProjectUnavailable &&
 			(runtimeProjectConfig?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled),
+		sessions,
 		findCard: findCardStable,
 		upsertSession,
 		sendTaskSessionInput,
@@ -201,11 +192,11 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 			collapseDetailTerminal,
 			closeHomeTerminal,
 			closeDetailTerminal,
+			terminateHomeTerminal,
+			terminateDetailTerminal,
 			resetTerminalPanelsState,
 			handleShellExit,
 			cancelPendingRestart,
-			markTerminalConnectionReady,
-			prepareWaitForTerminalConnectionReady,
 			homeTerminalSummary,
 			homeTerminalSubtitle,
 			showHomeBottomTerminal,
@@ -240,11 +231,11 @@ export function TerminalProvider({ children }: TerminalProviderProps): ReactNode
 			collapseDetailTerminal,
 			closeHomeTerminal,
 			closeDetailTerminal,
+			terminateHomeTerminal,
+			terminateDetailTerminal,
 			resetTerminalPanelsState,
 			handleShellExit,
 			cancelPendingRestart,
-			markTerminalConnectionReady,
-			prepareWaitForTerminalConnectionReady,
 			homeTerminalSummary,
 			homeTerminalSubtitle,
 			showHomeBottomTerminal,

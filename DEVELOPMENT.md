@@ -139,6 +139,8 @@ You can still use `QUARTERDECK_RUNTIME_PORT` if needed, but `--port` is preferre
 
 Increment the protocol version deliberately when compatibility breaks in **either direction**: removing or changing an API, changing a WebSocket message shape or meaning, or requiring a new runtime endpoint/field from the browser without a fallback. Optional additions, bug fixes, and presentation changes keep the version when both older browsers and older runtimes still work. Cover any fallback with a regression test; do not derive this version from package semver or generate it during builds.
 
+Protocol 12 separates manual shell lifetime from panel visibility and requires exact-exited-session admission for automatic shell restart. Restart the runtime and refresh browser tabs when upgrading from protocol 11; older runtimes cannot enforce the conditional restart request. No stored project data needs migration. Runtime restart stops existing manual shells; after upgrading, Hide leaves commands running and Terminate stops them.
+
 Protocol 11 adds task-scoped Git tab and folder preferences to the shared UI-preference contract. Restart the runtime and refresh browser tabs when upgrading from protocol 10; older clients reject the new strict preference shape. Existing preferences are preserved, and each task defaults to Uncommitted with expanded folders until changed.
 
 Protocol 10 changes `project.listFiles` from an exhaustive tree to a paginated immediate-directory listing. Restart the runtime and refresh browser tabs when upgrading from protocol 9; the admission check prevents older clients from treating a partial page as a complete tree. File contents, open editor drafts, and stored project data need no migration.

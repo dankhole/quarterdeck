@@ -38,10 +38,10 @@ export interface TaskDetailTerminalProps {
 	bottomTerminalSummary: RuntimeTaskSessionSummary | null;
 	bottomTerminalSubtitle?: string | null;
 	onBottomTerminalClose: () => void;
+	onBottomTerminalTerminate?: () => void;
 	onBottomTerminalCollapse?: () => void;
 	bottomTerminalPaneHeight?: number;
 	onBottomTerminalPaneHeightChange?: (height: number) => void;
-	onBottomTerminalConnectionReady?: (taskId: string) => void;
 	bottomTerminalAgentCommand?: string | null;
 	onBottomTerminalSendAgentCommand?: () => void;
 	isBottomTerminalExpanded?: boolean;

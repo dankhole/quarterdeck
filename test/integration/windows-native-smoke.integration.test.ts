@@ -38,6 +38,7 @@ import type {
 } from "../../src/core";
 import {
 	mergeProcessEnvironment,
+	RUNTIME_HOME_TERMINAL_TASK_ID,
 	resolveWindowsCompatibleCommand,
 	resolveWindowsComSpec,
 	resolveWindowsPowerShellPath,
@@ -911,7 +912,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				"managed process ownership retirement",
 			);
 
-			const shellTaskId = "__windows_native_shell__";
+			const shellTaskId = RUNTIME_HOME_TERMINAL_TASK_ID;
 			const startShellResponse = await requestJson<RuntimeShellSessionStartResponse>({
 				baseUrl,
 				headers: server.browserHeaders,
@@ -922,6 +923,8 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 			});
 			expect(startShellResponse.status).toBe(200);
 			expect(startShellResponse.payload.ok).toBe(true);
+			expect(startShellResponse.payload.hadExistingSession).toBe(false);
+			expect(startShellResponse.payload.summary?.taskId).toBe(shellTaskId);
 			expect(startShellResponse.payload.shellBinary?.toLowerCase()).toContain("cmd");
 
 			const shortcutInputResponse = await requestJson<RuntimeTaskSessionInputResponse>({

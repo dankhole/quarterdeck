@@ -245,6 +245,27 @@ describe("TopBar script shortcut onboarding", () => {
 		},
 	);
 
+	it.each([
+		[false, "Open terminal"],
+		[true, "Hide shell"],
+	] as const)("labels the shell toggle and tooltip for open=%s", async (isTerminalOpen, label) => {
+		const onToggleTerminal = vi.fn();
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<TopBar isTerminalOpen={isTerminalOpen} onToggleTerminal={onToggleTerminal} />
+				</TooltipProvider>,
+			);
+		});
+		const button = container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+		expect(button).toBeInstanceOf(HTMLButtonElement);
+		expect(container.querySelector('[aria-label="Close terminal"]')).toBeNull();
+		await act(async () => button?.focus());
+		expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(label);
+		await act(async () => button?.click());
+		expect(onToggleTerminal).toHaveBeenCalledTimes(1);
+	});
+
 	it("keeps terminal and conversation actions without manual agent terminal re-sync", async () => {
 		const onToggleTerminal = vi.fn();
 		const onCopyConversation = vi.fn();

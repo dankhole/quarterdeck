@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "@/components/app/home-view";
@@ -11,12 +11,20 @@ const mocks = vi.hoisted(() => ({
 	pendingProjectId: null as string | null,
 	boardProjectId: "saved-project",
 	isRuntimeDisconnected: false,
+	isProjectUnavailable: true,
+	shellPanel: vi.fn(),
+	closeHomeTerminal: vi.fn(),
+	terminateHomeTerminal: vi.fn(),
+	handleRestartHomeTerminal: vi.fn(),
 }));
 
 vi.mock("@/providers/project-provider", () => ({
 	useProjectNavigationContext: () => ({
 		currentProjectId: "saved-project",
-		currentProjectAvailability: { status: "unavailable", reason: "missing" },
+		currentProjectAvailability: {
+			status: mocks.isProjectUnavailable ? "unavailable" : "available",
+			reason: "missing",
+		},
 		isRuntimeDisconnected: mocks.isRuntimeDisconnected,
 		hasNoProjects: false,
 	}),
@@ -41,7 +49,13 @@ vi.mock("@/providers/git-provider", () => ({
 }));
 vi.mock("@/providers/interactions-provider", () => ({ useInteractionsContext: () => ({}) }));
 vi.mock("@/providers/terminal-provider", () => ({
-	useTerminalContext: () => ({ showHomeBottomTerminal: true }),
+	useTerminalContext: () => ({
+		showHomeBottomTerminal: true,
+		homeTerminalTaskId: "__home_terminal__",
+		closeHomeTerminal: mocks.closeHomeTerminal,
+		terminateHomeTerminal: mocks.terminateHomeTerminal,
+		handleRestartHomeTerminal: mocks.handleRestartHomeTerminal,
+	}),
 }));
 vi.mock("@/providers/surface-navigation-provider", () => ({
 	useSurfaceNavigationContext: () => ({ mainView: mocks.mainView, setActiveFileSearchScope: () => {} }),
@@ -63,7 +77,15 @@ vi.mock("@/components/git/panels", () => ({
 	BranchSelectorPopover: () => null,
 	ScopeBar: () => null,
 }));
-vi.mock("@/components/terminal", () => ({ ShellTerminalPanel: () => <div>Live shell</div> }));
+vi.mock("@/components/terminal", () => ({
+	ShellTerminalPanel: (props: object) => {
+		mocks.shellPanel(props);
+		return <div>Live shell</div>;
+	},
+}));
+vi.mock("@/resize/resizable-bottom-pane", () => ({
+	ResizableBottomPane: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
 
 describe("HomeView unavailable project", () => {
 	let container: HTMLDivElement;
@@ -73,6 +95,8 @@ describe("HomeView unavailable project", () => {
 		mocks.pendingProjectId = null;
 		mocks.boardProjectId = "saved-project";
 		mocks.isRuntimeDisconnected = false;
+		mocks.isProjectUnavailable = true;
+		mocks.shellPanel.mockClear();
 		mocks.requestLocate.mockReset();
 		mocks.checkAvailability.mockReset();
 		container = document.createElement("div");
@@ -114,6 +138,30 @@ describe("HomeView unavailable project", () => {
 			expect(mocks.checkAvailability).toHaveBeenCalledWith("saved-project");
 		},
 	);
+
+	it("forwards separate hide, terminate and restart actions to the home shell", async () => {
+		mocks.isProjectUnavailable = false;
+		mocks.mainView = "home";
+		await act(async () => {
+			root.render(
+				<HomeView
+					topBar={null}
+					shouldShowProjectLoadingState={false}
+					editingTaskId={null}
+					inlineTaskEditor={undefined}
+					handleOpenEditTask={() => {}}
+					homeGitSummary={null}
+				/>,
+			);
+		});
+		expect(mocks.shellPanel).toHaveBeenCalledWith(
+			expect.objectContaining({
+				onClose: mocks.closeHomeTerminal,
+				onTerminate: mocks.terminateHomeTerminal,
+				onRestart: mocks.handleRestartHomeTerminal,
+			}),
+		);
+	});
 
 	it("disables folder recovery actions while the runtime is disconnected", async () => {
 		mocks.isRuntimeDisconnected = true;

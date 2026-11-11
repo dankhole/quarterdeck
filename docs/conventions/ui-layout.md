@@ -19,9 +19,9 @@ Use these names consistently in specs, code comments, and conversation:
 
 ### Shell terminal lifetime
 
-Home and Detail Terminals are temporary manual shells. Closing or collapsing their panel stops the backing PTY and disposes its dedicated browser terminal. Changing the owning project or task, including switching between Home and task detail, closes the previous shell. Reopening starts a fresh shell; it does not restore a hidden shell session.
+Home and Detail Terminals are runtime-owned manual shells, started lazily. Hiding or collapsing their panel, changing tasks/projects, and switching between Home and task detail release the browser viewer without stopping the backing PTY. Reopening attaches to the existing shell and restores bounded output. Browser reload/disconnect also preserves the process while the runtime remains alive.
 
-`useTerminalPanels` owns this contract, including waiting for a pending stop before starting the same shell again. Expanding or resizing an open panel does not close it. Task-agent terminals retain their separate session and viewer lifecycle described in [Session and Terminal Lifecycle](./session-lifecycle.md).
+The Top Bar toggle and panel’s X are **Hide shell** while the panel is open; **Terminate shell** stops the process, and **Restart terminal** waits for successful exit before starting a fresh shell. `useTerminalPanels` owns panel presentation and scoped user actions, not process lifetime. Expanding or resizing an open panel does not close it. Task cleanup and runtime shutdown still stop shells. Task-agent terminals retain their separate session and viewer lifecycle described in [Session and Terminal Lifecycle](./session-lifecycle.md).
 
 ## Mental Model
 

@@ -1,6 +1,6 @@
 import "@xterm/xterm/css/xterm.css";
 
-import { Command, Eraser, Maximize2, MessageSquare, Minimize2, RotateCw, X } from "lucide-react";
+import { Command, Eraser, Maximize2, MessageSquare, Minimize2, RotateCw, Square, X } from "lucide-react";
 import type { MutableRefObject, ReactElement } from "react";
 import { useMemo } from "react";
 
@@ -28,6 +28,8 @@ export interface PersistentTerminalPanelLayoutProps {
 	sessionControls: PersistentTerminalSessionControls;
 	showSessionToolbar?: boolean;
 	onClose?: () => void;
+	closeLabel?: string;
+	onTerminate?: () => void;
 	headerTitle?: string;
 	headerSubtitle?: string | null;
 	panelBackgroundColor?: string;
@@ -47,6 +49,8 @@ export function PersistentTerminalPanelLayout({
 	sessionControls,
 	showSessionToolbar = true,
 	onClose,
+	closeLabel = "Close terminal",
+	onTerminate,
 	headerTitle = "Terminal",
 	headerSubtitle = null,
 	panelBackgroundColor = "var(--color-surface-1)",
@@ -162,13 +166,24 @@ export function PersistentTerminalPanelLayout({
 							/>
 						</Tooltip>
 						{onRestart ? (
-							<Tooltip side="top" content="Restart">
+							<Tooltip side="top" content="Restart terminal">
 								<Button
 									icon={<RotateCw size={12} />}
 									variant="ghost"
 									size="sm"
 									onClick={onRestart}
 									aria-label="Restart terminal"
+								/>
+							</Tooltip>
+						) : null}
+						{onTerminate ? (
+							<Tooltip side="top" content="Terminate shell">
+								<Button
+									icon={<Square size={12} />}
+									variant="ghost"
+									size="sm"
+									onClick={onTerminate}
+									aria-label="Terminate shell"
 								/>
 							</Tooltip>
 						) : null}
@@ -197,13 +212,15 @@ export function PersistentTerminalPanelLayout({
 								/>
 							</Tooltip>
 						) : null}
-						<Button
-							icon={<X size={14} />}
-							variant="ghost"
-							size="sm"
-							onClick={onClose}
-							aria-label="Close terminal"
-						/>
+						<Tooltip side="top" content={closeLabel}>
+							<Button
+								icon={<X size={14} />}
+								variant="ghost"
+								size="sm"
+								onClick={onClose}
+								aria-label={closeLabel}
+							/>
+						</Tooltip>
 					</div>
 				</div>
 			) : null}

@@ -134,6 +134,8 @@ export interface StartTaskSessionRequest {
 
 export interface StartShellSessionRequest {
 	taskId: string;
+	/** Automatic recovery may replace only this exact unexpectedly exited shell. */
+	expectedExitedSessionInstanceId?: string;
 	cwd: string;
 	cols?: number;
 	rows?: number;

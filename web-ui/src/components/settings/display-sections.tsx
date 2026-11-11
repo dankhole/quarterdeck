@@ -223,7 +223,7 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 				onCheckedChange={(v) => setField("shellAutoRestartEnabled", v)}
 				disabled={disabled}
 				label="Auto-restart shell terminals on unexpected exit"
-				description="When enabled, shell terminals that crash or exit unexpectedly will automatically restart."
+				description="When enabled, shells that exit unexpectedly restart while their terminal panel is visible. Hidden shells are not automatically restarted."
 			/>
 			<div className="settings-row">
 				<NumericSettingsInput

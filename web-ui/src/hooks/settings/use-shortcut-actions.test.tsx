@@ -3,67 +3,46 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useShortcutActions } from "@/hooks/settings/use-shortcut-actions";
+import { registerTerminalController } from "@/terminal/terminal-controller-registry";
 
 const saveRuntimeConfigMock = vi.hoisted(() => vi.fn());
 const showAppToastMock = vi.hoisted(() => vi.fn());
-const waitForTerminalLikelyPromptMock = vi.hoisted(() => vi.fn());
+vi.mock("@/runtime/runtime-config-query", () => ({ saveRuntimeConfig: saveRuntimeConfigMock }));
+vi.mock("@/components/app-toaster", () => ({ showAppToast: showAppToastMock }));
 
-vi.mock("@/runtime/runtime-config-query", () => ({
-	saveRuntimeConfig: saveRuntimeConfigMock,
-}));
+type ShortcutActions = ReturnType<typeof useShortcutActions>;
+type ShortcutInput = Parameters<typeof useShortcutActions>[0];
+const HOME_TASK_ID = "__home_terminal__";
 
-vi.mock("@/components/app-toaster", () => ({
-	showAppToast: showAppToastMock,
-}));
-
-vi.mock("@/terminal/terminal-controller-registry", () => ({
-	waitForTerminalLikelyPrompt: waitForTerminalLikelyPromptMock,
-}));
-
-interface HookSnapshot {
-	handleRunShortcut: ReturnType<typeof useShortcutActions>["handleRunShortcut"];
-	handleCreateShortcut: ReturnType<typeof useShortcutActions>["handleCreateShortcut"];
-}
-
-function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
-	if (snapshot === null) {
-		throw new Error("Expected a hook snapshot.");
-	}
-	return snapshot;
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((resolvePromise) => {
+		resolve = resolvePromise;
+	});
+	return { promise, resolve };
 }
 
 function HookHarness({
 	onSnapshot,
 	prepareTerminalForShortcut,
-	sendTaskSessionInput,
 	currentProjectId = "project-1",
-	selectedShortcutLabel = "Ship",
-	shortcuts = [{ label: "Ship", command: "npm run ship" }],
 }: {
-	onSnapshot: (snapshot: HookSnapshot) => void;
-	prepareTerminalForShortcut: Parameters<typeof useShortcutActions>[0]["prepareTerminalForShortcut"];
-	sendTaskSessionInput: Parameters<typeof useShortcutActions>[0]["sendTaskSessionInput"];
+	onSnapshot: (snapshot: ShortcutActions) => void;
+	prepareTerminalForShortcut: ShortcutInput["prepareTerminalForShortcut"];
 	currentProjectId?: string | null;
-	selectedShortcutLabel?: string | null | undefined;
-	shortcuts?: Parameters<typeof useShortcutActions>[0]["shortcuts"];
 }): null {
-	const shortcutActions = useShortcutActions({
+	const actions = useShortcutActions({
 		currentProjectId,
-		selectedShortcutLabel,
-		shortcuts,
+		selectedTaskId: null,
+		setMainView: () => {},
+		selectedShortcutLabel: "Ship",
+		shortcuts: [{ label: "Ship", command: "npm run ship" }],
 		refreshRuntimeProjectConfig: () => {},
 		prepareTerminalForShortcut,
-		prepareWaitForTerminalConnectionReady: () => async () => {},
-		sendTaskSessionInput,
 	});
-
 	useEffect(() => {
-		onSnapshot({
-			handleRunShortcut: shortcutActions.handleRunShortcut,
-			handleCreateShortcut: shortcutActions.handleCreateShortcut,
-		});
-	}, [onSnapshot, shortcutActions.handleCreateShortcut, shortcutActions.handleRunShortcut]);
-
+		onSnapshot(actions);
+	}, [actions, onSnapshot]);
 	return null;
 }
 
@@ -71,24 +50,58 @@ describe("useShortcutActions", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
+	let snapshot: ShortcutActions;
+	let unregister: (() => void)[];
+	let input: ReturnType<typeof vi.fn<(text: string) => boolean>>;
+	let waitForPrompt: ReturnType<typeof vi.fn<(timeout: number) => Promise<boolean>>>;
+
+	async function render(
+		prepareTerminalForShortcut: ShortcutInput["prepareTerminalForShortcut"],
+		projectId = "project-1",
+	) {
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={projectId}
+					prepareTerminalForShortcut={prepareTerminalForShortcut}
+					onSnapshot={(value) => {
+						snapshot = value;
+					}}
+				/>,
+			);
+		});
+	}
+	function prepared(hadExistingSession = true, isCurrent = () => true) {
+		return {
+			ok: true,
+			targetTaskId: HOME_TASK_ID,
+			targetSessionInstanceId: "launch-1",
+			hadExistingSession,
+			isCurrent,
+		};
+	}
+	function attach(projectId: string, sessionInstanceId: string) {
+		const controller = { input: vi.fn(() => true), paste: vi.fn(() => true), waitForLikelyPrompt: waitForPrompt };
+		unregister.push(registerTerminalController(HOME_TASK_ID, controller, { projectId, sessionInstanceId }));
+		return controller;
+	}
 
 	beforeEach(() => {
 		saveRuntimeConfigMock.mockReset();
 		showAppToastMock.mockReset();
-		waitForTerminalLikelyPromptMock.mockReset();
-		waitForTerminalLikelyPromptMock.mockResolvedValue(true);
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
+		unregister = [];
+		waitForPrompt = vi.fn(async () => true);
+		input = attach("project-1", "launch-1").input;
 	});
-
 	afterEach(() => {
-		act(() => {
-			root.unmount();
-		});
+		act(() => root.unmount());
+		for (const dispose of unregister.reverse()) dispose();
 		container.remove();
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -98,114 +111,139 @@ describe("useShortcutActions", () => {
 		}
 	});
 
-	it("interrupts reused terminals before sending the shortcut command", async () => {
-		const prepareTerminalForShortcut = vi.fn(async () => ({
-			hadExistingOpenTerminal: true,
-			ok: true,
-			targetTaskId: "__home_terminal__",
-		}));
-		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
-		let latestSnapshot: HookSnapshot | null = null;
-
+	it("interrupts an existing hidden shell before sending a shortcut, regardless of panel visibility", async () => {
+		await render(async () => prepared(true));
 		await act(async () => {
-			root.render(
-				<HookHarness
-					prepareTerminalForShortcut={prepareTerminalForShortcut}
-					sendTaskSessionInput={sendTaskSessionInput}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
+			await snapshot.handleRunShortcut("Ship");
 		});
-
-		await act(async () => {
-			await requireSnapshot(latestSnapshot).handleRunShortcut("Ship");
-		});
-
-		expect(waitForTerminalLikelyPromptMock).toHaveBeenCalledWith("__home_terminal__", 3000);
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "\u0003", {
-			intent: "write",
-			appendNewline: false,
-		});
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "__home_terminal__", "npm run ship", {
-			intent: "submit",
-			appendNewline: true,
-		});
+		expect(waitForPrompt).toHaveBeenCalledWith(3000);
+		expect(input.mock.calls.map(([text]) => text)).toEqual(["\u0003", "npm run ship", "\r"]);
+		expect(waitForPrompt.mock.invocationCallOrder[0]).toBeLessThan(input.mock.invocationCallOrder[0] ?? 0);
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
-	it("waits for a prompt without interrupting when it just opened the terminal", async () => {
-		const prepareTerminalForShortcut = vi.fn(async () => ({
-			hadExistingOpenTerminal: false,
-			ok: true,
-			targetTaskId: "__home_terminal__",
-		}));
-		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
-		let latestSnapshot: HookSnapshot | null = null;
-
+	it("does not interrupt a fresh shell", async () => {
+		await render(async () => prepared(false));
 		await act(async () => {
-			root.render(
-				<HookHarness
-					prepareTerminalForShortcut={prepareTerminalForShortcut}
-					sendTaskSessionInput={sendTaskSessionInput}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
+			await snapshot.handleRunShortcut("Ship");
 		});
+		expect(input.mock.calls.map(([text]) => text)).toEqual(["npm run ship", "\r"]);
+	});
 
+	it.each(["project", "task"])("cancels while connecting after a %s switch", async (scope) => {
+		const connection = deferred<ReturnType<typeof prepared>>();
+		let current = true;
+		const prepare = vi.fn(() => connection.promise);
+		await render(prepare);
+		let pending!: Promise<void>;
+		act(() => {
+			pending = snapshot.handleRunShortcut("Ship");
+		});
+		current = false;
+		if (scope === "project") {
+			attach("project-2", "launch-2");
+			await render(prepare, "project-2");
+		}
 		await act(async () => {
-			await requireSnapshot(latestSnapshot).handleRunShortcut("Ship");
+			connection.resolve(prepared(true, () => current));
+			await pending;
 		});
+		expect(input).not.toHaveBeenCalled();
+		expect(waitForPrompt).not.toHaveBeenCalled();
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
 
-		expect(waitForTerminalLikelyPromptMock).toHaveBeenCalledWith("__home_terminal__", 3000);
-		expect(sendTaskSessionInput).toHaveBeenCalledTimes(1);
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "__home_terminal__", "npm run ship", {
-			intent: "submit",
-			appendNewline: true,
+	it.each(["project", "task", "replacement", "unmount"])("cancels while awaiting a prompt after %s", async (scope) => {
+		const prompt = deferred<boolean>();
+		waitForPrompt.mockReturnValue(prompt.promise);
+		let current = true;
+		const prepare = async () => prepared(true, () => current);
+		await render(prepare);
+		let pending!: Promise<void>;
+		await act(async () => {
+			pending = snapshot.handleRunShortcut("Ship");
 		});
+		expect(input).toHaveBeenCalledExactlyOnceWith("\u0003");
+		let replacement: ReturnType<typeof attach> | undefined;
+		if (scope === "project") {
+			replacement = attach("project-2", "launch-2");
+			await render(prepare, "project-2");
+		} else if (scope === "replacement") {
+			replacement = attach("project-1", "launch-2");
+		} else if (scope === "unmount") {
+			await act(async () => root.render(null));
+		} else {
+			current = false;
+		}
+		await act(async () => {
+			prompt.resolve(true);
+			await pending;
+		});
+		expect(input).toHaveBeenCalledTimes(1);
+		expect(replacement?.input ?? input).not.toHaveBeenCalledWith("npm run ship");
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
+	it("does not adopt a replacement session that connects while preparation is pending", async () => {
+		const connection = deferred<ReturnType<typeof prepared>>();
+		await render(() => connection.promise);
+		let pending!: Promise<void>;
+		act(() => {
+			pending = snapshot.handleRunShortcut("Ship");
+		});
+		const replacement = attach("project-1", "launch-2");
+		await act(async () => {
+			connection.resolve(prepared());
+			await pending;
+		});
+		expect(input).not.toHaveBeenCalled();
+		expect(replacement.input).not.toHaveBeenCalled();
+	});
+
+	it("does not revive a retained shortcut callback after navigating away and back", async () => {
+		const prepare = vi.fn(async () => prepared());
+		await render(prepare);
+		const oldRun = snapshot.handleRunShortcut;
+		await render(prepare, "project-2");
+		await render(prepare, "project-1");
+		await act(async () => {
+			await oldRun("Ship");
+		});
+		expect(prepare).not.toHaveBeenCalled();
+		expect(input).not.toHaveBeenCalled();
+	});
+
+	it("rejects another project's controller with the same home task ID", async () => {
+		const otherProject = attach("project-2", "launch-2");
+		await render(async () => prepared());
+		await act(async () => {
+			await snapshot.handleRunShortcut("Ship");
+		});
+		expect(otherProject.input).not.toHaveBeenCalled();
+		expect(showAppToastMock).toHaveBeenCalledOnce();
+	});
+
+	it("does not send a command when interrupting the old process fails", async () => {
+		input.mockReturnValue(false);
+		await render(async () => prepared());
+		await act(async () => {
+			await snapshot.handleRunShortcut("Ship");
+		});
+		expect(input).toHaveBeenCalledExactlyOnceWith("\u0003");
+		expect(showAppToastMock).toHaveBeenCalledOnce();
 	});
 
 	it("saves a created shortcut and selects it", async () => {
-		saveRuntimeConfigMock.mockResolvedValue({
-			selectedShortcutLabel: "Run",
-			shortcuts: [{ label: "Run", command: "npm run dev", icon: "play" }],
-		});
-		const prepareTerminalForShortcut = vi.fn(async () => ({
-			hadExistingOpenTerminal: true,
-			ok: true,
-			targetTaskId: "__home_terminal__",
-		}));
-		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
-		let latestSnapshot: HookSnapshot | null = null;
-
+		saveRuntimeConfigMock.mockResolvedValue({});
+		await render(async () => prepared());
 		await act(async () => {
-			root.render(
-				<HookHarness
-					prepareTerminalForShortcut={prepareTerminalForShortcut}
-					sendTaskSessionInput={sendTaskSessionInput}
-					currentProjectId="project-1"
-					selectedShortcutLabel={null}
-					shortcuts={[]}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
+			await snapshot.handleCreateShortcut({ label: "Run", command: "npm run dev", icon: "play" });
 		});
-
-		await act(async () => {
-			await requireSnapshot(latestSnapshot).handleCreateShortcut({
-				label: "Run",
-				command: "npm run dev",
-				icon: "play",
-			});
-		});
-
 		expect(saveRuntimeConfigMock).toHaveBeenCalledWith("project-1", {
-			shortcuts: [{ label: "Run", command: "npm run dev", icon: "play" }],
+			shortcuts: [
+				{ label: "Ship", command: "npm run ship" },
+				{ label: "Run", command: "npm run dev", icon: "play" },
+			],
 			selectedShortcutLabel: "Run",
 		});
 		expect(showAppToastMock).not.toHaveBeenCalled();

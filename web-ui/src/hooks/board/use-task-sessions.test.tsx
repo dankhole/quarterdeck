@@ -187,6 +187,37 @@ describe("useTaskSessions", () => {
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
+	it("does not merge an old input response after navigating away and back", async () => {
+		let resolveResponse!: (value: { ok: boolean; summary: RuntimeTaskSessionSummary }) => void;
+		sendTaskSessionInputMutateMock.mockReturnValue(
+			new Promise((resolve) => {
+				resolveResponse = resolve;
+			}),
+		);
+		const pending = requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", "hello", {
+			intent: "write",
+			preferTerminal: false,
+		});
+		for (const currentProjectId of ["project-2", "project-1"]) {
+			await act(async () => {
+				root.render(
+					<HookHarness
+						currentProjectId={currentProjectId}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+		}
+		await act(async () => {
+			resolveResponse({ ok: true, summary: createSummary(90, "Stale warning") });
+			await expect(pending).resolves.toMatchObject({ ok: false });
+		});
+		expect(requireSnapshot(latestSnapshot).sessions["task-1"]).toBeUndefined();
+		expect(showAppToastMock).not.toHaveBeenCalled();
+	});
+
 	it("rechecks project identity when a queued session update is applied", async () => {
 		const setSessions = vi.fn<Dispatch<SetStateAction<Record<string, RuntimeTaskSessionSummary>>>>();
 		let upsert: HookSnapshot["upsertSession"] | undefined;
@@ -216,8 +247,64 @@ describe("useTaskSessions", () => {
 			requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", "hello", { intent: "submit" }),
 		).resolves.toEqual({ ok: true });
 
+		expect(getTerminalControllerMock).toHaveBeenCalledWith("task-1", { projectId: "project-1" });
 		expect(input).toHaveBeenNthCalledWith(1, "hello");
 		expect(input).toHaveBeenNthCalledWith(2, "\r");
+		expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["project-2", null])(
+		"rejects retained input callbacks before controller lookup after switching to %s",
+		async (projectId) => {
+			const oldSend = requireSnapshot(latestSnapshot).sendTaskSessionInput;
+			const input = vi.fn(() => true);
+			getTerminalControllerMock.mockReturnValue({ input, paste: vi.fn(() => true) });
+			await act(async () => {
+				root.render(
+					<HookHarness
+						currentProjectId={projectId}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+			await expect(oldSend("__home_terminal__", "npm run dev", { intent: "submit" })).resolves.toEqual({
+				ok: false,
+				message: "Project changed before input could be sent.",
+			});
+			expect(getTerminalControllerMock).not.toHaveBeenCalled();
+			expect(input).not.toHaveBeenCalled();
+			expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not revive an old input callback after navigating away and back", async () => {
+		const oldSend = requireSnapshot(latestSnapshot).sendTaskSessionInput;
+		for (const currentProjectId of ["project-2", "project-1"]) {
+			await act(async () => {
+				root.render(
+					<HookHarness
+						currentProjectId={currentProjectId}
+						onSnapshot={(snapshot) => {
+							latestSnapshot = snapshot;
+						}}
+					/>,
+				);
+			});
+		}
+		await expect(oldSend("__home_terminal__", "npm run dev", { intent: "submit" })).resolves.toMatchObject({
+			ok: false,
+		});
+		expect(getTerminalControllerMock).not.toHaveBeenCalled();
+		expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
+	});
+
+	it("rejects a retained input callback after unmount", async () => {
+		const oldSend = requireSnapshot(latestSnapshot).sendTaskSessionInput;
+		await act(async () => root.render(null));
+		await expect(oldSend("task-1", "hello", { intent: "submit" })).resolves.toMatchObject({ ok: false });
+		expect(getTerminalControllerMock).not.toHaveBeenCalled();
 		expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
 	});
 

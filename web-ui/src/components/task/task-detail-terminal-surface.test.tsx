@@ -80,11 +80,11 @@ function createTerminalProps(bottomTerminalOpen = false): TaskDetailTerminalProp
 		bottomTerminalOpen,
 		bottomTerminalTaskId: bottomTerminalOpen ? "task-1" : null,
 		bottomTerminalSummary: null,
-		onBottomTerminalClose: () => {},
+		onBottomTerminalClose: vi.fn(),
+		onBottomTerminalTerminate: vi.fn(),
 		onBottomTerminalCollapse: () => {},
 		bottomTerminalPaneHeight: 240,
 		onBottomTerminalPaneHeightChange: () => {},
-		onBottomTerminalConnectionReady: () => {},
 		bottomTerminalAgentCommand: "npm test",
 		onBottomTerminalSendAgentCommand: () => {},
 		isBottomTerminalExpanded: false,
@@ -264,7 +264,8 @@ describe("TaskDetailTerminalSurface", () => {
 		expect(agentUnmount).not.toHaveBeenCalled();
 	});
 
-	it("renders the bottom shell pane only when the detail shell is open", async () => {
+	it("renders the open shell with separate hide, terminate and restart callbacks", async () => {
+		const terminalProps = createTerminalProps(true);
 		await act(async () => {
 			root.render(
 				<TaskDetailTerminalSurface
@@ -273,7 +274,7 @@ describe("TaskDetailTerminalSurface", () => {
 					layoutState={createLayoutState()}
 					terminalState={createTerminalState()}
 					sessionSummary={null}
-					terminalProps={createTerminalProps(true)}
+					terminalProps={terminalProps}
 				/>,
 			);
 		});
@@ -284,6 +285,9 @@ describe("TaskDetailTerminalSurface", () => {
 			expect.objectContaining({
 				taskId: "task-1",
 				projectId: "project-1",
+				onClose: terminalProps.onBottomTerminalClose,
+				onTerminate: terminalProps.onBottomTerminalTerminate,
+				onRestart: terminalProps.onBottomTerminalRestart,
 				panelBackgroundColor: TERMINAL_THEME_COLORS.surfaceRaised,
 				terminalBackgroundColor: TERMINAL_THEME_COLORS.surfaceRaised,
 			}),

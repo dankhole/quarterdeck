@@ -84,12 +84,12 @@ export function TaskDetailTerminalSurface({
 							onSummary={terminalState.onSessionSummary}
 							autoFocus
 							onClose={terminalProps.onBottomTerminalClose}
+							onTerminate={terminalProps.onBottomTerminalTerminate}
 							headerTitle="Shell"
 							headerSubtitle={terminalProps.bottomTerminalSubtitle}
 							panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 							terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 							cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-							onConnectionReady={terminalProps.onBottomTerminalConnectionReady}
 							launchCommand={terminalProps.bottomTerminalAgentCommand}
 							onLaunchCommand={terminalProps.onBottomTerminalSendAgentCommand}
 							isExpanded={terminalProps.isBottomTerminalExpanded}

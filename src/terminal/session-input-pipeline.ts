@@ -241,7 +241,8 @@ export function processSessionInput(
 	// 1. Ctrl+C while running suppresses auto-restart and schedules recovery.
 	//    Escape can dismiss provider UI; only provider evidence may establish
 	//    that it interrupted a turn.
-	if (summary?.state === "running" && isCtrlC) {
+	// In a manual shell Ctrl+C interrupts the foreground command, not the shell.
+	if (entry.active.agentId !== null && summary?.state === "running" && isCtrlC) {
 		entry.suppressAutoRestartOnExit = true;
 		scheduleInterruptRecovery(entry, "ctrl_c", {
 			getEntry: (id) => deps.getEntry(id),

@@ -573,6 +573,7 @@ export function handleTaskSessionExit(
 export interface SpawnShellSessionDeps {
 	updateStore: (taskId: string, patch: Partial<RuntimeTaskSessionSummary>) => RuntimeTaskSessionSummary | null;
 	ensureEntry: (taskId: string) => RuntimeTaskSessionSummary;
+	isLaunchAllowed: () => boolean;
 }
 
 export async function spawnShellSession(
@@ -652,6 +653,7 @@ export async function spawnShellSession(
 	} catch (error) {
 		sessionForCallbacks?.stop({ interrupted: true });
 		terminalStateMirror.dispose();
+		if (!deps.isLaunchAllowed()) throw new TaskSessionStartCancelledError();
 		deps.updateStore(request.taskId, {
 			sessionInstanceId,
 			launchOperationId: null,
@@ -672,6 +674,11 @@ export async function spawnShellSession(
 			stalledSince: null,
 		});
 		throw new Error(formatSpawnFailure(request.binary, error, "shell"));
+	}
+	if (!deps.isLaunchAllowed()) {
+		session.stop({ interrupted: true });
+		terminalStateMirror.dispose();
+		throw new TaskSessionStartCancelledError();
 	}
 	sessionLog.info("shell session spawned successfully", {
 		taskId: request.taskId,

@@ -8,6 +8,7 @@ import {
 	waitForDesktopManualShellRetirement,
 } from "../../../scripts/agent-lab/desktop-manual-shell-evidence";
 import {
+	assertDesktopManualShellProcessPreserved,
 	validateDesktopManualShellSelection,
 	waitForDesktopManualShellDetailSelection,
 } from "../../../scripts/agent-lab/desktop-manual-shells";
@@ -104,7 +105,7 @@ describe("packaged manual shell acceptance evidence", () => {
 		if (change === "slot") after.dedicatedSlotIds = [2];
 		expect(() => assertDesktopManualShellPreserved(before, after)).toThrow("replaced the exact manual shell");
 	});
-	it("requires new process, session and dedicated slot when reopening", () => {
+	it("requires new process, session and dedicated slot when reopening after termination", () => {
 		const before = requireDesktopManualShell(live());
 		expect(() => assertDesktopManualShellFresh(before, before)).toThrow("fresh PTY");
 		const next = live();
@@ -117,6 +118,24 @@ describe("packaged manual shell acceptance evidence", () => {
 		next.dedicatedSlotIds = [2];
 		expect(() => assertDesktopManualShellFresh(before, requireDesktopManualShell(next))).not.toThrow();
 	});
+	it("allows hide to release the viewer and reattach with a new slot while retaining the exact process", () => {
+		const before = requireDesktopManualShell(live());
+		const hidden = { ...live(), dedicatedSlotIds: [], helperTextareas: 0 };
+		expect(() => assertDesktopManualShellProcessPreserved(before, hidden)).not.toThrow();
+		const reattached = { ...live(), dedicatedSlotIds: [2] };
+		expect(() => assertDesktopManualShellProcessPreserved(before, reattached)).not.toThrow();
+	});
+
+	it.each(["session", "birth", "pid", "cwd"])("rejects %s replacement while the viewer is hidden", (change) => {
+		const before = requireDesktopManualShell(live());
+		const hidden = { ...live(), dedicatedSlotIds: [], helperTextareas: 0 };
+		if (change === "session" && hidden.session) hidden.session.sessionInstanceId = "replaced";
+		if (change === "birth" && hidden.process) hidden.process.startedAt = "reused-pid";
+		if (change === "pid" && hidden.session && hidden.process) hidden.session.pid = hidden.process.pid = 50003;
+		if (change === "cwd" && hidden.session) hidden.session.sessionLaunchPath = "/other";
+		expect(() => assertDesktopManualShellProcessPreserved(before, hidden)).toThrow("exact process or session");
+	});
+
 	it("waits for process exit, slot disposal and the entire quiet interval", async () => {
 		const capture = vi.fn().mockResolvedValueOnce(live()).mockResolvedValue(retired());
 		const ports = observation(capture);

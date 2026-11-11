@@ -3,107 +3,90 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTaskSessions } from "@/hooks/board/use-task-sessions";
-import { useTerminalPanels } from "@/hooks/terminal/use-terminal-panels";
+import { type UseTerminalPanelsResult, useTerminalPanels } from "@/hooks/terminal/use-terminal-panels";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import type { CardSelection } from "@/types";
 
-const startShellSessionMutateMock = vi.hoisted(() => vi.fn());
-const stopTaskSessionMutateMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@/runtime/trpc-client", () => ({
-	getRuntimeTrpcClient: () => ({
-		runtime: {
-			startShellSession: {
-				mutate: startShellSessionMutateMock,
-			},
-			stopTaskSession: {
-				mutate: stopTaskSessionMutateMock,
-			},
-		},
-	}),
+const mocks = vi.hoisted(() => ({
+	start: vi.fn(),
+	stop: vi.fn(),
+	client: vi.fn(),
+	dispose: vi.fn(),
+	write: vi.fn(),
+	notify: vi.fn(),
+	controller: vi.fn(),
+	waitForController: vi.fn(),
+	geometry: vi.fn(),
+	waitForGeometry: vi.fn(),
 }));
-
+vi.mock("@/runtime/trpc-client", () => ({ getRuntimeTrpcClient: mocks.client }));
+vi.mock("@/components/app-toaster", () => ({ notifyError: mocks.notify }));
+vi.mock("@/terminal/terminal-pool", () => ({
+	disposeDedicatedTerminal: mocks.dispose,
+	writeToTerminalBuffer: mocks.write,
+}));
+vi.mock("@/terminal/terminal-controller-registry", () => ({
+	getTerminalController: mocks.controller,
+	getTerminalControllerAttachment: mocks.controller,
+	waitForTerminalController: mocks.waitForController,
+}));
 vi.mock("@/terminal/terminal-geometry-registry", () => ({
-	getTerminalGeometry: () => ({ cols: 120, rows: 24 }),
-	prepareWaitForTerminalGeometry: () => () => Promise.resolve(),
+	getTerminalGeometry: mocks.geometry,
+	prepareWaitForTerminalGeometry: () => mocks.waitForGeometry,
 }));
 
-interface HookSnapshot {
+interface HookSnapshot extends UseTerminalPanelsResult {
 	sessions: Record<string, RuntimeTaskSessionSummary>;
-	closeHomeTerminal: ReturnType<typeof useTerminalPanels>["closeHomeTerminal"];
-	collapseDetailTerminal: ReturnType<typeof useTerminalPanels>["collapseDetailTerminal"];
-	collapseHomeTerminal: ReturnType<typeof useTerminalPanels>["collapseHomeTerminal"];
-	detailTerminalPaneHeight: number | undefined;
-	detailTerminalTaskId: string | null;
-	handleToggleDetailTerminal: ReturnType<typeof useTerminalPanels>["handleToggleDetailTerminal"];
-	handleToggleHomeTerminal: ReturnType<typeof useTerminalPanels>["handleToggleHomeTerminal"];
-	homeTerminalPaneHeight: number | undefined;
-	isHomeTerminalOpen: boolean;
-	isDetailTerminalOpen: boolean;
-	prepareTerminalForShortcut: ReturnType<typeof useTerminalPanels>["prepareTerminalForShortcut"];
-	resetBottomTerminalLayoutCustomizations: ReturnType<
-		typeof useTerminalPanels
-	>["resetBottomTerminalLayoutCustomizations"];
-	resetTerminalPanelsState: ReturnType<typeof useTerminalPanels>["resetTerminalPanelsState"];
-	setDetailTerminalPaneHeight: ReturnType<typeof useTerminalPanels>["setDetailTerminalPaneHeight"];
-	setHomeTerminalPaneHeight: ReturnType<typeof useTerminalPanels>["setHomeTerminalPaneHeight"];
 }
 
 function createSelection(taskId: string): CardSelection {
-	const card = {
-		id: taskId,
-		title: null,
-		prompt: `Task ${taskId}`,
-		baseRef: "main",
-		createdAt: 1,
-		updatedAt: 1,
-	};
-	const column = {
-		id: "in_progress" as const,
-		title: "In Progress",
-		cards: [card],
-	};
-	return {
-		card,
-		column,
-		allColumns: [column],
-	};
+	const card = { id: taskId, title: null, prompt: `Task ${taskId}`, baseRef: "main", createdAt: 1, updatedAt: 1 };
+	const column = { id: "in_progress" as const, title: "In Progress", cards: [card] };
+	return { card, column, allColumns: [column] };
 }
 
-function createSummary(taskId: string): RuntimeTaskSessionSummary {
+function createSummary(taskId: string, overrides: Partial<RuntimeTaskSessionSummary> = {}): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({
 		taskId,
 		state: "running",
-		agentId: "codex",
+		agentId: null,
+		sessionInstanceId: `${taskId}:instance`,
 		sessionLaunchPath: `/tmp/${taskId}`,
 		pid: 123,
 		startedAt: 1,
 		updatedAt: 1,
+		...overrides,
 	});
 }
 
-async function flushPromises(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (error: Error) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
 }
 
-function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
-	if (snapshot === null) {
-		throw new Error("Expected a hook snapshot.");
-	}
-	return snapshot;
+async function flushPromises(): Promise<void> {
+	for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
 
 function HookHarness({
 	currentProjectId = "project-1",
 	onSnapshot,
 	selectedCard,
+	sessionOverride,
+	shellAutoRestartEnabled = true,
 }: {
 	currentProjectId?: string;
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	selectedCard: CardSelection | null;
+	sessionOverride?: Record<string, RuntimeTaskSessionSummary>;
+	shellAutoRestartEnabled?: boolean;
 }): null {
 	const [sessions, setSessions] = useState<Record<string, RuntimeTaskSessionSummary>>({});
 	const { upsertSession } = useTaskSessions({ currentProjectId, setSessions });
@@ -113,470 +96,526 @@ function HookHarness({
 		projectGit: null,
 		configDefaultBaseRef: "",
 		agentCommand: null,
-		shellAutoRestartEnabled: true,
-		findCard: () => null,
+		shellAutoRestartEnabled,
+		sessions: sessionOverride ?? sessions,
+		findCard: (cardId) => (selectedCard?.card.id === cardId ? selectedCard.card : null),
 		upsertSession,
 		sendTaskSessionInput: async () => ({ ok: true }),
 	});
-
-	useEffect(() => {
-		onSnapshot({
-			sessions,
-			closeHomeTerminal: result.closeHomeTerminal,
-			collapseDetailTerminal: result.collapseDetailTerminal,
-			collapseHomeTerminal: result.collapseHomeTerminal,
-			detailTerminalPaneHeight: result.detailTerminalPaneHeight,
-			detailTerminalTaskId: result.detailTerminalTaskId,
-			handleToggleDetailTerminal: result.handleToggleDetailTerminal,
-			handleToggleHomeTerminal: result.handleToggleHomeTerminal,
-			homeTerminalPaneHeight: result.homeTerminalPaneHeight,
-			isHomeTerminalOpen: result.isHomeTerminalOpen,
-			isDetailTerminalOpen: result.isDetailTerminalOpen,
-			prepareTerminalForShortcut: result.prepareTerminalForShortcut,
-			resetBottomTerminalLayoutCustomizations: result.resetBottomTerminalLayoutCustomizations,
-			resetTerminalPanelsState: result.resetTerminalPanelsState,
-			setDetailTerminalPaneHeight: result.setDetailTerminalPaneHeight,
-			setHomeTerminalPaneHeight: result.setHomeTerminalPaneHeight,
-		});
-	}, [
-		sessions,
-		onSnapshot,
-		result.closeHomeTerminal,
-		result.collapseDetailTerminal,
-		result.collapseHomeTerminal,
-		result.detailTerminalPaneHeight,
-		result.detailTerminalTaskId,
-		result.handleToggleDetailTerminal,
-		result.handleToggleHomeTerminal,
-		result.homeTerminalPaneHeight,
-		result.isHomeTerminalOpen,
-		result.isDetailTerminalOpen,
-		result.prepareTerminalForShortcut,
-		result.resetBottomTerminalLayoutCustomizations,
-		result.resetTerminalPanelsState,
-		result.setDetailTerminalPaneHeight,
-		result.setHomeTerminalPaneHeight,
-	]);
-
+	useEffect(() => onSnapshot({ ...result, sessions }), [result, sessions, onSnapshot]);
 	return null;
 }
+
+const HOME = "__home_terminal__";
+const DETAIL_A = "__detail_terminal__:task-a";
+const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
 
 describe("useTerminalPanels", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
+	let latestSnapshot: HookSnapshot;
+	const onSnapshot = (snapshot: HookSnapshot) => {
+		latestSnapshot = snapshot;
+	};
+	const render = async (
+		selectedCard: CardSelection | null = null,
+		currentProjectId = "project-1",
+		sessionOverride?: Record<string, RuntimeTaskSessionSummary>,
+	) => {
+		await act(async () => {
+			root.render(
+				<HookHarness
+					currentProjectId={currentProjectId}
+					selectedCard={selectedCard}
+					sessionOverride={sessionOverride}
+					onSnapshot={onSnapshot}
+				/>,
+			);
+			await flushPromises();
+		});
+	};
+	const action = async (callback: () => void) => {
+		await act(async () => {
+			callback();
+			await flushPromises();
+		});
+	};
 
 	beforeEach(() => {
 		window.localStorage.clear();
-		startShellSessionMutateMock.mockReset();
-		stopTaskSessionMutateMock.mockReset();
-		startShellSessionMutateMock.mockImplementation(async ({ taskId }: { taskId: string }) => ({
-			ok: true,
-			summary: createSummary(taskId),
+		for (const mock of Object.values(mocks)) mock.mockReset();
+		mocks.client.mockImplementation(() => ({
+			runtime: {
+				startShellSession: { mutate: mocks.start },
+				stopTaskSession: { mutate: mocks.stop },
+			},
 		}));
-		stopTaskSessionMutateMock.mockImplementation(async ({ taskId }: { taskId: string }) => ({
-			ok: true,
-			summary: createSummary(taskId),
-		}));
-		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-			.IS_REACT_ACT_ENVIRONMENT;
-		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		const runningTasks = new Set<string>();
+		mocks.start.mockImplementation(async ({ taskId }: { taskId: string }) => {
+			const hadExistingSession = runningTasks.has(taskId);
+			runningTasks.add(taskId);
+			return { ok: true, summary: createSummary(taskId), shellBinary: "/bin/zsh", hadExistingSession };
+		});
+		mocks.stop.mockImplementation(async ({ taskId }: { taskId: string }) => {
+			runningTasks.delete(taskId);
+			return {
+				ok: true,
+				didExit: true,
+				outcome: "exited",
+				summary: createSummary(taskId, { state: "awaiting_review", reviewReason: "interrupted", pid: null }),
+			};
+		});
+		mocks.geometry.mockReturnValue({ cols: 120, rows: 24 });
+		mocks.waitForGeometry.mockResolvedValue(undefined);
+		mocks.controller.mockReturnValue({
+			signal: new AbortController().signal,
+			ready: true,
+			controller: { input: () => true, paste: () => true },
+		});
+		mocks.waitForController.mockImplementation(async () => mocks.controller());
+		previousActEnvironment = actEnvironment.IS_REACT_ACT_ENVIRONMENT;
+		actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
 		container = document.createElement("div");
 		document.body.appendChild(container);
 		root = createRoot(container);
 	});
-
 	afterEach(() => {
-		act(() => {
-			root.unmount();
-		});
+		act(() => root.unmount());
 		container.remove();
-		if (previousActEnvironment === undefined) {
-			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
-		} else {
-			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-				previousActEnvironment;
-		}
+		actEnvironment.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+		vi.useRealTimers();
+	});
+
+	it("starts lazily and hides, collapses, navigates, resets, and disconnects without stopping shells", async () => {
+		await render();
+		expect(mocks.start).not.toHaveBeenCalled();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		await action(() => latestSnapshot.closeHomeTerminal());
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(false);
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.collapseHomeTerminal());
+		await render(createSelection("task-a"));
+		await action(() => latestSnapshot.handleToggleDetailTerminal());
+		await action(() => latestSnapshot.collapseDetailTerminal());
+		await action(() => latestSnapshot.handleToggleDetailTerminal());
+		await render(createSelection("task-b"));
+		expect(latestSnapshot.isDetailTerminalOpen).toBe(false);
+		await render(createSelection("task-a"));
+		expect(latestSnapshot.isDetailTerminalOpen).toBe(false);
+		await action(() => latestSnapshot.handleToggleDetailTerminal());
+		await render(null, "project-2");
+		await action(() => latestSnapshot.resetTerminalPanelsState());
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		act(() => root.unmount());
+		root = createRoot(container);
+		expect(mocks.stop).not.toHaveBeenCalled();
+		expect(mocks.dispose).toHaveBeenCalledWith("project-1", HOME);
+		expect(mocks.dispose).toHaveBeenCalledWith("project-1", DETAIL_A);
+		expect(mocks.dispose).toHaveBeenCalledWith("project-2", HOME);
 	});
 
 	it.each([false, true])(
-		"keeps the new project's home shell when the old project's stop finishes late (switch before close: %s)",
-		async (switchBeforeClose) => {
-			let latestSnapshot: HookSnapshot | null = null;
-			const onSnapshot = (snapshot: HookSnapshot) => {
-				latestSnapshot = snapshot;
-			};
-			let resolveResponse!: (value: { ok: boolean; summary: RuntimeTaskSessionSummary }) => void;
-			const stop = new Promise<{ ok: boolean; summary: RuntimeTaskSessionSummary }>((resolve) => {
-				resolveResponse = resolve;
-			});
-			stopTaskSessionMutateMock.mockReturnValueOnce(stop);
-			await act(async () => {
-				root.render(<HookHarness selectedCard={null} onSnapshot={onSnapshot} />);
-			});
-			await act(async () => {
-				requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
-			});
-			const switchProject = async () => {
-				await act(async () => {
-					root.render(<HookHarness currentProjectId="project-2" selectedCard={null} onSnapshot={onSnapshot} />);
-				});
-			};
-			if (switchBeforeClose) await switchProject();
-			await act(async () => {
-				if (switchBeforeClose) {
-					// Navigation cleanup must stop the shell using its recorded owning project.
-					requireSnapshot(latestSnapshot).resetTerminalPanelsState();
-				} else {
-					requireSnapshot(latestSnapshot).closeHomeTerminal();
-				}
-			});
-			expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({ taskId: "__home_terminal__", waitForExit: true });
-			if (!switchBeforeClose) await switchProject();
-			const currentSummary = createTestTaskSessionSummary({
-				taskId: "__home_terminal__",
-				agentId: null,
-				state: "running",
-				pid: 200,
-				startedAt: 20,
-				updatedAt: 20,
-			});
-			startShellSessionMutateMock.mockResolvedValueOnce({ ok: true, summary: currentSummary });
-			await act(async () => {
-				requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
-			});
-			expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
-			await act(async () => {
-				resolveResponse({
-					ok: true,
-					summary: createTestTaskSessionSummary({
-						taskId: "__home_terminal__",
-						agentId: null,
-						state: "idle",
-						pid: null,
-						updatedAt: 50,
-					}),
-				});
-				await flushPromises();
-			});
-			expect(requireSnapshot(latestSnapshot).sessions.__home_terminal__).toBe(currentSummary);
+		"explicitly terminates only the selected shell and waits for exit (detail: %s)",
+		async (detail) => {
+			await render(detail ? createSelection("task-a") : null);
+			await action(() =>
+				detail ? latestSnapshot.handleToggleDetailTerminal() : latestSnapshot.handleToggleHomeTerminal(),
+			);
+			await action(() =>
+				detail ? latestSnapshot.terminateDetailTerminal() : latestSnapshot.terminateHomeTerminal(),
+			);
+			expect(mocks.stop).toHaveBeenCalledExactlyOnceWith({ taskId: detail ? DETAIL_A : HOME, waitForExit: true });
+			expect(detail ? latestSnapshot.isDetailTerminalOpen : latestSnapshot.isHomeTerminalOpen).toBe(false);
 		},
 	);
 
-	it("tracks detail terminal visibility per task selection", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const selectionA = createSelection("task-a");
-		const selectionB = createSelection("task-b");
+	it.each(["timed_out", "failed", "requested"])(
+		"does not replace a shell after an unsuccessful %s stop",
+		async (outcome) => {
+			await render();
+			await action(() => latestSnapshot.handleToggleHomeTerminal());
+			mocks.stop.mockResolvedValueOnce({
+				ok: outcome === "requested",
+				didExit: false,
+				outcome,
+				error: "Stop failed",
+			});
+			await action(() => latestSnapshot.handleRestartHomeTerminal());
+			expect(mocks.start).toHaveBeenCalledTimes(1);
+			expect(mocks.notify).toHaveBeenCalledWith("Stop failed");
+			expect(latestSnapshot.isHomeTerminalStarting).toBe(false);
+		},
+	);
 
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={selectionA}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
+	it("surfaces an explicit termination failure instead of swallowing it", async () => {
+		await render(createSelection("task-a"));
+		await action(() => latestSnapshot.handleToggleDetailTerminal());
+		mocks.stop.mockRejectedValueOnce(new Error("Cannot stop shell"));
+		await action(() => latestSnapshot.terminateDetailTerminal());
+		expect(mocks.notify).toHaveBeenCalledWith("Cannot stop shell");
+		expect(mocks.start).toHaveBeenCalledTimes(1);
+	});
+
+	it("restarts only after successful process exit", async () => {
+		const stop = deferred<{ ok: boolean; didExit: boolean; outcome: "exited"; summary: null }>();
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		mocks.stop.mockReturnValueOnce(stop.promise);
+		await action(() => latestSnapshot.handleRestartHomeTerminal());
+		expect(mocks.start).toHaveBeenCalledTimes(1);
+		expect(latestSnapshot.isHomeTerminalStarting).toBe(true);
+		await action(() => stop.resolve({ ok: true, didExit: true, outcome: "exited", summary: null }));
+		expect(mocks.start).toHaveBeenCalledTimes(2);
+	});
+
+	it("orders termination after an admitted start, then a reopen after termination", async () => {
+		const start = deferred<{ ok: boolean; summary: RuntimeTaskSessionSummary }>();
+		mocks.start.mockReturnValueOnce(start.promise);
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.terminateHomeTerminal());
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		expect(mocks.stop).not.toHaveBeenCalled();
+		expect(mocks.start).toHaveBeenCalledTimes(1);
+		await action(() => start.resolve({ ok: true, summary: createSummary(HOME) }));
+		expect(mocks.stop).toHaveBeenCalledOnce();
+		expect(mocks.start).toHaveBeenCalledTimes(2);
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		expect(latestSnapshot.isHomeTerminalStarting).toBe(false);
+	});
+
+	it("converges rapid open/hide/reopen and restart/terminate intents", async () => {
+		await render();
+		await action(() => {
+			latestSnapshot.handleToggleHomeTerminal();
+			latestSnapshot.handleToggleHomeTerminal();
+			latestSnapshot.handleToggleHomeTerminal();
 		});
-
-		const initialSnapshot = requireSnapshot(latestSnapshot);
-		expect(initialSnapshot.isDetailTerminalOpen).toBe(false);
-		expect(initialSnapshot.detailTerminalTaskId).toBe("__detail_terminal__:task-a");
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).handleToggleDetailTerminal();
-			await flushPromises();
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		expect(mocks.start).toHaveBeenCalledOnce();
+		await action(() => {
+			latestSnapshot.handleRestartHomeTerminal();
+			latestSnapshot.terminateHomeTerminal();
 		});
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(false);
+		expect(mocks.start).toHaveBeenCalledOnce();
+		expect(mocks.stop).toHaveBeenCalledOnce();
+	});
 
-		const openedTaskASnapshot = requireSnapshot(latestSnapshot);
-		expect(openedTaskASnapshot.isDetailTerminalOpen).toBe(true);
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-		expect(startShellSessionMutateMock).toHaveBeenLastCalledWith(
-			expect.objectContaining({
-				taskId: "__detail_terminal__:task-a",
-				projectTaskId: "task-a",
+	it("does not let a hidden start failure clear a reopened viewer's loading state", async () => {
+		const oldStart = deferred<{ ok: boolean; summary: null; error: string }>();
+		const newStart = deferred<{ ok: boolean; summary: RuntimeTaskSessionSummary }>();
+		mocks.start.mockReturnValueOnce(oldStart.promise).mockReturnValueOnce(newStart.promise);
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.closeHomeTerminal());
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => oldStart.resolve({ ok: false, summary: null, error: "Old failure" }));
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		expect(latestSnapshot.isHomeTerminalStarting).toBe(true);
+		expect(mocks.notify).not.toHaveBeenCalled();
+		await action(() => newStart.resolve({ ok: true, summary: createSummary(HOME) }));
+		expect(latestSnapshot.isHomeTerminalStarting).toBe(false);
+	});
+
+	it("keeps a new project's summary when an old explicit termination finishes late", async () => {
+		const stop = deferred<{ ok: boolean; didExit: boolean; outcome: "exited"; summary: RuntimeTaskSessionSummary }>();
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		mocks.stop.mockReturnValueOnce(stop.promise);
+		await action(() => latestSnapshot.terminateHomeTerminal());
+		await render(null, "project-2");
+		const currentSummary = createSummary(HOME, { sessionInstanceId: "project-2-instance", pid: 456 });
+		mocks.start.mockResolvedValueOnce({ ok: true, summary: currentSummary });
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() =>
+			stop.resolve({
+				ok: true,
+				didExit: true,
+				outcome: "exited",
+				summary: createSummary(HOME, { state: "awaiting_review", reviewReason: "interrupted", pid: null }),
 			}),
 		);
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={selectionB}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
-		});
-
-		const taskBSnapshot = requireSnapshot(latestSnapshot);
-		expect(taskBSnapshot.isDetailTerminalOpen).toBe(false);
-		expect(taskBSnapshot.detailTerminalTaskId).toBe("__detail_terminal__:task-b");
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={selectionA}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
-		});
-
-		const restoredTaskASnapshot = requireSnapshot(latestSnapshot);
-		expect(restoredTaskASnapshot.isDetailTerminalOpen).toBe(false);
-		expect(restoredTaskASnapshot.detailTerminalTaskId).toBe("__detail_terminal__:task-a");
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-		expect(stopTaskSessionMutateMock).toHaveBeenCalledWith({
-			taskId: "__detail_terminal__:task-a",
-			waitForExit: true,
-		});
+		expect(latestSnapshot.sessions[HOME]).toBe(currentSummary);
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		expect(mocks.client.mock.calls.map(([projectId]) => projectId)).toEqual(["project-1", "project-1", "project-2"]);
 	});
 
-	it("reuses an already-open home terminal when preparing a shortcut", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const prepareWaitForTerminalConnectionReady = vi.fn(() => async () => {});
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={null}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
-		});
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).handleToggleHomeTerminal();
-			await flushPromises();
-		});
-
-		expect(requireSnapshot(latestSnapshot).isHomeTerminalOpen).toBe(true);
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			const result = await requireSnapshot(latestSnapshot).prepareTerminalForShortcut({
-				prepareWaitForTerminalConnectionReady,
-			});
-			expect(result).toEqual({
-				hadExistingOpenTerminal: true,
-				ok: true,
-				targetTaskId: "__home_terminal__",
-			});
-			await flushPromises();
-		});
-
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-		expect(prepareWaitForTerminalConnectionReady).not.toHaveBeenCalled();
+	it("does not dispatch a start after geometry resolves in an abandoned project", async () => {
+		const geometry = deferred<void>();
+		mocks.geometry.mockReturnValue(null);
+		mocks.waitForGeometry.mockReturnValueOnce(geometry.promise);
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await render(null, "project-2");
+		await action(() => geometry.resolve());
+		expect(mocks.start).not.toHaveBeenCalled();
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(false);
+		expect(latestSnapshot.isHomeTerminalStarting).toBe(false);
 	});
 
-	it("reuses an already-open detail terminal when preparing a shortcut", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const selection = createSelection("task-a");
-		const prepareWaitForTerminalConnectionReady = vi.fn(() => async () => {});
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={selection}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
+	it.each([false, true])(
+		"ignores delayed start metadata/loading across project or task selection (task: %s)",
+		async (taskSwitch) => {
+			const start = deferred<{ ok: boolean; summary: RuntimeTaskSessionSummary; shellBinary: string }>();
+			mocks.start.mockReturnValueOnce(start.promise);
+			await render(taskSwitch ? createSelection("task-a") : null);
+			await action(() =>
+				taskSwitch ? latestSnapshot.handleToggleDetailTerminal() : latestSnapshot.handleToggleHomeTerminal(),
 			);
-			await flushPromises();
-		});
+			await render(taskSwitch ? createSelection("task-b") : null, taskSwitch ? "project-1" : "project-2");
+			const newerStart = deferred<{ ok: boolean; summary: RuntimeTaskSessionSummary; shellBinary: string }>();
+			mocks.start.mockReturnValueOnce(newerStart.promise);
+			await action(() =>
+				taskSwitch ? latestSnapshot.handleToggleDetailTerminal() : latestSnapshot.handleToggleHomeTerminal(),
+			);
+			await action(() =>
+				start.resolve({
+					ok: true,
+					summary: createSummary(taskSwitch ? DETAIL_A : HOME),
+					shellBinary: "/old/shell",
+				}),
+			);
+			expect(taskSwitch ? latestSnapshot.isDetailTerminalStarting : latestSnapshot.isHomeTerminalStarting).toBe(
+				true,
+			);
+			expect(latestSnapshot.homeTerminalShellBinary).toBeNull();
+			await action(() =>
+				newerStart.resolve({
+					ok: true,
+					summary: createSummary(taskSwitch ? "__detail_terminal__:task-b" : HOME, { pid: 222 }),
+					shellBinary: "/new/shell",
+				}),
+			);
+			expect(taskSwitch ? latestSnapshot.isDetailTerminalStarting : latestSnapshot.isHomeTerminalStarting).toBe(
+				false,
+			);
+			expect(mocks.stop).not.toHaveBeenCalled();
+		},
+	);
 
-		await act(async () => {
-			requireSnapshot(latestSnapshot).handleToggleDetailTerminal();
-			await flushPromises();
-		});
-
-		expect(requireSnapshot(latestSnapshot).isDetailTerminalOpen).toBe(true);
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-
-		await act(async () => {
-			const result = await requireSnapshot(latestSnapshot).prepareTerminalForShortcut({
-				prepareWaitForTerminalConnectionReady,
-			});
-			expect(result).toEqual({
-				hadExistingOpenTerminal: true,
-				ok: true,
-				targetTaskId: "__detail_terminal__:task-a",
-			});
-			await flushPromises();
-		});
-
-		expect(startShellSessionMutateMock).toHaveBeenCalledTimes(1);
-		expect(prepareWaitForTerminalConnectionReady).not.toHaveBeenCalled();
+	it("does not complete an old restart into a different project or a reopened viewer", async () => {
+		const stop = deferred<{ ok: boolean; didExit: boolean; outcome: "exited"; summary: null }>();
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		mocks.stop.mockReturnValueOnce(stop.promise);
+		await action(() => latestSnapshot.handleRestartHomeTerminal());
+		await render(null, "project-2");
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => stop.resolve({ ok: true, didExit: true, outcome: "exited", summary: null }));
+		expect(mocks.start).toHaveBeenCalledTimes(2);
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		expect(latestSnapshot.isHomeTerminalStarting).toBe(false);
 	});
 
-	it("shares the last resized bottom terminal height across home and detail panes", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const selectionA = createSelection("task-a");
-		const selectionB = createSelection("task-b");
-
-		const renderHarness = async (selectedCard: CardSelection | null): Promise<void> => {
+	it.each([false, true])(
+		"reuses an already-open terminal for shortcuts without another process start (detail: %s)",
+		async (detail) => {
+			await render(detail ? createSelection("task-a") : null);
+			await action(() =>
+				detail ? latestSnapshot.handleToggleDetailTerminal() : latestSnapshot.handleToggleHomeTerminal(),
+			);
 			await act(async () => {
-				root.render(
-					<HookHarness
-						selectedCard={selectedCard}
-						onSnapshot={(snapshot) => {
-							latestSnapshot = snapshot;
-						}}
-					/>,
-				);
-				await flushPromises();
+				expect(await latestSnapshot.prepareTerminalForShortcut()).toEqual({
+					hadExistingSession: true,
+					ok: true,
+					targetTaskId: detail ? DETAIL_A : HOME,
+					targetSessionInstanceId: `${detail ? DETAIL_A : HOME}:instance`,
+					isCurrent: expect.any(Function),
+				});
 			});
-		};
+			expect(mocks.start).toHaveBeenCalledOnce();
+		},
+	);
 
-		await renderHarness(selectionA);
-		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBeUndefined();
-		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBeUndefined();
-
+	it("reattaches a hidden running process and tells shortcuts to interrupt its previous command", async () => {
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.closeHomeTerminal());
 		await act(async () => {
-			requireSnapshot(latestSnapshot).setDetailTerminalPaneHeight(320);
-			await flushPromises();
+			expect(await latestSnapshot.prepareTerminalForShortcut()).toEqual({
+				hadExistingSession: true,
+				ok: true,
+				targetTaskId: HOME,
+				targetSessionInstanceId: `${HOME}:instance`,
+				isCurrent: expect.any(Function),
+			});
 		});
-
-		const detailResizedSnapshot = requireSnapshot(latestSnapshot);
-		expect(detailResizedSnapshot.detailTerminalPaneHeight).toBe(320);
-		expect(detailResizedSnapshot.homeTerminalPaneHeight).toBe(320);
-		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBe("320");
-
-		await renderHarness(selectionB);
-		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBe(320);
-		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBe(320);
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).setHomeTerminalPaneHeight(410);
-			await flushPromises();
-		});
-
-		const homeResizedSnapshot = requireSnapshot(latestSnapshot);
-		expect(homeResizedSnapshot.homeTerminalPaneHeight).toBe(410);
-		expect(homeResizedSnapshot.detailTerminalPaneHeight).toBe(410);
-		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBe("410");
-
-		await act(async () => {
-			root.unmount();
-			root = createRoot(container);
-			await flushPromises();
-		});
-
-		await renderHarness(selectionA);
-		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBe(410);
-		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBe(410);
+		expect(mocks.start).toHaveBeenCalledTimes(2);
+		expect(mocks.waitForController).toHaveBeenCalledWith(
+			HOME,
+			{ projectId: "project-1", sessionInstanceId: `${HOME}:instance`, sessionStartedAt: 1 },
+			expect.any(Object),
+		);
+		expect(mocks.stop).not.toHaveBeenCalled();
 	});
 
-	it("resets the shared bottom terminal height when collapsed", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-		const selection = createSelection("task-a");
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={selection}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
+	it("reports a reused runtime process even before browser session hydration", async () => {
+		await render();
+		expect(latestSnapshot.sessions).toEqual({});
+		mocks.start.mockResolvedValueOnce({
+			ok: true,
+			summary: createSummary(HOME),
+			shellBinary: "/bin/zsh",
+			hadExistingSession: true,
 		});
-
 		await act(async () => {
-			requireSnapshot(latestSnapshot).handleToggleDetailTerminal();
-			await flushPromises();
+			const prepared = await latestSnapshot.prepareTerminalForShortcut();
+			expect(prepared).toMatchObject({
+				ok: true,
+				hadExistingSession: true,
+				targetSessionInstanceId: `${HOME}:instance`,
+			});
 		});
+	});
 
+	it("uses the runtime's fresh-process result instead of a stale browser running summary", async () => {
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.closeHomeTerminal());
+		mocks.start.mockResolvedValueOnce({
+			ok: true,
+			summary: createSummary(HOME, { sessionInstanceId: "new-instance" }),
+			shellBinary: "/bin/zsh",
+			hadExistingSession: false,
+		});
 		await act(async () => {
-			requireSnapshot(latestSnapshot).setDetailTerminalPaneHeight(320);
-			await flushPromises();
+			const prepared = await latestSnapshot.prepareTerminalForShortcut();
+			expect(prepared).toMatchObject({
+				ok: true,
+				hadExistingSession: false,
+				targetSessionInstanceId: "new-instance",
+			});
 		});
+	});
 
-		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBe(320);
-		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBe("320");
-		expect(requireSnapshot(latestSnapshot).isDetailTerminalOpen).toBe(true);
-
+	it("prepares a fresh exact session and invalidates it on same-task process replacement", async () => {
+		await render();
+		let preparation!: Awaited<ReturnType<UseTerminalPanelsResult["prepareTerminalForShortcut"]>>;
 		await act(async () => {
-			requireSnapshot(latestSnapshot).collapseDetailTerminal();
-			await flushPromises();
+			preparation = await latestSnapshot.prepareTerminalForShortcut();
 		});
+		expect(preparation).toMatchObject({
+			ok: true,
+			hadExistingSession: false,
+			targetTaskId: HOME,
+			targetSessionInstanceId: `${HOME}:instance`,
+		});
+		expect(preparation.isCurrent?.()).toBe(true);
+		await render(null, "project-1", { [HOME]: createSummary(HOME, { sessionInstanceId: "replacement-instance" }) });
+		expect(preparation.isCurrent?.()).toBe(false);
+	});
 
-		expect(requireSnapshot(latestSnapshot).detailTerminalPaneHeight).toBeUndefined();
-		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBeUndefined();
-		expect(requireSnapshot(latestSnapshot).isDetailTerminalOpen).toBe(false);
+	it("starts fresh after explicit termination rather than claiming an existing shortcut process", async () => {
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.terminateHomeTerminal());
+		await act(async () => {
+			const prepared = await latestSnapshot.prepareTerminalForShortcut();
+			expect(prepared).toMatchObject({ ok: true, hadExistingSession: false, targetTaskId: HOME });
+		});
+		expect(mocks.start).toHaveBeenCalledTimes(2);
+	});
+
+	it("rejects shortcut preparation when navigation occurs while connection readiness is pending", async () => {
+		const ready = deferred<null>();
+		mocks.waitForController.mockReturnValueOnce(ready.promise);
+		await render(createSelection("task-a"));
+		let preparation: Promise<{ ok: boolean }>;
+		await action(() => {
+			preparation = latestSnapshot.prepareTerminalForShortcut();
+		});
+		await render(createSelection("task-b"));
+		await action(() => ready.resolve(null));
+		expect(await preparation!).toEqual({ ok: false, message: "Terminal preparation was cancelled." });
+		expect(latestSnapshot.isDetailTerminalOpen).toBe(false);
+	});
+
+	it("retains shared pane height across tasks and remounts, but collapse resets it without stopping", async () => {
+		await render(createSelection("task-a"));
+		await action(() => latestSnapshot.setDetailTerminalPaneHeight(320));
+		expect(latestSnapshot.homeTerminalPaneHeight).toBe(320);
+		await render(createSelection("task-b"));
+		expect(latestSnapshot.detailTerminalPaneHeight).toBe(320);
+		await action(() => latestSnapshot.setHomeTerminalPaneHeight(410));
+		act(() => root.unmount());
+		root = createRoot(container);
+		await render(createSelection("task-a"));
+		expect(latestSnapshot.detailTerminalPaneHeight).toBe(410);
+		await action(() => latestSnapshot.handleToggleDetailTerminal());
+		await action(() => latestSnapshot.collapseDetailTerminal());
+		expect(latestSnapshot.detailTerminalPaneHeight).toBeUndefined();
 		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBeNull();
+		expect(mocks.stop).not.toHaveBeenCalled();
 	});
 
-	it("resets the shared bottom terminal height without closing the current pane", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={null}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
-		});
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).setHomeTerminalPaneHeight(420);
-			await flushPromises();
-		});
-
-		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBe(420);
-		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBe("420");
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).resetBottomTerminalLayoutCustomizations();
-			await flushPromises();
-		});
-
-		expect(requireSnapshot(latestSnapshot).homeTerminalPaneHeight).toBeUndefined();
-		expect(window.localStorage.getItem(LocalStorageKey.BottomTerminalPaneHeight)).toBeNull();
+	it("resets layout customizations without closing or terminating the pane", async () => {
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await action(() => latestSnapshot.setHomeTerminalPaneHeight(420));
+		await action(() => latestSnapshot.handleToggleExpandHomeTerminal());
+		expect(latestSnapshot.homeTerminalPaneHeight).toBe(99999);
+		await action(() => latestSnapshot.resetBottomTerminalLayoutCustomizations());
+		expect(latestSnapshot.homeTerminalPaneHeight).toBeUndefined();
+		expect(latestSnapshot.isHomeTerminalOpen).toBe(true);
+		expect(mocks.stop).not.toHaveBeenCalled();
 	});
 
-	it("does not try to stop the home shell when it was never opened", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
+	it("uses conditional ensure-start, never stop/start, for an attached unexpected exit", async () => {
+		vi.useFakeTimers();
+		const summary = createSummary(HOME, { pid: null, state: "idle", exitCode: 1 });
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await render(null, "project-1", { [HOME]: summary });
+		await action(() => latestSnapshot.handleShellExit(HOME, 1));
 		await act(async () => {
-			root.render(
-				<HookHarness
-					selectedCard={null}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await flushPromises();
+			await vi.advanceTimersByTimeAsync(1000);
 		});
+		expect(mocks.stop).not.toHaveBeenCalled();
+		expect(mocks.start).toHaveBeenLastCalledWith(
+			expect.objectContaining({ expectedExitedSessionInstanceId: summary.sessionInstanceId }),
+		);
+		expect(mocks.controller).toHaveBeenCalledWith(HOME, {
+			projectId: "project-1",
+			sessionInstanceId: summary.sessionInstanceId,
+		});
+	});
 
+	it.each(["hide", "project", "task", "terminate", "detach"])(
+		"cancels or rejects automatic recovery after %s",
+		async (reason) => {
+			vi.useFakeTimers();
+			const summary = createSummary(HOME, { pid: null, state: "idle", exitCode: 1 });
+			await render();
+			await action(() => latestSnapshot.handleToggleHomeTerminal());
+			await render(null, "project-1", { [HOME]: summary });
+			await action(() => latestSnapshot.handleShellExit(HOME, 1));
+			if (reason === "hide") await action(() => latestSnapshot.closeHomeTerminal());
+			if (reason === "project") await render(null, "project-2");
+			if (reason === "task") await render(createSelection("task-b"));
+			if (reason === "terminate") await action(() => latestSnapshot.terminateHomeTerminal());
+			if (reason === "detach") mocks.controller.mockReturnValue(null);
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1000);
+			});
+			expect(mocks.start).toHaveBeenCalledOnce();
+		},
+	);
+
+	it.each([null, 143])("never recovers another viewer's intentional stop (exit code %s)", async (exitCode) => {
+		vi.useFakeTimers();
+		await render();
+		await action(() => latestSnapshot.handleToggleHomeTerminal());
+		await render(null, "project-1", {
+			[HOME]: createSummary(HOME, { pid: null, state: "awaiting_review", reviewReason: "interrupted", exitCode }),
+		});
+		await action(() => latestSnapshot.handleShellExit(HOME, exitCode));
 		await act(async () => {
-			requireSnapshot(latestSnapshot).resetTerminalPanelsState();
-			await flushPromises();
+			await vi.advanceTimersByTimeAsync(1000);
 		});
-
-		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
-
-		await act(async () => {
-			requireSnapshot(latestSnapshot).closeHomeTerminal();
-			await flushPromises();
-		});
-
-		expect(stopTaskSessionMutateMock).not.toHaveBeenCalled();
+		expect(mocks.start).toHaveBeenCalledOnce();
+		expect(mocks.stop).not.toHaveBeenCalled();
 	});
 });

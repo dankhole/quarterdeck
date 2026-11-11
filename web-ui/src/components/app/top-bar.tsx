@@ -96,6 +96,7 @@ export function TopBar({
 	scopeType?: "home" | "task" | "branch_view";
 	taskTitle?: string | null;
 }): React.ReactElement {
+	const terminalActionLabel = isTerminalOpen ? "Hide shell" : "Open terminal";
 	const scopeType = rawScopeType ?? "home";
 	const scopeBorderClass = getTopBarScopeBorderClass(scopeType);
 
@@ -167,7 +168,7 @@ export function TopBar({
 						side="bottom"
 						content={
 							<span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-								<span>Toggle terminal</span>
+								<span>{terminalActionLabel}</span>
 								<span className="inline-flex items-center gap-0.5 whitespace-nowrap">
 									<span>(</span>
 									{isMacPlatform ? <Command size={11} /> : <span>Ctrl</span>}
@@ -182,7 +183,7 @@ export function TopBar({
 							icon={<Terminal size={16} />}
 							onClick={onToggleTerminal}
 							disabled={Boolean(isTerminalLoading)}
-							aria-label={isTerminalOpen ? "Close terminal" : "Open terminal"}
+							aria-label={terminalActionLabel}
 							className="ml-2"
 						/>
 					</Tooltip>

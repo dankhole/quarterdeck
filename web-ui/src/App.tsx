@@ -272,12 +272,12 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
 			currentProjectId: isProjectUnavailable ? null : projectNavigation.currentProjectId,
+			selectedTaskId,
+			setMainView: navigation.setMainView,
 			selectedShortcutLabel: projectRuntime.runtimeProjectConfig?.selectedShortcutLabel,
 			shortcuts: projectRuntime.shortcuts,
 			refreshRuntimeProjectConfig: projectRuntime.refreshRuntimeProjectConfig,
 			prepareTerminalForShortcut: terminal.prepareTerminalForShortcut,
-			prepareWaitForTerminalConnectionReady: terminal.prepareWaitForTerminalConnectionReady,
-			sendTaskSessionInput,
 		});
 
 	const {
@@ -619,10 +619,10 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 								bottomTerminalSummary: terminal.detailTerminalSummary,
 								bottomTerminalSubtitle: terminal.detailTerminalSubtitle,
 								onBottomTerminalClose: terminal.closeDetailTerminal,
+								onBottomTerminalTerminate: terminal.terminateDetailTerminal,
 								onBottomTerminalCollapse: terminal.collapseDetailTerminal,
 								bottomTerminalPaneHeight: terminal.detailTerminalPaneHeight,
 								onBottomTerminalPaneHeightChange: terminal.setDetailTerminalPaneHeight,
-								onBottomTerminalConnectionReady: terminal.markTerminalConnectionReady,
 								bottomTerminalAgentCommand: projectRuntime.agentCommand,
 								onBottomTerminalSendAgentCommand: terminal.handleSendAgentCommandToDetailTerminal,
 								isBottomTerminalExpanded: terminal.isDetailTerminalExpanded,

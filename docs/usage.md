@@ -171,6 +171,16 @@ Enable **Settings → All projects → Git branches → Group branches by folder
 
    If an unfinished Git operation or a worktree verification failure prevents safe detachment, Trash preserves the checkout and reports a warning. Its branch can remain occupied until the issue is resolved or the task is permanently deleted. Existing Trash worktrees are not automatically detached during an upgrade.
 
+## Manual shells
+
+Use **Open terminal** to open a manual shell in the project folder or selected task workspace. Each project has its own home shell, and each task has its own detail shell. These are separate from the coding agent’s terminal.
+
+**Hide shell** (the Top Bar toggle or panel’s X), collapsing the panel, and switching tasks or projects leave the shell and its running commands alive. Reopening reconnects to the same shell, preserving its working directory, environment, and retained terminal output. A browser reload or disconnect also leaves it running while the runtime remains alive; reopen the panel to reconnect.
+
+Use **Terminate shell** to stop it, or **Restart terminal** to stop it and start a fresh shell. Opening a shell that has exited or been terminated starts a new one; it does not recover the old shell’s environment or final output. **Behavior change:** hiding the panel no longer stops commands—use Terminate when you want them to stop. Trash and permanent deletion still stop the task’s shell. Shell processes do not survive runtime shutdown, and retained output is bounded rather than a permanent log.
+
+The optional automatic-restart setting applies only while a shell viewer is visible. Hiding it cancels a pending automatic restart, not a running command. A stopped background shell stays stopped until you open it again.
+
 ## File browser discovery
 
 Files loads immediate children of the project root, then loads folders as you expand them. Wide folders offer **Load more**; there is no whole-project entry cap. Each request returns at most 500 visible entries and examines at most 4,096 entries. A filtered page can be empty while more entries remain. The tree filter searches loaded entries only; use the file finder to search unopened folders.

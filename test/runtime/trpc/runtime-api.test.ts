@@ -34,6 +34,7 @@ const projectStateMocks = vi.hoisted(() => ({
 
 const taskBoardMutationMocks = vi.hoisted(() => ({
 	findCardInBoard: vi.fn((): Record<string, unknown> | null => null),
+	getTaskColumnId: vi.fn(() => "review"),
 }));
 
 vi.mock("../../../src/config/agent-registry.js", () => ({
@@ -64,9 +65,14 @@ vi.mock("../../../src/state/project-state.js", () => ({
 
 vi.mock("../../../src/core/task-board-mutations.js", () => ({
 	findCardInBoard: taskBoardMutationMocks.findCardInBoard,
+	getTaskColumnId: taskBoardMutationMocks.getTaskColumnId,
 }));
 
-import { TaskResourceOperationCoordinator } from "../../../src/core";
+import {
+	getRuntimeDetailTerminalTaskId,
+	RUNTIME_HOME_TERMINAL_TASK_ID,
+	TaskResourceOperationCoordinator,
+} from "../../../src/core";
 import { startTaskSessionThroughService } from "../../../src/server/task-session-start-service";
 import { type CreateRuntimeApiDependencies, createRuntimeApi } from "../../../src/trpc";
 
@@ -1186,6 +1192,7 @@ describe("createRuntimeApi startShellSession", () => {
 	beforeEach(() => {
 		taskWorktreeMocks.resolveTaskWorkingDirectory.mockReset();
 		taskWorktreeMocks.resolveTaskWorkingDirectory.mockResolvedValue("/tmp/worktree");
+		projectStateMocks.loadProjectState.mockResolvedValue(emptyBoard());
 	});
 
 	it("uses resolveTaskWorkingDirectory for shell sessions", async () => {
@@ -1199,7 +1206,7 @@ describe("createRuntimeApi startShellSession", () => {
 		const api = createRuntimeApi(deps);
 
 		const result = await api.startShellSession(defaultScope, {
-			taskId: "shell-1",
+			taskId: getRuntimeDetailTerminalTaskId("task-1"),
 			projectTaskId: "task-1",
 			baseRef: "main",
 		});
@@ -1226,13 +1233,13 @@ describe("createRuntimeApi startShellSession", () => {
 		const api = createRuntimeApi(deps);
 
 		const result = await api.startShellSession(defaultScope, {
-			taskId: "shell-1",
+			taskId: RUNTIME_HOME_TERMINAL_TASK_ID,
 			baseRef: "main",
 		});
 
 		expect(result.ok).toBe(true);
 		expect(taskWorktreeMocks.resolveTaskWorkingDirectory).not.toHaveBeenCalled();
-		expect(run).not.toHaveBeenCalled();
+		expect(run).toHaveBeenCalledWith("project-1", RUNTIME_HOME_TERMINAL_TASK_ID, expect.any(Function));
 		expect(terminalManager.startShellSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: "/tmp/repo" }));
 	});
 });

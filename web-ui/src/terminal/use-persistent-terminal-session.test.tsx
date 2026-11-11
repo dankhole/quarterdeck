@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
@@ -52,6 +52,8 @@ function HookHarness({
 	projectId,
 	sessionStartedAt,
 	enabled = true,
+	isVisible = true,
+	cursorColor = "cursor-color",
 	onSummary,
 	onConnectionReady,
 }: {
@@ -59,6 +61,8 @@ function HookHarness({
 	projectId: string | null;
 	sessionStartedAt: number | null;
 	enabled?: boolean;
+	isVisible?: boolean;
+	cursorColor?: string;
 	onSummary?: (projectId: string, summary: RuntimeTaskSessionSummary) => void;
 	onConnectionReady?: (taskId: string) => void;
 }) {
@@ -66,11 +70,13 @@ function HookHarness({
 		taskId,
 		projectId,
 		enabled,
+		isVisible,
 		onSummary,
 		onConnectionReady,
 		sessionStartedAt,
+		sessionInstanceId: "session-1",
 		terminalBackgroundColor: "terminal-background",
-		cursorColor: "cursor-color",
+		cursorColor,
 	});
 
 	return (
@@ -94,7 +100,14 @@ describe("usePersistentTerminalSession", () => {
 		ensureDedicatedTerminalMock.mockReset();
 		disposeDedicatedTerminalMock.mockReset();
 		registerTerminalControllerMock.mockReset();
-		registerTerminalControllerMock.mockReturnValue(() => {});
+		registerTerminalControllerMock.mockImplementation(
+			(
+				_taskId,
+				_controller,
+				_scope,
+				subscribeToReadiness?: (onReadyChange: (ready: boolean) => void) => () => void,
+			) => subscribeToReadiness?.(() => {}) ?? (() => {}),
+		);
 		// Default: regular task IDs go through pool path
 		isDedicatedTerminalTaskIdMock.mockReturnValue(false);
 		acquireTaskTerminalMock.mockImplementation(() => createTerminalSlotMock());
@@ -147,7 +160,7 @@ describe("usePersistentTerminalSession", () => {
 			});
 			expect(currentCallback).toHaveBeenCalledWith("project-1", summary);
 			expect(oldCallback).not.toHaveBeenCalled();
-			terminal.subscribe.mock.calls[1]?.[0].onSummary?.(summary);
+			terminal.subscribe.mock.calls[2]?.[0].onSummary?.(summary);
 			expect(currentCallback).toHaveBeenLastCalledWith("project-2", summary);
 		},
 	);
@@ -278,10 +291,79 @@ describe("usePersistentTerminalSession", () => {
 			});
 
 			const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
-			expect(controller).toBeDefined();
-			expect(controller).not.toHaveProperty("requestRestore");
+			if (enabled) {
+				expect(controller).toBeDefined();
+				expect(controller).not.toHaveProperty("requestRestore");
+			} else {
+				expect(controller).toBeUndefined();
+			}
 		},
 	);
+
+	it("scopes controller registration to the exact project and session", async () => {
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+		expect(registerTerminalControllerMock).toHaveBeenLastCalledWith(
+			"task-a",
+			expect.any(Object),
+			{
+				projectId: "project-1",
+				sessionInstanceId: "session-1",
+				sessionStartedAt: 100,
+			},
+			expect.any(Function),
+		);
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-2" sessionStartedAt={100} />);
+		});
+		expect(registerTerminalControllerMock).toHaveBeenLastCalledWith(
+			"task-a",
+			expect.any(Object),
+			{
+				projectId: "project-2",
+				sessionInstanceId: "session-1",
+				sessionStartedAt: 100,
+			},
+			expect.any(Function),
+		);
+	});
+
+	it("makes a captured controller inert after navigation rather than redirecting input", async () => {
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+		const oldController = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
+		await act(async () => {
+			root.render(<HookHarness taskId="task-a" projectId="project-2" sessionStartedAt={100} />);
+		});
+		expect(oldController.input("wrong project")).toBe(false);
+		expect(oldController.paste("wrong project")).toBe(false);
+		expect(await oldController.waitForLikelyPrompt(100)).toBe(false);
+		const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
+		expect(controller.input("not yet connected")).toBe(false);
+		const subscriber = acquireTaskTerminalMock.mock.results.at(-1)?.value.subscribe.mock.calls.at(-1)?.[0];
+		subscriber.onSummary(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1" }));
+		subscriber.onConnectionReady("task-a");
+		expect(controller.input("current project")).toBe(true);
+	});
+
+	it("does not mark a scoped controller ready until its transport summary matches the session", async () => {
+		const terminal = createTerminalSlotMock();
+		acquireTaskTerminalMock.mockReturnValue(terminal);
+		await act(async () => root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />));
+		const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
+		const subscriber = terminal.subscribe.mock.calls.at(-1)?.[0];
+		subscriber?.onConnectionReady?.("task-a");
+		subscriber?.onSummary?.(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "old-session" }));
+		expect(controller.input("wrong session")).toBe(false);
+		subscriber?.onSummary?.(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1" }));
+		expect(controller.input("current session")).toBe(true);
+		subscriber?.onSummary?.(
+			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "replacement-session" }),
+		);
+		expect(controller.input("replaced session")).toBe(false);
+	});
 
 	it("uses dedicated terminal path for home shell", async () => {
 		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
@@ -292,6 +374,147 @@ describe("usePersistentTerminalSession", () => {
 
 		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(1);
 		expect(acquireTaskTerminalMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["__home_terminal__", "__detail_terminal__:task-a"])(
+		"releases the dedicated viewer on unmount without stopping its shell (%s)",
+		async (taskId) => {
+			isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+			const terminal = createTerminalSlotMock();
+			ensureDedicatedTerminalMock.mockReturnValue(terminal);
+			await act(async () => {
+				root.render(<HookHarness taskId={taskId} projectId="project-1" sessionStartedAt={100} />);
+			});
+			await act(async () => root.render(null));
+			expect(disposeDedicatedTerminalMock).toHaveBeenCalledExactlyOnceWith("project-1", taskId);
+			expect(terminal.stop).not.toHaveBeenCalled();
+			expect(terminal.park).not.toHaveBeenCalled();
+			expect(releaseTaskTerminalMock).not.toHaveBeenCalled();
+
+			await act(async () => {
+				root.render(<HookHarness taskId={taskId} projectId="project-1" sessionStartedAt={100} />);
+			});
+			expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(2);
+			expect(terminal.reset).not.toHaveBeenCalled();
+		},
+	);
+
+	it("does not create a shell viewer or controller when initially hidden", async () => {
+		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+		await act(async () => {
+			root.render(
+				<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} isVisible={false} />,
+			);
+		});
+		expect(ensureDedicatedTerminalMock).not.toHaveBeenCalled();
+		expect(registerTerminalControllerMock).not.toHaveBeenCalled();
+	});
+
+	it("disposes an invisible shell viewer and reacquires it only when visible", async () => {
+		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+		const terminal = createTerminalSlotMock();
+		ensureDedicatedTerminalMock.mockReturnValue(terminal);
+		await act(async () => {
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} />);
+		});
+		await act(async () => {
+			root.render(
+				<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} isVisible={false} />,
+			);
+		});
+		expect(disposeDedicatedTerminalMock).toHaveBeenCalledExactlyOnceWith("project-1", "__home_terminal__");
+		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(1);
+		expect(terminal.stop).not.toHaveBeenCalled();
+		await act(async () => {
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} />);
+		});
+		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("releases the old shell's project and task on context changes", async () => {
+		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+		await act(async () => {
+			root.render(<HookHarness taskId="__detail_terminal__:task-a" projectId="project-1" sessionStartedAt={100} />);
+		});
+		await act(async () => {
+			root.render(<HookHarness taskId="__detail_terminal__:task-b" projectId="project-2" sessionStartedAt={100} />);
+		});
+		expect(disposeDedicatedTerminalMock).toHaveBeenCalledExactlyOnceWith("project-1", "__detail_terminal__:task-a");
+		expect(ensureDedicatedTerminalMock).toHaveBeenLastCalledWith(
+			expect.objectContaining({ projectId: "project-2", taskId: "__detail_terminal__:task-b" }),
+		);
+	});
+
+	it("updates shell appearance without disposing or reacquiring its viewer", async () => {
+		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+		const terminal = createTerminalSlotMock();
+		ensureDedicatedTerminalMock.mockReturnValue(terminal);
+		await act(async () => {
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} />);
+		});
+		await act(async () => {
+			root.render(
+				<HookHarness
+					taskId="__home_terminal__"
+					projectId="project-1"
+					sessionStartedAt={100}
+					cursorColor="new-color"
+				/>,
+			);
+		});
+		expect(disposeDedicatedTerminalMock).not.toHaveBeenCalled();
+		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(1);
+		expect(terminal.show).toHaveBeenLastCalledWith(
+			{ cursorColor: "new-color", terminalBackgroundColor: "terminal-background" },
+			{ autoFocus: false, isVisible: true },
+		);
+	});
+
+	it("replaces a restarted shell viewer for a fresh restore without a late reset", async () => {
+		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+		const terminal = createTerminalSlotMock();
+		ensureDedicatedTerminalMock.mockReturnValue(terminal);
+		await act(async () => {
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} />);
+		});
+		await act(async () => {
+			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={200} />);
+		});
+		expect(disposeDedicatedTerminalMock).toHaveBeenCalledExactlyOnceWith("project-1", "__home_terminal__");
+		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(2);
+		expect(terminal.reset).not.toHaveBeenCalled();
+		expect(terminal.stop).not.toHaveBeenCalled();
+	});
+
+	it("balances dedicated viewer ownership through StrictMode and repeated repository navigation", async () => {
+		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+		await act(async () => {
+			root.render(
+				<StrictMode>
+					<HookHarness taskId="__detail_terminal__:task-a" projectId="project-1" sessionStartedAt={100} />
+				</StrictMode>,
+			);
+		});
+		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(2);
+		expect(disposeDedicatedTerminalMock).toHaveBeenCalledTimes(1);
+		for (let cycle = 0; cycle < 3; cycle++) {
+			await act(async () =>
+				root.render(
+					<StrictMode>
+						<div>Files or Git</div>
+					</StrictMode>,
+				),
+			);
+			expect(disposeDedicatedTerminalMock).toHaveBeenCalledTimes(ensureDedicatedTerminalMock.mock.calls.length);
+			await act(async () => {
+				root.render(
+					<StrictMode>
+						<HookHarness taskId="__detail_terminal__:task-a" projectId="project-1" sessionStartedAt={100} />
+					</StrictMode>,
+				);
+			});
+			expect(ensureDedicatedTerminalMock.mock.calls.length - disposeDedicatedTerminalMock.mock.calls.length).toBe(1);
+		}
 	});
 
 	it("disposes dedicated terminal when disabled", async () => {

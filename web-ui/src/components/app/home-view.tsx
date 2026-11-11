@@ -337,12 +337,12 @@ export function HomeView({
 										onSummary={upsertSession}
 										autoFocus
 										onClose={terminal.closeHomeTerminal}
+										onTerminate={terminal.terminateHomeTerminal}
 										headerTitle="Shell"
 										headerSubtitle={terminal.homeTerminalSubtitle}
 										panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
 										cursorColor={TERMINAL_THEME_COLORS.textPrimary}
-										onConnectionReady={terminal.markTerminalConnectionReady}
 										launchCommand={projectRuntime.agentCommand}
 										onLaunchCommand={terminal.handleSendAgentCommandToHomeTerminal}
 										isExpanded={terminal.isHomeTerminalExpanded}

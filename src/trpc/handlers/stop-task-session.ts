@@ -1,5 +1,6 @@
 import {
 	createTaggedLogger,
+	getRuntimeTerminalResourceTaskId,
 	parseTaskSessionStopRequest,
 	type RuntimeTaskSessionStopOutcome,
 	type RuntimeTaskSessionStopResponse,
@@ -36,7 +37,7 @@ export async function handleStopTaskSession(
 		});
 		const result = await deps.taskResourceOperations.run<StopOperationResult>(
 			projectScope.projectId,
-			body.taskId,
+			getRuntimeTerminalResourceTaskId(body.taskId),
 			async () => {
 				if (deps.stopTaskSession) {
 					return await deps.stopTaskSession(projectScope, body.taskId, body.sessionInstanceId, body.waitForExit);

@@ -11,6 +11,7 @@ import {
 	readOptionalPersistedResizeNumber,
 	writePersistedResizeNumber,
 } from "@/resize/resize-persistence";
+import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import { getTerminalGeometry, prepareWaitForTerminalGeometry } from "@/terminal/terminal-geometry-registry";
 
@@ -24,19 +25,21 @@ export const MIN_TERMINAL_COLS = 40;
 export const MIN_BOTTOM_TERMINAL_PANE_HEIGHT = 200;
 export const EXPANDED_TERMINAL_PANE_HEIGHT = 99999;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface DetailTerminalPanelState {
-	isExpanded: boolean;
-	isOpen: boolean;
+/** Only a positively identified unexpected shell exit is eligible for browser recovery. */
+export function getUnexpectedShellExitInstance(summary: RuntimeTaskSessionSummary | null): string | null {
+	if (
+		!summary ||
+		summary.agentId !== null ||
+		summary.pid !== null ||
+		summary.state !== "idle" ||
+		summary.reviewReason !== null ||
+		summary.exitCode === null ||
+		summary.exitCode === 0
+	) {
+		return null;
+	}
+	return summary.sessionInstanceId ?? null;
 }
-
-export const DEFAULT_DETAIL_TERMINAL_PANEL_STATE: DetailTerminalPanelState = {
-	isExpanded: false,
-	isOpen: false,
-};
 
 // ---------------------------------------------------------------------------
 // Terminal geometry estimation
@@ -116,21 +119,4 @@ export function computeTerminalPaneHeight(
 	persistedHeight: number | undefined,
 ): number | undefined {
 	return isExpanded ? EXPANDED_TERMINAL_PANE_HEIGHT : persistedHeight;
-}
-
-/**
- * Collapse all expanded detail terminal panels in a panel-state map.
- */
-export function collapseAllDetailPanels(
-	panelStateByTaskId: Record<string, DetailTerminalPanelState>,
-): Record<string, DetailTerminalPanelState> {
-	return Object.fromEntries(
-		Object.entries(panelStateByTaskId).map(([taskId, panelState]) => [
-			taskId,
-			{
-				...panelState,
-				isExpanded: false,
-			},
-		]),
-	);
 }

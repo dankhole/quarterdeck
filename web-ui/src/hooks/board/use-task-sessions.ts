@@ -3,7 +3,7 @@
 // merges summaries, sends agent input, and reads task context.
 
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import { notifyError, showAppToast } from "@/components/app-toaster";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
@@ -36,13 +36,17 @@ export interface UseTaskSessionsResult {
 
 export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessionsInput): UseTaskSessionsResult {
 	// Fence retained async callbacks before passive terminal cleanup can publish summaries.
+	const projectScope = useMemo(() => ({ projectId: currentProjectId }), [currentProjectId]);
+	const activeProjectScopeRef = useRef<typeof projectScope | null>(projectScope);
 	const activeProjectIdRef = useRef(currentProjectId);
 	useLayoutEffect(() => {
+		activeProjectScopeRef.current = projectScope;
 		activeProjectIdRef.current = currentProjectId;
 		return () => {
+			activeProjectScopeRef.current = null;
 			activeProjectIdRef.current = null;
 		};
-	}, [currentProjectId]);
+	}, [currentProjectId, projectScope]);
 
 	/*
 		This merge needs to stay monotonic. An older hydrated or cached summary
@@ -78,9 +82,17 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 
 	const sendTaskSessionInput = useCallback(
 		async (taskId: string, text: string, options: SendTerminalInputOptions): Promise<SendTaskSessionInputResult> => {
+			if (!currentProjectId) {
+				return { ok: false, message: "No project selected." };
+			}
+			if (activeProjectScopeRef.current !== projectScope) {
+				return { ok: false, message: "Project changed before input could be sent." };
+			}
 			const appendNewline = options.appendNewline ?? true;
 			const controller =
-				options.preferTerminal === false || options.replyToSessionInstanceId ? null : getTerminalController(taskId);
+				options.preferTerminal === false || options.replyToSessionInstanceId
+					? null
+					: getTerminalController(taskId, { projectId: currentProjectId });
 			if (controller) {
 				const sent = appendNewline
 					? (options.mode === "paste" ? controller.paste(text) : controller.input(text)) && controller.input("\r")
@@ -91,9 +103,6 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					return { ok: true };
 				}
 			}
-			if (!currentProjectId) {
-				return { ok: false, message: "No project selected." };
-			}
 			try {
 				const trpcClient = getRuntimeTrpcClient(currentProjectId);
 				const payload = await trpcClient.runtime.sendTaskSessionInput.mutate({
@@ -103,6 +112,9 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 					intent: options.intent,
 					replyToSessionInstanceId: options.replyToSessionInstanceId,
 				});
+				if (activeProjectScopeRef.current !== projectScope) {
+					return { ok: false, message: "Project changed before input delivery was confirmed." };
+				}
 				if (!payload.ok) {
 					return { ok: false, message: payload.error || "Task session input failed." };
 				}
@@ -119,7 +131,7 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 				};
 			}
 		},
-		[currentProjectId, upsertSession],
+		[currentProjectId, projectScope, upsertSession],
 	);
 
 	const fetchTaskWorktreeInfo = useCallback(
