@@ -140,8 +140,8 @@ export function useGitDiffData(options: UseGitDiffDataOptions): UseGitDiffDataRe
 		isRuntimeAvailable,
 		activeFiles,
 	});
-	const hasNoChanges =
-		isRuntimeAvailable && !activeQuery.isLoading && activeFiles !== null && activeFiles.length === 0;
+	// A background poll does not invalidate the last successful empty snapshot.
+	const hasNoChanges = isRuntimeAvailable && activeFiles !== null && activeFiles.length === 0;
 
 	return {
 		hasCompareRefs,

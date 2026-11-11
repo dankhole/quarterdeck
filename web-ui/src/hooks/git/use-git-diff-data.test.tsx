@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeWorkdirChangesResponse } from "@/runtime/types";
 import { type UseGitDiffDataOptions, type UseGitDiffDataResult, useGitDiffData } from "./use-git-diff-data";
 
-const mocks = vi.hoisted(() => ({ changes: vi.fn(), file: vi.fn() }));
+const mocks = vi.hoisted(() => ({ changes: vi.fn(), file: vi.fn(), visible: false }));
 vi.mock("@/runtime/trpc-client", () => ({
 	getRuntimeTrpcClient: () => ({
 		project: {
@@ -13,7 +13,7 @@ vi.mock("@/runtime/trpc-client", () => ({
 		},
 	}),
 }));
-vi.mock("@/hooks/notifications/use-document-visibility", () => ({ useDocumentVisibility: () => false }));
+vi.mock("@/hooks/notifications/use-document-visibility", () => ({ useDocumentVisibility: () => mocks.visible }));
 vi.mock("@/stores/project-metadata-store", () => ({ useTaskWorktreeStateVersionValue: () => 0 }));
 
 function deferred<T>() {
@@ -70,7 +70,7 @@ function options(): UseGitDiffDataOptions {
 	};
 }
 
-describe("useGitDiffData explicit review refresh", () => {
+describe("useGitDiffData", () => {
 	let root: Root;
 	let result: UseGitDiffDataResult;
 	let input: UseGitDiffDataOptions;
@@ -86,6 +86,7 @@ describe("useGitDiffData explicit review refresh", () => {
 		previousActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 		vi.clearAllMocks();
+		mocks.visible = false;
 		input = options();
 		root = createRoot(document.createElement("div"));
 		mocks.changes.mockReset().mockResolvedValue(metadata("r1", 1));
@@ -93,7 +94,63 @@ describe("useGitDiffData explicit review refresh", () => {
 	});
 	afterEach(async () => {
 		await act(async () => root.unmount());
+		vi.useRealTimers();
 		(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+	});
+
+	it.each(["uncommitted", "compare"] as const)(
+		"keeps the empty %s review visible throughout background polling and applies new changes",
+		async (activeTab) => {
+			vi.useFakeTimers();
+			mocks.visible = true;
+			input = { ...input, activeTab, compare: { ...input.compare, includeUncommitted: true } };
+			const empty: RuntimeWorkdirChangesResponse = { repoRoot: "/repo", generatedAt: 1, files: [] };
+			mocks.changes.mockResolvedValue(empty);
+			await render();
+			expect(result.hasNoChanges).toBe(true);
+
+			const poll = deferred<RuntimeWorkdirChangesResponse>();
+			mocks.changes.mockReturnValueOnce(poll.promise);
+			await act(async () => {
+				vi.advanceTimersByTime(1_000);
+			});
+			expect(mocks.changes).toHaveBeenCalledTimes(2);
+			expect(result.isRefreshing).toBe(true);
+			expect(result.isChangesPending).toBe(false);
+			expect(result.hasNoChanges).toBe(true);
+			await act(async () => poll.resolve({ ...empty, generatedAt: 2 }));
+			expect(result.isRefreshing).toBe(false);
+			expect(result.hasNoChanges).toBe(true);
+
+			const nextPoll = deferred<RuntimeWorkdirChangesResponse>();
+			mocks.changes.mockReturnValueOnce(nextPoll.promise);
+			await act(async () => {
+				vi.advanceTimersByTime(1_000);
+			});
+			expect(result.hasNoChanges).toBe(true);
+			await act(async () => nextPoll.resolve(metadata("r2", 3)));
+			expect(result.hasNoChanges).toBe(false);
+			expect(result.enrichedFiles?.[0]?.newText).toBe("first");
+		},
+	);
+
+	it("shows pending rather than an empty review until the initial query and a new comparison resolve", async () => {
+		const initial = deferred<RuntimeWorkdirChangesResponse>();
+		mocks.changes.mockReturnValueOnce(initial.promise);
+		await render();
+		expect(result.hasNoChanges).toBe(false);
+		expect(result.isChangesPending).toBe(true);
+		await act(async () => initial.resolve({ repoRoot: "/repo", generatedAt: 1, files: [] }));
+		expect(result.hasNoChanges).toBe(true);
+
+		const comparison = deferred<RuntimeWorkdirChangesResponse>();
+		mocks.changes.mockReturnValueOnce(comparison.promise);
+		await render({ ...input, compare: { ...input.compare, targetRef: "other-base" } });
+		expect(result.hasNoChanges).toBe(false);
+		expect(result.isChangesPending).toBe(true);
+		await act(async () => comparison.resolve(metadata("r2", 2)));
+		expect(result.hasNoChanges).toBe(false);
+		expect(result.enrichedFiles?.[0]?.newText).toBe("first");
 	});
 
 	it("refreshes moving committed refs through metadata and file owners without changing refs or clearing loaded content", async () => {
