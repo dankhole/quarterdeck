@@ -27,6 +27,8 @@ export class SlotRenderer {
 	private webglAddon: WebglAddon | null = null;
 	private dprMediaQuery: MediaQueryList | null = null;
 	private dprChangeHandler: (() => void) | null = null;
+	private dprRepairFrame: number | null = null;
+	private disposed = false;
 
 	constructor(
 		private readonly slotId: number,
@@ -36,12 +38,16 @@ export class SlotRenderer {
 		private readonly callbacks: SlotRendererCallbacks,
 	) {}
 
+	private get isDisposed(): boolean {
+		return this.disposed || this.callbacks.isDisposed();
+	}
+
 	openWhenFontsReady(): void {
 		const fontCheckString = `${TERMINAL_FONT_SIZE}px '${TERMINAL_PRIMARY_FONT}'`;
 		const t0 = performance.now();
 
 		const openAndAttachWebgl = () => {
-			if (this.callbacks.isDisposed()) {
+			if (this.isDisposed) {
 				return;
 			}
 			log.debug(`[perf] slot ${this.slotId} terminal.open`, { elapsedMs: (performance.now() - t0).toFixed(1) });
@@ -55,10 +61,7 @@ export class SlotRenderer {
 
 		const refitAfterFontsReady = () => {
 			void document.fonts.ready.then(() => {
-				if (
-					!this.callbacks.isDisposed() &&
-					(this.callbacks.getStageContainer() ?? this.callbacks.getVisibleContainer())
-				) {
+				if (!this.isDisposed && (this.callbacks.getStageContainer() ?? this.callbacks.getVisibleContainer())) {
 					this.fitAddon.fit();
 				}
 			});
@@ -74,17 +77,32 @@ export class SlotRenderer {
 	}
 
 	attachWebglAddon(): void {
+		if (this.isDisposed || this.webglAddon || !this.terminal.element) {
+			return;
+		}
+		let candidate: WebglAddon | null = null;
 		try {
 			const webglAddon = new WebglAddon();
+			candidate = webglAddon;
+			this.webglAddon = webglAddon;
 			webglAddon.onContextLoss(() => {
-				webglAddon.dispose();
-				this.webglAddon = null;
+				if (this.webglAddon === webglAddon) {
+					this.disposeWebglAddon();
+				}
 			});
 			this.terminal.loadAddon(webglAddon);
-			this.webglAddon = webglAddon;
 		} catch {
-			// Fall back to the default renderer when WebGL is unavailable.
+			// Activation can fail after construction; retain xterm's DOM fallback.
+			if (this.webglAddon === candidate) {
+				this.disposeWebglAddon();
+			}
 		}
+	}
+
+	private disposeWebglAddon(): void {
+		const webglAddon = this.webglAddon;
+		this.webglAddon = null;
+		webglAddon?.dispose();
 	}
 
 	updateAppearance(appearance: PersistentTerminalAppearance, fontWeight: number): void {
@@ -104,12 +122,30 @@ export class SlotRenderer {
 	}
 
 	listenForDprChange(): void {
-		this.clearDprListener();
+		if (this.dprMediaQuery && this.dprChangeHandler) {
+			this.dprMediaQuery.removeEventListener("change", this.dprChangeHandler);
+		}
+		if (this.isDisposed) {
+			return;
+		}
 		const dpr = window.devicePixelRatio;
 		const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
 		const handler = () => {
-			this.repairCanvas("dpr-change");
+			if (this.isDisposed || this.dprChangeHandler !== handler) {
+				return;
+			}
 			this.listenForDprChange();
+			if (this.dprRepairFrame === null) {
+				// Let xterm's native DPR listeners update dimensions and models before fitting.
+				const frame = requestAnimationFrame(() => {
+					if (this.dprRepairFrame !== frame) {
+						return;
+					}
+					this.dprRepairFrame = null;
+					this.repairCanvas("dpr-change");
+				});
+				this.dprRepairFrame = frame;
+			}
 		};
 		mq.addEventListener("change", handler, { once: true });
 		this.dprMediaQuery = mq;
@@ -122,63 +158,46 @@ export class SlotRenderer {
 		}
 		this.dprMediaQuery = null;
 		this.dprChangeHandler = null;
+		this.cancelPendingDprRepair();
 	}
 
-	/**
-	 * Canvas repair sequence — fixes renderer/canvas presentation problems
-	 * such as blurry glyphs, stale textures, or wrong pixel sizing after a
-	 * DPR change, monitor move, or DOM re-parent.
-	 *
-	 * This is not a terminal-content repair path. It does not fetch a fresh
-	 * snapshot, replace the xterm buffer, or reconcile the terminal with the
-	 * backend session. Use restore/requestRestore for content desync.
-	 *
-	 * 1. Dimension bounce — forces fitAddon to recalculate canvas pixel dimensions
-	 * 2. clearTextureAtlas() — discards cached glyph textures for rebuild at current DPR
-	 * 3. refresh(0, rows-1) — repaints every visible row with new textures
-	 */
+	private cancelPendingDprRepair(): void {
+		if (this.dprRepairFrame !== null) {
+			cancelAnimationFrame(this.dprRepairFrame);
+			this.dprRepairFrame = null;
+		}
+	}
+
+	/** Refit and repaint only; xterm owns native DPR/model updates and the existing GPU context. */
 	repairCanvas(trigger: string): void {
-		if (!this.callbacks.getStageContainer() && !this.callbacks.getVisibleContainer()) {
-			log.debug(`slot ${this.slotId} canvas repair skipped — not staged`, { trigger });
+		this.cancelPendingDprRepair();
+		if (this.isDisposed || !this.terminal.element || !this.callbacks.getVisibleContainer()) {
 			return;
 		}
 
 		const t0 = performance.now();
-		const prevCols = this.terminal.cols;
-		const prevRows = this.terminal.rows;
+		// Clearing xterm's shared atlas invalidates peers; a geometry bounce clamps the buffer cursor.
+		this.fitAddon.fit();
+		this.terminal.refresh(0, this.terminal.rows - 1);
 
-		if (prevCols > 2) {
-			this.terminal.resize(prevCols - 1, prevRows);
-		}
-
-		this.terminal.clearTextureAtlas();
-		this.terminal.refresh(0, prevRows - 1);
-		this.callbacks.forceResize();
-
-		const elapsed = (performance.now() - t0).toFixed(1);
 		log.debug(`slot ${this.slotId} canvas repair`, {
 			trigger,
-			renderer: this.webglAddon ? "webgl" : "canvas-2d",
+			renderer: this.webglAddon ? "webgl" : "dom",
 			dpr: window.devicePixelRatio,
-			cols: prevCols,
-			rows: prevRows,
-			elapsedMs: elapsed,
+			cols: this.terminal.cols,
+			rows: this.terminal.rows,
+			elapsedMs: (performance.now() - t0).toFixed(1),
 		});
 	}
 
 	resetRenderer(): void {
-		const hadWebgl = this.webglAddon !== null;
-		if (this.webglAddon) {
-			this.webglAddon.dispose();
-			this.webglAddon = null;
+		this.cancelPendingDprRepair();
+		if (this.isDisposed || !this.terminal.element || !this.callbacks.getVisibleContainer()) {
+			return;
 		}
+		// Replacing a renderer allocates a context; reserve it for an explicit reset, never DPR changes.
+		this.disposeWebglAddon();
 		this.attachWebglAddon();
-		const newRenderer = this.webglAddon ? "webgl" : "canvas-2d";
-		log.info(`slot ${this.slotId} renderer reset`, {
-			previous: hadWebgl ? "webgl" : "none",
-			current: newRenderer,
-			dpr: window.devicePixelRatio,
-		});
 		this.repairCanvas("resetRenderer");
 	}
 
@@ -187,10 +206,8 @@ export class SlotRenderer {
 	}
 
 	dispose(): void {
+		this.disposed = true;
 		this.clearDprListener();
-		if (this.webglAddon) {
-			this.webglAddon.dispose();
-			this.webglAddon = null;
-		}
+		this.disposeWebglAddon();
 	}
 }

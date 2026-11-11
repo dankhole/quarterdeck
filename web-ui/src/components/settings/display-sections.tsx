@@ -254,7 +254,7 @@ export function TerminalSection({ fields, setField, disabled }: SettingsSectionP
 					Reset window terminal rendering now
 				</Button>
 				<p className="text-text-secondary text-sm leading-6 mt-2 mb-0">
-					Immediately clear cached font textures and re-render all terminals in this window. Use this if terminal
+					Immediately rebuild terminal renderers and re-render all terminals in this window. Use this if terminal
 					text looks blurry or distorted after moving between monitors. Other windows and running agents are
 					unchanged. This does not save form changes.
 				</p>
