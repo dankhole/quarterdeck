@@ -10,6 +10,7 @@ import {
 import { installRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { getRuntimeHomePath, isUnderWorktreesHome } from "../state/project-state.js";
 import { installRuntimeWriteAdmission, waitForRuntimeWriteQuiescence } from "../state/runtime-write-admission.js";
+import { cleanupAbandonedPiPromptFiles } from "../terminal/pi-prompt-storage.js";
 import { deferredTaskWorkspaceDeletes } from "../workdir/task-worktree-deferred-delete.js";
 import { createDesktopRuntimeHostEffects, type DesktopHostEffectRequest } from "./desktop-runtime-host-effects.js";
 import { type RuntimeHandle, startRuntime } from "./runtime-bootstrap.js";
@@ -160,12 +161,15 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 			processLaunchesAllowed = false;
 		},
 		beforeStartup: async () => lease.assertCurrent(),
-		beforeRecovery: () =>
-			assertRuntimeRecoveryAdmission({
+		beforeRecovery: async () => {
+			await assertRuntimeRecoveryAdmission({
 				stateHome: lease.canonicalStateHome,
 				currentGeneration: lease.generation,
 				bootIdentity: lease.bootIdentity,
-			}),
+			});
+			lease.assertCurrent();
+			await cleanupAbandonedPiPromptFiles(lease.canonicalStateHome);
+		},
 		onReady: async () => lease.markReady({ host: getQuarterdeckRuntimeHost(), port: getQuarterdeckRuntimePort() }),
 	});
 	const running = runtime;

@@ -9,7 +9,7 @@ import {
 	registerManagedProcessOwnership,
 	retireManagedProcessOwnership,
 } from "./managed-process-ownership";
-import { classifyPtySpawnFailure, preflightPtyLaunch } from "./pty-runtime-health";
+import { assertPtyProcessLaunchBudget, classifyPtySpawnFailure, preflightPtyLaunch } from "./pty-runtime-health";
 
 const require = createRequire(import.meta.url);
 const MANAGED_PROCESS_PID_READY_TIMEOUT_MS = 10_000;
@@ -209,6 +209,16 @@ export class PtySession {
 		// sibling PowerShell shim is a direct executable launch and therefore keeps
 		// its argv array, including embedded CR/LF prompt content, byte-for-byte.
 		const spawnArgs = resolvedLaunch.commandLine ?? resolvedLaunch.args;
+		// Unix node-pty replaces PWD/TERM and sanitizes only the process.env
+		// identity case. Mirror that for measurement, without changing launch data.
+		const budgetEnv = process.platform === "win32" ? launchEnv : { ...launchEnv, PWD: cwd, TERM: terminalName };
+		if (process.platform !== "win32" && launchEnv === process.env) {
+			for (const key of ["TMUX", "TMUX_PANE", "STY", "WINDOW", "WINDOWID", "TERMCAP", "COLUMNS", "LINES"]) {
+				delete budgetEnv[key];
+			}
+		}
+		const budgetInput = { binary: spawnBinary, args: spawnArgs, env: budgetEnv, platform: process.platform };
+		assertPtyProcessLaunchBudget(budgetInput);
 		const ptyOptions: NodePty.IPtyForkOptions = {
 			name: terminalName,
 			cwd,
@@ -223,7 +233,7 @@ export class PtySession {
 		try {
 			ptyProcess = getNodePtySpawn()(spawnBinary, spawnArgs, ptyOptions);
 		} catch (error) {
-			throw classifyPtySpawnFailure(error, { binary, cwd, env: launchEnv, platform: process.platform });
+			throw classifyPtySpawnFailure(error, { ...budgetInput, binary, cwd });
 		}
 		installNodePtyWriteErrorGuard(ptyProcess);
 		return new PtySession(ptyProcess, onData, onExit);

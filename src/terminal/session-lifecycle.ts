@@ -229,6 +229,12 @@ export async function spawnTaskSession(
 					return;
 				}
 				if (!sessionForCallbacks) return;
+				if (entry.active?.session !== sessionForCallbacks) {
+					// Replacement/teardown retires entry ownership before an old PTY
+					// necessarily exits. Its files still belong to this exact launch.
+					void launch?.cleanup?.().catch(() => {});
+					return;
+				}
 				deps.onExit(request, event, sessionForCallbacks);
 			},
 		});
@@ -247,7 +253,7 @@ export async function spawnTaskSession(
 		markTaskSessionLaunchCancelled(entry.launchMonitor);
 		sessionForCallbacks?.stop({ interrupted: true });
 		if (launch.cleanup) {
-			void launch.cleanup().catch(() => {});
+			await launch.cleanup().catch(() => {});
 		}
 		terminalStateMirror.dispose();
 		deps.updateStore(request.taskId, {
@@ -364,8 +370,12 @@ export async function spawnTaskSession(
 		for (const chunk of preHandoffOutput) {
 			deps.onOutput(entry, request.taskId, chunk);
 		}
-		if (preHandoffExit) {
+	}
+	if (preHandoffExit) {
+		if (entry.active?.session === sessionForCallbacks) {
 			deps.onExit(request, preHandoffExit, sessionForCallbacks);
+		} else {
+			await launch.cleanup?.().catch(() => {});
 		}
 	}
 

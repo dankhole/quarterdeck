@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +27,7 @@ import {
 	QUARTERDECK_PI_HOOK_COMMAND_ENV,
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
 } from "../../../src/terminal/pi-lifecycle-extension";
+import { PI_FILE_PROMPT_INSTRUCTION, PI_INLINE_PROMPT_MAX_BYTES } from "../../../src/terminal/pi-prompt-delivery";
 import { buildTerminalEnvironment } from "../../../src/terminal/session-manager-types";
 import { createTestTaskSessionSummary } from "../../utilities/task-session-factory";
 
@@ -1641,6 +1643,145 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "--version is failing; investigate",
 		});
 		expect(launch.args).toEqual(["--tui-mode", "fullscreen", "--", "--version is failing; investigate"]);
+	});
+
+	it.each([false, true])(
+		"combines explicit custom positionals with a large Pi task in one initial turn, preserving options and exact resume (%s)",
+		async (resumeConversation) => {
+			setupTempHome();
+			const args = [
+				"--extension",
+				"custom.js",
+				"--system-prompt",
+				"literal",
+				"--",
+				"--literal-message",
+				'quoted "custom"\n/compact',
+			];
+			const prompt = `--literal @not-expanded $HOME "quotes" <tag>\n  indentation\n${"é".repeat(PI_INLINE_PROMPT_MAX_BYTES)}`;
+			const launch = await prepareAgentLaunch({
+				taskId: "task-pi-large",
+				agentId: "pi",
+				binary: "custom-pi",
+				args,
+				cwd: "/tmp",
+				prompt: ` \n${prompt}\n `,
+				resumeConversation,
+				resumeSessionId: resumeConversation ? "stored-session" : undefined,
+			});
+			const fileArg = launch.args[0] ?? "";
+			const path = fileURLToPath(fileArg.slice(1));
+			try {
+				expect(launch.binary).toBe("custom-pi");
+				expect(launch.args).toEqual([
+					fileArg,
+					PI_FILE_PROMPT_INSTRUCTION,
+					"--extension",
+					"custom.js",
+					"--system-prompt",
+					"literal",
+					...(resumeConversation ? ["--session", "stored-session"] : []),
+					"--tui-mode",
+					"fullscreen",
+					"--",
+				]);
+				expect(args).toEqual([
+					"--extension",
+					"custom.js",
+					"--system-prompt",
+					"literal",
+					"--",
+					"--literal-message",
+					'quoted "custom"\n/compact',
+				]);
+				expect(fileArg).toMatch(/^@file:\/\//u);
+				expect(readFileSync(path, "utf8")).toBe(
+					`\uFEFF${prompt}\n\nAdditional launch text:\n\n--literal-message\n\nquoted "custom"\n/compact`,
+				);
+				expect(launch.cleanup).toBeTypeOf("function");
+			} finally {
+				await launch.cleanup?.();
+			}
+			expect(existsSync(path)).toBe(false);
+		},
+	);
+
+	it("preserves native image/text references and bare @ after -- in file-backed launches", async () => {
+		setupTempHome();
+		const references = ["@reference.png", "@notes.txt", "@", "@@literal-path"];
+		const args = ["--", references[0] ?? "", "custom message", ...references.slice(1)];
+		const prompt = "x".repeat(PI_INLINE_PROMPT_MAX_BYTES + 1);
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-references",
+			agentId: "pi",
+			args,
+			cwd: "/tmp",
+			prompt,
+		});
+		try {
+			const fileArg = launch.args[0] ?? "";
+			expect(launch.args).toEqual([
+				fileArg,
+				PI_FILE_PROMPT_INSTRUCTION,
+				"--tui-mode",
+				"fullscreen",
+				"--",
+				...references,
+			]);
+			expect(readFileSync(fileURLToPath(fileArg.slice(1)), "utf8")).toBe(
+				`\uFEFF${prompt}\n\nAdditional launch text:\n\ncustom message`,
+			);
+			expect(args).toEqual(["--", "@reference.png", "custom message", "@notes.txt", "@", "@@literal-path"]);
+		} finally {
+			await launch.cleanup?.();
+		}
+	});
+
+	it("leaves native references and positional messages unchanged for inline Pi prompts", async () => {
+		setupTempHome();
+		const args = ["--", "@reference.png", "custom message", "@notes.txt", "@"];
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-inline-references",
+			agentId: "pi",
+			args,
+			cwd: "/tmp",
+			prompt: "Task",
+		});
+		expect(launch.args).toEqual(["--tui-mode", "fullscreen", ...args, "Task"]);
+		expect(launch.cleanup).toBeUndefined();
+	});
+
+	it("keeps prepared image paths inside a large Pi prompt file", async () => {
+		setupTempHome();
+		const prompt = "x".repeat(PI_INLINE_PROMPT_MAX_BYTES + 1);
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-images",
+			agentId: "pi",
+			args: [],
+			cwd: "/tmp",
+			prompt,
+			images: [
+				{
+					id: "synthetic-image",
+					name: "reference.png",
+					mimeType: "image/png",
+					data: Buffer.from("synthetic-image").toString("base64"),
+				},
+			],
+		});
+		let imagePath: string | undefined;
+		try {
+			const text = readFileSync(fileURLToPath((launch.args[0] ?? "").slice(1)), "utf8");
+			imagePath = text.match(/1\. (.+) \(reference\.png\)/u)?.[1];
+			expect(text).toContain("Attached reference images:");
+			expect(text).toContain(`Task:\n${prompt}`);
+			if (!imagePath) throw new Error("Expected prepared image path");
+			expect(readFileSync(imagePath, "utf8")).toBe("synthetic-image");
+			expect(launch.args).toHaveLength(4);
+		} finally {
+			await launch.cleanup?.();
+			if (imagePath) rmSync(dirname(imagePath), { recursive: true, force: true });
+		}
 	});
 
 	it("preserves custom Pi args without forcing extension suppression", async () => {

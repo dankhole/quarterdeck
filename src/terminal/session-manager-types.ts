@@ -356,6 +356,8 @@ export function teardownActiveSession(entry: ProcessEntry): void {
 		clearInitialWorkConfirmation(entry.active);
 		stopWorkspaceTrustTimers(entry.active);
 		clearInterruptRecoveryTimer(entry.active);
+		// The launch-scoped exit callback retains cleanup even after this entry
+		// stops owning the process. A stop request alone cannot release its files.
 		entry.active.session.stop();
 		entry.active = null;
 	}

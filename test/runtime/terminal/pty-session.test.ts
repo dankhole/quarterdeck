@@ -47,6 +47,8 @@ vi.mock("../../../src/terminal/managed-process-ownership", async (importOriginal
 
 import { WindowsCommandSerializationError } from "../../../src/core";
 import { PtySession } from "../../../src/terminal";
+import * as ptyRuntimeHealth from "../../../src/terminal/pty-runtime-health";
+import { PtyLaunchSizeError } from "../../../src/terminal/pty-runtime-health";
 import { _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
 
 const originalPlatform = process.platform;
@@ -172,6 +174,132 @@ describe("PtySession", () => {
 		else process.env.PATH = originalPath;
 		if (originalPathExt === undefined) delete process.env.PATHEXT;
 		else process.env.PATHEXT = originalPathExt;
+	});
+
+	it("preserves existing macOS launches with 300 KiB arguments", () => {
+		setPlatform("darwin");
+		ptyMocks.spawn.mockReturnValue(createMockPtyProcess());
+		expect(() =>
+			PtySession.spawn({
+				binary: "agent",
+				args: ["x".repeat(300 * 1024)],
+				cwd: "/tmp",
+				cols: 80,
+				rows: 24,
+			}),
+		).not.toThrow();
+		expect(ptyMocks.spawn).toHaveBeenCalledOnce();
+	});
+
+	it("rejects an oversized prompt before asking node-pty to spawn", () => {
+		setPlatform("darwin");
+		expect(() =>
+			PtySession.spawn({
+				binary: "agent",
+				args: ["x".repeat(1_990_000)],
+				cwd: "/tmp",
+				cols: 80,
+				rows: 24,
+			}),
+		).toThrow(PtyLaunchSizeError);
+		expect(ptyMocks.spawn).not.toHaveBeenCalled();
+	});
+
+	it("checks the merged inherited environment, not only explicit launch overrides", () => {
+		setPlatform("darwin");
+		process.env.QUARTERDECK_SYNTHETIC_LARGE_ENV = "x".repeat(2_000_000);
+		try {
+			expect(() =>
+				PtySession.spawn({
+					binary: "agent",
+					args: [],
+					env: { TERM: "xterm" },
+					cwd: "/tmp",
+					cols: 80,
+					rows: 24,
+				}),
+			).toThrow("Reduce exported environment variables");
+			expect(ptyMocks.spawn).not.toHaveBeenCalled();
+		} finally {
+			delete process.env.QUARTERDECK_SYNTHETIC_LARGE_ENV;
+		}
+	});
+
+	it("measures Unix node-pty's PWD/TERM replacements and inherited-only sanitation", () => {
+		setPlatform("darwin");
+		const previousTermcap = process.env.TERMCAP;
+		const previousPwd = process.env.PWD;
+		process.env.TERMCAP = "x".repeat(2_000_000);
+		process.env.PWD = "x".repeat(2_000_000);
+		ptyMocks.spawn.mockReturnValue(createMockPtyProcess());
+		try {
+			expect(() => PtySession.spawn({ binary: "agent", cwd: "/tmp", cols: 80, rows: 24 })).not.toThrow();
+			// An explicit env object disables node-pty's inherited-env sanitation.
+			expect(() =>
+				PtySession.spawn({ binary: "agent", env: { TERM: "xterm" }, cwd: "/tmp", cols: 80, rows: 24 }),
+			).toThrow(PtyLaunchSizeError);
+			expect(ptyMocks.spawn).toHaveBeenCalledOnce();
+		} finally {
+			if (previousTermcap === undefined) delete process.env.TERMCAP;
+			else process.env.TERMCAP = previousTermcap;
+			if (previousPwd === undefined) delete process.env.PWD;
+			else process.env.PWD = previousPwd;
+		}
+	});
+
+	it("checks the final escaped Windows cmd command rather than original argument lengths", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		// cmd escaping doubles each space, so a raw prompt smaller than 8 KiB
+		// exceeds cmd's parser budget after command resolution.
+		expect(() =>
+			PtySession.spawn({
+				binary: "codex",
+				args: ["x ".repeat(3000)],
+				cwd: "C:/repo",
+				cols: 80,
+				rows: 24,
+			}),
+		).toThrow(PtyLaunchSizeError);
+		expect(ptyMocks.spawn).not.toHaveBeenCalled();
+	});
+
+	it("maps a native size failure after preflight to the same safe typed error", () => {
+		setPlatform("darwin");
+		ptyMocks.spawn.mockImplementation(() => {
+			throw Object.assign(new Error("sensitive native details"), { code: "E2BIG" });
+		});
+		expect(() =>
+			PtySession.spawn({
+				binary: "agent",
+				args: ["small"],
+				cwd: "/tmp",
+				cols: 80,
+				rows: 24,
+			}),
+		).toThrow(PtyLaunchSizeError);
+		expect(ptyMocks.spawn).toHaveBeenCalledOnce();
+	});
+
+	it("keeps the requested Windows command identity when classifying a resolved launcher failure", () => {
+		setPlatform("win32");
+		process.env.ComSpec = "C:\\Windows\\System32\\cmd.exe";
+		const nativeError = new Error("synthetic launcher failure");
+		ptyMocks.spawn.mockImplementation(() => {
+			throw nativeError;
+		});
+		const classify = vi
+			.spyOn(ptyRuntimeHealth, "classifyPtySpawnFailure")
+			.mockReturnValue(new ptyRuntimeHealth.PtyLaunchCommandError("codex"));
+		try {
+			expect(() =>
+				PtySession.spawn({ binary: "codex", args: ["hello"], cwd: "C:/repo", cols: 80, rows: 24 }),
+			).toThrow('The terminal command "codex"');
+			expect(classify).toHaveBeenCalledWith(nativeError, expect.objectContaining({ binary: "codex" }));
+			expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("C:\\Windows\\System32\\cmd.exe");
+		} finally {
+			classify.mockRestore();
+		}
 	});
 
 	it("launches through cmd shell on Windows", () => {

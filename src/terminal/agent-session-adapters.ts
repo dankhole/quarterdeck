@@ -34,6 +34,7 @@ import {
 	QUARTERDECK_PI_HOOK_HTTP_URL_ENV,
 	QUARTERDECK_PI_WORKTREE_TRUST_SCOPE_ENV,
 } from "./pi-lifecycle-extension";
+import { preparePiPromptDelivery } from "./pi-prompt-delivery";
 import { resolvePiWorktreeTrustScope } from "./pi-worktree-trust";
 import { canApplyCodexRenderedTurnInterruption, type SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
@@ -672,21 +673,35 @@ const piAdapter: AgentSessionAdapter = {
 		}
 
 		applyManagedPiTuiMode(args);
-		if (separatorIndex >= 0 || input.prompt.trim()) args.push("--", ...positionalArgs);
-		const launch = withPrompt(args, input.prompt, "append");
+		// Prepare content last: earlier asynchronous hook/trust failures must not
+		// strand a private prompt file. The process owner retains its cleanup.
+		// Pi expands every @ prefix after --, including bare @. Keep native
+		// file/image references out of the task text and preserve their order.
+		const positionalFileArgs = positionalArgs.filter((arg) => arg.startsWith("@"));
+		const positionalMessages = positionalArgs.filter((arg) => !arg.startsWith("@"));
+		const delivery = await preparePiPromptDelivery(input.prompt, { additionalFileText: positionalMessages });
+		if (delivery.cleanup) {
+			// Native @file text always joins the first positional message. Put its
+			// instruction first so custom messages cannot turn it into a later turn.
+			// Explicit -- messages stay in that first turn inside the task file;
+			// native @file references remain argv so Pi can attach their contents.
+			args.unshift(...delivery.args);
+			if (separatorIndex >= 0) args.push("--", ...positionalFileArgs);
+		} else {
+			if (separatorIndex >= 0 || delivery.args.length > 0) args.push("--", ...positionalArgs);
+			args.push(...delivery.args);
+		}
 		log.debug("pi adapter prepared launch", {
 			taskId: input.taskId,
-			argCount: launch.args.length,
+			argCount: args.length,
 			promptLength: input.prompt.trim().length,
 			hookBridge: Boolean(hooks),
 		});
 		return {
-			...launch,
 			binary: input.binary,
-			env: {
-				...launch.env,
-				...env,
-			},
+			args,
+			env,
+			cleanup: delivery.cleanup,
 		};
 	},
 };

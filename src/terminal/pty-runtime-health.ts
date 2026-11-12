@@ -3,6 +3,14 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 import { isBinaryAvailableOnPath } from "../core";
+import {
+	findProcessLaunchBudgetViolation,
+	isNativeProcessLaunchSizeError,
+	type ProcessLaunchBudgetInput,
+	type ProcessLaunchBudgetPolicy,
+	type ProcessLaunchBudgetViolation,
+	type ProcessLaunchSizeSource,
+} from "./process-launch-budget";
 
 const require = createRequire(import.meta.url);
 
@@ -102,7 +110,12 @@ export function inspectPtyRuntimeHealth(options: InspectPtyRuntimeHealthOptions 
 	};
 }
 
-export type PtyLaunchErrorCode = "cwd_missing" | "command_missing" | "runtime_dependency_missing" | "spawn_failed";
+export type PtyLaunchErrorCode =
+	| "cwd_missing"
+	| "command_missing"
+	| "runtime_dependency_missing"
+	| "launch_size_exceeded"
+	| "spawn_failed";
 
 export class PtyLaunchError extends Error {
 	constructor(
@@ -140,6 +153,40 @@ export class PtyRuntimeDependencyError extends PtyLaunchError {
 		super("runtime_dependency_missing", PTY_RUNTIME_REMEDIATION);
 		this.name = "PtyRuntimeDependencyError";
 	}
+}
+
+export class PtyLaunchSizeError extends PtyLaunchError {
+	constructor(
+		readonly source: ProcessLaunchSizeSource,
+		readonly violation: ProcessLaunchBudgetViolation | null = null,
+	) {
+		const argumentsRemediation =
+			"Move the prompt or other large argument content into a prompt/reference file and pass its path instead.";
+		const environmentRemediation =
+			"Reduce exported environment variables, then restart Quarterdeck so it inherits the smaller environment.";
+		const subject =
+			source === "arguments"
+				? "command arguments are"
+				: source === "environment"
+					? "launch environment is"
+					: "command arguments and launch environment are";
+		const remediation =
+			source === "arguments"
+				? argumentsRemediation
+				: source === "environment"
+					? environmentRemediation
+					: `${argumentsRemediation} ${environmentRemediation}`;
+		super("launch_size_exceeded", `The terminal ${subject} too large to start safely. ${remediation}`);
+		this.name = "PtyLaunchSizeError";
+	}
+}
+
+export function assertPtyProcessLaunchBudget(
+	input: ProcessLaunchBudgetInput,
+	policy?: ProcessLaunchBudgetPolicy,
+): void {
+	const violation = findProcessLaunchBudgetViolation(input, policy);
+	if (violation) throw new PtyLaunchSizeError(violation.source, violation);
 }
 
 export class PtySpawnError extends PtyLaunchError {
@@ -191,6 +238,7 @@ export function classifyPtySpawnFailure(
 	error: unknown,
 	options: {
 		binary: string;
+		args?: readonly string[] | string;
 		cwd: string;
 		env: NodeJS.ProcessEnv;
 		platform?: NodeJS.Platform;
@@ -199,6 +247,17 @@ export function classifyPtySpawnFailure(
 ): PtyLaunchError {
 	if (error instanceof PtyLaunchError) {
 		return error;
+	}
+	if (isNativeProcessLaunchSizeError(error)) {
+		const violation = findProcessLaunchBudgetViolation({
+			binary: options.binary,
+			args: options.args ?? [],
+			env: options.env,
+			platform: options.platform ?? process.platform,
+		});
+		// Do not retain native cause/message: wrappers may embed argument or env
+		// values. Below our guardrail the OS limit is unknown; offer both remedies.
+		return new PtyLaunchSizeError(violation?.source ?? "combined", violation);
 	}
 	try {
 		preflightPtyLaunch(options);

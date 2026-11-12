@@ -45,6 +45,8 @@ const mocks = vi.hoisted(() => {
 		clearAccess: vi.fn(),
 		recordEvent: vi.fn(),
 		abortDeferredDeletes: vi.fn(),
+		assertRecoveryAdmission: vi.fn(async (): Promise<void> => undefined),
+		cleanupPiPrompts: vi.fn(async (_stateHome: string): Promise<void> => undefined),
 		waitForWrites: vi.fn(async (_stateHome: string): Promise<void> => undefined),
 	};
 });
@@ -88,7 +90,10 @@ vi.mock("../../../src/server/runtime-bootstrap.js", () => ({
 	},
 }));
 vi.mock("../../../src/server/runtime-recovery-admission.js", () => ({
-	assertRuntimeRecoveryAdmission: vi.fn(),
+	assertRuntimeRecoveryAdmission: mocks.assertRecoveryAdmission,
+}));
+vi.mock("../../../src/terminal/pi-prompt-storage.js", () => ({
+	cleanupAbandonedPiPromptFiles: mocks.cleanupPiPrompts,
 }));
 vi.mock("../../../src/server/runtime-startup-paths.js", () => ({ hasGitRepository: vi.fn() }));
 vi.mock("../../../src/server/runtime-owner-client.js", () => ({}));
@@ -119,6 +124,8 @@ describe("admitted runtime shutdown composition", () => {
 		mocks.state.bootstrap = null;
 		mocks.state.beforeSpawn = null;
 		mocks.lease.markStopping.mockResolvedValue(undefined);
+		mocks.assertRecoveryAdmission.mockReset().mockResolvedValue(undefined);
+		mocks.cleanupPiPrompts.mockReset().mockResolvedValue(undefined);
 		vi.stubEnv("QUARTERDECK_STATE_HOME", "/synthetic/quarterdeck");
 	});
 	afterEach(async () => {
@@ -129,6 +136,50 @@ describe("admitted runtime shutdown composition", () => {
 		vi.unstubAllEnvs();
 		process.exitCode = exitCode;
 	});
+	it("awaits recovery admission and rechecks the lease before removing abandoned Pi prompts", async () => {
+		let allowRecovery!: () => void;
+		mocks.assertRecoveryAdmission.mockImplementationOnce(
+			async () => await new Promise<void>((resolve) => (allowRecovery = resolve)),
+		);
+		await launch();
+		expect(mocks.cleanupPiPrompts).not.toHaveBeenCalled();
+		const recovery = mocks.state.bootstrap?.beforeRecovery?.();
+		expect(mocks.assertRecoveryAdmission).toHaveBeenCalledExactlyOnceWith({
+			stateHome: mocks.lease.canonicalStateHome,
+			currentGeneration: mocks.lease.generation,
+			bootIdentity: mocks.lease.bootIdentity,
+		});
+		expect(mocks.cleanupPiPrompts).not.toHaveBeenCalled();
+		allowRecovery();
+		await recovery;
+		expect(mocks.cleanupPiPrompts).toHaveBeenCalledExactlyOnceWith(mocks.lease.canonicalStateHome);
+		expect(mocks.lease.assertCurrent.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.cleanupPiPrompts.mock.invocationCallOrder[0] ?? 0,
+		);
+	});
+
+	it("preserves abandoned Pi prompts when prior process recovery is denied", async () => {
+		mocks.assertRecoveryAdmission.mockRejectedValueOnce(new Error("prior process still alive"));
+		await launch();
+		await expect(mocks.state.bootstrap?.beforeRecovery?.()).rejects.toThrow("prior process still alive");
+		expect(mocks.cleanupPiPrompts).not.toHaveBeenCalled();
+	});
+
+	it("preserves abandoned Pi prompts if ownership is lost while recovery admission is pending", async () => {
+		mocks.assertRecoveryAdmission.mockImplementationOnce(async () => {
+			mocks.state.current = false;
+		});
+		await launch();
+		await expect(mocks.state.bootstrap?.beforeRecovery?.()).rejects.toThrow("lost");
+		expect(mocks.cleanupPiPrompts).not.toHaveBeenCalled();
+	});
+
+	it("fails recovery closed when abandoned private Pi prompt cleanup fails", async () => {
+		mocks.cleanupPiPrompts.mockRejectedValueOnce(new Error("private prompt cleanup failed"));
+		await launch();
+		await expect(mocks.state.bootstrap?.beforeRecovery?.()).rejects.toThrow("private prompt cleanup failed");
+	});
+
 	it("shares deadline cleanup until settlement, then retries an incomplete result", async () => {
 		const incomplete: RuntimeShutdownOutcome = {
 			status: "incomplete",

@@ -328,14 +328,11 @@ export class SessionLifecycleController {
 			clearResumeSessionId: true,
 			warningMessage,
 		});
-		const cleanupFn = entry.active.onSessionCleanup;
-		entry.active.onSessionCleanup = null;
+		// Exit owns launch-resource cleanup: Pi may still be reading its prompt
+		// file when a stop is requested, especially on Windows.
 		stopWorkspaceTrustTimers(entry.active);
 		clearInterruptRecoveryTimer(entry.active);
 		entry.active.session.stop({ interrupted: true });
-		if (cleanupFn) {
-			cleanupFn().catch(() => {});
-		}
 		return result?.summary ?? this.store.getSummary(taskId);
 	}
 
@@ -364,14 +361,11 @@ export class SessionLifecycleController {
 			pid: entry.active.session.pid,
 		});
 		entry.suppressAutoRestartOnExit = true;
-		const cleanupFn = entry.active.onSessionCleanup;
-		entry.active.onSessionCleanup = null;
+		// Keep launch resources until the exact process actually exits. A signal
+		// request is not proof that native startup has stopped reading them.
 		stopWorkspaceTrustTimers(entry.active);
 		clearInterruptRecoveryTimer(entry.active);
 		entry.active.session.stop({ interrupted: true });
-		if (cleanupFn) {
-			cleanupFn().catch(() => {});
-		}
 		return stopResult?.summary ?? this.store.getSummary(taskId);
 	}
 

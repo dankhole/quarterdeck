@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import {
 	classifyPtySpawnFailure,
 	formatSpawnFailure,
@@ -14,6 +13,7 @@ import {
 	PtySpawnError,
 	preflightPtyLaunch,
 } from "../../../src/terminal";
+import { assertPtyProcessLaunchBudget, PtyLaunchSizeError } from "../../../src/terminal/pty-runtime-health";
 
 describe("PTY launch preflight", () => {
 	let root: string;
@@ -79,6 +79,54 @@ describe("PTY launch preflight", () => {
 		expect(formatSpawnFailure("codex", failure, "task")).toContain("installed runtime dependency is missing");
 		expect(formatSpawnFailure("codex", failure, "task")).toContain("npm ci --prefix web-ui");
 		expect(formatSpawnFailure("codex", failure, "task")).toContain("restart Quarterdeck");
+	});
+
+	it("returns actionable typed size errors with no argument, environment or native cause content", () => {
+		const secret = "private-content-never-include";
+		for (const source of ["arguments", "environment"] as const) {
+			let failure: unknown;
+			try {
+				assertPtyProcessLaunchBudget({
+					binary: "agent",
+					args: source === "arguments" ? [secret.repeat(60_000)] : [],
+					env: source === "environment" ? { PRIVATE_TOKEN: secret.repeat(60_000) } : {},
+					platform: "darwin",
+				});
+			} catch (error) {
+				failure = error;
+			}
+			expect(failure).toBeInstanceOf(PtyLaunchSizeError);
+			expect(failure).toMatchObject({ code: "launch_size_exceeded", source });
+			const formatted = formatSpawnFailure("agent", failure, "task");
+			expect(formatted).toContain(source === "arguments" ? "prompt/reference file" : "restart Quarterdeck");
+			expect(formatted).not.toContain(secret);
+			expect(JSON.stringify(failure)).not.toContain(secret);
+			expect(JSON.stringify(failure)).not.toContain("PRIVATE_TOKEN");
+		}
+	});
+
+	it.each([
+		Object.assign(new Error("native message with private-argument-content"), { code: "E2BIG" }),
+		new Error("posix_spawn failed: Argument list too long private-argument-content"),
+	])("classifies real size failures below preflight budgets without leaking their cause", (original) => {
+		const failure = classifyPtySpawnFailure(original, {
+			binary: "codex",
+			args: ["small"],
+			cwd,
+			env: { PATH: binDirectory },
+		});
+		expect(failure).toBeInstanceOf(PtyLaunchSizeError);
+		expect(failure).toMatchObject({ source: "combined" });
+		expect(failure.cause).toBeUndefined();
+		expect(failure.message).toContain("prompt/reference file");
+		expect(failure.message).toContain("Reduce exported environment variables");
+		expect(failure.message).toContain("restart Quarterdeck");
+		expect(failure.stack).not.toContain("private-argument-content");
+	});
+
+	it("keeps an existing typed launch error intact", () => {
+		const failure = new PtyLaunchSizeError("arguments");
+		expect(classifyPtySpawnFailure(failure, { binary: "codex", cwd, env: {} })).toBe(failure);
 	});
 
 	it("keeps unclassified spawn failures generic and preserves the underlying error", () => {
