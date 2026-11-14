@@ -74,7 +74,10 @@ describe("TaskPiOptions", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	let previousActEnvironment: boolean | undefined;
+	let scrollDescriptor: PropertyDescriptor | undefined;
 	beforeEach(() => {
+		scrollDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,6 +90,8 @@ describe("TaskPiOptions", () => {
 	afterEach(() => {
 		act(() => root.unmount());
 		container.remove();
+		if (scrollDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollDescriptor);
+		else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 			previousActEnvironment;
 	});
@@ -109,6 +114,15 @@ describe("TaskPiOptions", () => {
 		await choose("Pi default");
 		expect(onChange).toHaveBeenLastCalledWith(undefined);
 		expect(document.body.textContent).toContain("Extension-defined models may be absent");
+	});
+	it("places model and thinking selectors in the same two-column row", async () => {
+		await act(async () => root.render(<Harness onChange={vi.fn()} />));
+		const row = document.querySelector('[role="dialog"] .grid.grid-cols-2');
+		expect(row).not.toBeNull();
+		expect(row?.children).toHaveLength(2);
+		expect(row?.children[0]?.textContent).toContain("Starting model");
+		expect(row?.children[1]?.textContent).toContain("Thinking level");
+		expect(row?.textContent).not.toContain("Extension-defined models");
 	});
 	it("filters the catalog by provider text", async () => {
 		const onChange = vi.fn();

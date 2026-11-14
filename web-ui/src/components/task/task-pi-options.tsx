@@ -25,43 +25,45 @@ export function TaskPiOptions({ projectId, value, onValueChange, portalContainer
 	const resolvedPortalContainer = portalContainer ?? localPortalContainer;
 	return (
 		<div ref={setLocalPortalContainer} className="space-y-2">
-			<TaskOptionSelector
-				label="Starting model"
-				searchable
-				value={value?.model ? `${value.model.provider}/${value.model.id}` : ""}
-				options={[
-					{ value: "", label: "Pi default" },
-					...models.map((model) => ({
-						value: `${model.provider}/${model.id}`,
-						label: `${model.provider}/${model.id}`,
-					})),
-				]}
-				onSelect={(selected) => {
-					const model = models.find((model) => `${model.provider}/${model.id}` === selected);
-					const next = {
-						...(model ? { model } : {}),
-						...(value?.thinkingLevel ? { thinkingLevel: value.thinkingLevel } : {}),
-					};
-					onValueChange(Object.keys(next).length ? next : undefined);
-				}}
-				portalContainer={resolvedPortalContainer}
-			/>
-			<TaskOptionSelector
-				label="Thinking level"
-				value={value?.thinkingLevel ?? ""}
-				options={[
-					{ value: "", label: "Pi default" },
-					...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level })),
-				]}
-				onSelect={(thinkingLevel) => {
-					const next = runtimePiOptionsSchema.parse({
-						...(value?.model ? { model: value.model } : {}),
-						...(thinkingLevel ? { thinkingLevel } : {}),
-					});
-					onValueChange(Object.keys(next).length ? next : undefined);
-				}}
-				portalContainer={resolvedPortalContainer}
-			/>
+			<div className="grid grid-cols-2 gap-2">
+				<TaskOptionSelector
+					label="Starting model"
+					searchable
+					value={value?.model ? `${value.model.provider}/${value.model.id}` : ""}
+					options={[
+						{ value: "", label: "Pi default" },
+						...models.map((model) => ({
+							value: `${model.provider}/${model.id}`,
+							label: `${model.provider}/${model.id}`,
+						})),
+					]}
+					onSelect={(selected) => {
+						const model = models.find((model) => `${model.provider}/${model.id}` === selected);
+						const next = {
+							...(model ? { model } : {}),
+							...(value?.thinkingLevel ? { thinkingLevel: value.thinkingLevel } : {}),
+						};
+						onValueChange(Object.keys(next).length ? next : undefined);
+					}}
+					portalContainer={resolvedPortalContainer}
+				/>
+				<TaskOptionSelector
+					label="Thinking level"
+					value={value?.thinkingLevel ?? ""}
+					options={[
+						{ value: "", label: "Pi default" },
+						...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level })),
+					]}
+					onSelect={(thinkingLevel) => {
+						const next = runtimePiOptionsSchema.parse({
+							...(value?.model ? { model: value.model } : {}),
+							...(thinkingLevel ? { thinkingLevel } : {}),
+						});
+						onValueChange(Object.keys(next).length ? next : undefined);
+					}}
+					portalContainer={resolvedPortalContainer}
+				/>
+			</div>
 			{isLoading && !catalog ? <p className="text-[11px] text-text-secondary">Loading Pi models…</p> : null}
 			{isError || (!isLoading && models.length === 0) ? (
 				<p role="status" className="text-[11px] text-text-secondary">
