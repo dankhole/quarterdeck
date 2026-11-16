@@ -1,6 +1,6 @@
 {
   "name": "quarterdeck",
-  "version": "0.12.14",
+  "version": "0.12.15",
   "packageManager": "npm@11.19.1",
   "quarterdeck": {
     "desktopRelease": "adhoc-v1"
