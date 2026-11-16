@@ -17,7 +17,10 @@ async function readEnvironment(page: Page) {
 }
 
 async function waitForImportChoice(page: Page, enabled: boolean): Promise<void> {
-	const checkbox = page.getByRole("checkbox", { name: "Import login-shell environment", exact: true });
+	const checkbox = page.getByRole("checkbox", {
+		name: "Import login-shell environment (saves immediately)",
+		exact: true,
+	});
 	const deadline = Date.now() + 10_000;
 	while (Date.now() < deadline) {
 		if (
@@ -41,11 +44,17 @@ export async function exerciseDesktopEnvironmentSettings(page: Page, driver: Des
 	const open = async (): Promise<void> => {
 		await page.getByRole("button", { name: "Settings", exact: true }).click();
 		await settings.waitFor({ state: "visible" });
-		await settings.getByRole("checkbox", { name: "Import login-shell environment", exact: true }).waitFor();
+		await settings.getByRole("button", { name: "Runtime environment", exact: true }).click();
+		await settings
+			.getByRole("checkbox", { name: "Import login-shell environment (saves immediately)", exact: true })
+			.waitFor();
 	};
 	await open();
 	await waitForImportChoice(page, true);
-	const checkbox = settings.getByRole("checkbox", { name: "Import login-shell environment", exact: true });
+	const checkbox = settings.getByRole("checkbox", {
+		name: "Import login-shell environment (saves immediately)",
+		exact: true,
+	});
 	await checkbox.click();
 	await waitForImportChoice(page, false);
 	await settings.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -59,7 +68,7 @@ export async function exerciseDesktopEnvironmentSettings(page: Page, driver: Des
 		const bridge = Reflect.get(globalThis, "quarterdeckDesktop") as { bootstrap: { runtimeGeneration: string } };
 		return bridge.bootstrap.runtimeGeneration;
 	});
-	await settings.getByRole("button", { name: "Refresh Environment", exact: true }).click();
+	await settings.getByRole("button", { name: "Refresh environment now", exact: true }).click();
 	await page.waitForFunction(
 		(previous) => {
 			const bridge = Reflect.get(globalThis, "quarterdeckDesktop") as
