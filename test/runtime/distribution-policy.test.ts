@@ -33,7 +33,12 @@ describe("desktop distribution capability", () => {
 	it("keeps source and transient npx packages browser-first", async () => {
 		const sandbox = createTempDir("quarterdeck-distribution-");
 		try {
-			for (const path of ["source", "_npx/123/node_modules/quarterdeck", "local/node_modules/quarterdeck"]) {
+			for (const path of [
+				"source",
+				"_npx/123/node_modules/quarterdeck",
+				"local/node_modules/quarterdeck",
+				"notlib/node_modules/quarterdeck",
+			]) {
 				const root = join(sandbox.path, path);
 				await mkdir(root, { recursive: true });
 				expect(await usesDesktopLaunchDefault(root)).toBe(false);

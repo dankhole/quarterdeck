@@ -358,6 +358,7 @@ interface QueuedWebSocket {
 	socket: WebSocket;
 	queue: RawData[];
 	events: EventEmitter;
+	closeCode: number | null;
 }
 
 function rawDataToBuffer(data: RawData): Buffer {
@@ -371,6 +372,10 @@ async function openQueuedWebSocket(url: string, headers: Readonly<Record<string,
 	const socket = new WebSocket(url, { headers });
 	const queue: RawData[] = [];
 	const events = new EventEmitter();
+	const queuedSocket: QueuedWebSocket = { socket, queue, events, closeCode: null };
+	socket.on("close", (code) => {
+		queuedSocket.closeCode = code;
+	});
 	socket.on("message", (message) => {
 		queue.push(message);
 		events.emit("message");
@@ -382,12 +387,19 @@ async function openQueuedWebSocket(url: string, headers: Readonly<Record<string,
 			timeout.unref();
 		}),
 	]);
-	return { socket, queue, events };
+	return queuedSocket;
 }
 
 async function waitForControlMessage(
 	queuedSocket: QueuedWebSocket,
 	predicate: (message: RuntimeTerminalWsServerMessage) => boolean,
+	step: string,
+	ioEvidence: () => {
+		readyState: number | null;
+		closeCode: number | null;
+		pendingBytes: number;
+		acknowledgedBytes: number;
+	},
 ): Promise<RuntimeTerminalWsServerMessage> {
 	return await new Promise((resolveMessage, rejectMessage) => {
 		const tryResolve = () => {
@@ -403,7 +415,32 @@ async function waitForControlMessage(
 		};
 		const timeout = setTimeout(() => {
 			queuedSocket.events.removeListener("message", tryResolve);
-			rejectMessage(new Error("Timed out waiting for native terminal control message."));
+			// Never include raw control payloads: state and restore frames can carry
+			// provider content. Types, counts, and transport state are sufficient.
+			const queuedMessageTypes: Record<string, number> = {};
+			for (const rawData of queuedSocket.queue) {
+				let type = "invalid_json";
+				try {
+					const message: unknown = JSON.parse(rawDataToBuffer(rawData).toString("utf8"));
+					if (typeof message === "object" && message !== null && "type" in message) {
+						type = ["state", "error", "exit", "restore"].includes(String(message.type))
+							? String(message.type)
+							: "unknown";
+					}
+				} catch {
+					// Keep malformed payload contents out of CI logs too.
+				}
+				queuedMessageTypes[type] = (queuedMessageTypes[type] ?? 0) + 1;
+			}
+			const evidence = {
+				controlReadyState: queuedSocket.socket.readyState,
+				controlCloseCode: queuedSocket.closeCode,
+				queuedMessageTypes,
+				io: ioEvidence(),
+			};
+			rejectMessage(
+				new Error(`Timed out waiting for native terminal control message (${step}): ${JSON.stringify(evidence)}`),
+			);
 		}, 10_000);
 		queuedSocket.events.on("message", tryResolve);
 		tryResolve();
@@ -429,11 +466,37 @@ async function assertNativeConptyResizeReconnectRestore(
 
 	let ioSocket: QueuedWebSocket | null = null;
 	let controlSocket: QueuedWebSocket | null = null;
+	let acknowledgedBytes = 0;
+	const pendingIoBytes = () =>
+		ioSocket?.queue.reduce((bytes, message) => bytes + rawDataToBuffer(message).byteLength, 0) ?? 0;
+	const ioEvidence = () => ({
+		readyState: ioSocket?.socket.readyState ?? null,
+		closeCode: ioSocket?.closeCode ?? null,
+		pendingBytes: pendingIoBytes(),
+		acknowledgedBytes,
+	});
+	const acknowledgeIoOutput = () => {
+		if (!ioSocket || controlSocket?.socket.readyState !== WebSocket.OPEN) return;
+		const bytes = pendingIoBytes();
+		ioSocket.queue.length = 0;
+		if (bytes === 0) return;
+		// This synthetic viewer consumes IO immediately. Same-socket restore
+		// must drain acknowledged live output before capturing its next snapshot.
+		controlSocket.socket.send(JSON.stringify({ type: "output_ack", bytes }));
+		acknowledgedBytes += bytes;
+	};
 	try {
 		ioSocket = await openQueuedWebSocket(socketUrl("io"), headers);
+		ioSocket.events.on("message", acknowledgeIoOutput);
 		controlSocket = await openQueuedWebSocket(socketUrl("control"), headers);
+		acknowledgeIoOutput();
 		controlSocket.socket.send(JSON.stringify({ type: "resize", cols: 111, rows: 33 }));
-		const initialRestore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		const initialRestore = await waitForControlMessage(
+			controlSocket,
+			(message) => message.type === "restore",
+			"initial resize restore",
+			ioEvidence,
+		);
 		expect(initialRestore).toMatchObject({ type: "restore", cols: 111, rows: 33 });
 		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
 
@@ -441,7 +504,12 @@ async function assertNativeConptyResizeReconnectRestore(
 		// snapshot immediately afterwards proves the final geometry was restored.
 		controlSocket.socket.send(JSON.stringify({ type: "resize", cols: 111, rows: 33, force: true }));
 		controlSocket.socket.send(JSON.stringify({ type: "request_restore" }));
-		const forcedRestore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		const forcedRestore = await waitForControlMessage(
+			controlSocket,
+			(message) => message.type === "restore",
+			"same-socket forced resize/request_restore",
+			ioEvidence,
+		);
 		expect(forcedRestore).toMatchObject({ type: "restore", cols: 111, rows: 33 });
 		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
 
@@ -450,10 +518,18 @@ async function assertNativeConptyResizeReconnectRestore(
 		await closeWebSocket(controlSocket.socket);
 		controlSocket = null;
 
+		acknowledgedBytes = 0;
 		ioSocket = await openQueuedWebSocket(socketUrl("io"), headers);
+		ioSocket.events.on("message", acknowledgeIoOutput);
 		controlSocket = await openQueuedWebSocket(socketUrl("control"), headers);
+		acknowledgeIoOutput();
 		controlSocket.socket.send(JSON.stringify({ type: "resize", cols: 111, rows: 33, force: true }));
-		const reconnectRestore = await waitForControlMessage(controlSocket, (message) => message.type === "restore");
+		const reconnectRestore = await waitForControlMessage(
+			controlSocket,
+			(message) => message.type === "restore",
+			"reconnected forced resize restore",
+			ioEvidence,
+		);
 		expect(reconnectRestore).toMatchObject({ type: "restore", cols: 111, rows: 33 });
 		controlSocket.socket.send(JSON.stringify({ type: "restore_complete" }));
 	} finally {

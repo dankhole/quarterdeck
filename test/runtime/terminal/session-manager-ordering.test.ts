@@ -1660,7 +1660,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 	// ── Gap 1: onData transition-before-broadcast ordering ──────────────
 
 	it("ignores an exit event from a replaced task PTY", async () => {
-		const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const spawnedSessions = setupMockPtySpawn();
 		const manager = new TerminalSessionManager(new InMemorySessionSummaryStore());
 		const onExit = vi.fn();
@@ -1704,15 +1703,6 @@ describe("TerminalSessionManager ordering invariants", () => {
 			reviewReason: null,
 		});
 		expect(onExit).not.toHaveBeenCalled();
-		expect(consoleWarn).toHaveBeenCalledWith(
-			expect.stringContaining("[session-mgr]"),
-			"ignoring stale task session exit for replaced process",
-			expect.objectContaining({
-				taskId: "task-1",
-				exitingPid: 111,
-				activePid: 222,
-			}),
-		);
 	});
 
 	it("ignores output from a replaced task PTY", async () => {

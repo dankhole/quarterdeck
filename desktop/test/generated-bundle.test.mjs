@@ -217,6 +217,7 @@ console.log(identity.appAsarSha256);
 		});
 		expect([...exposed.keys()]).toEqual([
 			"quarterdeckDesktop",
+			"quarterdeckDesktopCompare",
 			"quarterdeckDesktopEnvironment",
 			"quarterdeckDesktopUpdates",
 		]);

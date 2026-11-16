@@ -1,5 +1,5 @@
 import { readFile, realpath } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 
 /** Release capability, not a user preference. Desktop releases require matching verified public assets. */
@@ -37,6 +37,6 @@ export async function hasBrowserInstallPreference(packageRoot: string): Promise<
 export async function usesDesktopLaunchDefault(packageRoot: string): Promise<boolean> {
 	if (!isDesktopRelease()) return false;
 	const root = await realpath(packageRoot);
-	if (!root.endsWith("/lib/node_modules/quarterdeck")) return false;
+	if (!root.endsWith(join(sep, "lib", "node_modules", "quarterdeck"))) return false;
 	return !(await hasBrowserInstallPreference(root));
 }

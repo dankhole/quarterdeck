@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type DesktopReadyMessage, desktopChildMessageSchema } from "../../src/core/api/desktop-runtime-protocol.js";
+import { readLaunchEnvironment } from "../../src/launch-environment.js";
 import {
 	acquireRuntimeOwnership,
 	discoverRuntimeOwner,
@@ -187,8 +188,11 @@ describe("actual CLI and desktop relay coexistence", () => {
 		expect(seeded.status).toBe(201);
 		await seeded.arrayBuffer();
 		const beforeLedger = await readFile(ledgerPath);
-		// Deliberately omit invoke()'s --no-open: exercise the actual auto-open
-		// branch without permitting any native host effect.
+		// Deliberately omit invoke()'s --no-open. Exercise auto-open where the
+		// host permits it, and its suppression in macOS CI/headless sessions.
+		// Host integration simulation prevents native effects in either case.
+		const launchEnvironment = await readLaunchEnvironment();
+		const canAutoOpen = process.platform !== "darwin" || launchEnvironment.graphicalSession;
 		const attached = await execute(
 			process.execPath,
 			[...resolveIntegrationNodeArgs(), "--no-native-ui", "--simulate-host-integrations", configPath],
@@ -206,7 +210,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 			attached.stderr.includes(
 				"Simulated browser launch is unavailable while attaching; use the Browser URL below.",
 			),
-		).toBe(true);
+		).toBe(canAutoOpen);
 		expect(attached.stdout.includes(`Browser URL: ${new URL(server.runtimeUrl).origin}/`)).toBe(true);
 		expect(attached.stdout.includes("Browser launcher accepted")).toBe(false);
 		expect((await readFile(ledgerPath)).equals(beforeLedger)).toBe(true);

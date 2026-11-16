@@ -17,6 +17,7 @@ vi.mock("../../../src/hook-transition-outbox-private-directory", () => ({
 }));
 vi.mock("../../../src/terminal/worktree-context", () => ({ buildWorktreeContextPrompt: vi.fn(async () => "") }));
 vi.mock("../../../src/terminal/pty-runtime-health", () => ({
+	assertPtyProcessLaunchBudget: vi.fn(),
 	preflightPtyLaunch: vi.fn(),
 	classifyPtySpawnFailure: vi.fn(),
 }));
