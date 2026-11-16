@@ -39,7 +39,9 @@ describe("language navigation failure diagnostics", () => {
 
 	afterEach(async () => {
 		await manager.close();
-		await rm(root, { recursive: true, force: true });
+		// Windows can release job-member directory handles after its supervisor closes.
+		// Match the lifecycle suite's bounded cleanup policy; failures still surface.
+		await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 		const retained = JSON.stringify(recordEvent.mock.calls);
 		for (const excluded of [input.content, root, "PRIVATE_STDERR", "PRIVATE_ENV_VALUE", server.label]) {
 			expect(retained).not.toContain(excluded);
