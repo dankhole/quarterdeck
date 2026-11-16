@@ -25,11 +25,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Require an exact commit on main
         id: check
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
+          # source_sha alone does not authorize a workflow from an arbitrary ref.
+          [[ "$GITHUB_REPOSITORY" == dankhole/quarterdeck ]] || { echo "Quarterdeck repository required"; exit 1; }
+          [[ "$GITHUB_REF" == refs/heads/main || "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "Run the reviewed main workflow or an immutable version tag"; exit 1; }
           [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo "Exact commit SHA required"; exit 1; }
           git fetch origin main
           git cat-file -e "$SOURCE_SHA^{commit}"
@@ -63,8 +67,28 @@ jobs:
         with:
           node-version: "22.23.2"
           package-manager-cache: false
-      - name: Select temporary signing keychain
-        run: echo "QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN=$RUNNER_TEMP/quarterdeck-signing.keychain-db" >> "$GITHUB_ENV"
+      - name: Select isolated temporary signing directory
+        run: |
+          signing_dir=$(mktemp -d "$RUNNER_TEMP/quarterdeck-signing.XXXXXX")
+          chmod 700 "$signing_dir"
+          echo "QUARTERDECK_DESKTOP_SIGNING_DIR=$signing_dir" >> "$GITHUB_ENV"
+          echo "QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN=$signing_dir/signing.keychain-db" >> "$GITHUB_ENV"
+      - name: Validate public signing configuration before building
+        env:
+          SIGNING_IDENTITY: ${{ vars.DESKTOP_MAC_SIGNING_IDENTITY }}
+          TEAM_ID: ${{ vars.DESKTOP_MAC_TEAM_ID }}
+          NOTARY_KEY_ID: ${{ vars.DESKTOP_MAC_NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ vars.DESKTOP_MAC_NOTARY_ISSUER }}
+        run: |
+          node --input-type=module <<'NODE'
+          const env = process.env;
+          if (!/^Developer ID Application: .+ \([A-Z0-9]{10}\)$/.test(env.SIGNING_IDENTITY ?? '') ||
+              !/^[A-Z0-9]{10}$/.test(env.TEAM_ID ?? '') || !env.SIGNING_IDENTITY.endsWith(`(${env.TEAM_ID})`) ||
+              !/^[A-Z0-9]{10}$/.test(env.NOTARY_KEY_ID ?? '') ||
+              !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(env.NOTARY_ISSUER ?? '')) {
+            throw new Error('Missing or malformed signing identity/team or team notarization API identifiers; values are not logged.');
+          }
+          NODE
       - name: Install pinned toolchain and isolated dependencies
         run: |
           npm install --global npm@11.19.1
@@ -84,6 +108,7 @@ jobs:
           NOTARY_KEY_ID: ${{ vars.DESKTOP_MAC_NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ vars.DESKTOP_MAC_NOTARY_ISSUER }}
         run: |
+          umask 077
           : "${CERTIFICATE_BASE64:?Missing signing certificate}"
           : "${CERTIFICATE_PASSWORD:?Missing certificate password}"
           : "${NOTARY_KEY_BASE64:?Missing notarization key}"
@@ -93,7 +118,11 @@ jobs:
           import { writeFileSync } from 'node:fs';
           import { join } from 'node:path';
           for (const [name, variable] of [['quarterdeck-certificate.p12', 'CERTIFICATE_BASE64'], ['quarterdeck-notary.p8', 'NOTARY_KEY_BASE64']]) {
-            writeFileSync(join(process.env.RUNNER_TEMP, name), Buffer.from(process.env[variable], 'base64'), { mode: 0o600 });
+            const encoded = process.env[variable];
+            if (!encoded || encoded.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+              throw new Error(`Invalid base64 signing secret: ${variable}; use a single unwrapped base64 value.`);
+            }
+            writeFileSync(join(process.env.QUARTERDECK_DESKTOP_SIGNING_DIR, name), Buffer.from(encoded, 'base64'), { mode: 0o600, flag: 'wx' });
           }
           NODE
           keychain_password=$(openssl rand -hex 32)
@@ -101,9 +130,12 @@ jobs:
           security create-keychain -p "$keychain_password" "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN"
           security set-keychain-settings -lut 21600 "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN"
           security unlock-keychain -p "$keychain_password" "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN"
-          security import "$RUNNER_TEMP/quarterdeck-certificate.p12" -k "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import "$QUARTERDECK_DESKTOP_SIGNING_DIR/quarterdeck-certificate.p12" -k "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN"
-          xcrun notarytool store-credentials "$QUARTERDECK_DESKTOP_NOTARY_PROFILE" --keychain "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" --key "$RUNNER_TEMP/quarterdeck-notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
+          xcrun notarytool store-credentials "$QUARTERDECK_DESKTOP_NOTARY_PROFILE" --keychain "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" --key "$QUARTERDECK_DESKTOP_SIGNING_DIR/quarterdeck-notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
+          # Only the temporary keychain is needed after successful import.
+          rm -f "$QUARTERDECK_DESKTOP_SIGNING_DIR/quarterdeck-certificate.p12" "$QUARTERDECK_DESKTOP_SIGNING_DIR/quarterdeck-notary.p8"
+          unset keychain_password
       - name: Sign and notarize application
         env:
           QUARTERDECK_DESKTOP_SIGN: "1"
@@ -153,8 +185,15 @@ jobs:
       - name: Remove signing materials
         if: always()
         run: |
-          if [[ -f "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" ]]; then security delete-keychain "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN"; fi
-          rm -f "$RUNNER_TEMP/quarterdeck-certificate.p12" "$RUNNER_TEMP/quarterdeck-notary.p8"
+          # A keychain deletion error must not skip removal of the P12/P8 files.
+          status=0
+          if [[ -n "${QUARTERDECK_DESKTOP_SIGNING_DIR:-}" ]]; then
+            if [[ -f "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" ]]; then
+              security delete-keychain "$QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN" || status=1
+            fi
+            rm -rf -- "$QUARTERDECK_DESKTOP_SIGNING_DIR" || status=1
+          fi
+          exit "$status"
       - name: Upload verified signed candidate (not a public release)
         uses: actions/upload-artifact@v7
         with:

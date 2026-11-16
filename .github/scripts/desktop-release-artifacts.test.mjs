@@ -17,7 +17,7 @@ import {
 const version = "0.12.8";
 const sha = "a".repeat(40);
 
-async function fixture(run, productVersion = version) {
+async function fixture(run, productVersion = version, distribution = "signed-notarized") {
 	const directory = await mkdtemp(join(tmpdir(), "quarterdeck-release-test-"));
 	try {
 		for (const arch of ["arm64", "x64"]) {
@@ -40,9 +40,10 @@ async function fixture(run, productVersion = version) {
 					version: productVersion,
 					sourceSha: sha,
 					sourceDirty: false,
-					distribution: "signed-notarized",
-					signedDistribution: true,
-					expectedTeamId: "AB12345678",
+					distribution,
+					distributionMode: distribution === "ad-hoc" ? "ad-hoc" : "signed",
+					signedDistribution: distribution !== "ad-hoc",
+					expectedTeamId: distribution === "ad-hoc" ? null : "AB12345678",
 					updateAuthority: "npm",
 					channel: productVersion.includes("-") ? "preview" : "stable",
 					buildId: `${arch}-build`,
@@ -83,6 +84,51 @@ async function modify(directory, edit) {
 test("accepts both complete architectures with distinct paired build IDs", async () =>
 	fixture(async (directory) => {
 		assert.equal((await validateRelease(directory, version, sha)).length, 6);
+	}));
+
+test("accepts explicit public ad-hoc policy, never as an implicit signed release", async () =>
+	fixture(
+		async (directory) => {
+			assert.equal((await validateRelease(directory, version, sha, "ad-hoc")).length, 6);
+			await assert.rejects(validateRelease(directory, version, sha), /identity mismatch/u);
+			for (const change of [
+				{ sourceDirty: true },
+				{ distributionMode: "local" },
+				{ distributionMode: undefined },
+				{ signedDistribution: true },
+				{ expectedTeamId: "AB12345678" },
+				{ distribution: "unsigned-prototype" },
+				{ distribution: "ad-hoc-prototype-unverified" },
+				{ fuses: { EnableNodeCliInspectArguments: true } },
+			]) {
+				const path = join(directory, "artifact-manifest-darwin-arm64.json");
+				const original = await readFile(path, "utf8");
+				await writeFile(path, JSON.stringify({ ...JSON.parse(original), ...change }));
+				await assert.rejects(validateRelease(directory, version, sha, "ad-hoc"));
+				await writeFile(path, original);
+			}
+		},
+		version,
+		"ad-hoc",
+	));
+
+test("retains legacy absent mode for signed releases but rejects cross-architecture policy changes", async () =>
+	fixture(async (directory) => {
+		for (const arch of ["arm64", "x64"]) {
+			const path = join(directory, `artifact-manifest-darwin-${arch}.json`);
+			const manifest = JSON.parse(await readFile(path, "utf8"));
+			delete manifest.distributionMode;
+			await writeFile(path, JSON.stringify(manifest));
+		}
+		assert.equal((await validateRelease(directory, version, sha)).length, 6);
+		await modify(directory, (manifest) => {
+			manifest.distribution = "ad-hoc";
+			manifest.distributionMode = "ad-hoc";
+			manifest.signedDistribution = false;
+			manifest.expectedTeamId = null;
+		});
+		await assert.rejects(validateRelease(directory, version, sha), /identity mismatch/u);
+		await assert.rejects(validateRelease(directory, version, sha, "ad-hoc"), /identity mismatch/u);
 	}));
 
 test("rejects a dirty or differently sourced release", async () =>
@@ -461,6 +507,99 @@ test("anonymous full release verification binds every manifest and container to 
 			await rm(destination, { recursive: true, force: true });
 		}
 	}));
+
+test("public ad-hoc draft promotion and immutable retry preserve explicit expected distribution", async () =>
+	fixture(
+		async (directory) => {
+			const expectedDistribution = "ad-hoc";
+			for (const draft of [true, false]) {
+				let verified = false;
+				await publishRelease(
+					{ ...releaseIdentity, expectedDistribution, directory, publicDirectory: "/synthetic-public" },
+					{
+						inspect: () => ({ id: 1, draft }),
+						execute: (args) => {
+							assert.equal(draft, true, "Immutable public retry cannot mutate GitHub");
+							if (args[0] === "api")
+								return JSON.stringify({ body: "Public ad-hoc release, no notarization claims" });
+						},
+						verifyPublic: async (options) => {
+							assert.equal(options.expectedDistribution, expectedDistribution);
+							verified = true;
+						},
+					},
+				);
+				assert.equal(verified, true);
+			}
+		},
+		version,
+		"ad-hoc",
+	));
+
+test("anonymous retries reject signed/ad-hoc swaps in either direction without mutating public assets", async () => {
+	for (const actual of ["signed-notarized", "ad-hoc"]) {
+		await fixture(
+			async (directory) => {
+				const files = await validateRelease(directory, version, sha, actual);
+				await writeFile(join(directory, "SHA256SUMS"), await releaseChecksums(files));
+				const destination = await mkdtemp(join(tmpdir(), "quarterdeck-distribution-retry-"));
+				try {
+					const download = async (_url, path) => writeFile(path, await readFile(join(directory, basename(path))));
+					await verifyPublicRelease({ ...releaseIdentity, expectedDistribution: actual }, destination, download);
+					await assert.rejects(
+						publishRelease(
+							{
+								...releaseIdentity,
+								expectedDistribution: actual === "ad-hoc" ? "signed-notarized" : "ad-hoc",
+								directory: "/missing",
+								publicDirectory: destination,
+							},
+							{
+								inspect: () => ({ id: 1, draft: false }),
+								execute: () => assert.fail("No mutations allowed for an immutable public release"),
+								verifyPublic: (options, path) => verifyPublicRelease(options, path, download),
+							},
+						),
+						/identity mismatch/u,
+					);
+				} finally {
+					await rm(destination, { recursive: true, force: true });
+				}
+			},
+			version,
+			actual,
+		);
+	}
+});
+
+test("ad-hoc publication uses a separate credential-free native lane and explicit expected policies", async () => {
+	const free = await readFile(new URL("../workflows/desktop-adhoc-release.yml", import.meta.url), "utf8");
+	const publish = await readFile(new URL("../workflows/publish.yml", import.meta.url), "utf8");
+	assert.doesNotMatch(
+		free,
+		/secrets\.|secrets:|environment:|notarytool|stapler|spctl|--remove-signature|xattr|contents: write|npm publish/u,
+	);
+	for (const required of [
+		"macos-15",
+		"macos-15-intel",
+		'node-version: "22.23.2"',
+		"npm@11.19.1",
+		"QUARTERDECK_DESKTOP_DISTRIBUTION: ad-hoc",
+		"codesign --verify --deep --strict",
+		"--distribution ad-hoc",
+		"git merge-base --is-ancestor",
+		'"$GITHUB_REPOSITORY" == dankhole/quarterdeck',
+		"refs/heads/main",
+	])
+		assert.ok(free.includes(required), required);
+	const lane = publish.split("  desktop-adhoc:\n")[1]?.split("\n  desktop-assets:")[0];
+	assert.ok(lane);
+	assert.doesNotMatch(lane, /secrets:|environment:/u);
+	assert.match(lane, /desktop_mode == 'ad-hoc'/u);
+	assert.match(publish, /ad-hoc\) desktop_args\+=\(--desktop --distribution ad-hoc\)/u);
+	assert.match(publish, /signed\) desktop_args\+=\(--desktop --distribution signed-notarized\)/u);
+	assert.match(publish, /needs: \[resolve, test, desktop, desktop-adhoc\]/u);
+});
 
 test("anonymous download rejects unsafe redirects and bounded truncated assets", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "quarterdeck-download-test-"));

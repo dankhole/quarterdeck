@@ -25,19 +25,23 @@ export function entitlementClass(filePath) {
 // These Developer ID builds do not use Apple's App Sandbox. File, network,
 // clipboard and native dialogs need no sandbox exceptions. V8 uses MAP_JIT;
 // shipped, team-signed native modules need no library-validation exception.
-export function signingOptionsForFile(filePath) {
+export function signingOptionsForFile(filePath, distributionMode = "signed") {
+	// Ad-hoc code has no Team ID: hardened library validation would reject its
+	// own Electron Framework/native addons. Do not add broad entitlement grants.
+	// The Developer ID lane retains hardened runtime and minimal JIT grants.
+	const adhoc = distributionMode === "ad-hoc";
 	return {
-		hardenedRuntime: true,
-		entitlements: join(desktopRoot, "assets", `${entitlementClass(filePath)}-entitlements.plist`),
+		hardenedRuntime: !adhoc,
+		entitlements: join(desktopRoot, "assets", `${adhoc ? "library" : entitlementClass(filePath)}-entitlements.plist`),
 	};
 }
 
-export function verifyEntitlementDictionary(filePath, dictionary) {
+export function verifyEntitlementDictionary(filePath, dictionary, distributionMode = "signed") {
 	if (!dictionary || typeof dictionary !== "object" || Array.isArray(dictionary)) {
 		throw new Error("Signed code has malformed entitlements.");
 	}
 	const keys = Object.keys(dictionary);
-	const needsJit = entitlementClass(filePath) !== "library";
+	const needsJit = distributionMode !== "ad-hoc" && entitlementClass(filePath) !== "library";
 	if (needsJit ? keys.length !== 1 || keys[0] !== allowJit || dictionary[allowJit] !== true : keys.length !== 0) {
 		throw new Error(`Signed code entitlements differ from the minimal ${entitlementClass(filePath)} policy.`);
 	}
@@ -50,6 +54,20 @@ export function verifyDeveloperIdIdentity(signature, expectedTeamId) {
 		!/^CodeDirectory .*flags=0x[\da-f]+\([^\n]*runtime[^\n]*\)/mu.test(signature)
 	) {
 		throw new Error("Signed code lacks the expected Developer ID team and hardened runtime.");
+	}
+}
+
+export function verifyAdHocIdentity(signature) {
+	if (
+		!/^Signature=adhoc$/mu.test(signature) ||
+		!/^TeamIdentifier=not set$/mu.test(signature) ||
+		/^Authority=/mu.test(signature) ||
+		!/^CodeDirectory .*flags=0x[\da-f]+\([^\n]*adhoc[^\n]*\)/mu.test(signature) ||
+		/^CodeDirectory .*\([^\n]*runtime[^\n]*\)/mu.test(signature)
+	) {
+		throw new Error(
+			"Public ad-hoc code lacks its expected signature, claims an Apple identity, or enables incompatible hardened library validation.",
+		);
 	}
 }
 
@@ -72,8 +90,8 @@ async function* executableFiles(directory) {
 	}
 }
 
-/** Audit the actual signed Mach-O files, not just the configured plist sources. */
-export async function verifySignedAppEntitlements(appPath, expectedTeamId, runCommand = run) {
+/** Audit the actual Mach-O signatures, not just configured plist sources. */
+async function verifyAppEntitlements(appPath, verifyIdentity, runCommand, distributionMode) {
 	const audited = [];
 	for await (const path of executableFiles(appPath)) {
 		runCommand("/usr/bin/codesign", ["--verify", "--strict", path], { stdio: "pipe" });
@@ -81,7 +99,7 @@ export async function verifySignedAppEntitlements(appPath, expectedTeamId, runCo
 			encoding: "utf8",
 			stdio: "pipe",
 		}).stderr;
-		verifyDeveloperIdIdentity(signature, expectedTeamId);
+		verifyIdentity(signature);
 		const xml = runCommand("/usr/bin/codesign", ["--display", "--entitlements", "-", "--xml", path], {
 			encoding: "utf8",
 			stdio: "pipe",
@@ -95,7 +113,7 @@ export async function verifySignedAppEntitlements(appPath, expectedTeamId, runCo
 					}).stdout,
 				)
 			: {};
-		verifyEntitlementDictionary(path, entitlements);
+		verifyEntitlementDictionary(path, entitlements, distributionMode);
 		audited.push(relative(appPath, path));
 	}
 	if (
@@ -108,4 +126,16 @@ export async function verifySignedAppEntitlements(appPath, expectedTeamId, runCo
 		throw new Error("Signed entitlement audit is missing the app or bundled Node executable.");
 	}
 	return audited;
+}
+
+export async function verifySignedAppEntitlements(appPath, expectedTeamId, runCommand = run) {
+	return verifyAppEntitlements(
+		appPath,
+		(signature) => verifyDeveloperIdIdentity(signature, expectedTeamId),
+		runCommand,
+	);
+}
+
+export async function verifyAdHocAppEntitlements(appPath, runCommand = run) {
+	return verifyAppEntitlements(appPath, verifyAdHocIdentity, runCommand, "ad-hoc");
 }

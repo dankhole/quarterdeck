@@ -62,12 +62,20 @@ export async function runDesktopInstallCommand(
 	}
 }
 
+/** Integrity only: an ad-hoc signature does not authenticate a developer or establish Gatekeeper acceptance. */
+export async function verifyDesktopSignatureIntegrity(
+	appPath: string,
+	runCommand: (command: string, args: readonly string[]) => Promise<DesktopInstallCommandResult>,
+): Promise<void> {
+	await runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath]);
+}
+
 export async function verifyDesktopDeveloperSignature(
 	appPath: string,
 	teamId: string,
 	runCommand: (command: string, args: readonly string[]) => Promise<DesktopInstallCommandResult>,
 ): Promise<void> {
-	await runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath]);
+	await verifyDesktopSignatureIntegrity(appPath, runCommand);
 	const { stderr } = await runCommand("/usr/bin/codesign", ["--display", "--verbose=4", appPath]);
 	if (
 		!stderr.split(/\r?\n/u).includes(`TeamIdentifier=${teamId}`) ||

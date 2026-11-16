@@ -14,12 +14,18 @@ import {
 import { inspectDesktopApp } from "./app-identity.js";
 import { DesktopInstallationError } from "./errors.js";
 import { desktopAppTreeSha256, desktopFileSha256, readDesktopJson, setDesktopTreeWritable } from "./files.js";
-import { runDesktopInstallCommand, verifyDesktopDeveloperSignature } from "./macos.js";
-import { validateDesktopReleaseManifest } from "./metadata.js";
+import { runDesktopInstallCommand, verifyDesktopDeveloperSignature, verifyDesktopSignatureIntegrity } from "./macos.js";
+import { desktopBundleDistributionMode, validateDesktopReleaseManifest } from "./metadata.js";
 import { downloadDesktopAsset } from "./network.js";
-import { resolveDesktopInstallationOwner, sameDesktopOwner, validateDesktopInstallationOwner } from "./owner.js";
+import {
+	resolveDesktopInstallationOwner,
+	resolveDesktopReleaseDistribution,
+	sameDesktopOwner,
+	validateDesktopInstallationOwner,
+} from "./owner.js";
 import { prepareDesktopInstallation } from "./prepare.js";
 import {
+	desktopReceiptDistributionMode,
 	desktopVersionSchema,
 	type ManagedDesktopInstallationReceipt,
 	managedDesktopInstallationReceiptFilename,
@@ -78,6 +84,7 @@ function result(
 		version: receipt.version,
 		arch: receipt.arch,
 		source: receipt.source,
+		distributionMode: desktopReceiptDistributionMode(receipt),
 		installId: receipt.installId,
 		buildId: receipt.buildId,
 		appAsarSha256: receipt.appAsarSha256,
@@ -193,7 +200,12 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 	async function verifyRetainedManifest(path: string, receipt: ManagedDesktopInstallationReceipt): Promise<void> {
 		if (!receipt.release) throw new DesktopInstallationError("invalid_artifact", "No release manifest was expected.");
 		// readDesktopJson refuses symbolic links and bounds the file before hashing or copying it.
-		const manifest = validateDesktopReleaseManifest(await readDesktopJson(path), receipt.version, receipt.arch);
+		const manifest = validateDesktopReleaseManifest(
+			await readDesktopJson(path),
+			receipt.version,
+			receipt.arch,
+			desktopReceiptDistributionMode(receipt) === "ad-hoc" ? "ad-hoc" : "signed-notarized",
+		);
 		if (
 			(await desktopFileSha256(path)) !== receipt.release.manifestSha256 ||
 			manifest.sourceSha !== receipt.release.sourceSha ||
@@ -343,11 +355,23 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 				"The app and recorded npm build no longer form a verified pair. Quit Quarterdeck and repair the npm installation.",
 			);
 		if (receipt.release) {
+			const mode = desktopReceiptDistributionMode(receipt);
+			const expectedDistribution = await resolveDesktopReleaseDistribution(receipt.owner);
+			if (
+				(mode === "ad-hoc" ? "ad-hoc" : "signed-notarized") !== expectedDistribution ||
+				desktopBundleDistributionMode(identity.bundle) !== mode
+			)
+				throw new DesktopInstallationError(
+					"installation_changed",
+					"The installed app's distribution trust differs from its owning npm release. Repair the matching pair.",
+				);
 			const manifestPath = join(root, "release-manifest.json");
 			await verifyRetainedManifest(manifestPath, receipt);
 		}
 		if (receipt.signing.verified && receipt.signing.teamId)
 			await verifyDesktopDeveloperSignature(appPath, receipt.signing.teamId, dependencies.runCommand);
+		else if (desktopReceiptDistributionMode(receipt) === "ad-hoc")
+			await verifyDesktopSignatureIntegrity(appPath, dependencies.runCommand);
 		return result(receipt, receiptPath);
 	}
 	async function status(options: { owner?: DesktopInstallationOwner } = {}): Promise<DesktopInstallationStatus> {
@@ -507,8 +531,10 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 					join(stage, "previous-release-manifest.json"),
 				);
 			}
-			await writeDesktopJson(journalPath, journal);
+			// Publication may rename the journal successfully before its directory sync fails.
+			// From this point, rollback owns the stage even if publication rejects.
 			ownsJournal = true;
+			await writeDesktopJson(journalPath, journal);
 			if (oldReceipt && oldAppPresent) await rename(appPath, join(stage, "backup.app"));
 			await syncDesktopDirectory(dirname(appPath));
 			await dependencies.checkpoint?.("backed_up");

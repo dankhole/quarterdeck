@@ -3,7 +3,7 @@ import { appendFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { artifactNames, checksum, validateRelease } from "./desktop-release-artifacts.mjs";
+import { artifactNames, checksum, publicDistributionMode, validateRelease } from "./desktop-release-artifacts.mjs";
 
 function identity({ repository, version, sourceSha }) {
 	if (
@@ -91,6 +91,9 @@ export async function releaseChecksums(files) {
 
 export async function verifyPublicRelease(options, directory, download = downloadAnonymous) {
 	const tag = identity(options);
+	const expectedDistribution =
+		options.expectedDistribution === undefined ? "signed-notarized" : options.expectedDistribution;
+	publicDistributionMode(expectedDistribution);
 	await mkdir(directory, { recursive: true });
 	const names = ["arm64", "x64"].flatMap((arch) => [
 		...artifactNames(options.version, arch),
@@ -104,7 +107,7 @@ export async function verifyPublicRelease(options, directory, download = downloa
 			limit,
 		);
 	}
-	const files = await validateRelease(directory, options.version, options.sourceSha);
+	const files = await validateRelease(directory, options.version, options.sourceSha, expectedDistribution);
 	if ((await readFile(join(directory, "SHA256SUMS"), "utf8")) !== (await releaseChecksums(files)))
 		throw new Error("Public SHA256SUMS differs from the immutable downloaded release bytes.");
 	return files;
@@ -116,12 +119,23 @@ export async function publishRelease(
 	{ execute = gh, inspect = findRelease, verifyPublic = verifyPublicRelease } = {},
 ) {
 	const tag = identity(options);
-	if (typeof options.desktop !== "boolean") throw new Error("Choose browser-only or signed desktop publication.");
+	if (typeof options.desktop !== "boolean") throw new Error("Choose browser-only or public desktop publication.");
+	options = {
+		...options,
+		expectedDistribution:
+			options.expectedDistribution === undefined ? "signed-notarized" : options.expectedDistribution,
+	};
+	if (options.desktop) publicDistributionMode(options.expectedDistribution);
 	let release = inspect(options, execute);
 	if (!release || release.draft) {
 		let assets = [];
 		if (options.desktop) {
-			const files = await validateRelease(options.directory, options.version, options.sourceSha);
+			const files = await validateRelease(
+				options.directory,
+				options.version,
+				options.sourceSha,
+				options.expectedDistribution,
+			);
 			const sums = join(options.directory, "SHA256SUMS");
 			await writeFile(sums, await releaseChecksums(files));
 			assets = [...files, sums];
@@ -201,6 +215,7 @@ async function main() {
 			dir: { type: "string" },
 			"public-dir": { type: "string" },
 			desktop: { type: "boolean", default: false },
+			distribution: { type: "string", default: "signed-notarized" },
 		},
 	});
 	const options = { version: values.version, sourceSha: values.sha, repository: values.repository };
@@ -216,6 +231,7 @@ async function main() {
 	await publishRelease({
 		...options,
 		desktop: values.desktop,
+		expectedDistribution: values.distribution,
 		directory: resolve(values.dir),
 		publicDirectory: values["public-dir"] ? resolve(values["public-dir"]) : undefined,
 	});

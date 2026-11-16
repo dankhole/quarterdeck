@@ -30,8 +30,10 @@ quarterdeck \- local orchestration board for coding agents
 .RI " " [ options ]
 .SH DESCRIPTION
 .B quarterdeck
-opens the installed desktop app on supported local graphical Macs, or starts
-the local runtime and browser UI elsewhere. When launched inside a Git
+opens the installed desktop app on supported local graphical Macs after a
+global npm installation, unless that npm prefix retains a browser installation
+preference. Other platforms use the local runtime and browser UI. Source, npx, CI, headless and explicit
+runtime-option invocations remain on the runtime path. When launched inside a Git
 repository, it opens that repository's indexed workspace. When launched
 outside Git, it starts without an active workspace or uses an indexed project.
 .SH OPTIONS
@@ -44,8 +46,10 @@ Launch-mode flags cannot be combined with subcommands.
 .B --desktop
 Validate the installed macOS app and request native launch.
 Cannot be combined with browser-runtime flags or subcommands.
-A supported global npm installation installs the matching app; launch never
-downloads it.
+A desktop-capable supported global npm installation installs the matching app
+unless opted out. Launch never downloads or repairs it and never silently falls
+back from an invalid pair. Use desktop status and desktop install for repair,
+including when npm lifecycle scripts were disabled; --browser remains available.
 .TP
 .B --host <ip>
 Bind the runtime to an IP address. The default is 127.0.0.1.
@@ -69,6 +73,19 @@ Show help text and exit.
 .TP
 .B -v, --version
 Show the version and exit.
+.SH INSTALLATION MODE
+Set QUARTERDECK_INSTALL_MODE=browser during global npm installation to retain
+browser-only behavior across upgrades in that npm prefix. Browser-only releases
+also record this preference. Set QUARTERDECK_INSTALL_MODE=desktop to explicitly
+install the matching app and clear the preference. npm remains the installer and
+update authority; Finder/Dock launches do not make the app independent of npm.
+Public macOS apps are ad-hoc signed, not Apple-notarized. A blocked launch may
+require System Settings > Privacy & Security > Open Anyway; managed Macs may
+prohibit approval. Updates may require renewed Keychain consent. Installation
+never removes quarantine or disables Gatekeeper.
+Installations predating this preference should explicitly select browser during
+the first desktop-capable upgrade to preserve their behavior. Disabled lifecycle
+scripts cannot record a preference or install the app; use --browser explicitly.
 .SH COMMANDS
 .TP
 .B desktop install [--from <app-path>] [--replace-owner]

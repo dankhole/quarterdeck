@@ -11,6 +11,8 @@ import {
 	resolveDesktopInstallationOwner,
 } from "./desktop-install/index.js";
 import { formatLegacyDesktopMigrationGuidance, inventoryLegacyDesktopInstallations } from "./desktop-install/legacy.js";
+import { hasBrowserInstallPreference, wantsDesktopInstallation } from "./distribution-policy.js";
+import { readLaunchEnvironment } from "./launch-environment.js";
 import { supportsDesktopHost } from "./launch-policy.js";
 import type { DesktopInstallationOwner } from "./shared/desktop-installation-contract.js";
 
@@ -24,18 +26,28 @@ export interface NpmInstallContext {
 	osRelease: string;
 	uid: number | undefined;
 	sourceCheckout: boolean;
+	/** Defaults to the immutable package release capability; injectable for policy tests. */
+	desktopRelease?: boolean;
+	browserPreference?: boolean;
+	/** Automatic desktop installs require a verified local GUI; explicit install mode does not. */
+	graphicalSession?: boolean;
 }
 
 export type NpmInstallPolicy = { action: "skip" } | { action: "install" } | { action: "reject"; message: string };
 
-/** npm lifecycle intent is explicit; dependency installs and npm link never install a user app. */
+/** Only a supported global lifecycle can install an app; source, npx and npm link never do. */
 export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallPolicy {
 	const { env } = context;
 	if (
-		env.QUARTERDECK_INSTALL_MODE !== "desktop" ||
+		!wantsDesktopInstallation(
+			env.QUARTERDECK_INSTALL_MODE || (context.browserPreference ? "browser" : undefined),
+			context.desktopRelease,
+		) ||
 		env.npm_config_global !== "true" ||
 		!["install", "update"].includes(env.npm_command ?? "") ||
 		env.npm_lifecycle_event !== "postinstall" ||
+		(env.QUARTERDECK_INSTALL_MODE !== "desktop" &&
+			(!context.graphicalSession || Boolean(env.SSH_CONNECTION || env.SSH_TTY))) ||
 		(env.CI !== undefined && !["", "0", "false"].includes(env.CI.toLowerCase())) ||
 		context.sourceCheckout ||
 		!supportsDesktopHost(context)
@@ -90,6 +102,11 @@ async function run(): Promise<void> {
 		osRelease: release(),
 		uid: process.getuid?.(),
 		sourceCheckout: existsSync(join(packageRoot, ".git")),
+		browserPreference: await hasBrowserInstallPreference(packageRoot),
+		graphicalSession:
+			process.env.QUARTERDECK_INSTALL_MODE === "desktop"
+				? undefined
+				: (await readLaunchEnvironment()).graphicalSession,
 	});
 	if (policy.action === "skip") return;
 	if (policy.action === "reject") throw new Error(policy.message);

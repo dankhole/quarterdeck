@@ -8,7 +8,7 @@ vi.mock("../scripts/process.mjs", () => ({
 	},
 }));
 vi.mock("../scripts/release-policy.mjs", () => ({
-	releaseBuildSettings: () => ({ signedDistribution: false }),
+	releaseBuildSettings: () => ({ signedDistribution: false, distributionMode: "local" }),
 }));
 vi.mock("../scripts/artifact-manifest.mjs", () => ({
 	recordPackagedApp: async (path) => {

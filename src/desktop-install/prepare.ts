@@ -5,7 +5,7 @@ import { type DesktopInstallationOwner, desktopBuildsMatch } from "../shared/des
 import { inspectDesktopApp } from "./app-identity.js";
 import { DesktopInstallationError } from "./errors.js";
 import { desktopFileSha256, readDesktopJson } from "./files.js";
-import { verifyDesktopDeveloperSignature } from "./macos.js";
+import { verifyDesktopDeveloperSignature, verifyDesktopSignatureIntegrity } from "./macos.js";
 import {
 	type DesktopReleaseManifest,
 	desktopContainerName,
@@ -13,6 +13,7 @@ import {
 	validateDesktopReleaseManifest,
 } from "./metadata.js";
 import { desktopReleaseAssetUrl } from "./network.js";
+import { resolveDesktopReleaseDistribution } from "./owner.js";
 import {
 	desktopApplicationBundleId,
 	desktopLaunchProtocolVersion,
@@ -69,7 +70,12 @@ export async function prepareDesktopInstallation(
 				manifestPath,
 				maximumDesktopManifestBytes,
 			);
-			release = validateDesktopReleaseManifest(await readDesktopJson(manifestPath), options.version, arch);
+			release = validateDesktopReleaseManifest(
+				await readDesktopJson(manifestPath),
+				options.version,
+				arch,
+				await resolveDesktopReleaseDistribution(owner),
+			);
 			const name = desktopContainerName(options.version, arch);
 			const artifact = release.artifacts.find((candidate) => candidate.path === name);
 			if (!artifact) throw new DesktopInstallationError("invalid_artifact", "The matching desktop DMG is missing.");
@@ -110,6 +116,7 @@ export async function prepareDesktopInstallation(
 			);
 		if (release?.expectedTeamId)
 			await verifyDesktopDeveloperSignature(identity.appPath, release.expectedTeamId, dependencies.runCommand);
+		else if (release) await verifyDesktopSignatureIntegrity(identity.appPath, dependencies.runCommand);
 		progress("copying", "Preparing the verified replacement before checking whether Quarterdeck is in use.");
 		const stagedApp = join(stage, "Quarterdeck.app");
 		await dependencies.runCommand("/usr/bin/ditto", [identity.appPath, stagedApp]);
@@ -118,6 +125,7 @@ export async function prepareDesktopInstallation(
 			throw new DesktopInstallationError("invalid_artifact", "The source app changed or its copy is incomplete.");
 		if (release?.expectedTeamId)
 			await verifyDesktopDeveloperSignature(copy.appPath, release.expectedTeamId, dependencies.runCommand);
+		else if (release) await verifyDesktopSignatureIntegrity(copy.appPath, dependencies.runCommand);
 		const receipt: ManagedDesktopInstallationReceipt = {
 			schemaVersion: 2,
 			managedBy: "quarterdeck-npm",
@@ -125,6 +133,7 @@ export async function prepareDesktopInstallation(
 			version: options.version,
 			arch,
 			source: release ? "release" : "local",
+			distributionMode: release ? (release.distribution === "ad-hoc" ? "ad-hoc" : "signed") : "local",
 			appPath,
 			bundleId: desktopApplicationBundleId,
 			buildId: copy.bundle.buildId,
@@ -133,7 +142,7 @@ export async function prepareDesktopInstallation(
 			desktopLaunchProtocolVersion,
 			updatesEnabled: false,
 			owner,
-			signing: { verified: Boolean(release), teamId: release?.expectedTeamId ?? null },
+			signing: { verified: release?.distribution === "signed-notarized", teamId: release?.expectedTeamId ?? null },
 			release: provenance,
 		};
 		await writeDesktopJson(join(stage, "receipt.json"), receipt);

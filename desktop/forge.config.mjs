@@ -18,9 +18,9 @@ const electronChecksums = JSON.parse(
 const arch = resolveTargetArch(process.env.QUARTERDECK_DESKTOP_ARCH);
 const runtimePath = stagedRuntimePath(arch);
 
-// M1 artifacts are unsigned. Later protected CI can opt into signing using an
-// existing temporary keychain and a notarytool keychain profile. No publisher is
-// configured; signed DMG notarization/stapling remains a separate release gate.
+// Public ad-hoc builds need no Apple credentials. Developer ID builds retain
+// the protected temporary keychain/notarization lane; local candidates are
+// resealed after packaging and may enable the isolated lab inspector.
 const releaseSettings = releaseBuildSettings(process.env, desktopPackage.version);
 const signing = releaseSettings.signedDistribution;
 const notarizing = process.env.QUARTERDECK_DESKTOP_NOTARIZE === "1";
@@ -52,15 +52,17 @@ export default {
 		// the verified archive without downloading it or a fresh checksum file again.
 		download: { cacheRoot: process.env.electron_config_cache, checksums: electronChecksums },
 		extendInfo: { LSMinimumSystemVersion: desktopPackage.quarterdeckDesktop.minimumMacOSVersion },
-		...(signing
+		...(releaseSettings.distributionMode !== "local"
 			? {
 					osxSign: {
-						identity: requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_IDENTITY"),
-						keychain: requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN"),
+						identity: signing ? requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_IDENTITY") : "-",
+						...(signing
+							? { keychain: requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN") }
+							: { identityValidation: false, timestamp: "none" }),
 						// Never inherit osx-sign's broad default device/plugin grants.
 						preAutoEntitlements: false,
 						preEmbedProvisioningProfile: false,
-						optionsForFile: signingOptionsForFile,
+						optionsForFile: (filePath) => signingOptionsForFile(filePath, releaseSettings.distributionMode),
 					},
 				}
 			: {}),
@@ -84,8 +86,8 @@ export default {
 			[FuseV1Options.RunAsNode]: false,
 			[FuseV1Options.EnableCookieEncryption]: true,
 			[FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-			// The isolated unsigned Agent Lab uses Playwright's inspector transport.
-			[FuseV1Options.EnableNodeCliInspectArguments]: !signing,
+			// Only local lab candidates permit Playwright's inspector transport.
+			[FuseV1Options.EnableNodeCliInspectArguments]: releaseSettings.distributionMode === "local",
 			[FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
 			[FuseV1Options.OnlyLoadAppFromAsar]: true,
 			[FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
@@ -115,7 +117,10 @@ export default {
 		},
 		postPackage: async (_config, result) => {
 			for (const outputPath of result.outputPaths) {
-				finalizeLocalAppSignature(join(outputPath, "Quarterdeck.app"), signing);
+				finalizeLocalAppSignature(
+					join(outputPath, "Quarterdeck.app"),
+					releaseSettings.distributionMode !== "local",
+				);
 				await recordPackagedApp(outputPath, result.arch);
 			}
 		},

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createReleasePolicy, releaseBuildSettings, validateReleasePolicy } from "../scripts/release-policy.mjs";
+import {
+	createReleasePolicy,
+	distributionModeFor,
+	releaseBuildSettings,
+	validateReleasePolicy,
+} from "../scripts/release-policy.mjs";
 
 const signed = { QUARTERDECK_DESKTOP_SIGN: "1", QUARTERDECK_DESKTOP_TEAM_ID: "AB12345678" };
+const adhoc = { QUARTERDECK_DESKTOP_DISTRIBUTION: "ad-hoc" };
 function bundle(settings, version = "0.12.8") {
 	return {
 		schemaVersion: 1,
@@ -14,11 +20,12 @@ function bundle(settings, version = "0.12.8") {
 }
 
 describe("build-time installation provenance", () => {
-	it("uses npm authority for signed, unsigned, stable, and preview artifacts", () => {
-		for (const environment of [{}, signed]) {
+	it("uses npm authority for local, public ad-hoc, signed, stable, and preview artifacts", () => {
+		for (const environment of [{}, adhoc, signed]) {
 			for (const version of ["0.12.8", "0.12.8-rc.1"]) {
 				const settings = releaseBuildSettings(environment, version);
 				expect(settings).toEqual({
+					distributionMode: environment === signed ? "signed" : environment === adhoc ? "ad-hoc" : "local",
 					signedDistribution: environment === signed,
 					expectedTeamId: environment === signed ? signed.QUARTERDECK_DESKTOP_TEAM_ID : null,
 					updateAuthority: "npm",
@@ -29,6 +36,37 @@ describe("build-time installation provenance", () => {
 				expect(validateReleasePolicy(policy, manifest)).toEqual(policy);
 			}
 		}
+	});
+	it("rejects unknown, contradictory, or notarized ad-hoc selections", () => {
+		for (const environment of [
+			{ QUARTERDECK_DESKTOP_DISTRIBUTION: "unsigned" },
+			{ ...adhoc, ...signed },
+			{ ...adhoc, QUARTERDECK_DESKTOP_NOTARIZE: "1" },
+		])
+			expect(() => releaseBuildSettings(environment, "0.12.8")).toThrow();
+	});
+	it("infers absent mode only for legacy local and signed bundles", () => {
+		for (const environment of [{}, signed]) {
+			const manifest = bundle(releaseBuildSettings(environment, "0.12.8"));
+			const policy = createReleasePolicy(manifest, releaseBuildSettings(environment, "0.12.8"));
+			delete manifest.distributionMode;
+			delete policy.distributionMode;
+			expect(distributionModeFor(manifest)).toBe(environment === signed ? "signed" : "local");
+			expect(validateReleasePolicy(policy, manifest)).toEqual(policy);
+		}
+		const manifest = bundle(releaseBuildSettings(adhoc, "0.12.8"));
+		const policy = createReleasePolicy(manifest, releaseBuildSettings(adhoc, "0.12.8"));
+		for (const change of [
+			{ distributionMode: "local" },
+			{ distributionMode: "signed" },
+			{ distributionMode: "other" },
+			{ signedDistribution: true },
+			{ expectedTeamId: "AB12345678" },
+		]) {
+			expect(() => validateReleasePolicy({ ...policy, ...change }, manifest)).toThrow();
+		}
+		delete policy.distributionMode;
+		expect(() => validateReleasePolicy(policy, manifest)).toThrow();
 	});
 	it("requires explicit valid signing team identity", () => {
 		for (const team of [undefined, "", "invalid", "ab12345678"])
@@ -58,6 +96,7 @@ describe("build-time installation provenance", () => {
 			{ version: "0.12.9" },
 			{ repository: "another/repository" },
 			{ signedDistribution: false },
+			{ distributionMode: "ad-hoc" },
 			{ expectedTeamId: "XY98765432" },
 			{ channel: "validation" },
 			{ updateAuthority: "electron" },

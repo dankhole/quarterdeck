@@ -25,19 +25,23 @@ jobs:
       tag: ${{ steps.resolve_tag.outputs.tag }}
       sha: ${{ steps.resolve_tag.outputs.sha }}
       desktop_public: ${{ steps.desktop_state.outputs.public }}
-      desktop_enabled: ${{ vars.QUARTERDECK_DESKTOP_RELEASES == '1' }}
+      desktop_enabled: ${{ steps.desktop_capability.outputs.desktop_mode != 'none' }}
+      desktop_mode: ${{ steps.desktop_capability.outputs.desktop_mode }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - name: Resolve tag
         id: resolve_tag
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          [[ "$GITHUB_REPOSITORY" == dankhole/quarterdeck ]] || { echo "Quarterdeck repository required"; exit 1; }
+          [[ "$GITHUB_REF" == refs/heads/main || "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]] || { echo "Run the reviewed main workflow or an immutable version tag"; exit 1; }
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
             echo "Error: tag must match vX.Y.Z (with optional prerelease suffix)"
             exit 1
@@ -47,12 +51,31 @@ jobs:
             exit 1
           fi
           SHA=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
+          git merge-base --is-ancestor "$SHA" origin/main
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         with:
           node-version: "22.23.2"
           package-manager-cache: false
+      - name: Validate desktop-default capability from the immutable tag
+        id: desktop_capability
+        env:
+          SOURCE_SHA: ${{ steps.resolve_tag.outputs.sha }}
+          DESKTOP_RELEASES: ${{ vars.QUARTERDECK_DESKTOP_RELEASES }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          const metadata = JSON.parse(execFileSync('git', ['show', `${process.env.SOURCE_SHA}:package.json`], { encoding: 'utf8' }));
+          const capability = metadata.quarterdeck?.desktopRelease ?? 'browser-only';
+          if (!['browser-only', 'adhoc-v1', 'signed-v1'].includes(capability)) throw new Error('Unknown desktop release capability.');
+          if (capability === 'signed-v1' && process.env.DESKTOP_RELEASES !== '1') {
+            throw new Error('Desktop-default npm packages require the enabled signed desktop publication lane.');
+          }
+          const desktopMode = capability === 'adhoc-v1' ? 'ad-hoc' : process.env.DESKTOP_RELEASES === '1' ? 'signed' : 'none';
+          if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `desktop_mode=${desktopMode}\n`);
+          NODE
       - name: Inspect immutable public release before rebuilding
         id: desktop_state
         env:
@@ -79,16 +102,23 @@ jobs:
 
   desktop:
     needs: [resolve, test]
-    if: ${{ needs.resolve.outputs.desktop_enabled == 'true' && needs.resolve.outputs.desktop_public != 'true' }}
+    if: ${{ needs.resolve.outputs.desktop_mode == 'signed' && needs.resolve.outputs.desktop_public != 'true' }}
     uses: ./.github/workflows/desktop-release.yml
     with:
       source_sha: ${{ needs.resolve.outputs.sha }}
     secrets: inherit
 
+  desktop-adhoc:
+    needs: [resolve, test]
+    if: ${{ needs.resolve.outputs.desktop_mode == 'ad-hoc' && needs.resolve.outputs.desktop_public != 'true' }}
+    uses: ./.github/workflows/desktop-adhoc-release.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.sha }}
+
   desktop-assets:
-    name: Publish release and verify optional signed desktop assets
-    needs: [resolve, test, desktop]
-    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && (needs.desktop.result == 'success' || (needs.desktop.result == 'skipped' && (needs.resolve.outputs.desktop_enabled != 'true' || needs.resolve.outputs.desktop_public == 'true'))) }}
+    name: Publish release and verify expected public desktop assets
+    needs: [resolve, test, desktop, desktop-adhoc]
+    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (needs.desktop-adhoc.result == 'success' || needs.desktop-adhoc.result == 'skipped') && (needs.resolve.outputs.desktop_mode == 'none' || needs.resolve.outputs.desktop_public == 'true' || needs.desktop.result == 'success' || needs.desktop-adhoc.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -102,9 +132,15 @@ jobs:
           node-version: "22.23.2"
           package-manager-cache: false
       - uses: actions/download-artifact@v8
-        if: ${{ needs.resolve.outputs.desktop_enabled == 'true' && needs.resolve.outputs.desktop_public != 'true' }}
+        if: ${{ needs.resolve.outputs.desktop_mode == 'signed' && needs.resolve.outputs.desktop_public != 'true' }}
         with:
           pattern: desktop-signed-*
+          path: desktop-release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        if: ${{ needs.resolve.outputs.desktop_mode == 'ad-hoc' && needs.resolve.outputs.desktop_public != 'true' }}
+        with:
+          pattern: desktop-adhoc-*
           path: desktop-release-assets
           merge-multiple: true
       - name: Publish generated notes and optional verified assets, or reuse the public release
@@ -112,13 +148,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
-          DESKTOP_ENABLED: ${{ needs.resolve.outputs.desktop_enabled }}
+          DESKTOP_MODE: ${{ needs.resolve.outputs.desktop_mode }}
         run: |
           version=$(node -p "require('./package.json').version")
           desktop_version=$(node -p "require('./desktop/package.json').version")
           [[ "$TAG" == "v$version" && "$version" == "$desktop_version" ]] || { echo "Product tag/version mismatch"; exit 1; }
           desktop_args=()
-          if [[ "$DESKTOP_ENABLED" == "true" ]]; then desktop_args+=(--desktop); fi
+          case "$DESKTOP_MODE" in
+            ad-hoc) desktop_args+=(--desktop --distribution ad-hoc) ;;
+            signed) desktop_args+=(--desktop --distribution signed-notarized) ;;
+            none) ;;
+            *) echo "Unknown desktop publication mode"; exit 1 ;;
+          esac
           node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification "${desktop_args[@]}"
 
   publish:

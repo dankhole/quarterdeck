@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { release } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { usesDesktopLaunchDefault } from "./distribution-policy.js";
 import { type LaunchEnvironment, supportsDesktopHost } from "./launch-policy.js";
 
 /** A TTY is neither necessary nor sufficient for a local Aqua session. */
@@ -10,12 +13,14 @@ export async function readLaunchEnvironment(): Promise<LaunchEnvironment> {
 		osRelease: release(),
 		graphicalSession: false,
 		desktopHelper: process.env.QUARTERDECK_DESKTOP_CHILD === "1",
+		desktopDefault: false,
 	};
 	if (
 		!supportsDesktopHost(environment) ||
 		environment.desktopHelper ||
 		process.env.SSH_CONNECTION ||
-		process.env.SSH_TTY
+		process.env.SSH_TTY ||
+		(process.env.CI && !["0", "false"].includes(process.env.CI.toLowerCase()))
 	) {
 		return environment;
 	}
@@ -25,5 +30,10 @@ export async function readLaunchEnvironment(): Promise<LaunchEnvironment> {
 			resolveSession(!error && stdout.trim() === "Aqua");
 		});
 	});
+	if (environment.graphicalSession && process.env.QUARTERDECK_INSTALL_MODE !== "browser") {
+		environment.desktopDefault = await usesDesktopLaunchDefault(
+			resolve(dirname(fileURLToPath(import.meta.url)), ".."),
+		);
+	}
 	return environment;
 }

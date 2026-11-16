@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { type DesktopInstallationOwner, desktopBuildIdentitySchema } from "../shared/desktop-installation-contract.js";
 import { DesktopInstallationError } from "./errors.js";
 import { readDesktopJson } from "./files.js";
+import type { DesktopReleaseDistribution } from "./metadata.js";
 
 export interface ResolveDesktopInstallationOwnerOptions {
 	packageRoot?: string;
@@ -118,6 +119,36 @@ export async function validateDesktopInstallationOwner(owner: DesktopInstallatio
 			`The owning npm CLI is missing or changed. Repair it with QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix ${JSON.stringify(owner.prefix)} quarterdeck, or run npm run link in the owning checkout.`,
 		);
 	}
+}
+
+/** Read the expected public trust from the verified owner, never from cwd or environment hints. */
+export async function resolveDesktopReleaseDistribution(
+	owner: DesktopInstallationOwner,
+): Promise<DesktopReleaseDistribution> {
+	await validateDesktopInstallationOwner(owner);
+	const metadata = await readDesktopJson(join(owner.packageRoot, "package.json"), 64 * 1024);
+	if (
+		typeof metadata !== "object" ||
+		metadata === null ||
+		!("name" in metadata) ||
+		metadata.name !== "quarterdeck" ||
+		!("version" in metadata) ||
+		metadata.version !== owner.identity.version
+	)
+		throw new DesktopInstallationError("installation_changed", "The owning npm package metadata changed.");
+	const quarterdeck = "quarterdeck" in metadata ? metadata.quarterdeck : undefined;
+	const capability =
+		typeof quarterdeck === "object" && quarterdeck !== null && "desktopRelease" in quarterdeck
+			? quarterdeck.desktopRelease
+			: undefined;
+	if (capability === "adhoc-v1") return "ad-hoc";
+	// Explicit desktop installation from browser-only and legacy packages retains the signed requirement.
+	if (capability === undefined || capability === "browser-only" || capability === "signed-v1")
+		return "signed-notarized";
+	throw new DesktopInstallationError(
+		"invalid_artifact",
+		"The owning npm package has an unknown desktop release capability.",
+	);
 }
 
 export function sameDesktopOwner(left: DesktopInstallationOwner, right: DesktopInstallationOwner): boolean {

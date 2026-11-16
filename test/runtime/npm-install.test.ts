@@ -75,11 +75,48 @@ const supported: NpmInstallContext = {
 	osRelease: "25.0.0",
 	uid: 501,
 	sourceCheckout: false,
+	graphicalSession: true,
+	desktopRelease: false,
 };
 
 describe("npm lifecycle installation policy", () => {
 	it("installs only for an explicit supported global user installation", () => {
 		expect(resolveNpmInstallPolicy(supported)).toEqual({ action: "install" });
+	});
+	it("enables automatic installation only for desktop-capable releases", () => {
+		const env = { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined };
+		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: false })).toEqual({ action: "skip" });
+		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: true })).toEqual({ action: "install" });
+		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: true, browserPreference: true })).toEqual({
+			action: "skip",
+		});
+		expect(resolveNpmInstallPolicy({ ...supported, desktopRelease: true, browserPreference: true })).toEqual({
+			action: "install",
+		});
+	});
+	it("uses the public ad-hoc capability for automatic install and explicit npm updates", () => {
+		const env = { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined };
+		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: undefined })).toEqual({ action: "install" });
+		expect(
+			resolveNpmInstallPolicy({
+				...supported,
+				env: { ...supported.env, npm_command: "update" },
+				desktopRelease: undefined,
+			}),
+		).toEqual({ action: "install" });
+	});
+	it.each([
+		{ graphicalSession: false },
+		{ env: { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined, SSH_CONNECTION: "remote" } },
+		{ env: { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined, SSH_TTY: "/dev/ttys001" } },
+	])("keeps automatic headless or SSH installation browser-only: %j", (override) => {
+		const context = { ...supported, desktopRelease: true, ...override };
+		context.env = { ...context.env, QUARTERDECK_INSTALL_MODE: undefined };
+		expect(resolveNpmInstallPolicy(context)).toEqual({ action: "skip" });
+	});
+	it("retains explicit desktop installation without a GUI while preserving ordinary-user admission", () => {
+		expect(resolveNpmInstallPolicy({ ...supported, graphicalSession: false })).toEqual({ action: "install" });
+		expect(resolveNpmInstallPolicy({ ...supported, graphicalSession: false, uid: 0 }).action).toBe("reject");
 	});
 	it.each([
 		{ npm_config_global: "false" },

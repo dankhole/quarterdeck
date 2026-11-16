@@ -2,7 +2,9 @@ import { z } from "zod";
 import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { DesktopInstallationError } from "./errors.js";
 import {
+	type DesktopDistributionMode,
 	desktopArchitectureSchema,
+	desktopDistributionModeSchema,
 	desktopLaunchProtocolVersion,
 	desktopSha256Schema,
 	desktopVersionSchema,
@@ -24,6 +26,7 @@ const bundleSchema = z.strictObject({
 	sourceSha: z.string().regex(/^[a-f0-9]{40}$/u),
 	sourceDirty: z.boolean(),
 	desktopLaunchProtocolVersion: z.literal(desktopLaunchProtocolVersion),
+	distributionMode: desktopDistributionModeSchema.optional(),
 	signedDistribution: z.boolean(),
 	expectedTeamId: z
 		.string()
@@ -49,7 +52,7 @@ const releaseManifestSchema = bundleSchema.extend({
 		bootstrapSha256: desktopSha256Schema,
 		hostSha256: desktopSha256Schema,
 	}),
-	distribution: z.literal("signed-notarized"),
+	distribution: z.enum(["ad-hoc", "signed-notarized"]),
 	fuses: z.object({
 		RunAsNode: z.literal(false),
 		EnableNodeOptionsEnvironmentVariable: z.literal(false),
@@ -73,6 +76,21 @@ const releaseManifestSchema = bundleSchema.extend({
 
 export type DesktopBundleMetadata = z.infer<typeof bundleSchema>;
 export type DesktopReleaseManifest = z.infer<typeof releaseManifestSchema>;
+export type DesktopReleaseDistribution = DesktopReleaseManifest["distribution"];
+
+/** Only legacy signed bundles infer a public mode; old prototypes remain local. */
+export function desktopBundleDistributionMode(bundle: {
+	distributionMode?: DesktopDistributionMode;
+	signedDistribution: boolean;
+}): DesktopDistributionMode {
+	return bundle.distributionMode ?? (bundle.signedDistribution ? "signed" : "local");
+}
+
+function distributionMetadataAgrees(bundle: DesktopBundleMetadata): boolean {
+	return desktopBundleDistributionMode(bundle) === "signed"
+		? bundle.signedDistribution && bundle.expectedTeamId !== null
+		: !bundle.signedDistribution && bundle.expectedTeamId === null;
+}
 
 export function validateDesktopBundleMetadata(
 	raw: unknown,
@@ -86,7 +104,7 @@ export function validateDesktopBundleMetadata(
 			"The app has missing or invalid desktop metadata. Build a fresh matching app with npm desktop launch support, then import it with --from.",
 		);
 	}
-	if (parsed.data.version !== version || parsed.data.arch !== arch) {
+	if (parsed.data.version !== version || parsed.data.arch !== arch || !distributionMetadataAgrees(parsed.data)) {
 		throw new DesktopInstallationError(
 			"invalid_artifact",
 			`The app must match npm version ${version} and darwin-${arch}.`,
@@ -99,6 +117,7 @@ export function validateDesktopReleaseManifest(
 	raw: unknown,
 	version: string,
 	arch: DesktopInstallationArchitecture,
+	expectedDistribution: DesktopReleaseDistribution = "signed-notarized",
 ): DesktopReleaseManifest {
 	const parsed = releaseManifestSchema.safeParse(raw);
 	if (!parsed.success)
@@ -109,14 +128,17 @@ export function validateDesktopReleaseManifest(
 		manifest.version !== version ||
 		manifest.arch !== arch ||
 		manifest.sourceDirty ||
-		!manifest.signedDistribution ||
-		manifest.expectedTeamId === null ||
+		manifest.distribution !== expectedDistribution ||
+		!distributionMetadataAgrees(manifest) ||
+		(expectedDistribution === "ad-hoc"
+			? manifest.distributionMode !== "ad-hoc"
+			: desktopBundleDistributionMode(manifest) !== "signed") ||
 		manifest.channel !== (stable ? "stable" : "preview") ||
 		desktopResourcePaths.some((path) => !manifest.checksums[path])
 	) {
 		throw new DesktopInstallationError(
 			"invalid_artifact",
-			"The desktop release identity or signed release policy does not match this npm version.",
+			"The desktop release identity or distribution policy does not match this npm version.",
 		);
 	}
 	const name = desktopContainerName(version, arch);

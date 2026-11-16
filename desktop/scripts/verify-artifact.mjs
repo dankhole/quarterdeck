@@ -10,9 +10,13 @@ import { sha256File } from "./checksums.mjs";
 import { DESKTOP_RESOURCE_PATHS } from "./desktop-resource-paths.mjs";
 import { requireNativeMacTarget } from "./paths.mjs";
 import { run } from "./process.mjs";
-import { validateReleasePolicy } from "./release-policy.mjs";
+import { distributionModeFor, validateReleasePolicy } from "./release-policy.mjs";
 import { validateRuntimeDependencyLinks } from "./runtime-resources.mjs";
-import { verifyDeveloperIdIdentity, verifySignedAppEntitlements } from "./signing-entitlements.mjs";
+import {
+	verifyAdHocAppEntitlements,
+	verifyDeveloperIdIdentity,
+	verifySignedAppEntitlements,
+} from "./signing-entitlements.mjs";
 
 const nativeSmoke = `
 const pty = require('node-pty');
@@ -112,7 +116,7 @@ export async function verifyApp(appPath) {
 		[FuseV1Options.RunAsNode, false],
 		[FuseV1Options.EnableCookieEncryption, true],
 		[FuseV1Options.EnableNodeOptionsEnvironmentVariable, false],
-		[FuseV1Options.EnableNodeCliInspectArguments, !manifest.signedDistribution],
+		[FuseV1Options.EnableNodeCliInspectArguments, distributionModeFor(manifest) === "local"],
 		[FuseV1Options.EnableEmbeddedAsarIntegrityValidation, true],
 		[FuseV1Options.OnlyLoadAppFromAsar, true],
 		[FuseV1Options.GrantFileProtocolExtraPrivileges, false],
@@ -128,6 +132,8 @@ export async function verifyApp(appPath) {
 		}).stderr;
 		verifyDeveloperIdIdentity(signature, manifest.expectedTeamId);
 		await verifySignedAppEntitlements(appPath, manifest.expectedTeamId);
+	} else if (distributionModeFor(manifest) === "ad-hoc") {
+		await verifyAdHocAppEntitlements(appPath);
 	}
 	return manifest;
 }

@@ -26,9 +26,11 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-Global installation installs the browser/CLI package on every supported platform. The macOS desktop app is optional and experimental: signed public distribution still has [pending release gates](docs/desktop-validation.md). Until matching signed assets are published, use the [local desktop build](docs/desktop-release.md#local-unsigned-candidate).
+On macOS 13+ (Apple Silicon or Intel), a fresh global installation installs the matching desktop app at `~/Applications/Quarterdeck.app`, and `quarterdeck` opens it in a local graphical session. Linux and Windows keep browser mode. npm owns installation and updates, including for Finder/Dock launches.
 
-When signed assets are available for the version, opt into desktop installation on macOS 13+ (Apple Silicon or Intel):
+The Mac app is **ad-hoc signed, not Apple-notarized**. macOS may require **System Settings → Privacy & Security → Open Anyway** after a blocked launch; managed Macs may disallow approval. Updates may prompt again for Keychain access. See [first-launch guidance](docs/desktop.md#macos-security-and-first-launch).
+
+To switch an existing browser-only installation to desktop:
 
 ```bash
 QUARTERDECK_INSTALL_MODE=desktop npm install --global quarterdeck
@@ -44,14 +46,14 @@ npx --yes quarterdeck@latest --browser
 ## Desktop and browser modes
 
 ```bash
-quarterdeck             # Browser mode on every platform
+quarterdeck             # Desktop on supported global macOS installs; browser elsewhere
 quarterdeck --browser   # Browser mode, including on macOS
 quarterdeck --desktop   # Explicit macOS app launch
 ```
 
-The desktop app also opens from Finder or the Dock. Closing its window keeps tasks running; **Quit** checks unsaved work and live sessions before shutdown. **File → Open in Browser** opens the same runtime in your browser.
+The desktop app also opens from Finder or the Dock. Closing its window keeps tasks running; **Quit** checks unsaved work and live sessions before shutdown. **File → Open in Browser** opens the same runtime in your browser. `QUARTERDECK_INSTALL_MODE=browser npm install --global quarterdeck` preserves browser-only installation across upgrades. Source, `npx`, CI, headless hosts, and explicit runtime flags remain runtime paths.
 
-The desktop app imports your login shell’s exported environment by default. Use **Settings → Runtime Environment** to disable import, add executable folders, or refresh the runtime; existing explicit opt-outs remain disabled. Local builds are ad-hoc signed and may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
+The desktop app imports your login shell’s exported environment by default. Use **Settings → Runtime Environment** to disable import, add executable folders, or refresh the runtime; existing explicit opt-outs remain disabled. Ad-hoc-signed builds may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
 
 See the [desktop guide](docs/desktop.md#using-the-app) for installation repair, window behavior, environment setup, and recovery. Windows browser support is also [experimental](docs/windows-support-audit.md).
 
@@ -75,17 +77,17 @@ See the [user guide](docs/usage.md#everyday-workflow) for folder-project options
 
 ## Updates and removal
 
-npm installations do not update automatically. Update the browser/CLI package with:
+npm installations do not update automatically. Quit the desktop app before updating, then run:
 
 ```bash
 npm install --global quarterdeck@latest
 ```
 
-For an opted-in desktop installation, quit the app and use `QUARTERDECK_INSTALL_MODE=desktop npm install --global quarterdeck@latest` to update both parts. A browser-only npm update does not replace the app; an outdated pair refuses desktop startup until repaired.
+This updates the npm package and its matching app unless that prefix retains a browser-only preference. Use `QUARTERDECK_INSTALL_MODE=desktop npm install --global quarterdeck@latest` to explicitly install both parts or switch from browser mode. A browser-only npm update does not replace the app; an outdated pair refuses desktop startup until repaired.
 
 An npm-installed desktop app checks for updates at startup or through **Check for Updates**. **Update Quarterdeck** confirms unsaved work and live sessions, quits cleanly, then runs the update in Terminal. Reopen the app when it finishes. Linked source builds use `npm run link` instead.
 
-Use `quarterdeck desktop status` to inspect an incomplete CLI/app installation and `quarterdeck desktop install` to repair it. For removal, quit the app and run `quarterdeck desktop uninstall` before `npm uninstall --global quarterdeck`. npm removal alone leaves the app behind. Projects, settings, and saved sessions are preserved; see the [desktop guide](docs/desktop.md#using-the-app) for ownership and migration details.
+Use `quarterdeck desktop status` to inspect an incomplete CLI/app installation and `quarterdeck desktop install` to repair it, including when npm lifecycle scripts were disabled. Launch never downloads, repairs, or silently falls back from a mismatched app; `--browser` remains available. For removal, quit the app and run `quarterdeck desktop uninstall` before `npm uninstall --global quarterdeck`. npm removal alone leaves the app behind. Projects, settings, and saved sessions are preserved; see the [desktop guide](docs/desktop.md#using-the-app) for ownership and migration details.
 
 ## Configuration and troubleshooting
 

@@ -25,7 +25,12 @@ export async function recordPackagedApp(outputPath, arch) {
 	);
 	const artifactManifest = {
 		...manifest,
-		distribution: manifest.signedDistribution ? "signed-prototype-unverified" : "unsigned-prototype",
+		distribution:
+			manifest.distributionMode === "ad-hoc"
+				? "ad-hoc-prototype-unverified"
+				: manifest.signedDistribution
+					? "signed-prototype-unverified"
+					: "unsigned-prototype",
 		fuses,
 		appPath: relative(join(desktopRoot, "out"), appPath),
 		checksums,

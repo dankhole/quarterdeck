@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
+import { distributionModeFor } from "../../desktop/scripts/release-policy.mjs";
 
 const sha256Pattern = /^[a-f0-9]{64}$/u;
 const sourcePattern = /^[a-f0-9]{40}$/u;
@@ -22,7 +23,14 @@ export function artifactNames(version, arch) {
 	return ["dmg", "zip"].map((extension) => `Quarterdeck-${version}-darwin-${arch}.${extension}`);
 }
 
-export async function validateRelease(directory, version, sourceSha) {
+export function publicDistributionMode(distribution) {
+	if (distribution === "ad-hoc") return "ad-hoc";
+	if (distribution === "signed-notarized") return "signed";
+	throw new Error("Expected an explicit public ad-hoc or signed-notarized distribution.");
+}
+
+export async function validateRelease(directory, version, sourceSha, expectedDistribution = "signed-notarized") {
+	const expectedMode = publicDistributionMode(expectedDistribution);
 	if (!sourcePattern.test(sourceSha)) throw new Error("Release source must be an exact commit SHA.");
 	const production = /^\d+\.\d+\.\d+$/u.test(version);
 	const files = [];
@@ -38,16 +46,15 @@ export async function validateRelease(directory, version, sourceSha) {
 			manifest.arch !== arch ||
 			manifest.version !== version ||
 			manifest.sourceSha !== sourceSha ||
-			manifest.distribution !== "signed-notarized"
+			manifest.distribution !== expectedDistribution
 		)
 			throw new Error(`Release identity mismatch: ${arch}.`);
 		if (manifest.sourceDirty !== false) throw new Error(`Dirty source tree: ${arch}.`);
 		if (
-			manifest.signedDistribution !== true ||
-			typeof manifest.expectedTeamId !== "string" ||
-			!/^[A-Z0-9]{10}$/u.test(manifest.expectedTeamId)
+			distributionModeFor(manifest) !== expectedMode ||
+			(expectedMode === "signed" && !/^[A-Z0-9]{10}$/u.test(manifest.expectedTeamId ?? ""))
 		)
-			throw new Error(`Missing signed policy identity: ${arch}.`);
+			throw new Error(`Missing public distribution policy identity: ${arch}.`);
 		if (
 			manifest.channel !== (production ? "stable" : "preview") ||
 			manifest.updateAuthority !== "npm" ||
@@ -117,14 +124,21 @@ export async function validateRelease(directory, version, sourceSha) {
 	return files;
 }
 
-async function finalize(arch, sourceSha, directory) {
+async function finalize(arch, sourceSha, directory, expectedDistribution) {
+	const expectedMode = publicDistributionMode(expectedDistribution);
 	if (!sourcePattern.test(sourceSha)) throw new Error("Release source must be an exact commit SHA.");
 	const root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 	const out = join(root, "desktop", "out");
 	const manifestName = `artifact-manifest-darwin-${arch}.json`;
 	const manifest = JSON.parse(await readFile(join(out, manifestName), "utf8"));
-	if (manifest.sourceSha !== sourceSha || manifest.arch !== arch)
+	if (manifest.sourceSha !== sourceSha || manifest.arch !== arch || manifest.sourceDirty !== false)
 		throw new Error("Packaged source identity mismatch.");
+	if (
+		distributionModeFor(manifest) !== expectedMode ||
+		manifest.distribution !== `${expectedMode === "signed" ? "signed" : "ad-hoc"}-prototype-unverified`
+	) {
+		throw new Error("Cannot promote a local prototype or change the packaged distribution policy.");
+	}
 	const names = artifactNames(manifest.version, arch);
 	const resources = join(out, `Quarterdeck-darwin-${arch}`, "Quarterdeck.app", "Contents", "Resources");
 	for (const file of Object.keys(manifest.checksums)) manifest.checksums[file] = await checksum(join(resources, file));
@@ -134,7 +148,7 @@ async function finalize(arch, sourceSha, directory) {
 			return { path: name, bytes: (await lstat(path)).size, sha256: await checksum(path) };
 		}),
 	);
-	manifest.distribution = "signed-notarized";
+	manifest.distribution = expectedDistribution;
 	await mkdir(directory, { recursive: true });
 	await writeFile(join(directory, manifestName), `${JSON.stringify(manifest, null, "\t")}\n`);
 }
@@ -148,16 +162,17 @@ async function main() {
 			sha: { type: "string" },
 			arch: { type: "string" },
 			list: { type: "string" },
+			distribution: { type: "string", default: "signed-notarized" },
 		},
 	});
 	if (positionals.length !== 1 || !values.dir || !values.sha)
 		throw new Error("Pass finalize|validate --dir <payload> --sha <commit>.");
 	if (positionals[0] === "finalize") {
-		await finalize(values.arch, values.sha, resolve(values.dir));
+		await finalize(values.arch, values.sha, resolve(values.dir), values.distribution);
 		return;
 	}
 	if (positionals[0] !== "validate" || !values.version) throw new Error("Validation requires --version.");
-	const files = await validateRelease(resolve(values.dir), values.version, values.sha);
+	const files = await validateRelease(resolve(values.dir), values.version, values.sha, values.distribution);
 	const sums = join(resolve(values.dir), "SHA256SUMS");
 	await writeFile(
 		sums,

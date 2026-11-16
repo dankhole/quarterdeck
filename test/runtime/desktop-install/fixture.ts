@@ -9,7 +9,13 @@ import type { DesktopInstallationDependencies } from "../../../src/desktop-insta
 
 export async function createDesktopAppFixture(
 	root: string,
-	options: { signed?: boolean; version?: string; arch?: "arm64" | "x64"; launchProtocol?: boolean } = {},
+	options: {
+		signed?: boolean;
+		distributionMode?: "local" | "ad-hoc" | "signed";
+		version?: string;
+		arch?: "arm64" | "x64";
+		launchProtocol?: boolean;
+	} = {},
 ) {
 	const version = options.version ?? "0.12.8";
 	const arch = options.arch ?? "arm64";
@@ -24,6 +30,7 @@ export async function createDesktopAppFixture(
 		sourceSha: "a".repeat(40),
 		sourceDirty: false,
 		...(options.launchProtocol === false ? {} : { desktopLaunchProtocolVersion: 1 }),
+		distributionMode: options.distributionMode ?? (options.signed ? "signed" : "local"),
 		signedDistribution: options.signed ?? false,
 		expectedTeamId: options.signed ? "ABCDE12345" : null,
 		updateAuthority: "npm",
@@ -42,6 +49,7 @@ export async function createDesktopAppFixture(
 		arch,
 		buildId: bundle.buildId,
 		sourceSha: bundle.sourceSha,
+		distributionMode: bundle.distributionMode,
 		signedDistribution: bundle.signedDistribution,
 		expectedTeamId: bundle.expectedTeamId,
 		updateAuthority: bundle.updateAuthority,
@@ -95,7 +103,7 @@ export async function createDesktopAppFixture(
 			bootstrapSha256: await desktopFileSha256(join(appPath, "Contents/MacOS/Quarterdeck")),
 			hostSha256: await desktopFileSha256(join(appPath, "Contents/MacOS/QuarterdeckHost")),
 		},
-		distribution: "signed-notarized",
+		distribution: bundle.distributionMode === "ad-hoc" ? "ad-hoc" : "signed-notarized",
 		fuses: {
 			RunAsNode: false,
 			EnableNodeOptionsEnvironmentVariable: false,

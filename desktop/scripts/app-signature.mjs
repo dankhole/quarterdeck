@@ -1,8 +1,8 @@
 import { run } from "./process.mjs";
 
-/** Seal the finished local bundle after Packager's plist, rename, and integrity mutations. */
-export function finalizeLocalAppSignature(appPath, signedDistribution, runCommand = run) {
-	if (signedDistribution) return;
+/** Reseal local bundles only; preserve Packager's public ad-hoc/Developer ID signatures. */
+export function finalizeLocalAppSignature(appPath, hasPackagerSignature, runCommand = run) {
+	if (hasPackagerSignature) return;
 	runCommand(
 		"/usr/bin/codesign",
 		[

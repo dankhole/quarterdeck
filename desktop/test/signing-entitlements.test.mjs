@@ -5,12 +5,15 @@ import { desktopRoot } from "../scripts/paths.mjs";
 import {
 	entitlementClass,
 	signingOptionsForFile,
+	verifyAdHocAppEntitlements,
+	verifyAdHocIdentity,
 	verifyDeveloperIdIdentity,
 	verifyEntitlementDictionary,
 	verifySignedAppEntitlements,
 } from "../scripts/signing-entitlements.mjs";
 
 const allowJit = "com.apple.security.cs.allow-jit";
+const adhocSignature = "Signature=adhoc\nTeamIdentifier=not set\nCodeDirectory v=20500 flags=0x2(adhoc) hashes=10\n";
 const signature =
 	"Authority=Developer ID Application: Synthetic Developer (AB12345678)\nTeamIdentifier=AB12345678\nCodeDirectory v=20500 flags=0x10000(runtime) hashes=10\n";
 
@@ -40,14 +43,15 @@ async function fixture() {
 	return { root, app, files };
 }
 
-function syntheticSigner(extra = {}, identity = signature) {
+function syntheticSigner(extra = {}, identity = signature, distributionMode = "signed") {
 	const visited = [];
 	const runCommand = (command, args, options) => {
 		if (command === "/usr/bin/plutil") return { stdout: options.input, stderr: "" };
 		const target = args.at(-1);
 		visited.push({ args, target });
 		if (args.includes("--entitlements")) {
-			const dictionary = entitlementClass(target) === "library" ? {} : { [allowJit]: true };
+			const dictionary =
+				distributionMode === "ad-hoc" || entitlementClass(target) === "library" ? {} : { [allowJit]: true };
 			return { stdout: JSON.stringify({ ...dictionary, ...extra }), stderr: "" };
 		}
 		return { stdout: "", stderr: identity };
@@ -55,7 +59,7 @@ function syntheticSigner(extra = {}, identity = signature) {
 	return { visited, runCommand };
 }
 
-describe("minimal Developer ID entitlements", () => {
+describe("minimal public distribution entitlements", () => {
 	it("overrides every signing default with JIT-only processes and empty libraries", () => {
 		for (const path of [
 			"/bundle/Quarterdeck.app/Contents/MacOS/QuarterdeckHost",
@@ -121,6 +125,37 @@ describe("minimal Developer ID entitlements", () => {
 		expect(() => verifyEntitlementDictionary("/bundle/pty.node", { [allowJit]: true })).toThrow(
 			"minimal library policy",
 		);
+	});
+	it("requires actual ad-hoc signatures without incompatible hardened validation or Apple identity claims", () => {
+		expect(() => verifyAdHocIdentity(adhocSignature)).not.toThrow();
+		for (const identity of [
+			signature,
+			adhocSignature.replace("flags=0x2(adhoc)", "flags=0x10002(adhoc,runtime)"),
+			adhocSignature.replace("TeamIdentifier=not set", "TeamIdentifier=AB12345678"),
+			`${adhocSignature}Authority=Developer ID Application: Synthetic\n`,
+		]) {
+			expect(() => verifyAdHocIdentity(identity)).toThrow();
+		}
+	});
+	it("audits every nested public ad-hoc Mach-O signature and exact entitlements", async () => {
+		const f = await fixture();
+		try {
+			const signer = syntheticSigner({}, adhocSignature, "ad-hoc");
+			expect((await verifyAdHocAppEntitlements(f.app, signer.runCommand)).sort()).toEqual(f.files.sort());
+			expect(signer.visited.filter(({ args }) => args.includes("--verify"))).toHaveLength(f.files.length);
+			await expect(
+				verifyAdHocAppEntitlements(
+					f.app,
+					syntheticSigner({ "com.apple.security.cs.disable-library-validation": true }, adhocSignature, "ad-hoc")
+						.runCommand,
+				),
+			).rejects.toThrow("minimal");
+			await expect(verifyAdHocAppEntitlements(f.app, syntheticSigner({}, signature).runCommand)).rejects.toThrow(
+				"ad-hoc",
+			);
+		} finally {
+			await rm(f.root, { recursive: true, force: true });
+		}
 	});
 	it("requires the actual Developer ID team and hardened signature", () => {
 		expect(() => verifyDeveloperIdIdentity(signature, "AB12345678")).not.toThrow();

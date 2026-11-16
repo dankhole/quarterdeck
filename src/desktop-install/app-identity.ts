@@ -6,6 +6,7 @@ import { desktopAppTreeSha256, desktopFileSha256, desktopPhysicalFileSystem, rea
 import {
 	type DesktopBundleMetadata,
 	type DesktopReleaseManifest,
+	desktopBundleDistributionMode,
 	desktopResourcePaths,
 	validateDesktopBundleMetadata,
 } from "./metadata.js";
@@ -91,6 +92,12 @@ export async function inspectDesktopApp(
 		throw new DesktopInstallationError("invalid_artifact", "The app's embedded release policy is invalid.");
 	}
 	const policy = policyResult.data;
+	const policyMode = policy.distributionMode ?? (policy.signedDistribution ? "signed" : "local");
+	if (policyMode !== desktopBundleDistributionMode(bundle))
+		throw new DesktopInstallationError(
+			"invalid_artifact",
+			"The app's embedded distribution mode differs from its runtime identity.",
+		);
 	for (const field of [
 		"version",
 		"arch",
@@ -147,8 +154,13 @@ export async function inspectDesktopApp(
 		}
 	}
 	if (release) {
+		if (desktopBundleDistributionMode(bundle) !== desktopBundleDistributionMode(release))
+			throw new DesktopInstallationError(
+				"invalid_artifact",
+				"The app's distribution mode differs from the trusted release manifest.",
+			);
 		for (const field of Object.keys(bundle) as Array<keyof DesktopBundleMetadata>) {
-			if (JSON.stringify(bundle[field]) !== JSON.stringify(release[field])) {
+			if (field !== "distributionMode" && JSON.stringify(bundle[field]) !== JSON.stringify(release[field])) {
 				throw new DesktopInstallationError(
 					"invalid_artifact",
 					"The bundled runtime provenance differs from the trusted release manifest.",

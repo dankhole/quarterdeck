@@ -5,6 +5,8 @@ export interface LaunchEnvironment {
 	osRelease: string;
 	graphicalSession: boolean;
 	desktopHelper: boolean;
+	/** A desktop-capable global npm package, without an installation-scoped browser opt-out. */
+	desktopDefault: boolean;
 }
 
 export interface LaunchOptions {
@@ -41,6 +43,17 @@ export function resolveLaunchPolicy(options: LaunchOptions, environment: LaunchE
 		if (options.browser || options.runtimeFlags || options.noOpen) {
 			throw new Error("--desktop cannot be combined with browser or runtime options.");
 		}
+		return { mode: "desktop", openBrowser: false };
+	}
+	if (
+		environment.desktopDefault &&
+		supportsDesktopHost(environment) &&
+		environment.graphicalSession &&
+		!environment.desktopHelper &&
+		!options.browser &&
+		!options.runtimeFlags &&
+		!options.noOpen
+	) {
 		return { mode: "desktop", openBrowser: false };
 	}
 	return {

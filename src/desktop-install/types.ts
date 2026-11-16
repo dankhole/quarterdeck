@@ -1,4 +1,5 @@
 import type { DesktopInstallationOwner } from "../shared/desktop-installation-contract.js";
+import type { DesktopDistributionMode } from "./receipt.js";
 
 export type DesktopInstallationArchitecture = "arm64" | "x64";
 
@@ -20,6 +21,8 @@ export interface DesktopInstallation {
 	version: string;
 	arch: DesktopInstallationArchitecture;
 	source: "release" | "local";
+	/** New status responses expose trust explicitly; optional for existing clients and fixtures. */
+	distributionMode?: DesktopDistributionMode;
 	installId: string;
 	buildId: string;
 	appAsarSha256: string;

@@ -321,7 +321,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.name("quarterdeck")
 		.description("Local orchestration board for coding agents.")
 		.version(QUARTERDECK_VERSION, "-v, --version", "Output the version number")
-		.addOption(new Option("--browser", "Open browser mode (the default).").conflicts("desktop"))
+		.addOption(new Option("--browser", "Open browser mode; never launch the macOS app.").conflicts("desktop"))
 		.addOption(
 			new Option("--desktop", "Open the installed macOS app.").conflicts([
 				"browser",
@@ -373,6 +373,8 @@ function createProgram(invocationArgs: string[]): Command {
 				runtimeFlags:
 					options.host !== undefined ||
 					options.port !== undefined ||
+					process.env.QUARTERDECK_RUNTIME_HOST !== undefined ||
+					process.env.QUARTERDECK_RUNTIME_PORT !== undefined ||
 					options.open === false ||
 					options.nativeUi === false ||
 					options.skipShutdownCleanup === true ||

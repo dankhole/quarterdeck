@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDesktopInstallationService } from "../../../src/desktop-install/index.js";
+import * as transactionFiles from "../../../src/desktop-install/transaction-files.js";
 import type { DesktopInstallationDependencies } from "../../../src/desktop-install/types.js";
 import { createDesktopAppFixture, createInstallerDependencies } from "./fixture.js";
 
@@ -12,6 +13,7 @@ beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "quarterdeck-recovery-test-"));
 });
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await rm(root, { recursive: true, force: true });
 });
 async function changeOwnerBuild(dependencies: DesktopInstallationDependencies, buildId: string) {
@@ -24,6 +26,38 @@ async function changeOwnerBuild(dependencies: DesktopInstallationDependencies, b
 }
 // Recovery crosses real installer admission, including POSIX ownership and private mode bits.
 describe.skipIf(process.platform === "win32")("transaction failures and resumable cleanup", () => {
+	it.each([false, true])(
+		"retains recoverable staging when journal publication fails after rename (replacement: %s)",
+		async (replacement) => {
+			const first = await createDesktopAppFixture(root);
+			const { dependencies } = await createInstallerDependencies(root, first);
+			const service = createDesktopInstallationService(dependencies);
+			if (replacement) await service.ensureDesktopInstallation({ version: "0.12.8", from: first.appPath });
+			const next = replacement ? await createDesktopAppFixture(root) : first;
+			await changeOwnerBuild(dependencies, next.bundle.buildId);
+			const journalPath = join(dependencies.managedRoot, "transaction.json");
+			const writeJson = transactionFiles.writeDesktopJson;
+			const publication = vi.spyOn(transactionFiles, "writeDesktopJson").mockImplementation(async (path, value) => {
+				await writeJson(path, value);
+				// Atomic rename can succeed before syncing its parent directory fails.
+				if (path === journalPath) throw new Error("injected journal directory sync failure");
+			});
+			await expect(service.ensureDesktopInstallation({ version: "0.12.8", from: next.appPath })).rejects.toThrow(
+				"injected journal directory sync failure",
+			);
+			const journal = JSON.parse(await readFile(journalPath, "utf8")) as { stage: string };
+			expect((await lstat(journal.stage)).isDirectory()).toBe(true);
+			expect((await service.getDesktopInstallationStatus()).state).toBe("incomplete");
+			const appAsar = join(dependencies.appPath, "Contents/Resources/app.asar");
+			if (replacement) expect(await readFile(appAsar, "utf8")).toBe(`shell-${first.bundle.buildId}`);
+			else await expect(lstat(dependencies.appPath)).rejects.toMatchObject({ code: "ENOENT" });
+			publication.mockRestore();
+			const repaired = await service.ensureDesktopInstallation({ version: "0.12.8", from: next.appPath });
+			expect(repaired.cleanupPending).toBe(false);
+			expect((await service.getDesktopInstallationStatus()).state).toBe("ready");
+			expect(await readdir(join(root, "Applications"))).toEqual(["Quarterdeck.app"]);
+		},
+	);
 	it.each(["backed_up", "promoted", "metadata_written"] as const)(
 		"rolls back a live %s failure without leaving a partial canonical app",
 		async (failure) => {
