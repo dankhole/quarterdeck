@@ -155,9 +155,12 @@ describe("live DiffViewerPanel scroll preservation", () => {
 			const container = owner?.parentElement;
 			if (!owner || !container) return rect(0, 0);
 			let top = 12;
-			for (const sibling of container.querySelectorAll("[data-diff-path]")) {
-				if (sibling === owner) break;
-				top += height(sibling, heightCache) + FOOTER_HEIGHT + 12;
+			// Sections are direct siblings. A descendant query rescans every code
+			// token for every measured row, even when this is the first section.
+			for (let sibling = owner.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+				if (sibling.hasAttribute("data-diff-path")) {
+					top += height(sibling, heightCache) + FOOTER_HEIGHT + 12;
+				}
 			}
 			if (this !== owner) top += offsetWithin(owner, this, heightCache);
 			const naturalTop = VIEWPORT_TOP + CLIENT_TOP + top - container.scrollTop;
