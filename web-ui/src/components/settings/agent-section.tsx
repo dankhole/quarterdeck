@@ -2,6 +2,7 @@
 import * as RadixCollapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
+import { SettingsSwitch } from "@/components/ui/settings-controls";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import type { SettingsSectionProps } from "./settings-section-props";
 
@@ -85,6 +86,14 @@ export function HarnessSection({
 				shell that launched it to detect Claude, Codex, and Pi. Choose a harness in the new task dialog; unavailable
 				harnesses are shown there with install or upgrade status.
 			</p>
+
+			<SettingsSwitch
+				checked={fields.lowerAgentProcessPriority}
+				onCheckedChange={(v) => setField("lowerAgentProcessPriority", v)}
+				disabled={disabled}
+				label="Run agents at lower CPU priority"
+				description="New/restarted sessions only. Builds and tests that agents start yield CPU to Quarterdeck and your other apps when the machine is busy, and still run at full speed when it is idle. Manual shells are unaffected."
+			/>
 
 			<RadixCollapsible.Root
 				open={claudeSettingsExpanded}

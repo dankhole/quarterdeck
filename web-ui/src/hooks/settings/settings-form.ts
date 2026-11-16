@@ -17,6 +17,7 @@ export interface SettingsFormValues {
 	shellAutoRestartEnabled: boolean;
 	claudeLaunchPermissionMode: RuntimeConfigResponse["claudeLaunchPermissionMode"];
 	codexApprovalsReviewer: RuntimeConfigResponse["codexApprovalsReviewer"];
+	lowerAgentProcessPriority: boolean;
 	terminalFontWeight: number;
 	fileEditorAutosaveMode: RuntimeConfigResponse["fileEditorAutosaveMode"];
 	codeNavigationEnabled: boolean;
@@ -49,6 +50,7 @@ const FIELD_SCOPES = {
 	shellAutoRestartEnabled: "global",
 	claudeLaunchPermissionMode: "global",
 	codexApprovalsReviewer: "global",
+	lowerAgentProcessPriority: "global",
 	terminalFontWeight: "global",
 	fileEditorAutosaveMode: "global",
 	codeNavigationEnabled: "global",
@@ -93,6 +95,7 @@ export function resolveInitialValues(config: RuntimeConfigResponse | null): Sett
 		shellAutoRestartEnabled: config?.shellAutoRestartEnabled ?? CONFIG_DEFAULTS.shellAutoRestartEnabled,
 		claudeLaunchPermissionMode: config?.claudeLaunchPermissionMode ?? CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 		codexApprovalsReviewer: config?.codexApprovalsReviewer ?? CONFIG_DEFAULTS.codexApprovalsReviewer,
+		lowerAgentProcessPriority: config?.lowerAgentProcessPriority ?? CONFIG_DEFAULTS.lowerAgentProcessPriority,
 		terminalFontWeight: config?.terminalFontWeight ?? CONFIG_DEFAULTS.terminalFontWeight,
 		fileEditorAutosaveMode: config?.fileEditorAutosaveMode ?? CONFIG_DEFAULTS.fileEditorAutosaveMode,
 		codeNavigationEnabled: config?.codeNavigationEnabled ?? CONFIG_DEFAULTS.codeNavigationEnabled,

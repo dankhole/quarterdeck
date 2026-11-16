@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
+import { constants as osConstants, setPriority } from "node:os";
 import type * as NodePty from "node-pty";
 
 import { mergeProcessEnvironment, resolveWindowsCompatibleCommand } from "../core";
@@ -14,6 +15,11 @@ import { assertPtyProcessLaunchBudget, classifyPtySpawnFailure, preflightPtyLaun
 const require = createRequire(import.meta.url);
 const MANAGED_PROCESS_PID_READY_TIMEOUT_MS = 10_000;
 const MANAGED_PROCESS_PID_POLL_MS = 10;
+/**
+ * Unix nice value 10 (Windows BELOW_NORMAL). Priority only matters under CPU
+ * contention, so a lowered agent still runs at full speed on an idle machine.
+ */
+export const LOWERED_PROCESS_PRIORITY = osConstants.priority.PRIORITY_BELOW_NORMAL;
 let nodePtyModule: typeof NodePty | null = null;
 let nodePtySpawnOverride: typeof NodePty.spawn | null = null;
 
@@ -41,6 +47,8 @@ export interface SpawnPtySessionRequest {
 	env?: Record<string, string | undefined>;
 	cols: number;
 	rows: number;
+	/** Start the child at below-normal CPU priority; descendants it starts later inherit it. */
+	lowerProcessPriority?: boolean;
 	onData?: (chunk: Buffer) => void;
 	onExit?: (event: PtyExitEvent) => void;
 }
@@ -157,6 +165,21 @@ function installNodePtyWriteErrorGuard(ptyProcess: NodePty.IPty): void {
 	};
 }
 
+/**
+ * Best effort, applied synchronously after spawn before the agent can start
+ * subprocesses. Failure (e.g. the child already exited, or a Windows ConPTY
+ * PID that is not yet available) never fails the launch.
+ */
+function lowerPtyProcessPriority(pid: number): boolean {
+	if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+	try {
+		setPriority(pid, LOWERED_PROCESS_PRIORITY);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function terminatePtyProcess(ptyProcess: NodePty.IPty): void {
 	const pid = ptyProcess.pid;
 	ptyProcess.kill();
@@ -176,6 +199,7 @@ export class PtySession {
 	private externalTerminationOwner = false;
 	private managedProcessOwnership: ManagedProcessOwnershipHandle | null = null;
 	private managedProcessOwnershipRegistrationStarted = false;
+	private priorityLowered = false;
 
 	private constructor(
 		ptyProcess: NodePty.IPty,
@@ -198,7 +222,17 @@ export class PtySession {
 		});
 	}
 
-	static spawn({ binary, args = [], cwd, env, cols, rows, onData, onExit }: SpawnPtySessionRequest): PtySession {
+	static spawn({
+		binary,
+		args = [],
+		cwd,
+		env,
+		cols,
+		rows,
+		lowerProcessPriority = false,
+		onData,
+		onExit,
+	}: SpawnPtySessionRequest): PtySession {
 		const normalizedArgs = typeof args === "string" ? [args] : args;
 		const terminalName = env?.TERM?.trim() || process.env.TERM?.trim() || "xterm-256color";
 		const launchEnv: NodeJS.ProcessEnv = env ? mergeProcessEnvironment(process.env, env) : process.env;
@@ -235,12 +269,20 @@ export class PtySession {
 		} catch (error) {
 			throw classifyPtySpawnFailure(error, { ...budgetInput, binary, cwd });
 		}
+		const priorityLowered = lowerProcessPriority && lowerPtyProcessPriority(ptyProcess.pid);
 		installNodePtyWriteErrorGuard(ptyProcess);
-		return new PtySession(ptyProcess, onData, onExit);
+		const session = new PtySession(ptyProcess, onData, onExit);
+		session.priorityLowered = priorityLowered;
+		return session;
 	}
 
 	get pid(): number {
 		return this.ptyProcess.pid;
+	}
+
+	/** True when the spawned child was started at {@link LOWERED_PROCESS_PRIORITY}. */
+	get processPriorityLowered(): boolean {
+		return this.priorityLowered;
 	}
 
 	private async waitForManagedProcessPid(): Promise<number | null> {

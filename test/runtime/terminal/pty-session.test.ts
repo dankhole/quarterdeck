@@ -15,6 +15,7 @@ const ptyMocks = vi.hoisted(() => ({
 }));
 const fsWriteMock = vi.hoisted(() => vi.fn<MockFsWrite>());
 const preflightPtyLaunchMock = vi.hoisted(() => vi.fn());
+const setPriorityMock = vi.hoisted(() => vi.fn());
 const managedProcessOwnershipMocks = vi.hoisted(() => ({
 	register: vi.fn(),
 	retire: vi.fn(),
@@ -25,6 +26,14 @@ vi.mock("node:fs", async (importOriginal) => {
 	return {
 		...actual,
 		write: fsWriteMock,
+	};
+});
+
+vi.mock("node:os", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:os")>();
+	return {
+		...actual,
+		setPriority: setPriorityMock,
 	};
 });
 
@@ -49,7 +58,7 @@ import { WindowsCommandSerializationError } from "../../../src/core";
 import { PtySession } from "../../../src/terminal";
 import * as ptyRuntimeHealth from "../../../src/terminal/pty-runtime-health";
 import { PtyLaunchSizeError } from "../../../src/terminal/pty-runtime-health";
-import { _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
+import { LOWERED_PROCESS_PRIORITY, _testing as ptySessionTesting } from "../../../src/terminal/pty-session";
 
 const originalPlatform = process.platform;
 const originalComSpec = process.env.ComSpec;
@@ -135,6 +144,7 @@ describe("PtySession", () => {
 		ptySessionTesting.setNodePtySpawnOverride(ptyMocks.spawn);
 		fsWriteMock.mockReset();
 		preflightPtyLaunchMock.mockReset();
+		setPriorityMock.mockReset();
 		managedProcessOwnershipMocks.register.mockReset();
 		managedProcessOwnershipMocks.retire.mockReset();
 		managedProcessOwnershipMocks.retire.mockResolvedValue(undefined);
@@ -504,6 +514,59 @@ describe("PtySession", () => {
 
 		expect(ptyMocks.spawn).toHaveBeenCalledTimes(1);
 		expect(ptyMocks.spawn.mock.calls[0]?.[0]).toBe("codex");
+	});
+
+	it("lowers the spawned child's CPU priority only when requested", () => {
+		setPlatform("darwin");
+		ptyMocks.spawn.mockReturnValue(createMockPtyProcess());
+
+		const normal = PtySession.spawn({ binary: "agent", cwd: "/tmp", cols: 80, rows: 24 });
+		expect(setPriorityMock).not.toHaveBeenCalled();
+		expect(normal.processPriorityLowered).toBe(false);
+
+		const lowered = PtySession.spawn({
+			binary: "agent",
+			cwd: "/tmp",
+			cols: 80,
+			rows: 24,
+			lowerProcessPriority: true,
+		});
+		expect(LOWERED_PROCESS_PRIORITY).toBe(10);
+		expect(setPriorityMock).toHaveBeenCalledExactlyOnceWith(4242, LOWERED_PROCESS_PRIORITY);
+		expect(lowered.processPriorityLowered).toBe(true);
+	});
+
+	it("keeps the launch when lowering priority fails", () => {
+		setPlatform("darwin");
+		ptyMocks.spawn.mockReturnValue(createMockPtyProcess());
+		setPriorityMock.mockImplementation(() => {
+			throw Object.assign(new Error("no such process"), { code: "ESRCH" });
+		});
+
+		const session = PtySession.spawn({
+			binary: "agent",
+			cwd: "/tmp",
+			cols: 80,
+			rows: 24,
+			lowerProcessPriority: true,
+		});
+		expect(session.pid).toBe(4242);
+		expect(session.processPriorityLowered).toBe(false);
+	});
+
+	it("skips lowering priority when the PTY has no PID yet", () => {
+		setPlatform("darwin");
+		ptyMocks.spawn.mockReturnValue({ ...createMockPtyProcess(), pid: 0 });
+
+		const session = PtySession.spawn({
+			binary: "agent",
+			cwd: "/tmp",
+			cols: 80,
+			rows: 24,
+			lowerProcessPriority: true,
+		});
+		expect(setPriorityMock).not.toHaveBeenCalled();
+		expect(session.processPriorityLowered).toBe(false);
 	});
 
 	it("does not wrap cmd itself on Windows", () => {

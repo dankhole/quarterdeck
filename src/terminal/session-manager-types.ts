@@ -119,6 +119,8 @@ export interface StartTaskSessionRequest {
 	projectPath?: string;
 	claudeLaunchPermissionMode?: AgentAdapterLaunchInput["claudeLaunchPermissionMode"];
 	codexApprovalsReviewer?: AgentAdapterLaunchInput["codexApprovalsReviewer"];
+	/** Launch-scoped: start the agent PTY at below-normal CPU priority so its builds yield to the UI. */
+	lowerProcessPriority?: boolean;
 	codexOptions?: AgentAdapterLaunchInput["codexOptions"];
 	piOptions?: AgentAdapterLaunchInput["piOptions"];
 	claudeOptions?: AgentAdapterLaunchInput["claudeOptions"];

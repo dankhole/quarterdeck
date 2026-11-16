@@ -105,6 +105,7 @@ export const GLOBAL_CONFIG_FIELDS = {
 	audibleNotificationsOnlyWhenHidden: boolField(true),
 	claudeLaunchPermissionMode: enumField<ClaudeLaunchPermissionMode>("inherit", CLAUDE_LAUNCH_PERMISSION_MODES),
 	codexApprovalsReviewer: enumField<CodexApprovalsReviewer>("inherit", CODEX_APPROVALS_REVIEWERS),
+	lowerAgentProcessPriority: boolField(false),
 	terminalFontWeight: numField(325),
 	logLevel: enumField<LogLevel>("warn", LOG_LEVELS),
 	fileEditorAutosaveMode: enumField<FileEditorAutosaveMode>("off", FILE_EDITOR_AUTOSAVE_MODES),
