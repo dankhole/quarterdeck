@@ -100,6 +100,7 @@ const DEFAULT_RUNTIME_CONFIG_RESPONSE: RuntimeConfigResponse = {
 	pinnedBranches: [],
 	claudeLaunchPermissionMode: CONFIG_DEFAULTS.claudeLaunchPermissionMode,
 	codexApprovalsReviewer: CONFIG_DEFAULTS.codexApprovalsReviewer,
+	lowerAgentProcessPriority: CONFIG_DEFAULTS.lowerAgentProcessPriority,
 	terminalFontWeight: CONFIG_DEFAULTS.terminalFontWeight,
 	logLevel: CONFIG_DEFAULTS.logLevel,
 	fileEditorAutosaveMode: CONFIG_DEFAULTS.fileEditorAutosaveMode,

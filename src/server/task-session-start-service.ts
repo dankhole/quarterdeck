@@ -357,6 +357,7 @@ export async function prepareTaskSessionStart(
 		projectPath: projectScope.projectPath,
 		claudeLaunchPermissionMode: scopedRuntimeConfig.claudeLaunchPermissionMode,
 		codexApprovalsReviewer: scopedRuntimeConfig.codexApprovalsReviewer,
+		lowerProcessPriority: scopedRuntimeConfig.lowerAgentProcessPriority,
 		codexOptions: resolved.agentId === "codex" ? existingCard?.codexOptions : undefined,
 		piOptions: resolved.agentId === "pi" ? existingCard?.piOptions : undefined,
 		claudeOptions: resolved.agentId === "claude" ? existingCard?.claudeOptions : undefined,

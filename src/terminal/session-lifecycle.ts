@@ -209,6 +209,7 @@ export async function spawnTaskSession(
 			env,
 			cols,
 			rows,
+			lowerProcessPriority: request.lowerProcessPriority === true,
 			onData: (chunk) => {
 				if (!callbacksReady) {
 					preHandoffOutput.push(Buffer.from(chunk));
@@ -283,6 +284,7 @@ export async function spawnTaskSession(
 	sessionLog.info("task session spawned successfully", {
 		taskId: request.taskId,
 		pid: session.pid,
+		processPriorityLowered: session.processPriorityLowered,
 		willAutoTrust,
 	});
 

@@ -250,3 +250,25 @@ describe("initial work confirmation normalization", () => {
 		});
 	});
 });
+
+describe("agent process priority", () => {
+	beforeEach(() => {
+		prepareAgentLaunchMock.mockReset();
+		ptySessionSpawnMock.mockReset();
+		prepareAgentLaunchMock.mockImplementation(async (input: { binary: string; args: string[] }) => ({
+			binary: input.binary,
+			args: input.args,
+			env: {},
+		}));
+	});
+
+	it("passes the launch-scoped priority choice to the agent PTY", async () => {
+		const { manager } = setup();
+		await manager.startTaskSession({ ...request, lowerProcessPriority: true });
+		expect(ptySessionSpawnMock).toHaveBeenLastCalledWith(expect.objectContaining({ lowerProcessPriority: true }));
+
+		const other = setup();
+		await other.manager.startTaskSession({ ...request, taskId: "normal-priority" });
+		expect(ptySessionSpawnMock).toHaveBeenLastCalledWith(expect.objectContaining({ lowerProcessPriority: false }));
+	});
+});
