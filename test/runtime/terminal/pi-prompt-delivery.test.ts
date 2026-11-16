@@ -27,7 +27,9 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 	vi.resetAllMocks();
 	for (const dispose of admissionDisposals.splice(0)) dispose();
-	await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
+	// Nested launch directories register after their parent. Remove children
+	// first: concurrent recursive deletion of both can fail with EPERM on Windows.
+	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 function promptPath(args: string[]): string {
@@ -197,7 +199,13 @@ describe("Pi prompt delivery", () => {
 
 	it("uses file URLs to preserve special characters and Unicode spaces in temporary paths", async () => {
 		const root = await fs.mkdtemp(join(os.tmpdir(), "quarterdeck pi # % é \u00a0-"));
-		cleanups.push(() => fs.rm(root, { recursive: true, force: true }));
+		cleanups.push(async () => {
+			try {
+				expect(await fs.readdir(root)).toEqual([]);
+			} finally {
+				await fs.rm(root, { recursive: true, force: true });
+			}
+		});
 		vi.spyOn(promptStorage, "createPiPromptDirectory").mockImplementationOnce(
 			async () => await fs.mkdtemp(join(root, "launch-")),
 		);
