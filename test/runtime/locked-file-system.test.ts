@@ -274,22 +274,35 @@ describe("LockedFileSystem", () => {
 		it("reports one content-free warning for a slow queued wait without failing it", async () => {
 			const tempDir = createTempDir("quarterdeck-locked-fs-slow-wait-");
 			const records: Array<{ level: string; tag: string; message: string; data?: unknown }> = [];
+			const pendingSettlements: Promise<unknown>[] = [];
+			let release = () => {};
+			let restoreTimeoutSpy = () => {};
 			setRuntimeDiagnosticLogSink({ recordLog: (record) => records.push(record) });
 			try {
 				const lockedFileSystem = new LockedFileSystem();
-				let release = () => {};
 				const blocker = new Promise<void>((resolve) => {
 					release = resolve;
 				});
 				const owner = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), () => blocker);
+				pendingSettlements.push(Promise.allSettled([owner]));
 				await vi.waitFor(() => expect(lockfileMocks.lock).toHaveBeenCalledTimes(1));
 				vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+				let onWarningTimerRegistered = () => {};
+				const warningTimerRegistered = new Promise<void>((resolve) => {
+					onWarningTimerRegistered = resolve;
+				});
+				const fakeSetTimeout = globalThis.setTimeout;
+				const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((...args) => {
+					const timer = fakeSetTimeout(...args);
+					if (args[1] === IN_PROCESS_LOCK_SLOW_WAIT_MS) onWarningTimerRegistered();
+					return timer;
+				});
+				restoreTimeoutSpy = () => timeoutSpy.mockRestore();
 				const queued = lockedFileSystem.withLock(serialized(tempDir.path, "p.lock"), async () => "queued result");
-				// The waiter arms its slow-wait timer after async admission; on a slow
-				// runner that can land after an immediate advance, so wait for it.
-				for (let tick = 0; tick < 200 && vi.getTimerCount() === 0; tick += 1) {
-					await new Promise<void>((resolveTick) => setImmediate(resolveTick));
-				}
+				pendingSettlements.push(Promise.allSettled([queued]));
+				// Real mkdir admission can take arbitrarily many event-loop turns. Observe
+				// timer registration without advancing the fake clock (polling helpers do).
+				await Promise.race([warningTimerRegistered, queued]);
 				expect(vi.getTimerCount()).toBeGreaterThan(0);
 				await vi.advanceTimersByTimeAsync(IN_PROCESS_LOCK_SLOW_WAIT_MS - 1);
 				expect(records).toEqual([]);
@@ -302,13 +315,18 @@ describe("LockedFileSystem", () => {
 						data: { lock: "p.lock", waitMs: IN_PROCESS_LOCK_SLOW_WAIT_MS, queueDepth: 2 },
 					},
 				]);
-				vi.useRealTimers();
 				release();
 				await owner;
 				await expect(queued).resolves.toBe("queued result");
 				expect(records).toHaveLength(1);
+				expect(heldLockfiles.size).toBe(0);
 			} finally {
+				restoreTimeoutSpy();
 				vi.useRealTimers();
+				// Even a failed assertion must release the owner and drain admission before
+				// removing paths; observe rejections immediately via pendingSettlements.
+				release();
+				await Promise.all(pendingSettlements);
 				setRuntimeDiagnosticLogSink(null);
 				tempDir.cleanup();
 			}

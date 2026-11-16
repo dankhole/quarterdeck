@@ -669,6 +669,7 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 	};
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	const settings = page.getByRole("dialog", { name: "Settings" });
+	await settings.getByRole("button", { name: "Terminal & editor", exact: true }).click();
 	if ((await settings.getByRole("combobox", { name: "File editor autosave" }).inputValue()) !== "off")
 		throw new Error("Renderer recovery fixture must begin with file autosave disabled.");
 	await page.keyboard.press("Escape");
@@ -717,8 +718,9 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 	// require a deliberate Save, even after the ordinary 1.5-second autosave period.
 	await recoveredPage.getByRole("button", { name: "Settings", exact: true }).click();
 	const recoveredSettings = recoveredPage.getByRole("dialog", { name: "Settings" });
+	await recoveredSettings.getByRole("button", { name: "Terminal & editor", exact: true }).click();
 	await recoveredSettings.getByRole("combobox", { name: "File editor autosave" }).selectOption("delay");
-	await recoveredSettings.getByRole("button", { name: "Save", exact: true }).click();
+	await recoveredSettings.getByRole("button", { name: "Save changes", exact: true }).click();
 	await recoveredSettings.waitFor({ state: "hidden" });
 	await recoveredPage.getByRole("button", { name: "Files", exact: true }).click();
 	await recoveredPage.getByRole("button", { name: /^Recover unsaved files \(/u }).click();
