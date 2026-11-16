@@ -24,7 +24,13 @@ describe("public ad-hoc packaging policy", () => {
 		const sign = forgeConfig.packagerConfig.osxSign;
 		expect(sign.identity).toBe("-");
 		expect(sign.identityValidation).toBe(false);
-		expect(sign.timestamp).toBe("none");
+		expect(sign).not.toHaveProperty("timestamp");
+		expect(sign.continueOnError).toBe(false);
+		expect(sign.optionsForFile("/app/Contents/MacOS/QuarterdeckHost").timestamp).toBe("none");
+		expect(sign.ignore).toHaveLength(1);
+		expect(sign.ignore[0]("/public/Quarterdeck.app/Contents/MacOS/Quarterdeck")).toBe(true);
+		expect(sign.ignore[0]("/public/Quarterdeck.app/Contents/MacOS/QuarterdeckHost")).toBe(false);
+		expect(sign.ignore[0]("/public/Quarterdeck.app")).toBe(false);
 		expect(sign).not.toHaveProperty("keychain");
 		expect(forgeConfig.packagerConfig).not.toHaveProperty("osxNotarize");
 		expect(sign.preAutoEntitlements).toBe(false);

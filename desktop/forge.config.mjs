@@ -9,7 +9,7 @@ import { installDesktopNativeAdmission } from "./scripts/native-admission.mjs";
 import { desktopRoot, requireNativeMacTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
 import { releaseBuildSettings } from "./scripts/release-policy.mjs";
 import { copyRuntimeResource } from "./scripts/runtime-resources.mjs";
-import { signingOptionsForFile } from "./scripts/signing-entitlements.mjs";
+import { deferAdmissionExecutableToBundle, signingOptionsForFile } from "./scripts/signing-entitlements.mjs";
 
 const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
 const electronChecksums = JSON.parse(
@@ -58,7 +58,11 @@ export default {
 						identity: signing ? requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_IDENTITY") : "-",
 						...(signing
 							? { keychain: requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_KEYCHAIN") }
-							: { identityValidation: false, timestamp: "none" }),
+							: { identityValidation: false }),
+						continueOnError: false,
+						// The wrapper is signed by its .app seal after its sibling Host. Signing
+						// it early would seal an Intel bundle while that Host is still unsigned.
+						ignore: [deferAdmissionExecutableToBundle],
 						// Never inherit osx-sign's broad default device/plugin grants.
 						preAutoEntitlements: false,
 						preEmbedProvisioningProfile: false,

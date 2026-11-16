@@ -21,5 +21,9 @@ export function finalizeLocalAppSignature(appPath, hasPackagerSignature, runComm
 
 /** A local ad-hoc signature must be valid too; macOS uses it for filesystem consent. */
 export function verifyAppSignature(appPath, runCommand = run) {
-	runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath], { stdio: "pipe" });
+	// This fixed read-only invocation accepts no signing credentials. Preserve its
+	// nested-path failure diagnostics without exposing stderr from arbitrary tools.
+	runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath], {
+		stdio: ["ignore", "ignore", "inherit"],
+	});
 }

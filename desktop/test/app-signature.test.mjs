@@ -34,8 +34,8 @@ describe("finished application signatures", () => {
 		verifyAppSignature("/candidate/Quarterdeck.app", command);
 		expect(command).toHaveBeenCalledExactlyOnceWith(
 			"/usr/bin/codesign",
-			["--verify", "--deep", "--strict", "/candidate/Quarterdeck.app"],
-			{ stdio: "pipe" },
+			["--verify", "--deep", "--strict", "--verbose=2", "/candidate/Quarterdeck.app"],
+			{ stdio: ["ignore", "ignore", "inherit"] },
 		);
 		const failed = () => {
 			throw new Error("Invalid signature");

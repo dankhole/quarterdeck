@@ -1,5 +1,5 @@
 import { open, readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { desktopRoot } from "./paths.mjs";
 import { run } from "./process.mjs";
 
@@ -22,6 +22,18 @@ export function entitlementClass(filePath) {
 	return "library";
 }
 
+/** Let each known admission wrapper be signed when its containing .app is sealed. */
+export function deferAdmissionExecutableToBundle(filePath) {
+	const name = basename(filePath);
+	const directory = dirname(filePath);
+	return (
+		/^Quarterdeck(?: Helper(?: \((?:GPU|Renderer|Plugin|Utility)\))?)?$/u.test(name) &&
+		basename(directory) === "MacOS" &&
+		basename(dirname(directory)) === "Contents" &&
+		basename(dirname(dirname(directory))) === `${name}.app`
+	);
+}
+
 // These Developer ID builds do not use Apple's App Sandbox. File, network,
 // clipboard and native dialogs need no sandbox exceptions. V8 uses MAP_JIT;
 // shipped, team-signed native modules need no library-validation exception.
@@ -32,6 +44,8 @@ export function signingOptionsForFile(filePath, distributionMode = "signed") {
 	const adhoc = distributionMode === "ad-hoc";
 	return {
 		hardenedRuntime: !adhoc,
+		// osx-sign accepts timestamps here, not at the top level of its options.
+		...(adhoc ? { timestamp: "none" } : {}),
 		entitlements: join(desktopRoot, "assets", `${adhoc ? "library" : entitlementClass(filePath)}-entitlements.plist`),
 	};
 }
