@@ -20,6 +20,7 @@ import type { DesktopDiagnosticEvent, DesktopDiagnosticState } from "../../src/c
 import type { DesktopStartupFailureMessage } from "../../src/core/api/desktop-runtime-protocol.js";
 import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown.js";
 import { DesktopInstallationError, validateDesktopInstallation } from "../../src/desktop-install/index.js";
+import { desktopApplicationBundleId } from "../../src/desktop-install/receipt.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { desktopAppRoot } from "./app-layout.js";
 import { admittedBrowserLaunch } from "./browser-launch.js";
@@ -88,7 +89,7 @@ async function launchDesktop(
 	appIdentity: DesktopLaunchAppIdentity | null,
 	{ installation, admission }: DesktopInstallationPreflight,
 ): Promise<void> {
-	if (process.platform === "win32") app.setAppUserModelId("io.github.dankhole.quarterdeck");
+	if (process.platform === "win32") app.setAppUserModelId(desktopApplicationBundleId);
 	const showWindow = launch.lab?.showWindow ?? true;
 	if (launch.synthetic) {
 		// Electron 44.4+ uses this same Chromium switch for its own isolated macOS app tests.
@@ -846,11 +847,21 @@ async function launchDesktop(
 		choosePath: (request) => dialogs.chooseDraftPath(request),
 	});
 	const createWindow = (): void => {
+		const launcher =
+			process.platform === "win32" && installation ? join(installation.appPath, "Quarterdeck.exe") : null;
 		renderer = createDesktopWindow({
 			partition,
 			preloadPath: join(import.meta.dirname, "preload.cjs"),
 			isSynthetic: launch.synthetic,
 			showWindow,
+			...(launcher && {
+				windowsAppDetails: {
+					appId: desktopApplicationBundleId,
+					appIconPath: launcher,
+					relaunchCommand: `"${launcher}"`,
+					relaunchDisplayName: "Quarterdeck",
+				},
+			}),
 			isQuitting: () => shutdownConfirmed,
 			closeBehavior: process.platform === "win32" ? "quit" : "hide",
 			onQuitRequested: () => app.quit(),

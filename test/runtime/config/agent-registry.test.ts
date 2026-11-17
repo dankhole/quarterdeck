@@ -664,6 +664,18 @@ describe("agent-registry", () => {
 			setAgentProbeTimeoutMsForTests(null);
 		});
 
+		it("lets a probe waiting for stdin EOF finish", async () => {
+			await expect(
+				runProbeCommand(
+					"codex",
+					"version",
+					process.execPath,
+					["-e", "process.stdin.on('end', () => console.log('codex-cli 0.157.1')); process.stdin.resume();"],
+					5_000,
+				),
+			).resolves.toMatchObject({ stdout: "codex-cli 0.157.1\n" });
+		});
+
 		it("tolerates a real event-loop stall without reporting a false timeout", async () => {
 			// Explicit timeout rather than the production default, so this doesn't
 			// depend on that value. Generous, not short: a real `node` spawn

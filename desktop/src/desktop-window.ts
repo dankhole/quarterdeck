@@ -1,4 +1,4 @@
-import { BrowserWindow, shell } from "electron";
+import { type AppDetailsOptions, BrowserWindow, shell } from "electron";
 import type { ApprovedRenderer } from "./renderer-admission.js";
 import { desktopUrl, externalWebUrl } from "./security-policy.js";
 import { type DesktopSurfaceAction, desktopSurfaceAction } from "./startup-surface.js";
@@ -9,6 +9,7 @@ export interface DesktopWindowOptions {
 	isQuitting: () => boolean;
 	isSynthetic: boolean;
 	showWindow: boolean;
+	windowsAppDetails?: AppDetailsOptions;
 	closeBehavior?: "hide" | "destroy" | "quit";
 	onQuitRequested?: () => void;
 	title?: string;
@@ -23,7 +24,7 @@ export function createDesktopWindow(options: DesktopWindowOptions): ApprovedRend
 		height: 860,
 		minWidth: 760,
 		minHeight: 540,
-		show: options.showWindow,
+		show: options.showWindow && !options.windowsAppDetails,
 		backgroundColor: "#24292e",
 		title: options.title ?? "Quarterdeck",
 		webPreferences: {
@@ -38,6 +39,10 @@ export function createDesktopWindow(options: DesktopWindowOptions): ApprovedRend
 			spellcheck: false,
 		},
 	});
+	if (options.windowsAppDetails) {
+		window.setAppDetails(options.windowsAppDetails);
+		if (options.showWindow) window.show();
+	}
 	const renderer: ApprovedRenderer = { contents: window.webContents, generation: null };
 	window.on("close", (event) => {
 		if (!options.isQuitting() && options.closeBehavior !== "destroy") {

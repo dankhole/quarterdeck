@@ -8,6 +8,7 @@
 
 using Microsoft::WRL::ComPtr;
 static const wchar_t *app_id = L"io.github.dankhole.quarterdeck";
+static const DWORD fixed_target_flags = SLDF_FORCE_NO_LINKTRACK | SLDF_DISABLE_LINK_PATH_TRACKING;
 
 static int shortcut_operation(const wchar_t *target, const wchar_t *path, int operation) {
     ComPtr<IShellLinkW> link;
@@ -21,15 +22,28 @@ static int shortcut_operation(const wchar_t *target, const wchar_t *path, int op
         wchar_t current[32768], arguments[32768];
         PROPVARIANT identity;
         PropVariantInit(&identity);
+        // Recover only our exact retargeted entry, with the same app ID and no arguments.
+        std::wstring host;
+        const std::wstring bootstrap(target);
+        const auto separator = bootstrap.find_last_of(L"\\/");
+        if (separator != std::wstring::npos &&
+            !_wcsicmp(bootstrap.c_str() + separator + 1, L"Quarterdeck.exe"))
+            host = bootstrap.substr(0, separator + 1) + L"QuarterdeckHost.exe";
         bool owned = SUCCEEDED(persisted->Load(path, STGM_READ)) &&
-            SUCCEEDED(link->GetPath(current, 32768, nullptr, SLGP_RAWPATH)) && !_wcsicmp(current, target) &&
+            SUCCEEDED(link->GetPath(current, 32768, nullptr, SLGP_RAWPATH)) &&
+            (!_wcsicmp(current, target) || (!host.empty() && !_wcsicmp(current, host.c_str()))) &&
             SUCCEEDED(link->GetArguments(arguments, 32768)) && !arguments[0] &&
             SUCCEEDED(properties->GetValue(PKEY_AppUserModel_ID, &identity)) && identity.vt == VT_LPWSTR &&
             identity.pwszVal && !wcscmp(identity.pwszVal, app_id);
         PropVariantClear(&identity);
         if (!owned) return operation == 1 ? 0 : 73;
         if (operation == 1) return DeleteFileW(path) ? 0 : 73;
-        if (operation == 2) return 0;
+        if (operation == 2) {
+            ComPtr<IShellLinkDataList> data;
+            DWORD flags = 0;
+            return !_wcsicmp(current, target) && SUCCEEDED(link.As(&data)) && SUCCEEDED(data->GetFlags(&flags)) &&
+                (flags & fixed_target_flags) == fixed_target_flags ? 0 : 73;
+        }
     } else {
         if (GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PATH_NOT_FOUND) return 73;
         if (operation == 1) return 0;
@@ -51,6 +65,12 @@ static int shortcut_operation(const wchar_t *target, const wchar_t *path, int op
     if (FAILED(result) || FAILED(properties->Commit()) || FAILED(link->SetPath(target)) ||
         FAILED(link->SetArguments(L"")) || FAILED(link->SetDescription(L"Quarterdeck coding agents")) ||
         FAILED(link->SetIconLocation(target, 0))) return 73;
+    // The canonical install path stays fixed across replacements. Do not let
+    // Explorer resolve a different executable through link tracking.
+    ComPtr<IShellLinkDataList> data;
+    DWORD flags = 0;
+    if (FAILED(link.As(&data)) || FAILED(data->GetFlags(&flags)) ||
+        FAILED(data->SetFlags(flags | fixed_target_flags))) return 73;
     GUID id;
     wchar_t suffix[40];
     if (FAILED(CoCreateGuid(&id)) || !StringFromGUID2(id, suffix, 40)) return 73;
@@ -59,6 +79,7 @@ static int shortcut_operation(const wchar_t *target, const wchar_t *path, int op
     if (!MoveFileExW(temporary.c_str(), path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         DeleteFileW(temporary.c_str()); return 73;
     }
+    SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, path, nullptr);
     return 0;
 }
 

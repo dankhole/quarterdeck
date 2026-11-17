@@ -331,6 +331,9 @@ export function runProbeCommand(
 			(error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) =>
 				finish(error, stdout, stderr),
 		);
+		// npm's PowerShell shims can wait for pipeline input before forwarding the
+		// probe. These commands take no input, so send EOF immediately.
+		child.stdin?.end();
 		if (!settled) {
 			// Even an unreapable launcher settles, as a transient timeout.
 			guard = armChildProcessTimeout(child, timeoutMs, { onAbandoned: () => finish(null, "", "") });

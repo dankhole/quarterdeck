@@ -318,6 +318,8 @@ The agent-availability probe's own timeout (`src/config/agent-registry.ts`) appl
 
 A probe whose timeout timer fired is a timeout regardless of the child's later exit status, because some launchers (e.g. Codex's npm shim) trap the terminating signal and still exit 0.
 
+Close the probe child's stdin immediately. Windows npm PowerShell shims forward pipeline input and may wait for EOF before invoking the agent, turning a working installation into a probe timeout if the parent leaves stdin open.
+
 Keep availability probe diagnostics metadata-only: `agentId`, probe kind, duration, and typed outcome. Do not include command output, thrown messages, or inherited environment values.
 
 ### Host effects

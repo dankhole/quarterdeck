@@ -296,6 +296,25 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		await expect(shortcutOperation("check")).rejects.toMatchObject({ code: 73 });
 		await shortcutOperation("remove");
 	});
+
+	it("repairs a Quarterdeck shortcut retargeted to its adjacent Electron host", async () => {
+		const bootstrap = join(root, "Quarterdeck.exe");
+		const host = join(root, "QuarterdeckHost.exe");
+		const shortcut = join(root, "Retargeted Quarterdeck.lnk");
+		await copyFile(executable, bootstrap);
+		await copyFile(executable, host);
+		const run = (operation: string, target: string) =>
+			execute(executable, ["--quarterdeck-test-shortcut", operation, target, shortcut], {
+				timeout: 10_000,
+				windowsHide: true,
+			});
+		await run("install", host);
+		await expect(run("check", bootstrap)).rejects.toMatchObject({ code: 73 });
+		await run("install", bootstrap);
+		await run("check", bootstrap);
+		await run("remove", bootstrap);
+	});
+
 	it("hands updates to Explorer outside the application's non-breakaway job", async (context) => {
 		if (!(await listWindowsDesktopProcesses()).some((row) => /\\explorer\.exe(?:"|\s|$)/iu.test(row.command))) {
 			context.skip();
