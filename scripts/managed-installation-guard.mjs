@@ -41,10 +41,11 @@ async function canonicalPackageSlot(path) {
 
 /** Refuse standalone mutations that would invalidate the per-user installed pair. */
 export async function assertStandaloneBuildIsSafe(checkoutRoot, options = {}) {
-	if ((options.platform ?? process.platform) !== "darwin") return;
+	const platform=options.platform??process.platform;
+	if (!["darwin","win32"].includes(platform)) return;
 	const receiptPath = options.receiptPath ?? join(
 		options.userHome ?? userInfo().homedir,
-		"Library", "Application Support", "Quarterdeck", "installation", "managed-installation.json",
+		...(platform === "win32"?["AppData","Local"]:["Library","Application Support"]), "Quarterdeck", "installation", "managed-installation.json",
 	);
 	let info;
 	try {

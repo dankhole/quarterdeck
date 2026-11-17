@@ -119,6 +119,18 @@ function createMockPtyProcess(writeStream?: MockNodePtyWriteStream) {
 }
 
 describe("PtySession", () => {
+	it.each([undefined, Number.NaN, 1.5])(
+		"normalizes an unavailable native exit code (%s) to durable null",
+		(exitCode) => {
+			const ptyProcess = createMockPtyProcess();
+			ptyMocks.spawn.mockReturnValue(ptyProcess);
+			const onExit = vi.fn();
+			PtySession.spawn({ binary: process.execPath, cwd: process.cwd(), cols: 80, rows: 24, onExit });
+			// Native ConPTY callbacks can violate node-pty's declared numeric exitCode.
+			ptyProcess.emitExit({ exitCode } as unknown as { exitCode: number });
+			expect(onExit).toHaveBeenCalledWith({ exitCode: null });
+		},
+	);
 	it("prepares interruption without node-pty or process-group signals under external termination ownership", () => {
 		setPlatform("darwin");
 		const ptyProcess = createMockPtyProcess();

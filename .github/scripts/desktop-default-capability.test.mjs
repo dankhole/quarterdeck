@@ -24,6 +24,8 @@ for (const scenario of [
 	{ name: "unknown capability", capability: "invalid", lane: "1", allowed: false, checkoutCapability: "signed-v1", error: /Unknown desktop release capability/u },
 	{ name: "legacy metadata without a capability", capability: undefined, lane: "", allowed: true, distribution: "none", checkoutCapability: "signed-v1" },
 	{ name: "legacy metadata with optional signed assets enabled", capability: undefined, lane: "1", allowed: true, distribution: "signed", checkoutCapability: "adhoc-v1" },
+	{ name:"Windows unsigned assets are mandatory",capability:"browser-only",windows:"unsigned-v1",lane:"",allowed:true,distribution:"none",checkoutCapability:"adhoc-v1"},
+	{ name:"unknown Windows capability is rejected",capability:"browser-only",windows:"invalid",lane:"",allowed:false,checkoutCapability:"adhoc-v1",error:/Unknown Windows desktop release capability/u},
 ]) {
 	test(`immutable publication guard: ${scenario.name}`, async () => {
 		const root = await mkdtemp(join(tmpdir(), "quarterdeck-default-capability-"));
@@ -46,7 +48,7 @@ for (const scenario of [
 			const templates = join(root, "empty-templates");
 			await mkdir(templates);
 			git(["init", "--quiet", `--template=${templates}`]);
-			const metadata = { name: "quarterdeck", version: "0.0.123", ...(scenario.capability === undefined ? {} : { quarterdeck: { desktopRelease: scenario.capability } }) };
+			const metadata = { name: "quarterdeck", version: "0.0.123",quarterdeck: { desktopRelease: scenario.capability,windowsDesktopRelease:scenario.windows } };
 			const blob = git(["hash-object", "-w", "--stdin"], JSON.stringify(metadata));
 			const tree = git(["mktree"], `100644 blob ${blob}\tpackage.json\n`);
 			const commit = git(["commit-tree", tree, "-m", "Synthetic release metadata"]);
@@ -67,7 +69,7 @@ for (const scenario of [
 			assert.equal(result.signal, null);
 			if (scenario.allowed) {
 				assert.equal(result.status, 0, result.stderr);
-				assert.equal(await readFile(outputPath, "utf8"), `desktop_mode=${scenario.distribution}\n`);
+				assert.equal(await readFile(outputPath, "utf8"), `windows_enabled=${scenario.windows === "unsigned-v1"}\ndesktop_mode=${scenario.distribution}\n`);
 			} else {
 				assert.notEqual(result.status, 0);
 				assert.match(result.stderr, scenario.error);

@@ -101,6 +101,15 @@ describe("desktop environment Settings section", () => {
 		expect(container.textContent).toContain("Saved changes have not been applied.");
 		expect(container.textContent).toContain("save immediately");
 	});
+	it("hides the unsupported login-shell choice on Windows without a false pending change", async () => {
+		vi.mocked(bridge.getSnapshot).mockResolvedValue(
+			snapshot({ supportsLoginShellImport: false, source: "inherited", appliedImportLoginShellEnvironment: false }),
+		);
+		await render();
+		expect(container.querySelector("[role=checkbox]")).toBeNull();
+		expect(container.textContent).not.toContain("Keychain");
+		expect(container.textContent).not.toContain("Unapplied");
+	});
 
 	it("uses fixed native intents for folder selection and guarded refresh", async () => {
 		await render();

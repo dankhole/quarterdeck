@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { rebuildRuntimePty } from "../scripts/native-runtime.mjs";
+import { prepareRuntimePty } from "../scripts/native-runtime.mjs";
 import { desktopRoot } from "../scripts/paths.mjs";
 
 const { run } = vi.hoisted(() => ({ run: vi.fn() }));
@@ -11,6 +11,21 @@ const require = createRequire(import.meta.url);
 beforeEach(() => run.mockReset());
 
 describe("bundled Node PTY compilation", () => {
+	it("keeps Windows toolchain flags free of Darwin compiler options", () => {
+		prepareRuntimePty({
+			runtimePath: "/synthetic/runtime",
+			nodeBin: "/synthetic/runtime/bin/node.exe",
+			nodeVersion: "22.22.2",
+			arch: "x64",
+			env: { CXXFLAGS: "/O2", npm_config_target: "electron" },
+			platform: "win32",
+		});
+		expect(run.mock.calls[0][2].env.CXXFLAGS).toBe("/O2");
+		expect(run.mock.calls[0][2].env.npm_config_target).toBeUndefined();
+		expect(run.mock.calls[0][1][0]).toBe("-e");
+		expect(run.mock.calls[0][1][1]).toContain("/conpty_console_list.node");
+		expect(run).toHaveBeenCalledTimes(2);
+	});
 	it("calls node-gyp directly with the helper target and preserves node-pty postinstall", () => {
 		const runtimePath = "/synthetic/runtime";
 		const nodeBin = join(runtimePath, "bin", "node");
@@ -28,7 +43,7 @@ describe("bundled Node PTY compilation", () => {
 			npm_package_config_node_gyp_dist_url: "https://electron.example",
 			npm_package_config_node_gyp_nodedir: "/electron/headers",
 		};
-		rebuildRuntimePty({ runtimePath, nodeBin, nodeVersion: "22.22.2", arch: "arm64", env });
+		prepareRuntimePty({ runtimePath, nodeBin, nodeVersion: "22.22.2", arch: "arm64", env, platform: "darwin" });
 		const options = {
 			cwd: join(runtimePath, "node_modules", "node-pty"),
 			env: {
@@ -62,12 +77,13 @@ describe("bundled Node PTY compilation", () => {
 			throw new Error("Native compilation failed");
 		});
 		expect(() =>
-			rebuildRuntimePty({
+			prepareRuntimePty({
 				runtimePath: "/synthetic/runtime",
 				nodeBin: "/synthetic/runtime/bin/node",
 				nodeVersion: "22.22.2",
 				arch: "arm64",
 				env: {},
+				platform: "darwin",
 			}),
 		).toThrow("Native compilation failed");
 		expect(run).toHaveBeenCalledTimes(1);

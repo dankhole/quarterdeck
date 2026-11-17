@@ -7,7 +7,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
+import { resolveWindowsPowerShellPath } from "../../src/core/windows-system-paths.js";
 import type { DesktopInstallation } from "../../src/desktop-install/index.js";
+import { desktopGlobalPackageSlot } from "../../src/desktop-install/layout.js";
 import {
 	NpmUpdatePreparationError,
 	type NpmUpdatePreparationServices,
@@ -23,6 +26,7 @@ import {
 	npmUpdateRetryCommand,
 	updateEnvironment,
 } from "../src/npm-update-worker.js";
+import { updateControlPath } from "../src/update-platform.js";
 
 let suite: string;
 let workerPath: string;
@@ -78,11 +82,11 @@ async function fixture(mode = "success", overrides: NodeJS.ProcessEnv = {}) {
 	const root = await realpath(await mkdtemp(join(suite, "c'$-")));
 	fixtures.push(root);
 	const prefix = join(root, "Node's $(unused) `literal` prefix");
-	const packageRoot = join(prefix, "lib/node_modules/quarterdeck");
+	const packageRoot = desktopGlobalPackageSlot(prefix);
 	const appPath = join(root, "Applications/Quarterdeck.app");
 	const receiptPath = join(root, "managed/managed-installation.json");
-	const npmRoot = join(prefix, "lib/node_modules/npm");
-	const bin = join(prefix, "bin");
+	const npmRoot = join(prefix, process.platform === "win32" ? "node_modules/npm" : "lib/node_modules/npm");
+	const bin = process.platform === "win32" ? prefix : join(prefix, "bin");
 	await Promise.all([
 		mkdir(join(packageRoot, "dist"), { recursive: true }),
 		mkdir(appPath, { recursive: true }),
@@ -172,7 +176,8 @@ writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 `,
 	);
 	await chmod(join(npmRoot, "bin/npm-cli.js"), 0o700);
-	await symlink(join(npmRoot, "bin/npm-cli.js"), join(bin, "npm"));
+	if (process.platform === "win32") await writeFile(join(bin, "npm.cmd"), "@echo synthetic npm shim");
+	else await symlink(join(npmRoot, "bin/npm-cli.js"), join(bin, "npm"));
 	const node = await realpath(process.execPath);
 	const parent = spawn(node, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: { PATH: dirname(node) } });
 	children.push(parent);
@@ -183,7 +188,10 @@ writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 	const environment: NodeJS.ProcessEnv = {
 		HOME: root,
 		USERPROFILE: root,
-		PATH: `${bin}:${appPath}/Contents/Resources/runtime/bin:${packageRoot}/bin:${dirname(node)}:/usr/bin:/bin`,
+		PATH:
+			process.platform === "win32"
+				? [bin, join(appPath, "resources/runtime/bin"), join(packageRoot, "bin"), dirname(node)].join(";")
+				: `${bin}:${appPath}/Contents/Resources/runtime/bin:${packageRoot}/bin:${dirname(node)}:/usr/bin:/bin`,
 		TEST_TRACE: join(root, "trace.json"),
 		TEST_STATUS: join(root, "status.json"),
 		TEST_MODE: mode,
@@ -206,18 +214,30 @@ writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 				async launchTerminal(commandPath, nodePath, privateWorker, directory) {
 					handoffDirectory = directory;
 					const script = await readFile(commandPath, "utf8");
-					expect(script).toContain("exec /usr/bin/env -i");
-					expect(script).toContain(nodePath);
+					expect(script).toContain(
+						process.platform === "win32" ? "GetEnvironmentVariables" : "exec /usr/bin/env -i",
+					);
+					expect(script).toContain(nodePath.replaceAll("'", process.platform === "win32" ? "''" : "'\"'\"'"));
 					expect(script).not.toContain("synthetic-in-memory-only");
 					expect(await readFile(join(directory, "request.json"), "utf8")).not.toContain(
 						"synthetic-in-memory-only",
 					);
 					expect(privateWorker.startsWith(root)).toBe(true);
-					worker = spawn("/bin/sh", [commandPath], {
-						stdio: ["ignore", "pipe", "pipe"],
-						env: { PATH: "/usr/bin:/bin" },
-						cwd: "/",
-					});
+					worker = spawn(
+						process.platform === "win32" ? resolveWindowsPowerShellPath() : "/bin/sh",
+						process.platform === "win32"
+							? ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", commandPath]
+							: [commandPath],
+						{
+							stdio: ["ignore", "pipe", "pipe"],
+							env:
+								process.platform === "win32"
+									? { SystemRoot: process.env.SystemRoot }
+									: { PATH: "/usr/bin:/bin" },
+							cwd: process.platform === "win32" ? root : "/",
+							windowsHide: true,
+						},
+					);
 					children.push(worker);
 					worker.stdout?.on("data", (bytes: Buffer) => {
 						output += bytes.toString();
@@ -256,6 +276,7 @@ writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 	const directory = await mkdtemp(join(f.root, "raw-"));
 	await chmod(directory, 0o700);
+	if (process.platform === "win32") await ensurePrivateDirectory(directory);
 	const installation = f.installation;
 	const request = npmUpdateRequestSchema.parse({
 		schemaVersion: 1,
@@ -267,7 +288,12 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 		verificationTimeoutMs: 500,
 		targetVersion: "1.1.0",
 		node: await identifyUpdateFile(process.execPath),
-		npm: await identifyUpdateFile(join(installation.owner.prefix, "lib/node_modules/npm/bin/npm-cli.js")),
+		npm: await identifyUpdateFile(
+			join(
+				installation.owner.prefix,
+				process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "lib/node_modules/npm/bin/npm-cli.js",
+			),
+		),
 		installation: {
 			appPath: installation.appPath,
 			receiptPath: installation.receiptPath,
@@ -288,10 +314,10 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 	rawServers.push(server);
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject);
-		server.listen(join(directory, "control.sock"), resolve);
+		server.listen(updateControlPath(directory), resolve);
 	});
 	const child = spawn(request.node.path, [join(directory, "worker.mjs"), directory], {
-		env: { PATH: "/usr/bin:/bin" },
+		env: process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : { PATH: "/usr/bin:/bin" },
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	children.push(child);
@@ -315,16 +341,15 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 // These process integration tests probe external Node/npm and repeatedly hash the real
 // Node executable. Intel CI can exceed Vitest's 5s default before the protocol assertions;
 // allow the same 15s integration budget as root tests, preserving worker deadlines and assertions.
-describe("private npm update handoff", { timeout: 15_000 }, () => {
+describe("private npm update handoff", { timeout: process.platform === "win32" ? 45_000 : 15_000 }, () => {
 	it.each([undefined, "browser", "desktop"])(
 		"explicitly updates the desktop pair with inherited %s install mode",
 		(installMode) => {
 			expect(
-				updateEnvironment({ QUARTERDECK_INSTALL_MODE: installMode }, "/usr/local/bin/node")
-					.QUARTERDECK_INSTALL_MODE,
+				updateEnvironment({ QUARTERDECK_INSTALL_MODE: installMode }, process.execPath).QUARTERDECK_INSTALL_MODE,
 			).toBe("desktop");
 			expect(npmUpdateRetryCommand("/synthetic/prefix", "1.1.0")).toBe(
-				"QUARTERDECK_INSTALL_MODE=desktop npm 'install' '--global' '--prefix' '/synthetic/prefix' '--registry=https://registry.npmjs.org/' '--foreground-scripts' 'quarterdeck@1.1.0'",
+				`${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm 'install' '--global' '--prefix' '/synthetic/prefix' '--registry=https://registry.npmjs.org/' '--foreground-scripts' 'quarterdeck@1.1.0'`,
 			);
 		},
 	);
@@ -344,7 +369,9 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 		const trace = JSON.parse(await readFile(f.tracePath, "utf8"));
 		expect(trace.args).toEqual(npmUpdateArguments(f.installation.owner.prefix, "1.1.0"));
 		expect(trace.installMode).toBe("desktop");
-		expect(trace.PATH.split(":")[0]).toBe(dirname(await realpath(process.execPath)));
+		expect(trace.PATH.split(process.platform === "win32" ? ";" : ":")[0]).toBe(
+			dirname(await realpath(process.execPath)),
+		);
 		expect(trace.PATH).not.toContain(f.installation.appPath);
 		expect(trace.PATH).not.toContain(f.installation.owner.packageRoot);
 		expect(trace.lockFd).toBeUndefined();
@@ -501,7 +528,8 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 		const f = await fixture();
 		const nodeOnly = join(f.root, "node-only");
 		await mkdir(nodeOnly);
-		await symlink(process.execPath, join(nodeOnly, "node"));
+		if (process.platform === "win32") await copyFile(process.execPath, join(nodeOnly, "node.exe"));
+		else await symlink(process.execPath, join(nodeOnly, "node"));
 		f.environment.PATH = nodeOnly;
 		await expect(f.prepare()).rejects.toBeInstanceOf(NpmUpdatePreparationError);
 		expect(await exists(f.tracePath)).toBe(false);
@@ -522,7 +550,7 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 		f.installation.arch = process.arch === "arm64" ? "x64" : "arm64";
 		await expect(f.prepare()).rejects.toThrow("same architecture");
 		expect(await exists(f.tracePath)).toBe(false);
-		expect(await readdir(f.root)).not.toContain(`quarterdeck-npm-updates-${process.getuid?.()}`);
+		expect(await readdir(f.root)).not.toContain(`quarterdeck-npm-updates-${process.getuid?.() ?? "user"}`);
 	});
 
 	it("rejects an npm executable that changes while Quarterdeck shuts down", async () => {
@@ -531,20 +559,26 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 		await handoff.launch();
 		await handoff.authorize();
 		handoff.commit();
-		const npm = join(f.installation.owner.prefix, "lib/node_modules/npm/bin/npm-cli.js");
+		const npm = join(
+			f.installation.owner.prefix,
+			process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "lib/node_modules/npm/bin/npm-cli.js",
+		);
 		await writeFile(npm, `${await readFile(npm, "utf8")}\n// changed\n`);
 		await stop(f.parent);
 		expect(await f.finished()).toMatchObject({ code: 1, output: expect.stringContaining("Node or npm changed") });
 		expect(await exists(f.tracePath)).toBe(false);
 	});
 
-	it("refuses an overlong private socket path and cleans the allocation", async () => {
-		const f = await fixture();
-		const longRoot = join(f.root, "long-temporary-root-".repeat(5));
-		await mkdir(longRoot);
-		await expect(f.prepare({ temporaryRoot: longRoot })).rejects.toBeInstanceOf(NpmUpdatePreparationError);
-		expect(await readdir(join(longRoot, `quarterdeck-npm-updates-${process.getuid?.()}`))).toEqual([]);
-	});
+	it.skipIf(process.platform === "win32")(
+		"refuses an overlong private socket path and cleans the allocation",
+		async () => {
+			const f = await fixture();
+			const longRoot = join(f.root, "long-temporary-root-".repeat(5));
+			await mkdir(longRoot);
+			await expect(f.prepare({ temporaryRoot: longRoot })).rejects.toBeInstanceOf(NpmUpdatePreparationError);
+			expect(await readdir(join(longRoot, `quarterdeck-npm-updates-${process.getuid?.() ?? "user"}`))).toEqual([]);
+		},
+	);
 
 	it("requires readiness before shutdown and removes a never-started Terminal handoff", async () => {
 		const f = await fixture();
@@ -552,12 +586,12 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 		await expect(handoff.authorize()).rejects.toThrow("not ready");
 		await expect(handoff.launch()).rejects.toThrow("did not acknowledge");
 		expect(await exists(f.tracePath)).toBe(false);
-		expect(await readdir(join(f.root, `quarterdeck-npm-updates-${process.getuid?.()}`))).toEqual([]);
+		expect(await readdir(join(f.root, `quarterdeck-npm-updates-${process.getuid?.() ?? "user"}`))).toEqual([]);
 	});
 
 	it("bounds abandoned handoffs and reports their exact inspection directory", async () => {
 		const f = await fixture();
-		const root = join(f.root, `quarterdeck-npm-updates-${process.getuid?.()}`);
+		const root = join(f.root, `quarterdeck-npm-updates-${process.getuid?.() ?? "user"}`);
 		await mkdir(root, { mode: 0o700 });
 		await Promise.all([0, 1, 2, 3].map((index) => mkdir(join(root, `retained-${index}`))));
 		await expect(f.prepare()).rejects.toThrow(`Four update handoffs remain in ${root}`);
@@ -566,6 +600,7 @@ describe("private npm update handoff", { timeout: 15_000 }, () => {
 
 	it("retains unrecognized files during conservative cleanup", async () => {
 		const root = await mkdtemp(join(suite, "unknown-"));
+		if (process.platform === "win32") await ensurePrivateDirectory(root);
 		await writeFile(join(root, "unrecognized"), "keep");
 		await expect(cleanupNpmUpdateDirectory(root)).rejects.toThrow("Unrecognized");
 		expect(await readFile(join(root, "unrecognized"), "utf8")).toBe("keep");

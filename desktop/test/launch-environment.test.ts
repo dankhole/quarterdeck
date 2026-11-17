@@ -82,7 +82,12 @@ describe("desktop launch environment", () => {
 			"BASH_FUNC_override%%": "() { injected; }",
 			INVALID_VALUE: "invalid\0value",
 		};
-		const environment = sanitizeDesktopHelperEnvironment(inherited, "/Bundle With Spaces/runtime/bin/node");
+		const environment = sanitizeDesktopHelperEnvironment(
+			inherited,
+			"/Bundle With Spaces/runtime/bin/node",
+			[],
+			"darwin",
+		);
 		expect(environment.HOME).toBe(inherited.HOME);
 		expect(environment.CODEX_HOME).toBe(inherited.CODEX_HOME);
 		expect(environment.ANTHROPIC_API_KEY).toBe(inherited.ANTHROPIC_API_KEY);
@@ -305,7 +310,8 @@ describe("desktop launch environment", () => {
 		expect(spawnCapture).toHaveBeenCalledTimes(1);
 	});
 
-	it("kills only the timed-out capture's exact child tree", async () => {
+	// This fixture relies on POSIX SIGTERM handlers; Windows never runs a login-shell capture.
+	it.skipIf(process.platform === "win32")("kills only the timed-out capture's exact child tree", async () => {
 		const unrelated = spawnFixture("setInterval(() => {}, 1000);", { stdio: "ignore" });
 		let descendantPid = 0;
 		let captureChild: ChildProcess | null = null;

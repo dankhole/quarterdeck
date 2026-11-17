@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import nodeFs from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { ensurePrivateDirectory } from "../core/private-directory.js";
 import { DesktopInstallationError } from "./errors.js";
 
 // Electron's normal fs virtualizes app.asar as a directory. Installer identity
@@ -104,4 +106,42 @@ export async function setDesktopTreeWritable(path: string, writable: boolean): P
 		}
 	}
 	if (!writable) await chmod(path, metadata.mode & ~0o222);
+}
+
+/** Copy into inherited private ACLs; Windows CopyFile can clone the source's broader DACL. */
+export async function copyDesktopTreePrivate(source: string, destination: string): Promise<void> {
+	await ensurePrivateDirectory(destination);
+	let entries = 0,
+		bytes = 0;
+	async function copy(from: string, to: string): Promise<void> {
+		for (const entry of await readdir(from, { withFileTypes: true })) {
+			if (++entries > 60000)
+				throw new DesktopInstallationError(
+					"invalid_artifact",
+					"The source app grew beyond the allowed file count.",
+				);
+			const path = join(from, entry.name),
+				output = join(to, entry.name);
+			const info = await lstat(path);
+			if (info.isSymbolicLink())
+				throw new DesktopInstallationError("invalid_artifact", "Windows app copies cannot contain reparse points.");
+			if (info.isDirectory()) {
+				await desktopPhysicalFileSystem.mkdir(output, { mode: 0o700 });
+				await copy(path, output);
+			} else if (info.isFile()) {
+				bytes += info.size;
+				if (bytes > 3 * 1024 * 1024 * 1024)
+					throw new DesktopInstallationError("invalid_artifact", "The source app grew beyond the allowed size.");
+				await pipeline(
+					physicalFs.createReadStream(path),
+					physicalFs.createWriteStream(output, { flags: "wx", mode: 0o600 }),
+				);
+			} else
+				throw new DesktopInstallationError(
+					"invalid_artifact",
+					"The source app contains a special filesystem entry.",
+				);
+		}
+	}
+	await copy(source, destination);
 }

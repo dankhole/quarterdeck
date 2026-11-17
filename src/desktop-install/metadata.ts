@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
+import {
+	DESKTOP_RESOURCE_PATHS,
+	desktopResourcePathsForPlatform,
+} from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { DesktopInstallationError } from "./errors.js";
 import {
 	type DesktopDistributionMode,
@@ -19,7 +22,7 @@ export const desktopResourcePaths = DESKTOP_RESOURCE_PATHS;
 
 const bundleSchema = z.strictObject({
 	schemaVersion: z.literal(1),
-	platform: z.literal("darwin"),
+	platform: z.enum(["darwin", "win32"]),
 	arch: desktopArchitectureSchema,
 	version: desktopVersionSchema,
 	buildId: z.uuid(),
@@ -40,7 +43,8 @@ const bundleSchema = z.strictObject({
 	minimumMacOSVersion: z
 		.string()
 		.max(20)
-		.regex(/^\d+\.\d+(?:\.\d+)?$/u),
+		.regex(/^\d+\.\d+(?:\.\d+)?$/u)
+		.optional(),
 	runtimeLockSha256: desktopSha256Schema,
 	nodeArchive: z.object({ filename: z.string().max(200), sha256: desktopSha256Schema }),
 });
@@ -52,7 +56,7 @@ const releaseManifestSchema = bundleSchema.extend({
 		bootstrapSha256: desktopSha256Schema,
 		hostSha256: desktopSha256Schema,
 	}),
-	distribution: z.enum(["ad-hoc", "signed-notarized"]),
+	distribution: z.enum(["ad-hoc", "signed-notarized", "windows-unsigned"]),
 	fuses: z.object({
 		RunAsNode: z.literal(false),
 		EnableNodeOptionsEnvironmentVariable: z.literal(false),
@@ -96,6 +100,7 @@ export function validateDesktopBundleMetadata(
 	raw: unknown,
 	version: string,
 	arch: DesktopInstallationArchitecture,
+	platform: "darwin" | "win32" = "darwin",
 ): DesktopBundleMetadata {
 	const parsed = bundleSchema.safeParse(raw);
 	if (!parsed.success) {
@@ -104,10 +109,16 @@ export function validateDesktopBundleMetadata(
 			"The app has missing or invalid desktop metadata. Build a fresh matching app with npm desktop launch support, then import it with --from.",
 		);
 	}
-	if (parsed.data.version !== version || parsed.data.arch !== arch || !distributionMetadataAgrees(parsed.data)) {
+	if (
+		parsed.data.platform !== platform ||
+		(platform === "darwin" && !parsed.data.minimumMacOSVersion) ||
+		parsed.data.version !== version ||
+		parsed.data.arch !== arch ||
+		!distributionMetadataAgrees(parsed.data)
+	) {
 		throw new DesktopInstallationError(
 			"invalid_artifact",
-			`The app must match npm version ${version} and darwin-${arch}.`,
+			`The app must match npm version ${version} and ${platform}-${arch}.`,
 		);
 	}
 	return parsed.data;
@@ -124,33 +135,39 @@ export function validateDesktopReleaseManifest(
 		throw new DesktopInstallationError("invalid_artifact", "The desktop release manifest is invalid.");
 	const manifest = parsed.data;
 	const stable = !version.includes("-");
+	const platform = expectedDistribution === "windows-unsigned" ? "win32" : "darwin";
 	if (
+		manifest.platform !== platform ||
 		manifest.version !== version ||
 		manifest.arch !== arch ||
 		manifest.sourceDirty ||
 		manifest.distribution !== expectedDistribution ||
 		!distributionMetadataAgrees(manifest) ||
-		(expectedDistribution === "ad-hoc"
-			? manifest.distributionMode !== "ad-hoc"
+		(expectedDistribution === "ad-hoc" || expectedDistribution === "windows-unsigned"
+			? manifest.distributionMode !== expectedDistribution
 			: desktopBundleDistributionMode(manifest) !== "signed") ||
 		manifest.channel !== (stable ? "stable" : "preview") ||
-		desktopResourcePaths.some((path) => !manifest.checksums[path])
+		desktopResourcePathsForPlatform(platform).some((path) => !manifest.checksums[path])
 	) {
 		throw new DesktopInstallationError(
 			"invalid_artifact",
 			"The desktop release identity or distribution policy does not match this npm version.",
 		);
 	}
-	const name = desktopContainerName(version, arch);
+	const name = desktopContainerName(version, arch, platform);
 	if (manifest.artifacts.filter((artifact) => artifact.path === name).length !== 1) {
 		throw new DesktopInstallationError(
 			"invalid_artifact",
-			"The release manifest does not contain the exact matching macOS DMG.",
+			"The release manifest does not contain the exact matching desktop archive.",
 		);
 	}
 	return manifest;
 }
 
-export function desktopContainerName(version: string, arch: DesktopInstallationArchitecture): string {
-	return `Quarterdeck-${version}-darwin-${arch}.dmg`;
+export function desktopContainerName(
+	version: string,
+	arch: DesktopInstallationArchitecture,
+	platform: "darwin" | "win32" = "darwin",
+): string {
+	return `Quarterdeck-${version}-${platform}-${arch}.${platform === "win32" ? "zip" : "dmg"}`;
 }

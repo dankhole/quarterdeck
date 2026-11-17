@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
@@ -45,6 +45,8 @@ import {
 	validateDesktopSessionRecoverySelection,
 } from "./desktop-session-recovery";
 import { type DesktopAgentMode, DesktopProcessEvidenceSchema } from "./desktop-types";
+import { proveWindowsChromiumCustody } from "./desktop-windows-custody";
+import { assertWindowsDesktopInUse, finishWindowsDesktopLifecycle } from "./desktop-windows-fixture";
 import { readFakeInvocationReceipt } from "./fake-invocation-receipt";
 import { writeJsonAtomic } from "./paths";
 
@@ -90,7 +92,7 @@ async function readMountedDocument(driver: DesktopLabDriver) {
 	});
 }
 
-async function assertRendererIsolation(page: Page): Promise<void> {
+export async function assertRendererIsolation(page: Page): Promise<void> {
 	const globals = await page.evaluate(() => ({
 		nodeRequire: "require" in globalThis,
 		nodeProcess: "process" in globalThis,
@@ -121,7 +123,7 @@ async function findPtyProof(directory: string): Promise<string | null> {
 	return null;
 }
 
-async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, confirmWorking = false): Promise<string> {
+export async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, confirmWorking = false): Promise<string> {
 	await page.locator("section.kb-board").waitFor({ state: "visible" });
 	await page.getByRole("button", { name: "Create task", exact: true }).first().click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
@@ -483,7 +485,21 @@ export async function runDesktopSmoke(options: {
 	notifications?: boolean;
 	agentMode?: DesktopAgentMode;
 }): Promise<{ runId: string; manifestPath: string; artifactDir: string }> {
-	if (process.platform !== "darwin") throw new Error("Packaged desktop smoke requires macOS.");
+	if (!["darwin", "win32"].includes(process.platform))
+		throw new Error("Packaged desktop smoke requires macOS or Windows.");
+	if (
+		process.platform === "win32" &&
+		(options.mainLoss ||
+			options.npmLaunch ||
+			options.sessionRecovery ||
+			options.nativeExperience ||
+			options.notifications ||
+			options.performance ||
+			options.manualShells ||
+			options.compareWindow ||
+			(options.agentMode ?? "fake") !== "fake")
+	)
+		throw new Error("This Windows packaged lane requires the default deterministic fake scenario.");
 	if (options.compareWindow) validateDesktopCompareWindowSelection(options);
 	if (options.sessionRecovery) validateDesktopSessionRecoverySelection(options);
 	if (options.notifications) validateDesktopNotificationSelection(options);
@@ -551,6 +567,17 @@ export async function runDesktopSmoke(options: {
 		await driver.markReady();
 		await driver.inspect("ready");
 		if (recoverySeed) {
+			await driver.inspect("completed");
+		} else if (process.platform === "win32") {
+			await proveWindowsChromiumCustody(driver);
+			await assertWindowsDesktopInUse(fixture);
+			await driver.proveSecondLaunch({ readSecondInstanceCount: await driver.observeSecondInstances() });
+			if (options.includeAgent !== false) await exerciseFakeAgent(page, driver, true);
+			await Promise.all([page.waitForEvent("load"), invokeNativeMenu(driver, "desktop.reload")]);
+			await page
+				.getByRole("button", { name: "Settings", exact: true })
+				.waitFor({ state: "visible", timeout: 45000 });
+			await assertRendererIsolation(page);
 			await driver.inspect("completed");
 		} else if (npmPreparation) {
 			await exerciseDesktopNpmLaunch(page, driver, npmPreparation);
@@ -685,6 +712,10 @@ export async function runDesktopSmoke(options: {
 				.filter(Boolean)
 				.join("\n"),
 		);
+	if (process.platform === "win32") {
+		await finishWindowsDesktopLifecycle(fixture);
+		if (!options.keepTemp) await rm(fixture.config.tempRoot, { recursive: true, force: true });
+	}
 	return {
 		runId: fixture.manifest.runId,
 		manifestPath: fixture.manifestPath,

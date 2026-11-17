@@ -44,6 +44,11 @@ export interface DesktopInstallationDependencies {
 	stageIdentity?: { host: string; process: { pid: number; creationIdentity: string } };
 	appPath?: string;
 	owner?: DesktopInstallationOwner;
+	/** Platform-owned discovery effects; recovery retries them before clearing its journal. */
+	presentation?: {
+		install: (appPath: string) => Promise<void>;
+		uninstall: (retainedBootstrap: string) => Promise<void>;
+	};
 	/** Test boundary; production acquires a kernel lock using the verified native bootstrap. */
 	acquireMutation?: (bootstrap: string, lockPath: string) => Promise<() => Promise<void>>;
 	/** Deterministic filesystem interruption tests; production does not supply this observer. */

@@ -1,12 +1,30 @@
-# macOS desktop architecture and operation
+# Desktop architecture and operation
 
-Quarterdeck's macOS app packages the shared web UI and runtime in an Electron shell. The npm CLI and browser UI remain supported on macOS, Linux, and Windows; browser mode does not install Electron. Desktop distribution is a candidate until the [validation ledger](./desktop-validation.md) records the release gates. See the [release runbook](./desktop-release.md) for local builds and distribution.
+Quarterdeck's macOS and Windows apps package the shared web UI and runtime in an Electron shell. The npm CLI and browser UI remain supported on macOS, Linux, and Windows; browser mode does not install Electron. Desktop distribution is a candidate until the [validation ledger](./desktop-validation.md) records the release gates. See the [release runbook](./desktop-release.md) for local builds and distribution.
 
 Installation, launch identity, and update ownership are shared between the npm CLI and native app; Electron retains its own dependency tree and native ABI. This guide describes the current implementation. The [acceptance gates](./desktop-validation.md) distinguish implemented behavior from unperformed distribution and native-platform validation.
 
 ## Using the app
 
-On macOS 13+ arm64/x64, a fresh eligible `npm install -g quarterdeck` installs the matching app at `~/Applications/Quarterdeck.app`; plain `quarterdeck` requests its launch in a verified local graphical session. Finder and Dock launch the same app. Existing browser preferences remain honored; `QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck` explicitly selects desktop. Linux, Windows, source, transient `npx`, CI and headless use retain browser/runtime paths. npm remains required for installation and updates; this is not an independent Electron self-updating distribution.
+### Windows installation and operation
+
+Windows desktop-capable npm releases support native x64 and ARM64 Windows 10/11. Install globally (`npm install --global quarterdeck`); a local `npm install quarterdeck` only adds a project dependency. The fixed per-user app lives at `%USERPROFILE%\AppData\Local\Programs\Quarterdeck`, with a Quarterdeck Start menu shortcut. No administrator installation is required. `quarterdeck` or `quarterdeck --desktop` validates the owning global npm package and requests the installed app; `--browser` retains the CLI/browser workflow.
+
+If npm blocks installation scripts, review the named packages with `npm install-scripts ls` and approve trusted Quarterdeck/node-pty scripts with `npm install-scripts approve quarterdeck node-pty`. A skipped Quarterdeck hook does not install an app. Run `quarterdeck desktop install` to complete or repair an available CLI's matching app, and `quarterdeck desktop status` to inspect the recorded pair. A source checkout uses `npm run link -- --desktop` to build and install an exact local pair. Standalone unpacked ZIPs deliberately refuse launch outside the managed path.
+
+Windows uses the launch environment and semicolon-separated PATH, with bundled Node first. Add agent/Git executable folders in **Settings → Runtime Environment** when needed; login-shell import is a macOS option. Menus use Ctrl shortcuts. Closing the main Windows window enters guarded Quit, including draft and live-session checks; macOS retains its hide-on-close behavior.
+
+Updates remain npm-owned. The app prepares a private, authenticated handoff to an external Node/npm installation and opens PowerShell through Explorer. Only acknowledged authorization, final commit, normal app exit, and unchanged owner/tool identities permit the exact-version npm command. Explorer launches the worker outside the application's job, so it can replace the app after admission drains. Cancellation, unavailable Explorer/toolchain, failed npm, or failed pair verification retains explicit recovery guidance. There is no Electron self-updater or unattended update. `quarterdeck desktop uninstall` removes only the owned app and shortcut, preserving runtime state, settings, task work, and provider identities.
+
+Installation stages and verifies a complete candidate before exclusive native admission, then journals backup, promotion, receipt, shortcut, and cleanup. Recovery recognizes exact trees and owners; a changed app or unrelated shortcut is retained. Release ZIPs are checksum-bound to the immutable npm source and reject links, traversal, Windows aliases/device names, duplicate paths, and excessive expansion. Public Windows builds are unsigned (`windows-unsigned`); npm and the fixed GitHub release repository provide distribution provenance, not Authenticode. SmartScreen and organization policy remain OS controls.
+
+The OS-only bootstrap holds shared admission and a non-breakaway Windows job across Electron, bundled Node, Chromium, crashpad, and descendants. It never uses kill-on-job-close. A lost bootstrap leaves a flushed launch marker: installation/update/uninstall remains blocked until a different kernel boot identity proves prior processes cannot survive. **Restart Windows** when that recovery message appears; do not delete markers or use process age/PID guesses. Normal Quit drains descendants and removes its marker. Metadata uses owner/System DACLs; reparse-point ancestors and hard-linked locks are refused. File contents are flushed before atomic publication; Node cannot fsync Windows directories, so recovery also validates trees and receipts after interruption.
+
+Native C++ Build Tools are required for source packaging, not end-user installation. `npm run build`, then `npm --prefix desktop run make`, creates the native package and ZIP. Packaging checks PE architecture, ASAR identity, resource hashes, security fuses, pinned Node, and actual ConPTY operation. Local candidates permit only the isolated lab inspector; public candidates disable it. See the [release runbook](./desktop-release.md) and [acceptance gates](./desktop-validation.md) for architecture/OS and public-distribution evidence.
+
+### macOS installation
+
+On macOS 13+ arm64/x64, a fresh eligible `npm install -g quarterdeck` installs the matching app at `~/Applications/Quarterdeck.app`; plain `quarterdeck` requests its launch in a verified local graphical session. Finder and Dock launch the same app. Existing browser preferences remain honored; `QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck` explicitly selects desktop. Linux, source, transient `npx`, CI and headless use retain browser/runtime paths. npm remains required for installation and updates; this is not an independent Electron self-updating distribution.
 
 ### macOS security and first launch
 
@@ -25,7 +43,7 @@ Installation and launch policy:
 | Invocation or environment | Behavior |
 | --- | --- |
 | Fresh supported global npm install/update, ordinary user in a verified local graphical session | Install the matching app unless opted out; unsupported platforms keep the browser package. |
-| Plain global CLI on macOS 13+, arm64/x64, verified local Aqua session | Validate and request launch of the installed app; never download, repair, or silently fall back. |
+| Plain global CLI on a supported macOS/Windows host with a verified local graphical session | Validate and request launch of the installed app; never download, repair, or silently fall back. |
 | `QUARTERDECK_INSTALL_MODE=browser npm install -g quarterdeck` | Keep the browser package only, and retain that prefix's browser preference across upgrades. |
 | `QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck` | Explicitly select desktop installation and clear that prefix's browser preference. |
 | `--browser`, `--no-open`, runtime flags or runtime host/port environment variables | Use the existing CLI runtime path. |

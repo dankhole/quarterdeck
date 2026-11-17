@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { type DesktopInstallationOwner, desktopBuildIdentitySchema } from "../shared/desktop-installation-contract.js";
 import { DesktopInstallationError } from "./errors.js";
 import { readDesktopJson } from "./files.js";
+import { desktopGlobalPackageSlot } from "./layout.js";
 import type { DesktopReleaseDistribution } from "./metadata.js";
 
 export interface ResolveDesktopInstallationOwnerOptions {
@@ -41,6 +42,16 @@ export async function resolveDesktopInstallationOwner(
 		throw new DesktopInstallationError("installation_changed", "Could not locate this CLI's package root.");
 	packageRoot = await realpath(packageRoot);
 	let invokingPrefix: string | undefined;
+	if (process.platform === "win32" && process.argv[1]) {
+		const slot = resolve(dirname(process.argv[1]), "..");
+		const candidate = resolve(slot, "../..");
+		try {
+			if (slot === desktopGlobalPackageSlot(candidate) && (await realpath(slot)) === packageRoot)
+				invokingPrefix = candidate;
+		} catch {
+			/* A source invocation has no global slot. */
+		}
+	}
 	if (process.argv[1] && dirname(process.argv[1]).endsWith("/bin")) {
 		const candidate = resolve(dirname(process.argv[1]), "..");
 		try {
@@ -50,7 +61,10 @@ export async function resolveDesktopInstallationOwner(
 			/* An ordinary source invocation has no global slot. */
 		}
 	}
-	const installedSuffix = "/lib/node_modules/quarterdeck";
+	const installedSuffix = join(
+		"/",
+		process.platform === "win32" ? "node_modules/quarterdeck" : "lib/node_modules/quarterdeck",
+	);
 	const installedPrefix = packageRoot.endsWith(installedSuffix)
 		? packageRoot.slice(0, -installedSuffix.length)
 		: undefined;
@@ -61,10 +75,10 @@ export async function resolveDesktopInstallationOwner(
 			"This source CLI has no unambiguous global npm slot. Run npm run link, or invoke the intended global quarterdeck executable.",
 		);
 	const prefix = resolve(requestedPrefix);
-	const packageSlot = resolve(options.packageSlot ?? join(prefix, "lib/node_modules/quarterdeck"));
+	const packageSlot = resolve(options.packageSlot ?? desktopGlobalPackageSlot(prefix));
 	if (
 		!isAbsolute(packageSlot) ||
-		packageSlot !== join(prefix, "lib/node_modules/quarterdeck") ||
+		packageSlot !== desktopGlobalPackageSlot(prefix) ||
 		(await realpath(packageSlot)) !== packageRoot
 	)
 		throw new DesktopInstallationError(
@@ -124,6 +138,7 @@ export async function validateDesktopInstallationOwner(owner: DesktopInstallatio
 /** Read the expected public trust from the verified owner, never from cwd or environment hints. */
 export async function resolveDesktopReleaseDistribution(
 	owner: DesktopInstallationOwner,
+	platform: NodeJS.Platform = process.platform,
 ): Promise<DesktopReleaseDistribution> {
 	await validateDesktopInstallationOwner(owner);
 	const metadata = await readDesktopJson(join(owner.packageRoot, "package.json"), 64 * 1024);
@@ -137,6 +152,19 @@ export async function resolveDesktopReleaseDistribution(
 	)
 		throw new DesktopInstallationError("installation_changed", "The owning npm package metadata changed.");
 	const quarterdeck = "quarterdeck" in metadata ? metadata.quarterdeck : undefined;
+	if (platform === "win32") {
+		if (
+			typeof quarterdeck === "object" &&
+			quarterdeck !== null &&
+			"windowsDesktopRelease" in quarterdeck &&
+			quarterdeck.windowsDesktopRelease === "unsigned-v1"
+		)
+			return "windows-unsigned";
+		throw new DesktopInstallationError(
+			"invalid_artifact",
+			"This npm release does not declare Windows desktop assets.",
+		);
+	}
 	const capability =
 		typeof quarterdeck === "object" && quarterdeck !== null && "desktopRelease" in quarterdeck
 			? quarterdeck.desktopRelease

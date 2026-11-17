@@ -1,3 +1,4 @@
+import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
 import {
 	type DesktopInstallation,
 	DesktopInstallationError,
@@ -16,6 +17,7 @@ interface DesktopInstallationPreflightInput {
 	appPath: string;
 	version: string;
 	synthetic: boolean;
+	syntheticRoot?: string;
 }
 
 interface DesktopInstallationPreflightServices {
@@ -32,6 +34,14 @@ export async function preflightDesktopInstallation(
 	},
 ): Promise<DesktopInstallationPreflight> {
 	const admission = await services.validateAdmission({ appPath: input.appPath, synthetic: input.synthetic });
+	if (
+		input.synthetic &&
+		input.syntheticRoot &&
+		admission &&
+		isFileSystemPathWithin(input.syntheticRoot, input.appPath) &&
+		isFileSystemPathWithin(input.syntheticRoot, admission.path)
+	)
+		return { installation: null, admission };
 	// The admission validator alone decides whether a noncanonical synthetic lab bundle may bypass installation.
 	if (admission === null) {
 		if (input.synthetic) return { installation: null, admission: null };

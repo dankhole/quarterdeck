@@ -22,9 +22,11 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 	if (!visible) return null;
 	const preferences = snapshot?.preferences;
 	const disabled = busy || !preferences || snapshot?.ownership === "attached";
+	const supportsShellImport = snapshot?.supportsLoginShellImport !== false;
 	const unapplied =
 		preferences &&
-		(snapshot.appliedImportLoginShellEnvironment !== preferences.importLoginShellEnvironment ||
+		((supportsShellImport &&
+			snapshot.appliedImportLoginShellEnvironment !== preferences.importLoginShellEnvironment) ||
 			JSON.stringify(snapshot.appliedDirectories) !== JSON.stringify(preferences.extraExecutableDirectories));
 
 	return (
@@ -39,22 +41,26 @@ export function DesktopEnvironmentSection({ open }: { open: boolean }): React.Re
 			) : (
 				<>
 					<div className="settings-row">
-						<div className="flex items-center gap-2">
-							<SettingsCheckbox
-								id="desktop-import-login-shell"
-								checked={preferences?.importLoginShellEnvironment ?? false}
-								disabled={disabled}
-								onCheckedChange={(enabled) => void request({ kind: "set-login-shell-import", enabled })}
-							/>
-							<label htmlFor="desktop-import-login-shell" className="font-medium text-text-primary">
-								Import login-shell environment (saves immediately)
-							</label>
-						</div>
-						<p className="text-text-secondary mt-1 mb-2">
-							Enabled by default so agents receive exported provider settings, including LiteLLM, from your
-							shell. Runs shell startup files, which may request Keychain access. Disable it to troubleshoot
-							startup.
-						</p>
+						{supportsShellImport && (
+							<>
+								<div className="flex items-center gap-2">
+									<SettingsCheckbox
+										id="desktop-import-login-shell"
+										checked={preferences?.importLoginShellEnvironment ?? false}
+										disabled={disabled}
+										onCheckedChange={(enabled) => void request({ kind: "set-login-shell-import", enabled })}
+									/>
+									<label htmlFor="desktop-import-login-shell" className="font-medium text-text-primary">
+										Import login-shell environment (saves immediately)
+									</label>
+								</div>
+								<p className="text-text-secondary mt-1 mb-2">
+									Enabled by default so agents receive exported provider settings, including LiteLLM, from your
+									shell. Runs shell startup files, which may request Keychain access. Disable it to
+									troubleshoot startup.
+								</p>
+							</>
+						)}
 						<p className="text-text-secondary mt-4 mb-0">
 							Environment changes save immediately, separately from Save changes. Cancel will not undo them.
 							Refresh environment now or restart Quarterdeck to apply them. Refresh protects unsaved work and

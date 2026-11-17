@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { test } from "node:test";
-import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
+import { DESKTOP_RESOURCE_PATHS, desktopResourcePathsForPlatform } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { readBuildManifest, readSourceIdentity, validateBuildManifest } from "../../scripts/build-manifest.mjs";
 import { artifactNames, checksum, validateRelease } from "./desktop-release-artifacts.mjs";
 import {
@@ -19,10 +19,11 @@ const sha = "a".repeat(40);
 
 async function fixture(run, productVersion = version, distribution = "signed-notarized") {
 	const directory = await mkdtemp(join(tmpdir(), "quarterdeck-release-test-"));
+	const platform=distribution === "windows-unsigned"?"win32":"darwin";
 	try {
 		for (const arch of ["arm64", "x64"]) {
 			const artifacts = [];
-			for (const name of artifactNames(productVersion, arch)) {
+			for (const name of artifactNames(productVersion, arch,platform)) {
 				const path = join(directory, name);
 				await writeFile(path, `${arch} synthetic container`);
 				artifacts.push({
@@ -32,18 +33,18 @@ async function fixture(run, productVersion = version, distribution = "signed-not
 				});
 			}
 			await writeFile(
-				join(directory, `artifact-manifest-darwin-${arch}.json`),
+				join(directory, `artifact-manifest-${platform}-${arch}.json`),
 				JSON.stringify({
 					schemaVersion: 1,
-					platform: "darwin",
+					platform,
 					arch,
 					version: productVersion,
 					sourceSha: sha,
 					sourceDirty: false,
 					distribution,
-					distributionMode: distribution === "ad-hoc" ? "ad-hoc" : "signed",
-					signedDistribution: distribution !== "ad-hoc",
-					expectedTeamId: distribution === "ad-hoc" ? null : "AB12345678",
+					distributionMode: distribution === "signed-notarized"?"signed":distribution,
+					signedDistribution: distribution === "signed-notarized",
+					expectedTeamId: distribution === "signed-notarized"?"AB12345678":null,
 					updateAuthority: "npm",
 					channel: productVersion.includes("-") ? "preview" : "stable",
 					buildId: `${arch}-build`,
@@ -54,7 +55,7 @@ async function fixture(run, productVersion = version, distribution = "signed-not
 					runtimeLockSha256: "b".repeat(64),
 					nativeAdmission: { schemaVersion: 1, bootstrapSha256: "a".repeat(64), hostSha256: "b".repeat(64) },
 					nodeArchive: { sha256: "c".repeat(64) },
-					checksums: Object.fromEntries(DESKTOP_RESOURCE_PATHS.map((resource) => [resource, "e".repeat(64)])),
+					checksums: Object.fromEntries(desktopResourcePathsForPlatform(platform).map((resource) => [resource, "e".repeat(64)])),
 					fuses: {
 						RunAsNode: false,
 						EnableNodeOptionsEnvironmentVariable: false,
@@ -598,7 +599,7 @@ test("ad-hoc publication uses a separate credential-free native lane and explici
 	assert.match(lane, /desktop_mode == 'ad-hoc'/u);
 	assert.match(publish, /ad-hoc\) desktop_args\+=\(--desktop --distribution ad-hoc\)/u);
 	assert.match(publish, /signed\) desktop_args\+=\(--desktop --distribution signed-notarized\)/u);
-	assert.match(publish, /needs: \[resolve, test, desktop, desktop-adhoc\]/u);
+	assert.match(publish, /needs: \[resolve, test, desktop, desktop-adhoc, desktop-windows\]/u);
 });
 
 test("anonymous download rejects unsafe redirects and bounded truncated assets", async () => {
@@ -679,3 +680,14 @@ test("root build provenance requires exact source, paired UUID, version, and dir
 	);
 	assert.throws(() => readSourceIdentity("/synthetic", () => ({ status: 1, stdout: sha })), /Git source identity/u);
 });
+
+
+test("Windows publication requires both unsigned native ZIPs and preserves immutable public bytes", async()=>fixture(async directory=>{
+	assert.equal((await validateRelease(directory,version,sha,"windows-unsigned")).length,4);
+	await assert.rejects(validateRelease(directory,version,sha,"ad-hoc"));
+	const calls=[];let verified=false;
+	await publishRelease({...releaseIdentity,desktop:false,windows:true,directory,publicDirectory:join(directory,"verified")},{inspect:()=>({id:1,draft:true,assets:[]}),execute:args=>{calls.push(args);if(args[0]==="api") return JSON.stringify({body:"Generated Windows release notes"});},verifyPublic:async options=>{assert.equal(options.windows,true);verified=true;}});
+	assert.ok(verified);assert.ok(calls.find(args=>args[1]==="upload").some(value=>value.endsWith("artifact-manifest-win32-arm64.json")));
+	await rm(join(directory,"artifact-manifest-win32-x64.json"));
+	await assert.rejects(validateRelease(directory,version,sha,"windows-unsigned"));
+},version,"windows-unsigned"));

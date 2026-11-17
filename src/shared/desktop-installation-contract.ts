@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { desktopAbsolutePathSchema } from "./desktop-path-contract.js";
 
 export const desktopBuildIdentitySchema = z.strictObject({
 	schemaVersion: z.literal(1),
@@ -10,9 +11,9 @@ export const desktopBuildIdentitySchema = z.strictObject({
 
 export const desktopInstallationOwnerSchema = z.strictObject({
 	kind: z.enum(["npm", "link"]),
-	packageSlot: z.string().startsWith("/").max(4096),
-	packageRoot: z.string().startsWith("/").max(4096),
-	prefix: z.string().startsWith("/").max(4096),
+	packageSlot: desktopAbsolutePathSchema,
+	packageRoot: desktopAbsolutePathSchema,
+	prefix: desktopAbsolutePathSchema,
 	identity: desktopBuildIdentitySchema,
 });
 

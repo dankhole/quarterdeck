@@ -1,5 +1,6 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { readLabLaunchConfig } from "../../desktop/src/lab-launch-config.js";
 import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
 import {
@@ -68,7 +69,18 @@ async function bounded<T>(operation: Promise<T>, timeoutMs: number): Promise<T> 
 }
 
 function hasExecutable(process: DesktopLabProcess, executable: string): boolean {
-	return process.command === executable || process.command.startsWith(`${executable} `);
+	return (
+		process.command === executable ||
+		process.command.startsWith(`${executable} `) ||
+		process.command.startsWith(`"${executable}" `)
+	);
+}
+
+function isRuntimeEntry(process: DesktopLabProcess, appPath: string): boolean {
+	return (
+		process.command.includes(`${appPath}/Contents/Resources/runtime/`) ||
+		hasExecutable(process, join(appPath, "resources/runtime/bin/node.exe"))
+	);
 }
 
 function validateFixture(fixture: DesktopLabFixture): void {
@@ -90,7 +102,10 @@ function validateFixture(fixture: DesktopLabFixture): void {
 		)
 	)
 		throw new Error("Second launch requires the existing validated hidden lab fixture.");
-	if (!fixture.manifest.executablePath.startsWith(`${fixture.manifest.appPath}/Contents/MacOS/`))
+	if (
+		!fixture.manifest.executablePath.startsWith(`${fixture.manifest.appPath}/Contents/MacOS/`) &&
+		fixture.manifest.executablePath !== join(fixture.manifest.appPath, "Quarterdeck.exe")
+	)
 		throw new Error("Second launch must reuse the packaged lab executable.");
 }
 
@@ -142,8 +157,13 @@ export async function proveDesktopSecondLaunch(
 	if (
 		!app?.startedAt ||
 		!helper?.startedAt ||
-		!hasExecutable(app, fixture.manifest.executablePath) ||
-		!helper.command.includes(`${fixture.manifest.appPath}/Contents/Resources/runtime/`) ||
+		!hasExecutable(
+			app,
+			fixture.manifest.executablePath.endsWith("\\Quarterdeck.exe")
+				? join(fixture.manifest.appPath, "QuarterdeckHost.exe")
+				: fixture.manifest.executablePath,
+		) ||
+		!isRuntimeEntry(helper, fixture.manifest.appPath) ||
 		!collectOwnedDesktopProcesses(beforeProcesses, [app.pid]).some((item) => sameDesktopProcess(item, helper))
 	)
 		throw new Error("Original desktop process identities could not be confirmed.");
@@ -237,9 +257,7 @@ export async function proveDesktopSecondLaunch(
 					(item) =>
 						item.pid !== helper.pid &&
 						marked.includes(item.pid) &&
-						[fixture.manifest.appPath, selected.appPath].some((appPath) =>
-							item.command.includes(`${appPath}/Contents/Resources/runtime/`),
-						),
+						[fixture.manifest.appPath, selected.appPath].some((appPath) => isRuntimeEntry(item, appPath)),
 				)
 			)
 				throw new Error("Second launch started a duplicate runtime helper.");

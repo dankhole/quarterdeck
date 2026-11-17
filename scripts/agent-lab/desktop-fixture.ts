@@ -3,6 +3,7 @@ import { access, copyFile, lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { runDesktopInstallCommand } from "../../src/desktop-install/macos.js";
+import { resolveCanonicalRuntimeStateHome } from "../../src/server/runtime-ownership.js";
 import type { DesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import {
 	isolateDesktopProvider,
@@ -11,6 +12,7 @@ import {
 	resolveDesktopProvider,
 } from "./desktop-provider";
 import type { DesktopAgentMode, DesktopLabConfig, DesktopLabManifest } from "./desktop-types";
+import { prepareWindowsDesktopLabApp, type WindowsDesktopLabInstallation } from "./desktop-windows-fixture";
 import { buildAgentLabEnvironment } from "./environment";
 import { prepareAgentLabFixture } from "./fixture";
 import { createAgentLabLaunchConfig } from "./launch-config";
@@ -21,6 +23,15 @@ export async function resolveDesktopAppExecutable(
 	appPath: string,
 ): Promise<{ appPath: string; executablePath: string }> {
 	const canonicalAppPath = await realpath(resolve(appPath));
+	if (process.platform === "win32") {
+		const executablePath = join(canonicalAppPath, "Quarterdeck.exe");
+		if (
+			!(await lstat(executablePath)).isFile() ||
+			!(await lstat(join(canonicalAppPath, "resources/app.asar"))).isFile()
+		)
+			throw new Error("Desktop Agent Lab requires a packaged Windows application.");
+		return { appPath: canonicalAppPath, executablePath };
+	}
 	if (!canonicalAppPath.endsWith(".app")) throw new Error("Desktop Agent Lab requires a packaged macOS .app.");
 	const plistPath = join(canonicalAppPath, "Contents", "Info.plist");
 	const plist = await lstat(plistPath);
@@ -49,6 +60,7 @@ export interface DesktopLabFixture {
 	launchRequest?: DesktopLaunchRequest;
 	/** Private installer copies; thaw only after their exact processes have drained. */
 	managedInstallationRoots?: string[];
+	windowsInstallation?: WindowsDesktopLabInstallation;
 }
 
 export async function prepareDesktopLabFixture(options: {
@@ -61,7 +73,8 @@ export async function prepareDesktopLabFixture(options: {
 	agentMode?: DesktopAgentMode;
 	sourceEnvironment?: NodeJS.ProcessEnv;
 }): Promise<DesktopLabFixture> {
-	const app = await resolveDesktopAppExecutable(options.appPath);
+	let app = await resolveDesktopAppExecutable(options.appPath);
+	let windowsInstallation: WindowsDesktopLabInstallation | undefined;
 	const repoRoot = options.repoRoot ?? AGENT_LAB_REPO_ROOT;
 	const source = options.sourceEnvironment ?? process.env;
 	let launch = await createAgentLabLaunchConfig({
@@ -78,6 +91,11 @@ export async function prepareDesktopLabFixture(options: {
 		// never start the Chromium supervisor or another runtime for this state home.
 		const fixture = await prepareAgentLabFixture(launch, "http://127.0.0.1");
 		const tempRoot = await realpath(launch.tempRoot);
+		if (process.platform === "win32") {
+			const prepared = await prepareWindowsDesktopLabApp(app.appPath, tempRoot);
+			app = { appPath: prepared.appPath, executablePath: prepared.executablePath };
+			windowsInstallation = prepared.installation;
+		}
 		const userDataPath = join(tempRoot, "electron-user-data");
 		const controlPath = join(tempRoot, "desktop-control");
 		await Promise.all([
@@ -89,7 +107,7 @@ export async function prepareDesktopLabFixture(options: {
 		const config: DesktopLabConfig = {
 			version: 1,
 			tempRoot,
-			stateHome: await realpath(fixture.statePath),
+			stateHome: await resolveCanonicalRuntimeStateHome(fixture.statePath),
 			userDataPath,
 			projectPath: await realpath(fixture.projectPath),
 			hostSimulationConfigPath,
@@ -165,7 +183,22 @@ export async function prepareDesktopLabFixture(options: {
 				}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
 			),
 			forbiddenHostLaunchLogPath: fixture.forbiddenHostLaunchLogPath,
-			keepTemp: options.keepTemp ?? false,
+			keepTemp: process.platform === "win32" || (options.keepTemp ?? false),
+			...(windowsInstallation ? { windowsInstallation } : {}),
+			...(windowsInstallation
+				? {
+						launchRequest: {
+							schemaVersion: 1 as const,
+							version: windowsInstallation.initial.version,
+							appPath: app.appPath,
+							arch: windowsInstallation.initial.arch,
+							buildId: windowsInstallation.initial.buildId,
+							appAsarSha256: windowsInstallation.initial.appAsarSha256,
+							stateHome: config.stateHome,
+							projectPath: config.projectPath,
+						},
+					}
+				: {}),
 		};
 	} catch (error) {
 		await removeDesktopProviderProfiles(launch.tempRoot);

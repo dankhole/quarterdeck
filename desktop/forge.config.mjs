@@ -6,16 +6,19 @@ import { finalizeLocalAppSignature } from "./scripts/app-signature.mjs";
 import { recordMakeArtifacts, recordPackagedApp } from "./scripts/artifact-manifest.mjs";
 import { MakerDMG } from "./scripts/maker-dmg.mjs";
 import { installDesktopNativeAdmission } from "./scripts/native-admission.mjs";
-import { desktopRoot, requireNativeMacTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
+import { desktopRoot, requireNativeDesktopTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
 import { releaseBuildSettings } from "./scripts/release-policy.mjs";
 import { copyRuntimeResource } from "./scripts/runtime-resources.mjs";
 import { deferAdmissionExecutableToBundle, signingOptionsForFile } from "./scripts/signing-entitlements.mjs";
+import { windowsDesktopIcon } from "./scripts/windows-icon.mjs";
+import { installWindowsNativeAdmission } from "./scripts/windows-native-admission.mjs";
 
 const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
 const electronChecksums = JSON.parse(
 	await readFile(join(desktopRoot, "node_modules", "electron", "checksums.json"), "utf8"),
 );
 const arch = resolveTargetArch(process.env.QUARTERDECK_DESKTOP_ARCH);
+const windows = process.platform === "win32";
 const runtimePath = stagedRuntimePath(arch);
 
 // Public ad-hoc builds need no Apple credentials. Developer ID builds retain
@@ -38,21 +41,23 @@ export default {
 		appCategoryType: "public.app-category.developer-tools",
 		appVersion: desktopPackage.version,
 		appCopyright: "Copyright © 2026 Quarterdeck contributors",
-		icon: join(desktopRoot, "assets", "quarterdeck.icns"),
+		icon: windows ? await windowsDesktopIcon() : join(desktopRoot, "assets", "quarterdeck.icns"),
 		asar: true,
 		afterCopy: [async ({ buildPath }) => copyRuntimeResource(runtimePath, buildPath)],
 		// Packager renames Electron and applies fuses before this hook, then signs
 		// the completed app. An empty extraResource list still enables the hook.
 		extraResource: [],
 		afterCopyExtraResources: [
-			async ({ buildPath }) => installDesktopNativeAdmission(join(buildPath, "Quarterdeck.app")),
+			async ({ buildPath }) => {
+				if (!windows) await installDesktopNativeAdmission(join(buildPath, "Quarterdeck.app"));
+			},
 		],
 		ignore: [/^\/(?!dist(?:\/|$)|package\.json$)/u],
 		// Match install-electron's cache and pinned checksums so packaging can reuse
 		// the verified archive without downloading it or a fresh checksum file again.
 		download: { cacheRoot: process.env.electron_config_cache, checksums: electronChecksums },
 		extendInfo: { LSMinimumSystemVersion: desktopPackage.quarterdeckDesktop.minimumMacOSVersion },
-		...(releaseSettings.distributionMode !== "local"
+		...(!windows && releaseSettings.distributionMode !== "local"
 			? {
 					osxSign: {
 						identity: signing ? requiredEnvironment("QUARTERDECK_DESKTOP_SIGNING_IDENTITY") : "-",
@@ -100,19 +105,19 @@ export default {
 		}),
 	],
 	makers: [
-		new MakerDMG({ name: `Quarterdeck-${desktopPackage.version}-${arch}` }),
-		{ name: "@electron-forge/maker-zip", platforms: ["darwin"], config: {} },
+		...(windows ? [] : [new MakerDMG({ name: `Quarterdeck-${desktopPackage.version}-${arch}` })]),
+		{ name: "@electron-forge/maker-zip", platforms: ["darwin", "win32"], config: {} },
 	],
 	publishers: [],
 	hooks: {
 		prePackage: async (_config, platform, targetArch) => {
-			requireNativeMacTarget(targetArch);
-			if (platform !== "darwin" || targetArch !== arch)
+			requireNativeDesktopTarget(targetArch);
+			if (platform !== process.platform || targetArch !== arch)
 				throw new Error(
 					"Forge target differs from the staged native runtime. Use the desktop npm packaging commands.",
 				);
 			const manifest = JSON.parse(await readFile(join(runtimePath, "bundle-manifest.json"), "utf8"));
-			if (manifest.arch !== arch || manifest.version !== desktopPackage.version)
+			if (manifest.platform !== platform || manifest.arch !== arch || manifest.version !== desktopPackage.version)
 				throw new Error("Staged runtime is stale. Use the desktop npm packaging commands.");
 			for (const [key, value] of Object.entries(releaseSettings)) {
 				if (manifest[key] !== value)
@@ -121,10 +126,14 @@ export default {
 		},
 		postPackage: async (_config, result) => {
 			for (const outputPath of result.outputPaths) {
-				finalizeLocalAppSignature(
-					join(outputPath, "Quarterdeck.app"),
-					releaseSettings.distributionMode !== "local",
-				);
+				// Windows version resources must be edited on Electron's real PE
+				// before it is renamed and the OS-only admission entrypoint is installed.
+				if (windows) await installWindowsNativeAdmission(outputPath);
+				if (!windows)
+					finalizeLocalAppSignature(
+						join(outputPath, "Quarterdeck.app"),
+						releaseSettings.distributionMode !== "local",
+					);
 				await recordPackagedApp(outputPath, result.arch);
 			}
 		},

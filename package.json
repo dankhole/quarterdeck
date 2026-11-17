@@ -3,7 +3,8 @@
   "version": "0.12.16",
   "packageManager": "npm@11.19.1",
   "quarterdeck": {
-    "desktopRelease": "adhoc-v1"
+    "desktopRelease": "adhoc-v1",
+    "windowsDesktopRelease": "unsigned-v1"
   },
   "description": "A quarterdeck foundation for coding agents",
   "publishConfig": {
@@ -92,6 +93,7 @@
     "@types/proper-lockfile": "^4.1.4",
     "@types/semver": "^7.8.0",
     "@types/ws": "^8.18.1",
+    "@types/yauzl": "3.4.0",
     "@vitest/coverage-v8": "^5.0.3",
     "@xterm/addon-serialize": "0.14.0",
     "esbuild": "^0.28.2",
@@ -119,6 +121,7 @@
     "tree-kill": "^1.2.2",
     "vscode-languageserver-protocol": "^3.18.4",
     "ws": "^8.21.3",
+    "yauzl": "3.4.0",
     "zod": "^4.6.6"
   }
 }

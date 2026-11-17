@@ -7,7 +7,7 @@ const { isAbsolute, join } = require("node:path");
 function occupiesGlobalPackageSlot(env) {
 	if (!env.npm_config_prefix || !isAbsolute(env.npm_config_prefix)) return false;
 	try {
-		return realpathSync(__dirname) === realpathSync(join(env.npm_config_prefix, "lib", "node_modules", "quarterdeck"));
+		return realpathSync(__dirname) === realpathSync(join(env.npm_config_prefix,...(process.platform === "win32"?[]:["lib"]), "node_modules", "quarterdeck"));
 	} catch {
 		return false;
 	}
@@ -21,9 +21,10 @@ function isGlobalLifecycle(env, sourceCheckout, directGlobalSlot) {
 }
 
 function hasLocalGraphicalSession(env) {
-	if (process.platform !== "darwin" || env.SSH_CONNECTION || env.SSH_TTY) return false;
-	const result = spawnSync("/bin/launchctl", ["managername"], { encoding: "utf8", timeout: 2_000, maxBuffer: 1_024 });
-	return !result.error && result.status === 0 && result.stdout.trim() === "Aqua";
+	if (!["darwin","win32"].includes(process.platform) || env.SSH_CONNECTION || env.SSH_TTY) return false;
+	const windows=process.platform === "win32";
+	const result = spawnSync(windows?join(env.SystemRoot||"C:\\Windows","System32/WindowsPowerShell/v1.0/powershell.exe"):"/bin/launchctl",windows?["-NoLogo","-NoProfile","-NonInteractive","-Command","if ([Environment]::UserInteractive -and [Diagnostics.Process]::GetCurrentProcess().SessionId -gt 0) { 'Interactive' }"]:["managername"], { encoding: "utf8", windowsHide:true, timeout: windows?5_000:2_000, maxBuffer: 1_024 });
+	return !result.error && result.status === 0 && result.stdout.trim() === (windows?"Interactive":"Aqua");
 }
 
 function shouldRunPostinstall(env, platform, arch, osRelease, sourceCheckout, desktopRelease = false, directGlobalSlot = false, graphicalSession = false) {
@@ -31,9 +32,8 @@ function shouldRunPostinstall(env, platform, arch, osRelease, sourceCheckout, de
 		isGlobalLifecycle(env, sourceCheckout, directGlobalSlot) &&
 		(env.QUARTERDECK_INSTALL_MODE === "desktop" || (!env.QUARTERDECK_INSTALL_MODE && desktopRelease && graphicalSession && !env.SSH_CONNECTION && !env.SSH_TTY)) &&
 		(!env.CI || ["0", "false"].includes(env.CI.toLowerCase())) &&
-		platform === "darwin" &&
-		["arm64", "x64"].includes(arch) &&
-		Number.parseInt(osRelease, 10) >= 22
+		((platform === "darwin" && Number.parseInt(osRelease,10)>=22) || (platform === "win32" && Number.parseInt(osRelease,10)>=10)) &&
+		["arm64", "x64"].includes(arch)
 	);
 }
 
@@ -43,9 +43,8 @@ module.exports = { shouldRunPostinstall };
 // direct Quarterdeck package may install an app or change its browser preference.
 if (require.main === module && isGlobalLifecycle(process.env, existsSync(join(__dirname, ".git")), occupiesGlobalPackageSlot(process.env))) {
 	const metadata = require("./package.json");
-	const desktopRelease = ["adhoc-v1", "signed-v1"].includes(metadata.quarterdeck?.desktopRelease);
-	const preferencePath = __dirname.endsWith("/lib/node_modules/quarterdeck")
-		? join(__dirname, "..", ".quarterdeck-install-mode.json") : null;
+	const desktopRelease = process.platform === "win32"?metadata.quarterdeck?.windowsDesktopRelease === "unsigned-v1":["adhoc-v1", "signed-v1"].includes(metadata.quarterdeck?.desktopRelease);
+	const preferencePath = join(__dirname, "..", ".quarterdeck-install-mode.json");
 	let browserPreference = false;
 	if (preferencePath) {
 		try {
@@ -67,7 +66,7 @@ if (require.main === module && isGlobalLifecycle(process.env, existsSync(join(__
 	const graphicalSession = !mode && desktopRelease && hasLocalGraphicalSession(env);
 	if (shouldRunPostinstall(env, process.platform, process.arch, release(), false, desktopRelease, true, graphicalSession)) {
 		const entrypoint = join(__dirname, "dist", "npm-install.js");
-		const retry = `QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@${metadata.version} --foreground-scripts`;
+		const retry = `${process.platform === "win32"?"$env:QUARTERDECK_INSTALL_MODE='desktop';":"QUARTERDECK_INSTALL_MODE=desktop"} npm install -g quarterdeck@${metadata.version} --foreground-scripts`;
 		if (!existsSync(entrypoint)) {
 			console.error(`[quarterdeck-install] The published lifecycle entrypoint is missing. Retry ${retry}; report a packaging error if it persists.`);
 			process.exitCode = 1;

@@ -4,7 +4,7 @@
 
 Quarterdeck is a local board for running coding agents in parallel. Each task gets a card, a terminal, Git context, and a review surface, with optional isolated worktrees. It supports **Claude Code, OpenAI Codex, and Pi** through their installed CLIs.
 
-Use the macOS desktop app or browser mode. Both share the same projects, tasks, settings, and agent integrations.
+Use the macOS or Windows desktop app, or browser mode. Both share the same projects, tasks, settings, and agent integrations.
 
 ## Install via npm
 
@@ -26,7 +26,7 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-On macOS 13+ (Apple Silicon or Intel), a fresh global installation installs the matching desktop app at `~/Applications/Quarterdeck.app`, and `quarterdeck` opens it in a local graphical session. Linux and Windows keep browser mode. npm owns installation and updates, including for Finder/Dock launches.
+On macOS 13+ (Apple Silicon or Intel), a fresh global installation installs the matching desktop app at `~/Applications/Quarterdeck.app`, and `quarterdeck` opens it in a local graphical session. Windows desktop-capable releases install a per-user app and Start menu shortcut on native x64/ARM64 Windows 10/11. Linux keeps browser mode. npm owns installation and updates, including for Finder/Dock and Windows Start menu launches.
 
 The Mac app is **ad-hoc signed, not Apple-notarized**. macOS may require **System Settings → Privacy & Security → Open Anyway** after a blocked launch; managed Macs may disallow approval. Updates may prompt again for Keychain access. See [first-launch guidance](docs/desktop.md#macos-security-and-first-launch).
 
@@ -34,6 +34,14 @@ To switch an existing browser-only installation to desktop:
 
 ```bash
 QUARTERDECK_INSTALL_MODE=desktop npm install --global quarterdeck
+quarterdeck --desktop
+```
+
+On Windows PowerShell, explicitly select desktop installation with:
+
+```powershell
+$env:QUARTERDECK_INSTALL_MODE='desktop'
+npm install --global quarterdeck
 quarterdeck --desktop
 ```
 
@@ -46,16 +54,16 @@ npx --yes quarterdeck@latest --browser
 ## Desktop and browser modes
 
 ```bash
-quarterdeck             # Desktop on supported global macOS installs; browser elsewhere
+quarterdeck             # Desktop on supported global macOS/Windows installs; browser elsewhere
 quarterdeck --browser   # Browser mode, including on macOS
-quarterdeck --desktop   # Explicit macOS app launch
+quarterdeck --desktop   # Explicit installed desktop app launch
 ```
 
-The desktop app also opens from Finder or the Dock. Closing its window keeps tasks running; **Quit** checks unsaved work and live sessions before shutdown. **File → Open in Browser** opens the same runtime in your browser. `QUARTERDECK_INSTALL_MODE=browser npm install --global quarterdeck` preserves browser-only installation across upgrades. Source, `npx`, CI, headless hosts, and explicit runtime flags remain runtime paths.
+The desktop app also opens from Finder or the Dock. Closing its macOS window keeps tasks running; closing the Windows window requests Quit. **Quit** checks unsaved work and live sessions before shutdown. **File → Open in Browser** opens the same runtime in your browser. `QUARTERDECK_INSTALL_MODE=browser npm install --global quarterdeck` preserves browser-only installation across upgrades. Source, `npx`, CI, headless hosts, and explicit runtime flags remain runtime paths.
 
-The desktop app imports your login shell’s exported environment by default. Use **Settings → Runtime Environment** to disable import, add executable folders, or refresh the runtime; existing explicit opt-outs remain disabled. Ad-hoc-signed builds may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
+The macOS app imports your login shell’s exported environment by default; Windows inherits its launch environment. Use **Settings → Runtime Environment** to disable import, add executable folders, or refresh the runtime; existing explicit opt-outs remain disabled. Ad-hoc-signed builds may prompt for **Quarterdeck Safe Storage** Keychain access again after updates.
 
-See the [desktop guide](docs/desktop.md#using-the-app) for installation repair, window behavior, environment setup, and recovery. Windows browser support is also [experimental](docs/windows-support-audit.md).
+See the [desktop guide](docs/desktop.md#using-the-app) for installation repair, window behavior, environment setup, and recovery. See also [Windows setup and provider limitations](docs/windows-support-audit.md).
 
 ## What Quarterdeck Does
 

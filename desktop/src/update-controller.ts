@@ -183,7 +183,7 @@ export class DesktopUpdateController {
 			defaultId: 0,
 			cancelId: 0,
 			message: `Quarterdeck v${targetVersion} is available`,
-			detail: `Installed version: ${this.options.installedVersion}\nAvailable version: ${targetVersion}\nOwning npm prefix: ${installation.owner.prefix}\n\nUpdating opens Terminal to install this exact version with npm. Quarterdeck must close normally first; review unsaved edits and allow app-owned sessions to stop. Reopen the app after Terminal reports success.`,
+			detail: `Installed version: ${this.options.installedVersion}\nAvailable version: ${targetVersion}\nOwning npm prefix: ${installation.owner.prefix}\n\nUpdating opens ${process.platform === "win32" ? "PowerShell" : "Terminal"} to install this exact version with npm. Quarterdeck must close normally first; review unsaved edits and allow app-owned sessions to stop. Reopen the app after the update window reports success.`,
 		});
 		if (this.disposed || epoch !== this.epoch || this.snapshot.availableVersion !== targetVersion) return;
 		if (choice === 1) await this.options.openReleaseNotes();

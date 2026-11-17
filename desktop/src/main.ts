@@ -21,6 +21,7 @@ import type { DesktopStartupFailureMessage } from "../../src/core/api/desktop-ru
 import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown.js";
 import { DesktopInstallationError, validateDesktopInstallation } from "../../src/desktop-install/index.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
+import { desktopAppRoot } from "./app-layout.js";
 import { admittedBrowserLaunch } from "./browser-launch.js";
 import { DesktopCompareWindows } from "./compare-windows.js";
 import { createDesktopDiagnostics, type DesktopDiagnostics } from "./desktop-diagnostics.js";
@@ -87,6 +88,7 @@ async function launchDesktop(
 	appIdentity: DesktopLaunchAppIdentity | null,
 	{ installation, admission }: DesktopInstallationPreflight,
 ): Promise<void> {
+	if (process.platform === "win32") app.setAppUserModelId("io.github.dankhole.quarterdeck");
 	const showWindow = launch.lab?.showWindow ?? true;
 	if (launch.synthetic) {
 		// Electron 44.4+ uses this same Chromium switch for its own isolated macOS app tests.
@@ -850,6 +852,8 @@ async function launchDesktop(
 			isSynthetic: launch.synthetic,
 			showWindow,
 			isQuitting: () => shutdownConfirmed,
+			closeBehavior: process.platform === "win32" ? "quit" : "hide",
+			onQuitRequested: () => app.quit(),
 			onSurfaceAction: (action, sender) => {
 				if (
 					sender !== renderer ||
@@ -1175,9 +1179,10 @@ const launchPreparation = await (async () => {
 	);
 	const installation = app.isPackaged
 		? await preflightDesktopInstallation({
-				appPath: app.getAppPath().replace(/\/Contents\/Resources\/app\.asar$/u, ""),
+				appPath: desktopAppRoot(app.getAppPath()),
 				version: app.getVersion(),
 				synthetic: launch.synthetic,
+				...(launch.lab ? { syntheticRoot: launch.lab.tempRoot } : {}),
 			})
 		: { installation: null, admission: null };
 	const resourceRoot = app.isPackaged

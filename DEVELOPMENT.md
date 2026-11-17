@@ -103,7 +103,7 @@ npm run web:dev
 - Runs on `http://127.0.0.1:4173`
 - `/api/*` requests from Vite are proxied to `http://127.0.0.1:3500`
 
-Use `http://127.0.0.1:4173` while developing UI so changes hot reload. `--browser` and a plain launch select the source runtime; `--desktop` explicitly selects the installed native app on a supported graphical Mac. The explicit port also matches Vite's default API proxy. If you change it, set `QUARTERDECK_RUNTIME_PORT` for the Vite process to match.
+Use `http://127.0.0.1:4173` while developing UI so changes hot reload. `--browser` and a plain launch select the source runtime; `--desktop` explicitly selects the installed native app on a supported graphical macOS or Windows host. The explicit port also matches Vite's default API proxy. If you change it, set `QUARTERDECK_RUNTIME_PORT` for the Vite process to match.
 
 ## VS Code F5 debugging
 
@@ -119,7 +119,7 @@ npm run build
 node dist/cli.js --browser
 ```
 
-This explicitly starts or attaches to the shared runtime; plain `node dist/cli.js` selects the installed desktop on supported graphical Macs. Browser mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
+This explicitly starts or attaches to the shared runtime; plain `node dist/cli.js` selects the installed desktop on supported graphical macOS or Windows hosts. Browser mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
 
 Runtime port options:
 

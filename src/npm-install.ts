@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { release } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import packageJson from "../package.json" with { type: "json" };
 import { DesktopInstallationError } from "./desktop-install/errors.js";
@@ -10,6 +10,7 @@ import {
 	getDesktopInstallationStatus,
 	resolveDesktopInstallationOwner,
 } from "./desktop-install/index.js";
+import { desktopGlobalPackageSlot } from "./desktop-install/layout.js";
 import { formatLegacyDesktopMigrationGuidance, inventoryLegacyDesktopInstallations } from "./desktop-install/legacy.js";
 import { hasBrowserInstallPreference, wantsDesktopInstallation } from "./distribution-policy.js";
 import { readLaunchEnvironment } from "./launch-environment.js";
@@ -55,12 +56,11 @@ export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallP
 		return { action: "skip" };
 	}
 	if (
-		context.uid === undefined ||
-		context.uid === 0 ||
+		(context.platform !== "win32" && (context.uid === undefined || context.uid === 0)) ||
 		env.SUDO_USER ||
 		env.SUDO_UID ||
-		!env.HOME ||
-		!isAbsolute(env.HOME)
+		!(context.platform === "win32" ? env.USERPROFILE : env.HOME) ||
+		!(context.platform === "win32" ? win32.isAbsolute(env.USERPROFILE ?? "") : isAbsolute(env.HOME ?? ""))
 	) {
 		return {
 			action: "reject",
@@ -72,7 +72,7 @@ export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallP
 }
 
 export function npmInstallRecoveryMessage(version: string, reason: string): string {
-	return `${reason}\nRetry: QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@${version} --foreground-scripts\nIf the CLI remains available: quarterdeck desktop install\nFor an owning-prefix conflict, first install with QUARTERDECK_INSTALL_MODE=browser, then use that prefix's CLI with desktop install --replace-owner.`;
+	return `${reason}\nRetry: ${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm install -g quarterdeck@${version} --foreground-scripts\nIf the CLI remains available: quarterdeck desktop install\nFor an owning-prefix conflict, first install with QUARTERDECK_INSTALL_MODE=browser, then use that prefix's CLI with desktop install --replace-owner.`;
 }
 
 export async function installNpmDesktopPair(version: string, owner: DesktopInstallationOwner): Promise<void> {
@@ -133,7 +133,7 @@ async function run(): Promise<void> {
 		throw new Error("npm did not provide an absolute global prefix; desktop ownership cannot be established.");
 	const owner = await resolveDesktopInstallationOwner({
 		packageRoot,
-		packageSlot: join(prefix, "lib", "node_modules", "quarterdeck"),
+		packageSlot: desktopGlobalPackageSlot(prefix),
 		prefix,
 		kind: "npm",
 	});

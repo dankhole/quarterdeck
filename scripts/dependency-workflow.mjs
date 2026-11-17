@@ -6,7 +6,7 @@ import { release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { requireNativeMacTarget } from "../desktop/scripts/paths.mjs";
+import { requireNativeDesktopTarget } from "../desktop/scripts/paths.mjs";
 import { prepareAgentLabBrowserCache } from "./agent-lab/browser-cache.mjs";
 import { buildCheckout as buildRuntimeCheckout } from "./build-all.mjs";
 import { readBuildManifest } from "./build-manifest.mjs";
@@ -122,8 +122,8 @@ export function shouldLinkDesktop(options = {}) {
 	const platform = options.platform ?? process.platform;
 	const arch = options.arch ?? process.arch;
 	const osRelease = options.osRelease ?? release();
-	const supported = platform === "darwin" && ["arm64", "x64"].includes(arch) && Number.parseInt(osRelease, 10) >= 22;
-	if (options.desktop === true && !supported) throw new Error("Desktop linking requires macOS 13 or newer on arm64 or x64.");
+	const supported = ["arm64", "x64"].includes(arch) && ((platform === "darwin" && Number.parseInt(osRelease,10)>=22) || (platform === "win32" && Number.parseInt(osRelease,10)>=10));
+	if (options.desktop === true && !supported) throw new Error("Desktop linking requires macOS 13+ or Windows 10+ on arm64 or x64.");
 	if (options.desktop === true) return true;
 	return supported && (options.installMode ?? process.env.QUARTERDECK_INSTALL_MODE) !== "browser";
 }
@@ -145,8 +145,8 @@ export async function buildDesktopCheckout(checkoutRoot, options = {}) {
 		...options.managedInstallation,
 		pairedDesktopInstall: options.pairedDesktopInstall,
 	});
-	requireNativeMacTarget(process.arch);
-	if (process.arch === "x64") {
+	requireNativeDesktopTarget(process.arch);
+	if (process.platform === "darwin" && process.arch === "x64") {
 		const translated = spawnSync("/usr/sbin/sysctl", ["-in", "sysctl.proc_translated"], { encoding: "utf8", timeout: 2_000 });
 		if (String(translated.stdout).trim() === "1") {
 			throw new Error("Desktop builds cannot use x64 Node under Rosetta. Use native arm64 Node and rerun npm run link.");
@@ -156,13 +156,18 @@ export async function buildDesktopCheckout(checkoutRoot, options = {}) {
 	const identity = await (options.buildCheckout ?? buildRuntimeCheckout)(checkoutRoot, options);
 	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
 	await executeNpm(["--prefix", "desktop", "run", "package", "--", `--arch=${process.arch}`]);
-	const appPath = join(checkoutRoot, "desktop", "out", `Quarterdeck-darwin-${process.arch}`, "Quarterdeck.app");
+	const appPath = packagedDesktopPath(checkoutRoot);
 	console.log(`Built desktop app: ${appPath}`);
 	return { appPath, identity };
 }
 
+function packagedDesktopPath(checkoutRoot) {
+	const output=join(checkoutRoot,"desktop","out",`Quarterdeck-${process.platform}-${process.arch}`);
+	return process.platform === "win32"?output:join(output,"Quarterdeck.app");
+}
+
 function installLinkedDesktop(checkoutRoot, location) {
-	const appPath = join(checkoutRoot, "desktop", "out", `Quarterdeck-darwin-${process.arch}`, "Quarterdeck.app");
+	const appPath = packagedDesktopPath(checkoutRoot);
 	const result = spawnSync(process.execPath, [
 		join(checkoutRoot, "dist", "cli.js"), "desktop", "install", "--from", appPath,
 		"--replace-owner", "--owner-package-slot", location.packageSlot, "--owner-prefix", location.prefix,

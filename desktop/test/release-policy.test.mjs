@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
 	createReleasePolicy,
 	distributionModeFor,
-	releaseBuildSettings,
+	releaseBuildSettings as nativeReleaseBuildSettings,
 	validateReleasePolicy,
 } from "../scripts/release-policy.mjs";
+
+const releaseBuildSettings = (environment, version) => nativeReleaseBuildSettings(environment, version, "darwin");
 
 const signed = { QUARTERDECK_DESKTOP_SIGN: "1", QUARTERDECK_DESKTOP_TEAM_ID: "AB12345678" };
 const adhoc = { QUARTERDECK_DESKTOP_DISTRIBUTION: "ad-hoc" };
 function bundle(settings, version = "0.12.8") {
 	return {
 		schemaVersion: 1,
+		platform: "darwin",
 		...settings,
 		version,
 		sourceSha: "a".repeat(40),
@@ -20,6 +23,16 @@ function bundle(settings, version = "0.12.8") {
 }
 
 describe("build-time installation provenance", () => {
+	it("binds unsigned Windows distribution to its native platform and production policy", () => {
+		const environment = { QUARTERDECK_DESKTOP_DISTRIBUTION: "windows-unsigned" };
+		const settings = nativeReleaseBuildSettings(environment, "0.12.8", "win32");
+		const manifest = { ...bundle(settings), platform: "win32" };
+		expect(validateReleasePolicy(createReleasePolicy(manifest, settings), manifest).distributionMode).toBe(
+			"windows-unsigned",
+		);
+		expect(() => nativeReleaseBuildSettings(environment, "0.12.8", "darwin")).toThrow("platform");
+		expect(() => nativeReleaseBuildSettings(adhoc, "0.12.8", "win32")).toThrow("platform");
+	});
 	it("uses npm authority for local, public ad-hoc, signed, stable, and preview artifacts", () => {
 		for (const environment of [{}, adhoc, signed]) {
 			for (const version of ["0.12.8", "0.12.8-rc.1"]) {

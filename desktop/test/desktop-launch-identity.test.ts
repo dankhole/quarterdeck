@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDesktopLaunchAppIdentity } from "../src/desktop-launch-identity.js";
@@ -10,20 +11,21 @@ afterEach(async () => {
 });
 
 async function fixture(protocolVersion: number | undefined = 1) {
-	const root = await realpath(await mkdtemp("/tmp/quarterdeck-launch-identity-"));
+	const root = await realpath(await mkdtemp(join(tmpdir(), "quarterdeck-launch-identity-")));
 	roots.push(root);
 	const appPath = join(root, "Quarterdeck.app");
-	const resources = join(appPath, "Contents", "Resources");
+	const platform = process.platform === "win32" ? "win32" : "darwin";
+	const resources = platform === "win32" ? join(appPath, "resources") : join(appPath, "Contents", "Resources");
 	const runtime = join(resources, "runtime");
 	await mkdir(join(runtime, "bin"), { recursive: true });
 	await mkdir(join(runtime, "dist"));
-	await writeFile(join(runtime, "bin", "node"), "synthetic-node");
+	await writeFile(join(runtime, "bin", platform === "win32" ? "node.exe" : "node"), "synthetic-node");
 	await writeFile(join(runtime, "dist", "cli.js"), "synthetic-cli");
 	await writeFile(
 		join(runtime, "bundle-manifest.json"),
 		JSON.stringify({
 			desktopLaunchProtocolVersion: protocolVersion,
-			platform: "darwin",
+			platform: process.platform === "win32" ? "win32" : "darwin",
 			arch: "arm64",
 			version: "0.12.8",
 			buildId: "build-current",
@@ -38,7 +40,14 @@ async function fixture(protocolVersion: number | undefined = 1) {
 describe("actual desktop package launch identity", () => {
 	it("binds the package path, architecture, build and native bytes", async () => {
 		const f = await fixture();
-		const first = await readDesktopLaunchAppIdentity(f.appAsar, f.runtime, "0.12.8", "arm64", readFile);
+		const first = await readDesktopLaunchAppIdentity(
+			f.appAsar,
+			f.runtime,
+			"0.12.8",
+			"arm64",
+			readFile,
+			process.platform === "win32" ? "win32" : "darwin",
+		);
 		expect(first).toEqual({
 			version: "0.12.8",
 			arch: "arm64",
@@ -48,7 +57,16 @@ describe("actual desktop package launch identity", () => {
 		});
 		await writeFile(f.appAsar, "same-version-new-shell");
 		expect(
-			(await readDesktopLaunchAppIdentity(f.appAsar, f.runtime, "0.12.8", "arm64", readFile)).appAsarSha256,
+			(
+				await readDesktopLaunchAppIdentity(
+					f.appAsar,
+					f.runtime,
+					"0.12.8",
+					"arm64",
+					readFile,
+					process.platform === "win32" ? "win32" : "darwin",
+				)
+			).appAsarSha256,
 		).not.toBe(first.appAsarSha256);
 	});
 	it.each([undefined, 0, 2])("rejects missing or unsupported launch capability marker %s", async (protocolVersion) => {
@@ -57,7 +75,7 @@ describe("actual desktop package launch identity", () => {
 			await writeFile(
 				join(f.runtime, "bundle-manifest.json"),
 				JSON.stringify({
-					platform: "darwin",
+					platform: process.platform === "win32" ? "win32" : "darwin",
 					arch: "arm64",
 					version: "0.12.8",
 					buildId: "old-build",
@@ -65,17 +83,38 @@ describe("actual desktop package launch identity", () => {
 				}),
 			);
 		}
-		await expect(readDesktopLaunchAppIdentity(f.appAsar, f.runtime, "0.12.8", "arm64", readFile)).rejects.toThrow(
-			"Runtime bundle identity",
-		);
+		await expect(
+			readDesktopLaunchAppIdentity(
+				f.appAsar,
+				f.runtime,
+				"0.12.8",
+				"arm64",
+				readFile,
+				process.platform === "win32" ? "win32" : "darwin",
+			),
+		).rejects.toThrow("Runtime bundle identity");
 	});
 	it("rejects a runtime architecture or version different from the app", async () => {
 		const f = await fixture();
-		await expect(readDesktopLaunchAppIdentity(f.appAsar, f.runtime, "0.12.9", "arm64", readFile)).rejects.toThrow(
-			"Runtime bundle identity",
-		);
-		await expect(readDesktopLaunchAppIdentity(f.appAsar, f.runtime, "0.12.8", "x64", readFile)).rejects.toThrow(
-			"Runtime bundle identity",
-		);
+		await expect(
+			readDesktopLaunchAppIdentity(
+				f.appAsar,
+				f.runtime,
+				"0.12.9",
+				"arm64",
+				readFile,
+				process.platform === "win32" ? "win32" : "darwin",
+			),
+		).rejects.toThrow("Runtime bundle identity");
+		await expect(
+			readDesktopLaunchAppIdentity(
+				f.appAsar,
+				f.runtime,
+				"0.12.8",
+				"x64",
+				readFile,
+				process.platform === "win32" ? "win32" : "darwin",
+			),
+		).rejects.toThrow("Runtime bundle identity");
 	});
 });

@@ -9,7 +9,17 @@ import {
 } from "../../src/distribution-policy.js";
 import { createTempDir } from "../utilities/temp-dir.js";
 
-vi.mock("../../package.json", () => ({ default: { quarterdeck: { desktopRelease: "adhoc-v1" } } }));
+vi.mock("../../package.json", () => ({
+	default: { quarterdeck: { desktopRelease: "adhoc-v1", windowsDesktopRelease: "unsigned-v1" } },
+}));
+
+async function globalPackage(prefix: string): Promise<string> {
+	const root = join(prefix, ...(process.platform === "win32" ? [] : ["lib"]), "node_modules/quarterdeck");
+	await mkdir(root, { recursive: true });
+	if (process.platform === "win32")
+		await writeFile(join(prefix, "quarterdeck.cmd"), '@"node" "%dp0%\\node_modules\\quarterdeck\\dist\\cli.js" %*');
+	return root;
+}
 
 describe("desktop distribution capability", () => {
 	it("recognizes public ad-hoc and signed contracts without accepting unknown capabilities", async () => {
@@ -50,7 +60,7 @@ describe("desktop distribution capability", () => {
 	it("defaults a global package to desktop when scripts were skipped, without writing or repairing", async () => {
 		const sandbox = createTempDir("quarterdeck-distribution-");
 		try {
-			const root = join(sandbox.path, "lib/node_modules/quarterdeck");
+			const root = await globalPackage(sandbox.path);
 			await mkdir(root, { recursive: true });
 			expect(await usesDesktopLaunchDefault(root)).toBe(true);
 			expect(await hasBrowserInstallPreference(root)).toBe(false);
@@ -61,8 +71,8 @@ describe("desktop distribution capability", () => {
 	it("retains a browser opt-out across package replacement, but not another prefix", async () => {
 		const sandbox = createTempDir("quarterdeck-distribution-");
 		try {
-			const root = join(sandbox.path, "prefix/lib/node_modules/quarterdeck");
-			const other = join(sandbox.path, "other/lib/node_modules/quarterdeck");
+			const root = await globalPackage(join(sandbox.path, "prefix"));
+			const other = await globalPackage(join(sandbox.path, "other"));
 			await mkdir(root, { recursive: true });
 			await mkdir(other, { recursive: true });
 			await writeFile(
@@ -82,7 +92,7 @@ describe("desktop distribution capability", () => {
 		async (contents) => {
 			const sandbox = createTempDir("quarterdeck-distribution-");
 			try {
-				const root = join(sandbox.path, "lib/node_modules/quarterdeck");
+				const root = await globalPackage(sandbox.path);
 				await mkdir(root, { recursive: true });
 				await writeFile(join(dirname(root), ".quarterdeck-install-mode.json"), contents);
 				expect(await usesDesktopLaunchDefault(root)).toBe(true);

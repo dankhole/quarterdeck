@@ -3,8 +3,12 @@ import { constants, fstatSync, lstatSync } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { isNodeError } from "../fs/node-error.js";
+import { ensurePrivateDirectory } from "../core/private-directory.js";
 import { DesktopInstallationError } from "./errors.js";
+import { validateDesktopDirectoryAncestors } from "./path-safety.js";
+import { acquireWindowsDesktopMutation } from "./windows-admission.js";
+
+export { validateDesktopDirectoryAncestors } from "./path-safety.js";
 
 export interface DesktopAdmissionDescriptor {
 	fd: number;
@@ -12,45 +16,32 @@ export interface DesktopAdmissionDescriptor {
 }
 
 export function desktopInstallationRoot(): string {
+	if (process.platform === "win32") return join(userInfo().homedir, "AppData/Local/Quarterdeck/installation");
 	return join(userInfo().homedir, "Library/Application Support/Quarterdeck/installation");
 }
 
 export function desktopStableAppPath(): string {
+	if (process.platform === "win32") return join(userInfo().homedir, "AppData/Local/Programs/Quarterdeck");
 	return join(userInfo().homedir, "Applications/Quarterdeck.app");
 }
 
 function privateInfo(info: { uid: number; mode: number }): boolean {
+	// Windows bootstrap validates owner/System DACLs before loading application code.
+	// POSIX uid and mode bits cannot represent that Windows admission evidence.
+	if (process.platform === "win32") return true;
 	return info.uid === process.getuid?.() && (info.mode & 0o077) === 0;
 }
 
 export async function ensureDesktopPrivateDirectory(path: string): Promise<void> {
 	await validateDesktopDirectoryAncestors(path);
-	await mkdir(path, { recursive: true, mode: 0o700 });
+	if (process.platform === "win32") await ensurePrivateDirectory(path);
+	else await mkdir(path, { recursive: true, mode: 0o700 });
 	const info = await lstat(path);
 	if (!info.isDirectory() || info.isSymbolicLink() || !privateInfo(info))
 		throw new DesktopInstallationError(
 			"installation_changed",
 			"The installation metadata directory must be private, user-owned, and not a symbolic link.",
 		);
-}
-
-/** User-owned directory aliases must not redirect the fixed install tree; OS aliases such as /var are trusted. */
-export async function validateDesktopDirectoryAncestors(path: string): Promise<void> {
-	let candidate = resolve(path);
-	for (;;) {
-		try {
-			const info = await lstat(candidate);
-			if ((info.isSymbolicLink() && info.uid !== 0) || (!info.isDirectory() && !info.isSymbolicLink()))
-				throw new DesktopInstallationError(
-					"installation_changed",
-					"An installation path ancestor is a user-controlled symbolic link or non-directory. No installation files were changed.",
-				);
-		} catch (error) {
-			if (!isNodeError(error, "ENOENT")) throw error;
-		}
-		if (dirname(candidate) === candidate) break;
-		candidate = dirname(candidate);
-	}
 }
 
 export function getDesktopAdmissionDescriptor(): DesktopAdmissionDescriptor | null {
@@ -105,6 +96,7 @@ export async function validateDesktopNativeAdmission(
 
 /** The parent retains the locked open-file description even if the short native child dies. */
 export async function acquireDesktopMutation(bootstrap: string, lockPath: string): Promise<() => Promise<void>> {
+	if (process.platform === "win32") return acquireWindowsDesktopMutation(bootstrap, lockPath);
 	await ensureDesktopPrivateDirectory(dirname(lockPath));
 	const file = await open(lockPath, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
 	try {

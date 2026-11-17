@@ -12,7 +12,13 @@ export interface RuntimeBundle {
 	arch: string;
 }
 
-export function readRuntimeBundle(root: string, expectedVersion: string, architecture: string): RuntimeBundle {
+export function readRuntimeBundle(
+	root: string,
+	expectedVersion: string,
+	architecture: string,
+	platform: NodeJS.Platform = process.platform,
+): RuntimeBundle {
+	if (platform !== "darwin" && platform !== "win32") throw new Error("Unsupported desktop runtime platform.");
 	const canonicalRoot = realpathSync(root);
 	const manifestPath = join(canonicalRoot, "bundle-manifest.json");
 	if (statSync(manifestPath).size > 16_384) throw new Error("Invalid runtime bundle manifest.");
@@ -24,7 +30,7 @@ export function readRuntimeBundle(root: string, expectedVersion: string, archite
 		record.desktopLaunchProtocolVersion !== DESKTOP_LAUNCH_PROTOCOL_VERSION ||
 		record.version !== expectedVersion ||
 		record.arch !== architecture ||
-		record.platform !== "darwin" ||
+		record.platform !== platform ||
 		typeof record.buildId !== "string" ||
 		!record.buildId ||
 		typeof record.sourceSha !== "string" ||
@@ -32,7 +38,7 @@ export function readRuntimeBundle(root: string, expectedVersion: string, archite
 	) {
 		throw new Error("Runtime bundle identity does not match the desktop application.");
 	}
-	const nodePath = join(canonicalRoot, "bin", "node");
+	const nodePath = join(canonicalRoot, "bin", platform === "win32" ? "node.exe" : "node");
 	const cliPath = join(canonicalRoot, "dist", "cli.js");
 	if (!statSync(nodePath).isFile() || !statSync(cliPath).isFile())
 		throw new Error("The bundled runtime is incomplete.");

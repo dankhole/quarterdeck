@@ -10,6 +10,7 @@ export const desktopEnvironmentFailureReasonSchema = z.enum([
 
 const directoriesSchema = z.array(z.string().min(1).max(4096)).max(16);
 export const desktopEnvironmentSnapshotSchema = z.strictObject({
+	supportsLoginShellImport: z.boolean().optional(),
 	ownership: z.enum(["owned", "attached", "none"]),
 	source: z.enum(["inherited", "login-shell", "fallback", "unresolved"]),
 	failureReason: desktopEnvironmentFailureReasonSchema.nullable(),

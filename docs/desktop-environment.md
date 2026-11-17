@@ -1,6 +1,8 @@
 # Desktop environment resolution
 
-The desktop app builds its runtime environment once at startup and again only after a guarded **Refresh Environment**. By default, Finder/Dock startup imports exported variables and executable paths from your interactive login shell, including setup in files such as `.zshrc`. Disable **Import Login Shell Environment** in **Settings → Runtime Environment** to use shell-free executable discovery instead. Explicit shell terminals still start their requested shell.
+The desktop app builds its runtime environment once at startup and again only after a guarded **Refresh Environment**. On macOS, Finder/Dock startup imports exported variables and executable paths from your interactive login shell, including setup in files such as `.zshrc`. Disable **Import Login Shell Environment** in **Settings → Runtime Environment** to use shell-free executable discovery instead. Explicit shell terminals still start their requested shell.
+
+Windows uses the inherited process environment, with bundled Node first and saved executable folders before inherited PATH entries. PATH uses semicolon separators and case-insensitive folder deduplication; absolute drive and UNC paths are accepted. Windows does not run Unix login-shell import, so that control is hidden. Saved executable folders and guarded refresh remain available. The discovery and Keychain sections below describe macOS behavior.
 
 ## PATH construction
 

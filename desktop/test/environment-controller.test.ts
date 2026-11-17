@@ -31,11 +31,29 @@ async function setup(
 	});
 	const showFolders = vi.fn(async () => [join(userDataPath, "agent tools")]);
 	const requestRefresh = vi.fn(async () => "refreshed" as const);
-	const options = { userDataPath, getStatus: () => status, showMessage, showFolders, requestRefresh };
+	const options = {
+		platform: "darwin" as NodeJS.Platform,
+		userDataPath,
+		getStatus: () => status,
+		showMessage,
+		showFolders,
+		requestRefresh,
+	};
 	return { options, controller: new DesktopEnvironmentController(options), messages, status };
 }
 
 describe("native runtime environment controller", () => {
+	it("does not offer or accept login-shell import on Windows", async () => {
+		const fixture = await setup([0]);
+		fixture.options.platform = "win32";
+		expect((await fixture.controller.getSnapshot()).supportsLoginShellImport).toBe(false);
+		expect((await fixture.controller.request({ kind: "set-login-shell-import", enabled: true })).outcome).toBe(
+			"unavailable",
+		);
+		await fixture.controller.open();
+		expect(fixture.messages[0]?.buttons).not.toContain("Enable Login-Shell Import");
+		expect(fixture.messages[0]?.buttons).not.toContain("Disable Login-Shell Import");
+	});
 	it.each([1, 2, 3, 4])("explains CLI attachment without exposing action %s", async (choice) => {
 		const fixture = await setup([choice], { ownership: "attached", source: "inherited", appliedDirectories: [] });
 		await fixture.controller.open();

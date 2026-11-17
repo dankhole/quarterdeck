@@ -1,17 +1,17 @@
 import { join } from "node:path";
 import { z } from "zod";
-import { desktopBuildIdentitySchema } from "../shared/desktop-installation-contract.js";
+import { readDesktopBundleIdentity } from "./bundle-identity.js";
 import { DesktopInstallationError } from "./errors.js";
-import { desktopAppTreeSha256, desktopFileSha256, desktopPhysicalFileSystem, readDesktopJson } from "./files.js";
+import { desktopAppTreeSha256, desktopFileSha256, desktopPhysicalFileSystem } from "./files.js";
 import {
 	type DesktopBundleMetadata,
 	type DesktopReleaseManifest,
 	desktopBundleDistributionMode,
 	desktopResourcePaths,
-	validateDesktopBundleMetadata,
 } from "./metadata.js";
 import { desktopApplicationBundleId } from "./receipt.js";
 import type { DesktopInstallationArchitecture, DesktopInstallationDependencies } from "./types.js";
+import { inspectWindowsDesktopApp } from "./windows-app-identity.js";
 
 const { lstat, realpath } = desktopPhysicalFileSystem;
 
@@ -36,9 +36,11 @@ export async function inspectDesktopApp(
 	appPath: string,
 	version: string,
 	arch: DesktopInstallationArchitecture,
-	dependencies: Pick<DesktopInstallationDependencies, "runCommand">,
+	dependencies: Pick<DesktopInstallationDependencies, "runCommand"> &
+		Partial<Pick<DesktopInstallationDependencies, "platform">>,
 	release?: DesktopReleaseManifest,
 ): Promise<DesktopAppIdentity> {
+	if (dependencies.platform === "win32") return inspectWindowsDesktopApp(appPath, version, arch, release);
 	if (!appPath.endsWith(".app"))
 		throw new DesktopInstallationError(
 			"invalid_artifact",
@@ -62,59 +64,7 @@ export async function inspectDesktopApp(
 		throw new DesktopInstallationError("invalid_artifact", `The app must be Quarterdeck version ${version}.`);
 	}
 	const resources = join(canonicalAppPath, "Contents/Resources");
-	const bundle = validateDesktopBundleMetadata(
-		await readDesktopJson(join(resources, "runtime/bundle-manifest.json")),
-		version,
-		arch,
-	);
-	const runtimeIdentity = desktopBuildIdentitySchema.safeParse(
-		await readDesktopJson(join(resources, "runtime/dist/build-manifest.json"), 4096),
-	);
-	if (
-		!runtimeIdentity.success ||
-		runtimeIdentity.data.version !== bundle.version ||
-		runtimeIdentity.data.buildId !== bundle.buildId ||
-		runtimeIdentity.data.sourceSha !== bundle.sourceSha ||
-		runtimeIdentity.data.sourceDirty !== bundle.sourceDirty
-	)
-		throw new DesktopInstallationError(
-			"invalid_artifact",
-			"The bundled runtime build identity differs from its app.",
-		);
-	const policyResult = z
-		.record(z.string(), z.unknown())
-		.safeParse(await readDesktopJson(join(resources, "runtime/release-policy.json")));
-	if (
-		!policyResult.success ||
-		policyResult.data.schemaVersion !== 1 ||
-		policyResult.data.repository !== "dankhole/quarterdeck"
-	) {
-		throw new DesktopInstallationError("invalid_artifact", "The app's embedded release policy is invalid.");
-	}
-	const policy = policyResult.data;
-	const policyMode = policy.distributionMode ?? (policy.signedDistribution ? "signed" : "local");
-	if (policyMode !== desktopBundleDistributionMode(bundle))
-		throw new DesktopInstallationError(
-			"invalid_artifact",
-			"The app's embedded distribution mode differs from its runtime identity.",
-		);
-	for (const field of [
-		"version",
-		"arch",
-		"buildId",
-		"sourceSha",
-		"signedDistribution",
-		"expectedTeamId",
-		"updateAuthority",
-		"channel",
-	] as const) {
-		if (!(field in policy) || policy[field] !== bundle[field]) {
-			throw new DesktopInstallationError(
-				"invalid_artifact",
-				"The app's embedded policy does not match its runtime identity.",
-			);
-		}
-	}
+	const bundle = await readDesktopBundleIdentity(resources, version, arch, "darwin");
 	const binaries = [
 		join(canonicalAppPath, "Contents/MacOS", parsedInfo.data.CFBundleExecutable),
 		join(canonicalAppPath, "Contents/MacOS/QuarterdeckHost"),

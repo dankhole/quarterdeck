@@ -18,3 +18,16 @@ export const DESKTOP_RESOURCE_PATHS = [
 	"runtime/bundle-manifest.json",
 	"runtime/release-policy.json",
 ];
+
+export function desktopResourcePathsForPlatform(platform) {
+	if (platform === "darwin") return DESKTOP_RESOURCE_PATHS;
+	if (platform !== "win32") throw new Error("Unsupported desktop resource platform.");
+	return [
+		...DESKTOP_RESOURCE_PATHS.map((path) =>
+			["runtime/bin/node", "runtime/bin/nodeHost", "runtime/installation-admission"].includes(path)
+				? `${path}.exe`
+				: path,
+		),
+		"desktop-shell.json",
+	];
+}

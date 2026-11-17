@@ -36,7 +36,7 @@ export const _testing = {
 };
 
 export interface PtyExitEvent {
-	exitCode: number;
+	exitCode: number | null;
 	signal?: number;
 }
 
@@ -218,7 +218,13 @@ export class PtySession {
 			if (ownership) {
 				void retireManagedProcessOwnership(ownership).catch(() => undefined);
 			}
-			this.onExitCallback?.(event);
+			// ConPTY may emit exit before its native agent has an exit code after
+			// external termination. Preserve unknown exit as null at this boundary;
+			// undefined would invalidate durable session state during shutdown.
+			this.onExitCallback?.({
+				exitCode: Number.isInteger(event.exitCode) ? event.exitCode : null,
+				...(Number.isInteger(event.signal) ? { signal: event.signal } : {}),
+			});
 		});
 	}
 

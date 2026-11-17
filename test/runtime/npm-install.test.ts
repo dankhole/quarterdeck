@@ -80,6 +80,17 @@ const supported: NpmInstallContext = {
 };
 
 describe("npm lifecycle installation policy", () => {
+	it("accepts an ordinary Windows user without POSIX uid or HOME", () => {
+		expect(
+			resolveNpmInstallPolicy({
+				...supported,
+				platform: "win32",
+				osRelease: "10.0.26100",
+				uid: undefined,
+				env: { ...supported.env, HOME: undefined, USERPROFILE: "C:\\Users\\synthetic" },
+			}),
+		).toEqual({ action: "install" });
+	});
 	it("installs only for an explicit supported global user installation", () => {
 		expect(resolveNpmInstallPolicy(supported)).toEqual({ action: "install" });
 	});
@@ -135,7 +146,7 @@ describe("npm lifecycle installation policy", () => {
 	it.each([
 		{ sourceCheckout: true },
 		{ platform: "linux" },
-		{ platform: "win32" },
+		{ platform: "win32", osRelease: "6.3.0" },
 		{ osRelease: "21.0" },
 		{ arch: "ia32" },
 	])("skips unsupported and source contexts %j", (override) => {
@@ -152,7 +163,7 @@ describe("npm lifecycle installation policy", () => {
 	it("reports exact recovery even if npm removes the CLI", () => {
 		const guidance = npmInstallRecoveryMessage("0.12.8", "Quit and retry");
 		expect(guidance).toContain(
-			"QUARTERDECK_INSTALL_MODE=desktop npm install -g quarterdeck@0.12.8 --foreground-scripts",
+			`${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm install -g quarterdeck@0.12.8 --foreground-scripts`,
 		);
 		expect(guidance).toContain("quarterdeck desktop install");
 		expect(guidance).toContain("--replace-owner");

@@ -14,6 +14,9 @@ export async function desktopPathExists(path: string): Promise<boolean> {
 }
 
 export async function syncDesktopDirectory(path: string): Promise<void> {
+	// Windows does not expose directory fsync through Node. File contents are
+	// flushed before atomic publication; recovery validates both trees and receipts.
+	if (process.platform === "win32") return;
 	const file = await open(path, "r");
 	try {
 		await file.sync();

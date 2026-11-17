@@ -25,6 +25,7 @@ import type {
 	DesktopInstallationDependencies,
 	EnsureDesktopInstallationOptions,
 } from "./types.js";
+import { prepareWindowsDesktopInstallation } from "./windows-prepare.js";
 
 export async function prepareDesktopInstallation(
 	stage: string,
@@ -34,6 +35,8 @@ export async function prepareDesktopInstallation(
 	arch: DesktopInstallationArchitecture,
 	dependencies: DesktopInstallationDependencies,
 ) {
+	if (dependencies.platform === "win32")
+		return prepareWindowsDesktopInstallation(stage, appPath, owner, options, arch, dependencies);
 	const mountpoint = join(stage, "mount");
 	let mounted = false;
 	const progress = (phase: "downloading" | "verifying" | "copying", message: string) => {
@@ -74,7 +77,7 @@ export async function prepareDesktopInstallation(
 				await readDesktopJson(manifestPath),
 				options.version,
 				arch,
-				await resolveDesktopReleaseDistribution(owner),
+				await resolveDesktopReleaseDistribution(owner, dependencies.platform),
 			);
 			const name = desktopContainerName(options.version, arch);
 			const artifact = release.artifacts.find((candidate) => candidate.path === name);

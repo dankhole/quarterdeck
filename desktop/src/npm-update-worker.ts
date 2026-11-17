@@ -5,17 +5,18 @@ import { access, lstat, readdir, readFile, realpath, rmdir, unlink } from "node:
 import { connect, type Socket } from "node:net";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
+import { desktopGlobalPackageSlot } from "../../src/desktop-install/layout.js";
+import { assertDesktopPrivateDirectory } from "../../src/desktop-install/private-directory.js";
 import { desktopVersionSchema, managedDesktopInstallationReceiptSchema } from "../../src/desktop-install/receipt.js";
 import {
 	desktopBuildIdentitySchema,
 	desktopInstallationOwnerSchema,
 } from "../../src/shared/desktop-installation-contract.js";
+import { desktopAbsolutePathSchema } from "../../src/shared/desktop-path-contract.js";
+import { desktopEnvironmentPath, withDesktopPath } from "./helper-path.js";
+import { updateControlPath, updateShellArgument } from "./update-platform.js";
 
-const pathSchema = z
-	.string()
-	.startsWith("/")
-	.max(4096)
-	.refine((value) => !/[\0\r\n]/u.test(value));
+const pathSchema = desktopAbsolutePathSchema;
 const fileIdentitySchema = z.strictObject({
 	path: pathSchema,
 	dev: z.number(),
@@ -66,9 +67,9 @@ export function npmUpdateArguments(prefix: string, targetVersion: string): strin
 
 export function npmUpdateRetryCommand(prefix: string, targetVersion: string): string {
 	return [
-		"QUARTERDECK_INSTALL_MODE=desktop",
+		process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop",
 		"npm",
-		...npmUpdateArguments(prefix, targetVersion).map(shellArgument),
+		...npmUpdateArguments(prefix, targetVersion).map((value) => updateShellArgument(value)),
 	].join(" ");
 }
 
@@ -125,10 +126,13 @@ export function updateEnvironment(environment: Readonly<NodeJS.ProcessEnv>, node
 		result[name] = value;
 	}
 	result.QUARTERDECK_INSTALL_MODE = "desktop";
-	result.PATH = [dirname(nodePath), ...(result.PATH ?? "").split(":"), "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-		.filter((path, index, paths) => isAbsolute(path) && !/[\0\r\n]/u.test(path) && paths.indexOf(path) === index)
-		.join(":");
-	return result;
+	return withDesktopPath(
+		result,
+		nodePath,
+		[],
+		process.platform,
+		process.platform === "win32" ? [] : ["/usr/bin", "/bin", "/usr/sbin", "/sbin"],
+	);
 }
 
 /** Lifecycle scripts must resolve Node outside the app and npm package being replaced. */
@@ -138,7 +142,8 @@ export async function externalUpdateEnvironment(
 ): Promise<NodeJS.ProcessEnv> {
 	const result = updateEnvironment(environment, request.node.path);
 	const paths: string[] = [];
-	for (const entry of (result.PATH ?? "").split(":")) {
+	const delimiter = process.platform === "win32" ? ";" : ":";
+	for (const entry of desktopEnvironmentPath(result, process.platform).split(delimiter)) {
 		try {
 			const path = await realpath(entry);
 			if (
@@ -154,9 +159,9 @@ export async function externalUpdateEnvironment(
 	}
 	if (paths[0] !== dirname(request.node.path))
 		throw new Error("npm lifecycle scripts do not have the checked external Node first in PATH.");
-	if ((await realpath(join(paths[0], "node"))) !== request.node.path)
+	if ((await realpath(join(paths[0], process.platform === "win32" ? "node.exe" : "node"))) !== request.node.path)
 		throw new Error("npm lifecycle scripts would not resolve the checked external Node.");
-	result.PATH = paths.join(":");
+	result.PATH = paths.join(delimiter);
 	return result;
 }
 
@@ -170,7 +175,15 @@ export function captureUpdateCommand(
 		execFile(
 			executable,
 			args,
-			{ env: environment, cwd: "/", shell: false, timeout: timeoutMs, maxBuffer: 128 * 1024, encoding: "utf8" },
+			{
+				env: environment,
+				cwd: process.platform === "win32" ? dirname(executable) : "/",
+				shell: false,
+				windowsHide: true,
+				timeout: timeoutMs,
+				maxBuffer: 128 * 1024,
+				encoding: "utf8",
+			},
 			(error, stdout) => {
 				if (error) reject(new Error("An update tool could not complete its bounded check."));
 				else resolve(stdout.trim());
@@ -246,6 +259,10 @@ export class NpmUpdateChannel {
 }
 
 export async function validateUpdateDirectory(directory: string): Promise<void> {
+	if (process.platform === "win32") {
+		await assertDesktopPrivateDirectory(directory);
+		return;
+	}
 	const info = await lstat(directory);
 	if (
 		!info.isDirectory() ||
@@ -261,14 +278,21 @@ export async function validateUpdateDirectory(directory: string): Promise<void> 
 export async function cleanupNpmUpdateDirectory(directory: string): Promise<void> {
 	await validateUpdateDirectory(directory);
 	const names = await readdir(directory);
-	const recognized = new Set(["request.json", "worker.mjs", "Update.command", "control.sock", "cancelled"]);
+	const recognized = new Set([
+		"request.json",
+		"worker.mjs",
+		"Update.command",
+		"Update.ps1",
+		"control.sock",
+		"cancelled",
+	]);
 	if (names.some((name) => !recognized.has(name))) throw new Error("Unrecognized handoff files were retained.");
 	for (const name of names) {
 		const path = join(directory, name);
 		const info = await lstat(path);
 		if (
 			info.isSymbolicLink() ||
-			info.uid !== process.getuid?.() ||
+			(process.platform !== "win32" && info.uid !== process.getuid?.()) ||
 			(!info.isFile() && !(name === "control.sock" && info.isSocket()))
 		)
 			throw new Error("Changed handoff files were retained.");
@@ -287,7 +311,7 @@ export async function verifyNpmUpdateOwner(request: NpmUpdateRequest): Promise<v
 	const receipt = managedDesktopInstallationReceiptSchema.parse(await readUpdateJson(installation.receiptPath));
 	if (
 		owner.kind !== "npm" ||
-		owner.packageSlot !== join(owner.prefix, "lib/node_modules/quarterdeck") ||
+		owner.packageSlot !== desktopGlobalPackageSlot(owner.prefix) ||
 		owner.packageSlot !== owner.packageRoot ||
 		(await realpath(owner.prefix)) !== owner.prefix ||
 		(await realpath(owner.packageSlot)) !== owner.packageRoot ||
@@ -351,7 +375,7 @@ async function runVisibleNpm(request: NpmUpdateRequest, environment: NodeJS.Proc
 			[request.npm.path, ...npmUpdateArguments(request.installation.owner.prefix, request.targetVersion)],
 			{
 				env: environment,
-				cwd: "/",
+				cwd: process.platform === "win32" ? dirname(request.node.path) : "/",
 				shell: false,
 				stdio: ["inherit", "inherit", "inherit"],
 			},
@@ -418,7 +442,7 @@ export async function runNpmUpdateWorker(directory: string): Promise<number> {
 		if ((await realpath(process.execPath)) !== request.node.path)
 			throw new Error("The update worker is not using the checked external Node.");
 		await Promise.all([checkUpdateTool(request.node), checkUpdateTool(request.npm), verifyNpmUpdateOwner(request)]);
-		const socket = connect(join(directory, "control.sock"));
+		const socket = connect(updateControlPath(directory));
 		channel = new NpmUpdateChannel(socket);
 		await channel.send({ kind: "hello", token: request.token });
 		const received = z
@@ -504,7 +528,7 @@ export async function runNpmUpdateWorker(directory: string): Promise<number> {
 		await runVisibleNpm(request, environment);
 		await verifyUpdatedPair(request, environment);
 		console.log(
-			`\nQuarterdeck ${request.targetVersion} and its desktop app were verified. Reopen Quarterdeck from Applications or the Dock.`,
+			`\nQuarterdeck ${request.targetVersion} and its desktop app were verified. Reopen Quarterdeck from ${process.platform === "win32" ? "the Start menu" : "Applications or the Dock"}.`,
 		);
 		return 0;
 	} catch (error) {

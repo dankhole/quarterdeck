@@ -1,5 +1,6 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { getRuntimeHomePath } from "./core/runtime-state-home.js";
 import { resolveDesktopInstallationOwner, validateDesktopInstallation } from "./desktop-install/index.js";
@@ -16,8 +17,8 @@ const executeFile = promisify(execFile);
 
 /** LaunchServices owns presentation; the CLI neither starts nor owns a runtime. */
 export async function launchDesktop(version: string): Promise<void> {
-	if (process.platform !== "darwin") {
-		throw new Error("Desktop mode is available on macOS. Use quarterdeck --browser on this platform.");
+	if (!["darwin", "win32"].includes(process.platform)) {
+		throw new Error("Desktop mode is available on macOS and Windows. Use quarterdeck --browser on this platform.");
 	}
 	if (process.env.QUARTERDECK_DESKTOP_CHILD === "1") {
 		throw new Error("A desktop runtime helper cannot launch another desktop app.");
@@ -37,9 +38,27 @@ export async function launchDesktop(version: string): Promise<void> {
 		stateHome,
 		...(projectPath ? { projectPath } : {}),
 	});
-	await executeFile("/usr/bin/open", ["-n", "-a", installation.appPath, "--args", DESKTOP_LAUNCH_ARGUMENT, request], {
-		timeout: 15_000,
-		maxBuffer: 16_384,
-	});
+	if (process.platform === "win32")
+		await new Promise<void>((accept, reject) => {
+			const child = spawn(join(installation.appPath, "Quarterdeck.exe"), [DESKTOP_LAUNCH_ARGUMENT, request], {
+				detached: true,
+				stdio: "ignore",
+				windowsHide: true,
+			});
+			child.once("error", reject);
+			child.once("spawn", () => {
+				child.unref();
+				accept();
+			});
+		});
+	else
+		await executeFile(
+			"/usr/bin/open",
+			["-n", "-a", installation.appPath, "--args", DESKTOP_LAUNCH_ARGUMENT, request],
+			{
+				timeout: 15_000,
+				maxBuffer: 16_384,
+			},
+		);
 	console.log(`Desktop launch requested: ${installation.appPath}`);
 }

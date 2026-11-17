@@ -1,5 +1,7 @@
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { normalizeFileSystemPathForComparison } from "../core/path-comparison.js";
 
 export interface DesktopLabLaunchConfig {
 	version: 1;
@@ -19,6 +21,8 @@ function within(parent: string, child: string): boolean {
 
 function isPlatformTemporaryRoot(path: string): boolean {
 	// Agent Lab overrides TMPDIR to its root; use platform roots independent of that override.
+	if (process.platform === "win32")
+		return within(realpathSync(resolve(userInfo().homedir, "AppData/Local/Temp")), path);
 	if (within(realpathSync("/tmp"), path)) return true;
 	return process.platform === "darwin" && /^\/private\/var\/folders\/[^/]+\/[^/]+\/T\/.+/.test(path);
 }
@@ -28,7 +32,7 @@ export function readLabLaunchConfig(configPath: string | undefined): DesktopLabL
 		throw new Error("Desktop prototype requires an isolated Agent Lab launch configuration.");
 	const configFile = realpathSync(configPath);
 	const stat = lstatSync(configFile);
-	if (!stat.isFile() || stat.size > 16_384 || (stat.mode & 0o077) !== 0)
+	if (!stat.isFile() || stat.size > 16_384 || (process.platform !== "win32" && (stat.mode & 0o077) !== 0))
 		throw new Error("Agent Lab configuration must be a small private file.");
 	const value: unknown = JSON.parse(readFileSync(configFile, "utf8"));
 	if (!value || typeof value !== "object" || Array.isArray(value))
@@ -62,9 +66,13 @@ export function readLabLaunchConfig(configPath: string | undefined): DesktopLabL
 		if (!within(tempRoot, result)) throw new Error("Agent Lab path escapes its temporary root.");
 		return result;
 	};
-	const stateHome = canonical(input.stateHome);
+	const stateHome = normalizeFileSystemPathForComparison(canonical(input.stateHome));
 	const userDataPath = canonical(input.userDataPath);
-	if (stateHome === userDataPath || within(stateHome, userDataPath) || within(userDataPath, stateHome))
+	if (
+		stateHome === normalizeFileSystemPathForComparison(userDataPath) ||
+		within(stateHome, userDataPath) ||
+		within(userDataPath, stateHome)
+	)
 		throw new Error("Runtime and Electron storage must be separate.");
 	const evidenceParent = realpathSync(dirname(input.processEvidencePath));
 	if (evidenceParent !== tempRoot && !within(tempRoot, evidenceParent))

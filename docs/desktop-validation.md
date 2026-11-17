@@ -1,6 +1,6 @@
 # Desktop acceptance gates
 
-The supported release design is npm-owned, public ad-hoc-signed macOS desktop distribution (`adhoc-v1`), without paid Apple membership or notarization. Source and local ARM64 packaged evidence do not establish every native acceptance gate below. These gates do not block a `browser-only` npm release; an `adhoc-v1` release must build and publicly verify its app assets regardless of `QUARTERDECK_DESKTOP_RELEASES`. Apple signing/notarization and stable Developer ID continuity are optional-lane gates, not prerequisites for free desktop distribution.
+The supported release design is npm-owned desktop distribution: public ad-hoc-signed macOS (`adhoc-v1`) and unsigned Windows (`unsigned-v1`), without paid signing membership. Local packaged evidence does not establish every native acceptance gate below. These gates do not block a `browser-only` npm release; a desktop-capable release must build and publicly verify its declared app assets regardless of `QUARTERDECK_DESKTOP_RELEASES`. Apple signing/notarization and stable Developer ID continuity are optional-lane gates, not prerequisites for free desktop distribution.
 
 Use [testing scope](./testing.md) to select checks and the [release runbook](./desktop-release.md) for packaging and acceptance procedures. Execution work belongs in the primary checkout's Chit backlog. This page is a compact gate summary; the [frozen candidate evidence](./history/desktop-validation-evidence.md) preserves exact identities, executed commands, failures, limitations, and cleanup receipts recorded through 2026-10-19. Those historical results apply only to their named artifacts and unchanged behavior, not automatically to the current tree.
 
@@ -17,6 +17,16 @@ Use [testing scope](./testing.md) to select checks and the [release runbook](./d
 | Real provider compatibility | Codex 0.159.0 startup, held permission without file effect, and exact-session resume with fresh native hooks passed on candidate `34a26c7c`. Claude preflight was blocked; Pi remains unexecuted. This is scoped compatibility evidence, not current-version or all-workflow acceptance. See [provider evidence](./history/desktop-validation-evidence.md#packaged-run-history). |
 
 ## Open acceptance gates
+
+### Windows candidate scope
+
+Native Windows x64 candidate `9f9828d4-e005-4e00-9280-239d4ea117ff` (version `0.12.16`, dirty source `038aa56bd74ad4162383f732fbb566efe7ed9cf8`) passed package verification with pinned Node 22.22.2 and native ConPTY. ZIP SHA-256: `707af672a8c1c790d1e8b306b31d13a59889430042882deda07dd46979763fac`; manifest: `desktop/out/artifact-manifest-win32-x64.json`. This is an inspection-enabled local candidate, not a public release.
+
+The isolated packaged smoke at `test-results/agent-lab/desktop-smoke-20261117T210121Z-b25f6b/` passed typed project launch, same-instance handoff, fake-provider ConPTY work, native reload, renderer isolation, guarded quit, mutation refusal while running, replacement, shortcut replacement, uninstall, and user-state preservation. `windows-chromium-custody.json` records actual OS job membership for Chromium and crashpad with sandbox unchanged and report upload disabled. `windows-installation-lifecycle.json` and the stopped manifest record graceful cleanup, no fallback, and no remaining processes. Native fault-injection tests separately cover killed monitors, durable launch markers, transactional recovery, and an actual Explorer-brokered external PowerShell worker.
+
+Windows implementation is enabled. Public publication and actual npm N-to-N+1 updating still require a new immutable release; this candidate cannot replace published `0.12.16` assets. Native ARM64 build/lifecycle checks are required by the Windows CI/release matrix and were not executed on this x64 host. Minimum Windows 10 hardware, SmartScreen/user approval, visible OS interaction, and real-provider compatibility require their own evidence. Synthetic Start menu links and profile directories do not prove a real user's shell experience.
+
+### Cross-platform release gates
 
 These requirements survive the archived design plans. Close a gate only with evidence for the relevant final candidate; retain unsupported or untested combinations explicitly.
 

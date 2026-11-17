@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 
 import { processListEnvironment } from "./browser-processes";
 import type { DesktopLabProcess } from "./desktop-types";
+import { listWindowsDesktopProcesses } from "./desktop-windows-processes";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,7 +22,8 @@ export function parseDesktopProcessList(contents: string): DesktopLabProcess[] {
 	});
 }
 
-export async function listDesktopProcesses(): Promise<DesktopLabProcess[]> {
+export async function listDesktopProcesses(platform: NodeJS.Platform = process.platform): Promise<DesktopLabProcess[]> {
+	if (platform === "win32") return listWindowsDesktopProcesses();
 	const { stdout } = await execFileAsync("/bin/ps", ["-ax", "-o", "pid=,ppid=,stat=,lstart=,command="], {
 		encoding: "utf8",
 		env: processListEnvironment(process.env),
@@ -36,7 +38,13 @@ export async function listDesktopProcesses(): Promise<DesktopLabProcess[]> {
 }
 
 export function sameDesktopProcess(left: DesktopLabProcess, right: DesktopLabProcess): boolean {
-	return left.pid === right.pid && left.startedAt === right.startedAt && left.command === right.command;
+	if (left.pid !== right.pid || left.startedAt !== right.startedAt) return false;
+	// Windows may stop exposing argv while an owned process is exiting. Its
+	// precise kernel creation identity still fences PID reuse; compare argv too
+	// whenever both observations can read it. Unix birth timestamps are coarser.
+	return (
+		left.command === right.command || (left.startedAt.startsWith("windows:") && (!left.command || !right.command))
+	);
 }
 
 export function findMarkedDesktopProcesses(
@@ -46,11 +54,14 @@ export function findMarkedDesktopProcesses(
 	hostSimulationConfigPath: string,
 ): number[] {
 	const hasExactMarker = (command: string, marker: string): boolean =>
-		command.endsWith(marker) || command.includes(`${marker} `);
+		command.endsWith(marker) ||
+		command.includes(`${marker} `) ||
+		command.endsWith(`${marker}"`) ||
+		command.includes(`${marker}" `);
 	return processes
 		.filter(
 			(process) =>
-				process.command.includes(`${appPath}/Contents/`) &&
+				(process.command.includes(`${appPath}/Contents/`) || process.command.includes(`${appPath}\\`)) &&
 				(hasExactMarker(process.command, `--user-data-dir=${userDataPath}`) ||
 					hasExactMarker(process.command, hostSimulationConfigPath)),
 		)
@@ -64,6 +75,12 @@ export function collectOwnedDesktopProcesses(
 	previous: DesktopLabProcess[] = [],
 ): DesktopLabProcess[] {
 	const retained = new Map(previous.map((process) => [process.pid, process]));
+	const indexed = new Map(processes.map((entry) => [entry.pid, entry]));
+	for (const earlier of previous) {
+		const current = indexed.get(earlier.pid);
+		if (current && !current.startedAt)
+			throw new Error("An owned desktop process has unreadable identity; cleanup remains unconfirmed.");
+	}
 	const owned = new Set(
 		processes
 			.filter((process) => {
@@ -77,6 +94,15 @@ export function collectOwnedDesktopProcesses(
 		added = false;
 		for (const process of processes) {
 			if (!owned.has(process.pid) && owned.has(process.parentPid)) {
+				const parent = indexed.get(process.parentPid);
+				if (parent?.startedAt.startsWith("windows:")) {
+					if (!process.startedAt) throw new Error("A desktop descendant has unreadable Windows identity.");
+					if (
+						!process.startedAt.startsWith("windows:") ||
+						BigInt(process.startedAt.slice(8)) < BigInt(parent.startedAt.slice(8))
+					)
+						continue;
+				}
 				owned.add(process.pid);
 				added = true;
 			}

@@ -55,7 +55,7 @@ describe("desktop lab owned process cleanup", () => {
 				};
 			},
 		);
-		const census = await listDesktopProcesses();
+		const census = await listDesktopProcesses("darwin");
 		const tree = await findAgentLabBrowserProcessTree("/repo/café", "qd-localized-census", {
 			platform: "darwin",
 			resolveDaemonEntrypoint: () => daemonPath,
@@ -102,6 +102,19 @@ describe("desktop lab owned process cleanup", () => {
 				first,
 			).map((entry) => entry.pid),
 		).toEqual([101, 102]);
+	});
+	it("retains a precise Windows descendant when exit hides its argv, without admitting a recycled PID", () => {
+		const parent = processRecord(100, 1, "native-launch", "windows:100");
+		const child = processRecord(101, 100, "", "windows:110");
+		const owned = collectOwnedDesktopProcesses([parent, child], [100]);
+		expect(owned.map((row) => row.pid)).toEqual([100, 101]);
+		expect(
+			collectOwnedDesktopProcesses([{ ...child, parentPid: 1, command: "visible-again" }], [], owned),
+		).toHaveLength(1);
+		expect(
+			collectOwnedDesktopProcesses([{ ...child, parentPid: 1, startedAt: "windows:120" }], [], owned),
+		).toHaveLength(0);
+		expect(collectOwnedDesktopProcesses([parent, { ...child, startedAt: "windows:90" }], [100])).toEqual([parent]);
 	});
 
 	it("requires both packaged path and the run marker to find failed-launch remnants", () => {

@@ -16,6 +16,7 @@ When changing the instruction bridge, run `npm run check:agent-instructions`. Do
 
 - Avoid `any` unless no sound alternative exists.
 - Inspect installed dependency types instead of guessing external APIs. Prefer SDK-provided types, schemas, helpers, and model metadata over local redefinitions.
+- Normalize native callback values at the adapter boundary even when dependency types declare them required; see [native PTY exit values](docs/conventions/session-lifecycle.md#native-pty-exit-values).
 - Use standard top-level imports. Never use dynamic imports for types, `await import("./foo.js")`, or `import("pkg").Type` type positions.
 - Never remove or downgrade working code to accommodate stale dependency types; upgrade the dependency.
 

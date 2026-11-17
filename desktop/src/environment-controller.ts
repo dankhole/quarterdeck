@@ -23,6 +23,7 @@ export interface DesktopEnvironmentStatus {
 export type DesktopEnvironmentRefreshResult = "refreshed" | "cancelled" | "incomplete" | "failed";
 
 export interface DesktopEnvironmentControllerOptions {
+	platform?: NodeJS.Platform;
 	userDataPath: string;
 	getStatus: () => DesktopEnvironmentStatus;
 	showMessage: (options: MessageBoxOptions) => Promise<number>;
@@ -48,6 +49,9 @@ export class DesktopEnvironmentController {
 	private active: Promise<void> | null = null;
 	private mutation: Promise<unknown> = Promise.resolve();
 	constructor(private readonly options: DesktopEnvironmentControllerOptions) {}
+	private get supportsShellImport(): boolean {
+		return (this.options.platform ?? process.platform) === "darwin";
+	}
 
 	async getSnapshot(): Promise<DesktopEnvironmentSnapshot> {
 		let preferences: DesktopEnvironmentSnapshot["preferences"] = null;
@@ -62,6 +66,7 @@ export class DesktopEnvironmentController {
 		}
 		const status = this.options.getStatus();
 		return {
+			...(!this.supportsShellImport ? { supportsLoginShellImport: false } : {}),
 			ownership: status.ownership,
 			source: status.source,
 			failureReason: status.failureReason ?? null,
@@ -98,6 +103,7 @@ export class DesktopEnvironmentController {
 					preferences = await readDesktopEnvironmentPreferences(this.options.userDataPath);
 					if (!allowed()) return respond("unavailable");
 					if (parsed.data.kind === "set-login-shell-import") {
+						if (!this.supportsShellImport) return respond("unavailable");
 						preferences.importLoginShellEnvironment = parsed.data.enabled;
 					} else if (parsed.data.kind === "reset-folders") {
 						preferences.extraExecutableDirectories = [];
@@ -187,7 +193,8 @@ export class DesktopEnvironmentController {
 			}[status.source];
 			const changed =
 				JSON.stringify(status.appliedDirectories) !== JSON.stringify(preferences.extraExecutableDirectories) ||
-				status.appliedImportLoginShellEnvironment !== preferences.importLoginShellEnvironment;
+				(this.supportsShellImport &&
+					status.appliedImportLoginShellEnvironment !== preferences.importLoginShellEnvironment);
 			const choice = await this.options.showMessage({
 				type: status.failureReason ? "warning" : "info",
 				title: "Runtime Environment",
@@ -197,14 +204,22 @@ export class DesktopEnvironmentController {
 					"Add Folders…",
 					"Reset Override",
 					"Refresh Environment",
-					preferences.importLoginShellEnvironment ? "Disable Login-Shell Import" : "Enable Login-Shell Import",
+					...(this.supportsShellImport
+						? [
+								preferences.importLoginShellEnvironment
+									? "Disable Login-Shell Import"
+									: "Enable Login-Shell Import",
+							]
+						: []),
 				],
 				defaultId: 0,
 				cancelId: 0,
 				detail: [
 					`Environment source: ${source}.`,
 					`Current login-shell import: ${status.appliedImportLoginShellEnvironment === undefined ? "Not applied yet" : status.appliedImportLoginShellEnvironment ? "Enabled" : "Disabled"}.`,
-					`Saved login-shell import: ${preferences.importLoginShellEnvironment ? "Enabled" : "Disabled"}.`,
+					...(this.supportsShellImport
+						? [`Saved login-shell import: ${preferences.importLoginShellEnvironment ? "Enabled" : "Disabled"}.`]
+						: []),
 					status.failureReason
 						? FAILURE_GUIDANCE[status.failureReason]
 						: "Git and task agents are installed separately from Quarterdeck.",

@@ -21,14 +21,14 @@ function owner(kind: "npm" | "link", prefix = "/synthetic/Node Install"): Deskto
 describe("npm-owned desktop updates", () => {
 	it("pins checked manual updates to the public registry and rejects command text as a version", () => {
 		expect(desktopUpdateGuidance(owner("npm"), "0.12.9").command).toBe(
-			"QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix '/synthetic/Node Install' quarterdeck@0.12.9 --registry https://registry.npmjs.org --foreground-scripts",
+			`${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm install --global --prefix '/synthetic/Node Install' quarterdeck@0.12.9 --registry https://registry.npmjs.org --foreground-scripts`,
 		);
 		expect(() => desktopUpdateGuidance(owner("npm"), "0.12.9; touch /tmp/invalid")).toThrow();
 	});
 	it("targets the owning prefix explicitly even when the current shell uses another Node", () => {
 		const guidance = desktopUpdateGuidance(owner("npm"));
 		expect(guidance.command).toBe(
-			"QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix '/synthetic/Node Install' quarterdeck@latest",
+			`${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm install --global --prefix '/synthetic/Node Install' quarterdeck@latest`,
 		);
 		expect(guidance.detail).toContain("/synthetic/Node Install");
 		expect(guidance.detail).toContain("Quit Quarterdeck");
@@ -36,14 +36,20 @@ describe("npm-owned desktop updates", () => {
 
 	it("directs local installs to rebuild their recorded checkout", () => {
 		const guidance = desktopUpdateGuidance(owner("link"));
-		expect(guidance.command).toBe("cd '/synthetic/Quarterdeck Checkout' && npm run link");
+		expect(guidance.command).toBe(
+			process.platform === "win32"
+				? "Set-Location -LiteralPath '/synthetic/Quarterdeck Checkout'; npm run link"
+				: "cd '/synthetic/Quarterdeck Checkout' && npm run link",
+		);
 		expect(guidance.detail).toContain("/synthetic/Quarterdeck Checkout");
 	});
 
 	it("quotes receipt paths as shell arguments", () => {
 		const guidance = desktopUpdateGuidance(owner("npm", "/synthetic/O'Brien/$(touch bad)`cmd`"));
 		expect(guidance.command).toBe(
-			"QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix '/synthetic/O'\"'\"'Brien/$(touch bad)`cmd`' quarterdeck@latest",
+			process.platform === "win32"
+				? "$env:QUARTERDECK_INSTALL_MODE='desktop'; npm install --global --prefix '/synthetic/O''Brien/$(touch bad)`cmd`' quarterdeck@latest"
+				: "QUARTERDECK_INSTALL_MODE=desktop npm install --global --prefix '/synthetic/O'\"'\"'Brien/$(touch bad)`cmd`' quarterdeck@latest",
 		);
 	});
 

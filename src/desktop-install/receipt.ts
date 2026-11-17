@@ -9,7 +9,7 @@ export const desktopVersionPattern =
 export const desktopSha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 export const desktopVersionSchema = z.string().max(96).regex(desktopVersionPattern);
 export const desktopArchitectureSchema = z.enum(["arm64", "x64"]);
-export const desktopDistributionModeSchema = z.enum(["local", "ad-hoc", "signed"]);
+export const desktopDistributionModeSchema = z.enum(["local", "ad-hoc", "signed", "windows-unsigned"]);
 export type DesktopDistributionMode = z.infer<typeof desktopDistributionModeSchema>;
 
 export const legacyManagedDesktopInstallationReceiptSchema = z
@@ -95,7 +95,9 @@ export const managedDesktopInstallationReceiptSchema = z
 			receipt.release !== null &&
 			(mode === "signed"
 				? receipt.signing.verified && receipt.signing.teamId !== null
-				: mode === "ad-hoc" && !receipt.signing.verified && receipt.signing.teamId === null)
+				: (mode === "ad-hoc" || mode === "windows-unsigned") &&
+					!receipt.signing.verified &&
+					receipt.signing.teamId === null)
 		);
 	}, "Installation origin, distribution mode, and Developer ID verification must agree.");
 

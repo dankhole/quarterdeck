@@ -1,7 +1,7 @@
 export interface LaunchEnvironment {
 	platform: string;
 	arch: string;
-	/** Darwin kernel release (macOS 13 starts at Darwin 22). */
+	/** Native kernel release (macOS 13 starts at Darwin 22; Windows 10 at NT 10). */
 	osRelease: string;
 	graphicalSession: boolean;
 	desktopHelper: boolean;
@@ -23,11 +23,9 @@ export interface LaunchPolicy {
 
 /** This matches the native package's macOS 13 floor without loading desktop tooling. */
 export function supportsDesktopHost(environment: Pick<LaunchEnvironment, "platform" | "arch" | "osRelease">): boolean {
-	return (
-		environment.platform === "darwin" &&
-		(environment.arch === "arm64" || environment.arch === "x64") &&
-		Number.parseInt(environment.osRelease.split(".")[0] ?? "", 10) >= 22
-	);
+	if (!["arm64", "x64"].includes(environment.arch)) return false;
+	const major = Number.parseInt(environment.osRelease.split(".")[0] ?? "", 10);
+	return (environment.platform === "darwin" && major >= 22) || (environment.platform === "win32" && major >= 10);
 }
 
 /** Subcommands bypass this policy; their parsing and effects belong to their command owners. */
@@ -35,10 +33,10 @@ export function resolveLaunchPolicy(options: LaunchOptions, environment: LaunchE
 	if (options.desktop) {
 		if (environment.desktopHelper) throw new Error("A desktop runtime helper cannot launch another desktop app.");
 		if (!supportsDesktopHost(environment)) {
-			throw new Error("Desktop mode requires macOS 13 or newer on arm64 or x64. Use quarterdeck --browser.");
+			throw new Error("Desktop mode requires macOS 13+ or Windows 10+ on arm64 or x64. Use quarterdeck --browser.");
 		}
 		if (!environment.graphicalSession) {
-			throw new Error("Desktop mode requires a local macOS graphical session. Use quarterdeck --browser --no-open.");
+			throw new Error("Desktop mode requires a local graphical session. Use quarterdeck --browser --no-open.");
 		}
 		if (options.browser || options.runtimeFlags || options.noOpen) {
 			throw new Error("--desktop cannot be combined with browser or runtime options.");

@@ -222,7 +222,26 @@ export class DesktopLabDriver {
 		const application = this.application;
 		this.applicationClosed = new Promise((resolve) => application.once("close", () => resolve()));
 		const child = application.process();
-		fixture.manifest.mainPid = child.pid ?? null;
+		if (process.platform === "win32") {
+			const identity = await application.evaluate(() => ({ pid: process.pid, parentPid: process.ppid }));
+			const snapshot = await listDesktopProcesses();
+			const bootstrap = snapshot.find((row) => row.pid === identity.parentPid);
+			const marked = findMarkedDesktopProcesses(
+				snapshot,
+				fixture.manifest.appPath,
+				fixture.config.userDataPath,
+				fixture.config.hostSimulationConfigPath,
+			);
+			// Playwright starts a cmd.exe process on Windows. Admit only its exact
+			// marked native child and that child's actual Electron descendant.
+			if (
+				!bootstrap ||
+				!marked.includes(bootstrap.pid) ||
+				(bootstrap.pid !== child.pid && bootstrap.parentPid !== child.pid)
+			)
+				throw new Error("Windows desktop did not launch through its owned native bootstrap.");
+			fixture.manifest.mainPid = identity.pid;
+		} else fixture.manifest.mainPid = child.pid ?? null;
 		const stdout = (chunk: Buffer) => this.log("electron.stdout.log", chunk.toString());
 		const stderr = (chunk: Buffer) => this.log("electron.stderr.log", chunk.toString());
 		child.stdout?.on("data", stdout);
@@ -245,16 +264,19 @@ export class DesktopLabDriver {
 			this.configEvidence.observe(page);
 		}
 		await this.trackProcesses();
-		this.originalMain = this.knownProcesses.find((entry) => entry.pid === child.pid) ?? null;
+		this.originalMain = this.knownProcesses.find((entry) => entry.pid === fixture.manifest.mainPid) ?? null;
 		if (this.originalMain) this.debugEndpoint = await readDesktopDebugEndpoint(fixture.config.userDataPath);
-		this.trackingTimer = setInterval(() => {
-			if (this.stopped) return;
-			this.tracking = this.tracking
-				.then(() => (this.stopped ? undefined : this.trackProcesses()))
-				.catch((error: unknown) => {
-					this.log("tracking-errors.log", `${error instanceof Error ? error.message : String(error)}\n`);
-				});
-		}, 500);
+		this.trackingTimer = setInterval(
+			() => {
+				if (this.stopped) return;
+				this.tracking = this.tracking
+					.then(() => (this.stopped ? undefined : this.trackProcesses()))
+					.catch((error: unknown) => {
+						this.log("tracking-errors.log", `${error instanceof Error ? error.message : String(error)}\n`);
+					});
+			},
+			process.platform === "win32" ? 2000 : 500,
+		);
 		const page = await this.application.firstWindow({ timeout: 45_000 });
 		this.observePageLogs(page);
 		page.setDefaultTimeout(20_000);

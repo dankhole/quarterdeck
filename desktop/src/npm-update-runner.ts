@@ -1,14 +1,29 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { access, chmod, copyFile, lstat, mkdir, mkdtemp, readdir, realpath, unlink, writeFile } from "node:fs/promises";
+import {
+	access,
+	chmod,
+	copyFile,
+	lstat,
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	realpath,
+	unlink,
+	writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
 import type { DesktopInstallation } from "../../src/desktop-install/index.js";
+import { desktopBootstrapPath } from "../../src/desktop-install/layout.js";
 import { desktopVersionSchema } from "../../src/desktop-install/receipt.js";
+import { desktopEnvironmentPath } from "./helper-path.js";
 import {
 	captureUpdateCommand,
 	cleanupNpmUpdateDirectory,
@@ -25,6 +40,7 @@ import {
 	validateUpdateDirectory,
 	verifyNpmUpdateOwner,
 } from "./npm-update-worker.js";
+import { updateControlPath, updateShellArgument } from "./update-platform.js";
 
 export interface PreparedNpmUpdate {
 	launch(): Promise<void>;
@@ -85,7 +101,9 @@ async function executableFromPath(
 	environment: Readonly<NodeJS.ProcessEnv>,
 	roots: string[],
 ): Promise<string> {
-	for (const directory of (environment.PATH ?? "").split(":")) {
+	for (const directory of desktopEnvironmentPath(environment, process.platform).split(
+		process.platform === "win32" ? ";" : ":",
+	)) {
 		if (!isAbsolute(directory) || /[\0\r\n]/u.test(directory)) continue;
 		try {
 			const path = await realpath(join(directory, name));
@@ -101,9 +119,13 @@ async function executableFromPath(
 
 async function resolveToolchain(options: PrepareNpmUpdateOptions): Promise<Pick<NpmUpdateRequest, "node" | "npm">> {
 	const roots = [await realpath(options.installation.appPath), await realpath(options.installation.owner.packageRoot)];
-	const nodePath = await executableFromPath("node", options.environment, roots);
-	const npmPath = await executableFromPath("npm", options.environment, roots);
-	if (!npmPath.endsWith("/bin/npm-cli.js"))
+	const windows = process.platform === "win32";
+	const nodePath = await executableFromPath(windows ? "node.exe" : "node", options.environment, roots);
+	const npmExecutable = await executableFromPath(windows ? "npm.cmd" : "npm", options.environment, roots);
+	const npmPath = windows
+		? await realpath(join(dirname(npmExecutable), "node_modules/npm/bin/npm-cli.js"))
+		: npmExecutable;
+	if (!windows && !npmPath.endsWith("/bin/npm-cli.js"))
 		throw new NpmUpdateCheckError("The desktop launch PATH does not select a standard external npm installation.");
 	const metadata = z
 		.object({ name: z.literal("npm"), version: z.string().regex(/^\d+\.\d+\.\d+$/u) })
@@ -140,10 +162,11 @@ async function openTerminal(commandPath: string): Promise<void> {
 async function allocateDirectory(options: PrepareNpmUpdateOptions, temporaryRoot?: string): Promise<string> {
 	// Darwin's per-user TMPDIR is often too long for a Unix-domain socket (104 bytes).
 	const temporary = await realpath(temporaryRoot ?? (process.platform === "darwin" ? "/private/tmp" : tmpdir()));
-	const root = join(temporary, `quarterdeck-npm-updates-${process.getuid?.()}`);
+	const root = join(temporary, `quarterdeck-npm-updates-${process.getuid?.() ?? "user"}`);
 	await mkdir(root, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
 		if (error.code !== "EEXIST") throw error;
 	});
+	if (process.platform === "win32") await ensurePrivateDirectory(root);
 	await validateUpdateDirectory(root);
 	if ((await readdir(root)).length >= 4)
 		throw new NpmUpdateCheckError(
@@ -151,7 +174,8 @@ async function allocateDirectory(options: PrepareNpmUpdateOptions, temporaryRoot
 		);
 	const directory = await mkdtemp(join(root, "handoff-"));
 	await chmod(directory, 0o700);
-	if (Buffer.byteLength(join(directory, "control.sock")) >= 104) {
+	if (process.platform === "win32") await ensurePrivateDirectory(directory);
+	if (process.platform !== "win32" && Buffer.byteLength(join(directory, "control.sock")) >= 104) {
 		await cleanupNpmUpdateDirectory(directory);
 		throw new NpmUpdateCheckError("The private update handoff path is too long for macOS IPC.");
 	}
@@ -205,17 +229,18 @@ export async function prepareNpmUpdate(
 		directory = await allocateDirectory(options, services.temporaryRoot);
 		const handoff = directory;
 		const workerPath = join(handoff, "worker.mjs");
-		const commandPath = join(handoff, "Update.command");
-		await copyFile(
-			services.workerPath ?? fileURLToPath(new URL("./npm-update-worker.mjs", import.meta.url)),
-			workerPath,
-			constants.COPYFILE_EXCL,
-		);
+		const windows = process.platform === "win32";
+		const commandPath = join(handoff, windows ? "Update.ps1" : "Update.command");
+		const sourceWorker = services.workerPath ?? fileURLToPath(new URL("./npm-update-worker.mjs", import.meta.url));
+		if (windows) await writeFile(workerPath, await readFile(sourceWorker), { flag: "wx", mode: 0o600 });
+		else await copyFile(sourceWorker, workerPath, constants.COPYFILE_EXCL);
 		await chmod(workerPath, 0o600);
 		await writeFile(join(handoff, "request.json"), JSON.stringify(request), { flag: "wx", mode: 0o600 });
 		await writeFile(
 			commandPath,
-			`#!/bin/sh\nexec /usr/bin/env -i ${shellArgument(tools.node.path)} ${shellArgument(workerPath)} ${shellArgument(handoff)}\n`,
+			windows
+				? `\uFEFF$ErrorActionPreference='Stop'\n$systemRoot=[IO.Directory]::GetParent([Environment]::SystemDirectory).FullName\nforeach($name in @([Environment]::GetEnvironmentVariables('Process').Keys)){[Environment]::SetEnvironmentVariable($name,$null,'Process')}\n$env:SystemRoot=$systemRoot\n$env:WINDIR=$systemRoot\n& ${updateShellArgument(tools.node.path)} ${updateShellArgument(workerPath)} ${updateShellArgument(handoff)}\nexit $LASTEXITCODE\n`
+				: `#!/bin/sh\nexec /usr/bin/env -i ${shellArgument(tools.node.path)} ${shellArgument(workerPath)} ${shellArgument(handoff)}\n`,
 			{ flag: "wx", mode: 0o700 },
 		);
 		let channel: NpmUpdateChannel | undefined;
@@ -254,7 +279,7 @@ export async function prepareNpmUpdate(
 		});
 		await new Promise<void>((resolve, reject) => {
 			server.once("error", reject);
-			server.listen(join(handoff, "control.sock"), () => {
+			server.listen(updateControlPath(handoff), () => {
 				server.off("error", reject);
 				resolve();
 			});
@@ -313,7 +338,21 @@ export async function prepareNpmUpdate(
 				if (state !== "prepared") throw new Error("The update handoff has already launched or was cancelled.");
 				state = "launching";
 				try {
-					await (services.launchTerminal ?? openTerminal)(commandPath, tools.node.path, workerPath, handoff);
+					const launchTerminal =
+						services.launchTerminal ??
+						(windows
+							? async (path: string) => {
+									await new Promise<void>((accept, reject) =>
+										execFile(
+											desktopBootstrapPath(options.installation.appPath, "win32"),
+											["--quarterdeck-update-window", path],
+											{ windowsHide: true, timeout: 10000, maxBuffer: 4096 },
+											(error) => (error ? reject(error) : accept()),
+										),
+									);
+								}
+							: openTerminal);
+					await launchTerminal(commandPath, tools.node.path, workerPath, handoff);
 					await bounded(
 						readiness,
 						services.readinessTimeoutMs ?? 15_000,

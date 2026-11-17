@@ -19,11 +19,11 @@ interface InstallOptions {
 }
 
 export function registerDesktopCommand(program: Command, version: string): void {
-	const desktop = program.command("desktop").description("Manage Quarterdeck's npm-owned macOS app.");
+	const desktop = program.command("desktop").description("Manage Quarterdeck's npm-owned desktop app.");
 	desktop
 		.command("install")
-		.description("Complete or repair this CLI's exact macOS app installation without launching it.")
-		.option("--from <app-path>", "Import an explicitly selected local .app candidate.")
+		.description("Complete or repair this CLI's exact desktop app installation without launching it.")
+		.option("--from <app-path>", "Import an explicitly selected local packaged app candidate.")
 		.option("--replace-owner", "Explicitly transfer app ownership to this npm prefix or linked checkout.")
 		.addOption(new Option("--owner-package-slot <path>").hideHelp())
 		.addOption(new Option("--owner-prefix <path>").hideHelp())

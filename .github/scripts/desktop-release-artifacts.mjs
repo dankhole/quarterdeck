@@ -5,7 +5,7 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { DESKTOP_RESOURCE_PATHS } from "../../desktop/scripts/desktop-resource-paths.mjs";
+import { desktopResourcePathsForPlatform } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { distributionModeFor } from "../../desktop/scripts/release-policy.mjs";
 
 const sha256Pattern = /^[a-f0-9]{64}$/u;
@@ -17,32 +17,35 @@ export async function checksum(path) {
 	return hash.digest("hex");
 }
 
-export function artifactNames(version, arch) {
+export function artifactNames(version, arch, platform="darwin") {
 	if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u.test(version)) throw new Error("Invalid release version.");
 	if (!["arm64", "x64"].includes(arch)) throw new Error("Unsupported release architecture.");
-	return ["dmg", "zip"].map((extension) => `Quarterdeck-${version}-darwin-${arch}.${extension}`);
+	if(!["darwin","win32"].includes(platform)) throw new Error("Unsupported release platform.");
+	return (platform === "win32"?["zip"]:["dmg", "zip"]).map((extension) => `Quarterdeck-${version}-${platform}-${arch}.${extension}`);
 }
 
 export function publicDistributionMode(distribution) {
 	if (distribution === "ad-hoc") return "ad-hoc";
 	if (distribution === "signed-notarized") return "signed";
+	if(distribution === "windows-unsigned") return "windows-unsigned";
 	throw new Error("Expected an explicit public ad-hoc or signed-notarized distribution.");
 }
 
 export async function validateRelease(directory, version, sourceSha, expectedDistribution = "signed-notarized") {
 	const expectedMode = publicDistributionMode(expectedDistribution);
+	const platform=expectedMode === "windows-unsigned"?"win32":"darwin";
 	if (!sourcePattern.test(sourceSha)) throw new Error("Release source must be an exact commit SHA.");
 	const production = /^\d+\.\d+\.\d+$/u.test(version);
 	const files = [];
 	let first;
 	for (const arch of ["arm64", "x64"]) {
-		const manifestName = `artifact-manifest-darwin-${arch}.json`;
+		const manifestName = `artifact-manifest-${platform}-${arch}.json`;
 		const manifestPath = join(directory, manifestName);
 		if (!(await lstat(manifestPath)).isFile()) throw new Error("Manifest must be a real file.");
 		const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 		if (
 			manifest.schemaVersion !== 1 ||
-			manifest.platform !== "darwin" ||
+			manifest.platform !== platform ||
 			manifest.arch !== arch ||
 			manifest.version !== version ||
 			manifest.sourceSha !== sourceSha ||
@@ -73,12 +76,12 @@ export async function validateRelease(directory, version, sourceSha, expectedDis
 		})) {
 			if (manifest.fuses?.[name] !== expected) throw new Error(`Unsafe ${name} fuse: ${arch}.`);
 		}
-		for (const field of ["buildId", "electronVersion", "nodeVersion", "nodeAbi", "minimumMacOSVersion"]) {
+		for (const field of ["buildId", "electronVersion", "nodeVersion", "nodeAbi", ...(platform === "darwin"?["minimumMacOSVersion"]:[])]) {
 			if (typeof manifest[field] !== "string" || !manifest[field]) throw new Error(`Missing ${field}: ${arch}.`);
 		}
 		if (!sha256Pattern.test(manifest.runtimeLockSha256) || !sha256Pattern.test(manifest.nodeArchive?.sha256))
 			throw new Error(`Missing dependency provenance: ${arch}.`);
-		for (const resource of DESKTOP_RESOURCE_PATHS) {
+		for (const resource of desktopResourcePathsForPlatform(platform)) {
 			if (!sha256Pattern.test(manifest.checksums?.[resource]))
 				throw new Error(`Missing resource checksum: ${arch}.`);
 		}
@@ -101,7 +104,7 @@ export async function validateRelease(directory, version, sourceSha, expectedDis
 			}
 		}
 		first = manifest;
-		const expected = artifactNames(version, arch);
+		const expected = artifactNames(version, arch,platform);
 		if (!Array.isArray(manifest.artifacts) || manifest.artifacts.length !== expected.length)
 			throw new Error(`Incomplete artifact set: ${arch}.`);
 		for (const name of expected) {
@@ -126,21 +129,22 @@ export async function validateRelease(directory, version, sourceSha, expectedDis
 
 async function finalize(arch, sourceSha, directory, expectedDistribution) {
 	const expectedMode = publicDistributionMode(expectedDistribution);
+	const platform=expectedMode === "windows-unsigned"?"win32":"darwin";
 	if (!sourcePattern.test(sourceSha)) throw new Error("Release source must be an exact commit SHA.");
 	const root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 	const out = join(root, "desktop", "out");
-	const manifestName = `artifact-manifest-darwin-${arch}.json`;
+	const manifestName = `artifact-manifest-${platform}-${arch}.json`;
 	const manifest = JSON.parse(await readFile(join(out, manifestName), "utf8"));
 	if (manifest.sourceSha !== sourceSha || manifest.arch !== arch || manifest.sourceDirty !== false)
 		throw new Error("Packaged source identity mismatch.");
 	if (
 		distributionModeFor(manifest) !== expectedMode ||
-		manifest.distribution !== `${expectedMode === "signed" ? "signed" : "ad-hoc"}-prototype-unverified`
+		manifest.distribution !== `${expectedMode === "signed" ? "signed" : expectedMode}-prototype-unverified`
 	) {
 		throw new Error("Cannot promote a local prototype or change the packaged distribution policy.");
 	}
-	const names = artifactNames(manifest.version, arch);
-	const resources = join(out, `Quarterdeck-darwin-${arch}`, "Quarterdeck.app", "Contents", "Resources");
+	const names = artifactNames(manifest.version, arch,platform);
+	const resources = platform === "win32"?join(out,`Quarterdeck-win32-${arch}`,"resources"):join(out, `Quarterdeck-darwin-${arch}`, "Quarterdeck.app", "Contents", "Resources");
 	for (const file of Object.keys(manifest.checksums)) manifest.checksums[file] = await checksum(join(resources, file));
 	manifest.artifacts = await Promise.all(
 		names.map(async (name) => {

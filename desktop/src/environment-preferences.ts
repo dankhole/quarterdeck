@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, rename, rm } from "node:fs/promises";
-import { delimiter, dirname, isAbsolute, join, normalize } from "node:path";
+import { delimiter, isAbsolute, join, normalize } from "node:path";
+import { withDesktopPath } from "./helper-path.js";
 
 const MAX_DIRECTORIES = 16;
 const MAX_PATH_BYTES = 4_096;
@@ -132,15 +133,5 @@ export function applyDesktopExecutableDirectories(
 ): NodeJS.ProcessEnv {
 	const preferences = validateDesktopEnvironmentPreferences({ version: 1, extraExecutableDirectories: directories });
 	if (!isAbsolute(nodePath) || /[\0\r\n]/u.test(nodePath)) throw new DesktopEnvironmentPreferencesError();
-	const paths = [
-		dirname(nodePath),
-		...preferences.extraExecutableDirectories,
-		...(environment.PATH ?? "").split(delimiter),
-	];
-	return {
-		...environment,
-		PATH: [
-			...new Set(paths.filter((path) => isAbsolute(path) && !/[\0\r\n]/u.test(path)).map((path) => normalize(path))),
-		].join(delimiter),
-	};
+	return withDesktopPath(environment, nodePath, preferences.extraExecutableDirectories, process.platform);
 }

@@ -9,7 +9,8 @@ export interface DesktopWindowOptions {
 	isQuitting: () => boolean;
 	isSynthetic: boolean;
 	showWindow: boolean;
-	closeBehavior?: "hide" | "destroy";
+	closeBehavior?: "hide" | "destroy" | "quit";
+	onQuitRequested?: () => void;
 	title?: string;
 	onSurfaceAction: (action: DesktopSurfaceAction, sender: ApprovedRenderer) => void;
 	onRendererFailed: () => void;
@@ -41,7 +42,8 @@ export function createDesktopWindow(options: DesktopWindowOptions): ApprovedRend
 	window.on("close", (event) => {
 		if (!options.isQuitting() && options.closeBehavior !== "destroy") {
 			event.preventDefault();
-			window.hide();
+			if (options.closeBehavior === "quit") options.onQuitRequested?.();
+			else window.hide();
 		}
 	});
 	const openExternal = (value: string): void => {

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { desktopRoot, requireNativeMacTarget } from "./paths.mjs";
+import { desktopRoot, requireNativeDesktopTarget } from "./paths.mjs";
 import { run } from "./process.mjs";
 import { stageRuntime } from "./stage-runtime.mjs";
 
@@ -12,7 +12,7 @@ const command = positionals[0];
 if (!["start", "package", "make"].includes(command) || positionals.length !== 1) {
 	throw new Error("Use start, package, or make with an optional --arch=arm64|x64.");
 }
-requireNativeMacTarget(values.arch);
+requireNativeDesktopTarget(values.arch);
 if (command === "start" && !process.env.QUARTERDECK_DESKTOP_LAB_CONFIG) {
 	throw new Error("Desktop prototype start requires an isolated Agent Lab launch configuration.");
 }
@@ -24,9 +24,11 @@ const env = {
 	QUARTERDECK_DESKTOP_RUNTIME_PATH: runtimePath,
 };
 if (command === "start") run(process.execPath, [join(desktopRoot, "node_modules", "electron", "install.js")], { env });
-const targetArguments = command === "start" ? [] : ["--platform=darwin", `--arch=${values.arch}`];
+const targetArguments = command === "start" ? [] : [`--platform=${process.platform}`, `--arch=${values.arch}`];
 run(
-	process.execPath,
+	// Forge's toolchain runs on the pinned bundled Node, independently of the
+	// user's newer Node release (whose filesystem API may have removed old APIs).
+	join(runtimePath, "bin", process.platform === "win32" ? "node.exe" : "node"),
 	[
 		join(desktopRoot, "node_modules", "@electron-forge", "cli", "dist", "electron-forge.js"),
 		command,

@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from "electron";
 import type { DesktopAppCommand } from "../../src/shared/desktop-bridge-contract.js";
 
 export interface DesktopMenuActions {
+	platform?: NodeJS.Platform;
 	appName: string;
 	productReady: boolean;
 	availableCommands?: readonly DesktopAppCommand["command"][];
@@ -20,6 +21,7 @@ export interface DesktopMenuActions {
 
 /** Native accelerators emit one typed product command; shared UI handlers retain enablement policy. */
 export function desktopMenuTemplate(actions: DesktopMenuActions): MenuItemConstructorOptions[] {
+	const mac = (actions.platform ?? process.platform) === "darwin";
 	const command = (
 		id: string,
 		label: string,
@@ -32,7 +34,7 @@ export function desktopMenuTemplate(actions: DesktopMenuActions): MenuItemConstr
 		enabled: actions.productReady && actions.availableCommands?.includes(value) === true,
 		click: () => actions.dispatch(value),
 	});
-	return [
+	const template: MenuItemConstructorOptions[] = [
 		{
 			label: actions.appName,
 			submenu: [
@@ -134,4 +136,25 @@ export function desktopMenuTemplate(actions: DesktopMenuActions): MenuItemConstr
 			],
 		},
 	];
+	if (mac) return template;
+	// Windows keeps application actions under File and uses Ctrl accelerators.
+	const applicationMenu = template.shift();
+	const file = template.find((item) => item.label === "File");
+	const applicationItems = applicationMenu && Array.isArray(applicationMenu.submenu) ? applicationMenu.submenu : [];
+	if (file && Array.isArray(file.submenu)) {
+		file.submenu.push(
+			{ type: "separator" },
+			...applicationItems.filter(
+				(item) => item.id === "desktop.settings" || item.id === "desktop.updateGuidance" || item.role === "quit",
+			),
+		);
+	}
+	for (const item of template) {
+		if (!Array.isArray(item.submenu)) continue;
+		item.submenu = item.submenu.filter((entry) => entry.role !== "front" && entry.role !== "zoom");
+		for (const entry of item.submenu) {
+			if (typeof entry.accelerator === "string") entry.accelerator = entry.accelerator.replace(/^Cmd\+/u, "Ctrl+");
+		}
+	}
+	return template;
 }

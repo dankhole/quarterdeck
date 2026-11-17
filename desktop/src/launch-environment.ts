@@ -1,6 +1,5 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 import { userInfo } from "node:os";
-import { dirname, isAbsolute } from "node:path";
 import { Readable } from "node:stream";
 
 import { stopRuntimeOwnedProcessTrees } from "../../src/server/owned-process-shutdown.js";
@@ -8,6 +7,7 @@ import {
 	type DesktopExecutableDiscoveryDependencies,
 	discoverDesktopExecutableDirectories,
 } from "./executable-path-discovery.js";
+import { withDesktopPath } from "./helper-path.js";
 
 const LOGIN_SHELLS = new Set([
 	"/bin/zsh",
@@ -80,10 +80,8 @@ export function sanitizeDesktopHelperEnvironment(
 	environment: Readonly<NodeJS.ProcessEnv>,
 	nodePath: string,
 	discoveredDirectories: readonly string[] = [],
+	platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
-	if (!isAbsolute(nodePath) || /[\0\r\n]/u.test(nodePath)) {
-		throw new Error("The bundled Node executable must have a valid absolute path.");
-	}
 	const entries: Array<[string, string]> = [];
 	for (const [name, value] of Object.entries(environment)) {
 		if (
@@ -96,9 +94,10 @@ export function sanitizeDesktopHelperEnvironment(
 		entries.push([name, value]);
 	}
 	const sanitized: NodeJS.ProcessEnv = Object.fromEntries(entries);
-	const paths = [dirname(nodePath), ...(sanitized.PATH ?? "").split(":"), ...discoveredDirectories, ...SAFE_PATH];
-	sanitized.PATH = Array.from(new Set(paths.filter((path) => isAbsolute(path) && !/[\0\r\n]/u.test(path)))).join(":");
-	return sanitized;
+	return withDesktopPath(sanitized, nodePath, [], platform, [
+		...discoveredDirectories,
+		...(platform === "darwin" ? SAFE_PATH : []),
+	]);
 }
 
 function parseEnvironment(bytes: Buffer): NodeJS.ProcessEnv | null {
@@ -213,7 +212,8 @@ async function stopCapture(
 async function resolveLaunchEnvironment(
 	options: DesktopLaunchEnvironmentOptions,
 ): Promise<DesktopLaunchEnvironmentResult> {
-	const environment = sanitizeDesktopHelperEnvironment(options.inheritedEnvironment, options.nodePath);
+	const platform = options.platform ?? process.platform;
+	const environment = sanitizeDesktopHelperEnvironment(options.inheritedEnvironment, options.nodePath, [], platform);
 	if (
 		(options.platform ?? process.platform) !== "darwin" ||
 		options.isolatedLab ||
@@ -225,7 +225,12 @@ async function resolveLaunchEnvironment(
 		const directories = await discoverDesktopExecutableDirectories(environment, options.executableDiscovery);
 		return {
 			source: "inherited",
-			environment: sanitizeDesktopHelperEnvironment(options.inheritedEnvironment, options.nodePath, directories),
+			environment: sanitizeDesktopHelperEnvironment(
+				options.inheritedEnvironment,
+				options.nodePath,
+				directories,
+				platform,
+			),
 		};
 	}
 	let shell: string | null;
@@ -241,7 +246,12 @@ async function resolveLaunchEnvironment(
 	if (captured.ok) {
 		return {
 			source: "login-shell",
-			environment: sanitizeDesktopHelperEnvironment({ ...environment, ...captured.environment }, options.nodePath),
+			environment: sanitizeDesktopHelperEnvironment(
+				{ ...environment, ...captured.environment },
+				options.nodePath,
+				[],
+				platform,
+			),
 		};
 	}
 	return {

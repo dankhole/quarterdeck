@@ -13,6 +13,7 @@ import {
 } from "../shared/desktop-installation-contract.js";
 import { DesktopInstallationError } from "./errors.js";
 import { readDesktopJson } from "./files.js";
+import { assertDesktopPrivateDirectory } from "./private-directory.js";
 import { desktopPathExists, writeDesktopJson } from "./transaction-files.js";
 
 const stageSchema = z.strictObject({
@@ -56,7 +57,7 @@ export async function reapDesktopStages(appPath: string, activeStage: string | n
 		const stage = join(parent, name);
 		if (stage === activeStage) continue;
 		const info = await lstat(stage);
-		if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid?.() || info.mode & 0o077) {
+		if (!info.isDirectory() || info.isSymbolicLink()) {
 			retained++;
 			continue;
 		}
@@ -66,6 +67,7 @@ export async function reapDesktopStages(appPath: string, activeStage: string | n
 			continue;
 		}
 		try {
+			await assertDesktopPrivateDirectory(stage);
 			const parsed = stageSchema.safeParse(await readDesktopJson(join(stage, "stage-owner.json")));
 			if (
 				!parsed.success ||

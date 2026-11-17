@@ -14,6 +14,7 @@ import {
 import { inspectDesktopApp } from "./app-identity.js";
 import { DesktopInstallationError } from "./errors.js";
 import { desktopAppTreeSha256, desktopFileSha256, readDesktopJson, setDesktopTreeWritable } from "./files.js";
+import { desktopBootstrapPath, desktopTransactionBootstrapName } from "./layout.js";
 import { runDesktopInstallCommand, verifyDesktopDeveloperSignature, verifyDesktopSignatureIntegrity } from "./macos.js";
 import { desktopBundleDistributionMode, validateDesktopReleaseManifest } from "./metadata.js";
 import { downloadDesktopAsset } from "./network.js";
@@ -24,6 +25,7 @@ import {
 	validateDesktopInstallationOwner,
 } from "./owner.js";
 import { prepareDesktopInstallation } from "./prepare.js";
+import { assertDesktopPrivateDirectory } from "./private-directory.js";
 import {
 	desktopReceiptDistributionMode,
 	desktopVersionSchema,
@@ -44,6 +46,7 @@ import type {
 	DesktopInstallationDependencies,
 	EnsureDesktopInstallationOptions,
 } from "./types.js";
+import { updateWindowsDesktopShortcut } from "./windows-shortcut.js";
 
 export type { DesktopInstallationOwner } from "../shared/desktop-installation-contract.js";
 export { getDesktopAdmissionDescriptor, validateDesktopNativeAdmission } from "./admission.js";
@@ -129,11 +132,12 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			);
 		await validateDesktopDirectoryAncestors(parsed.data.stage);
 		const stage = await lstat(parsed.data.stage);
-		if (!stage.isDirectory() || stage.isSymbolicLink() || stage.uid !== process.getuid?.() || stage.mode & 0o077)
+		if (!stage.isDirectory() || stage.isSymbolicLink())
 			throw new DesktopInstallationError(
 				"incomplete_installation",
 				"The pending installation stage is not a real private directory. No files were changed.",
 			);
+		await assertDesktopPrivateDirectory(parsed.data.stage);
 		return parsed.data;
 	}
 	async function matches(path: string, receipt: ManagedDesktopInstallationReceipt | null): Promise<boolean> {
@@ -178,7 +182,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 		}
 	}
 	async function storeBootstrap(stage: string, source: string): Promise<NonNullable<Journal["bootstrap"]>> {
-		const path = join(stage, "mutation-bootstrap");
+		const path = join(stage, desktopTransactionBootstrapName(dependencies.platform));
 		await copyDesktopFileAtomic(source, path);
 		await chmod(path, 0o700);
 		const info = await lstat(path);
@@ -187,7 +191,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 	async function allocateStage(id: string, owner: DesktopInstallationOwner): Promise<string> {
 		const stage = join(dirname(appPath), `.Quarterdeck-install-${id}`);
 		const allocation = join(root, `.allocate-${id}`);
-		await mkdir(allocation, { mode: 0o700 });
+		await ensureDesktopPrivateDirectory(allocation);
 		try {
 			await writeDesktopStageOwner(allocation, id, appPath, owner, dependencies.stageIdentity);
 			await rename(allocation, stage);
@@ -204,7 +208,11 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			await readDesktopJson(path),
 			receipt.version,
 			receipt.arch,
-			desktopReceiptDistributionMode(receipt) === "ad-hoc" ? "ad-hoc" : "signed-notarized",
+			desktopReceiptDistributionMode(receipt) === "windows-unsigned"
+				? "windows-unsigned"
+				: desktopReceiptDistributionMode(receipt) === "ad-hoc"
+					? "ad-hoc"
+					: "signed-notarized",
 		);
 		if (
 			(await desktopFileSha256(path)) !== receipt.release.manifestSha256 ||
@@ -231,15 +239,14 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 		}
 	}
 	async function journalBootstrap(journal: Journal): Promise<string> {
-		const path = join(journal.stage, "mutation-bootstrap");
+		const path = join(journal.stage, desktopTransactionBootstrapName(dependencies.platform));
+		await assertDesktopPrivateDirectory(journal.stage);
 		const directory = await lstat(journal.stage);
 		const info = await lstat(path);
 		if (
 			!journal.bootstrap ||
 			!directory.isDirectory() ||
 			directory.isSymbolicLink() ||
-			directory.uid !== process.getuid?.() ||
-			directory.mode & 0o077 ||
 			!info.isFile() ||
 			info.isSymbolicLink() ||
 			info.dev !== journal.bootstrap.dev ||
@@ -305,6 +312,8 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 				"incomplete_installation",
 				"The interrupted installation contains an unrecognized app. Recovery retained every candidate; repair or inspect it before retrying.",
 			);
+		if (await desktopPathExists(appPath)) await dependencies.presentation?.install(appPath);
+		else await dependencies.presentation?.uninstall(await journalBootstrap(journal));
 		await cleanup(journal);
 	}
 	async function validate(
@@ -348,6 +357,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			identity.appTreeSha256 !== receipt.appTreeSha256 ||
 			identity.appAsarSha256 !== receipt.appAsarSha256 ||
 			identity.bundle.buildId !== receipt.buildId ||
+			desktopBundleDistributionMode(identity.bundle) !== desktopReceiptDistributionMode(receipt) ||
 			!desktopBuildsMatch(receipt.owner, identity.bundle, receipt.source)
 		)
 			throw new DesktopInstallationError(
@@ -356,9 +366,10 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			);
 		if (receipt.release) {
 			const mode = desktopReceiptDistributionMode(receipt);
-			const expectedDistribution = await resolveDesktopReleaseDistribution(receipt.owner);
+			const expectedDistribution = await resolveDesktopReleaseDistribution(receipt.owner, dependencies.platform);
 			if (
-				(mode === "ad-hoc" ? "ad-hoc" : "signed-notarized") !== expectedDistribution ||
+				(mode === "windows-unsigned" ? "windows-unsigned" : mode === "ad-hoc" ? "ad-hoc" : "signed-notarized") !==
+					expectedDistribution ||
 				desktopBundleDistributionMode(identity.bundle) !== mode
 			)
 				throw new DesktopInstallationError(
@@ -378,9 +389,9 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 		const pending = await desktopPathExists(journalPath);
 		try {
 			if (!(await desktopPathExists(receiptPath)) && !(await desktopPathExists(appPath)) && !pending)
-				return { state: "missing", message: "The managed macOS app is not installed.", pending: false };
+				return { state: "missing", message: "The managed desktop app is not installed.", pending: false };
 			const installation = await validate(options);
-			return { state: "ready", installation, message: "The npm CLI and macOS app are a verified pair.", pending };
+			return { state: "ready", installation, message: "The npm CLI and desktop app are a verified pair.", pending };
 		} catch (error) {
 			return {
 				state:
@@ -395,12 +406,12 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 		}
 	}
 	async function ensure(options: EnsureDesktopInstallationOptions): Promise<DesktopInstallation> {
-		if (dependencies.platform !== "darwin" || !["arm64", "x64"].includes(dependencies.arch))
+		if (!["darwin", "win32"].includes(dependencies.platform) || !["arm64", "x64"].includes(dependencies.arch))
 			throw new DesktopInstallationError(
 				"unsupported_platform",
-				"The macOS app requires native macOS arm64 or x64. Browser mode remains available.",
+				"The desktop app requires native macOS or Windows arm64 or x64. Browser mode remains available.",
 			);
-		if (dependencies.arch === "x64") {
+		if (dependencies.platform === "darwin" && dependencies.arch === "x64") {
 			let translated = false;
 			try {
 				translated =
@@ -430,15 +441,37 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 		await validateDesktopDirectoryAncestors(dirname(appPath));
 		await mkdir(dirname(appPath), { recursive: true, mode: 0o755 });
 		const parentInfo = await lstat(dirname(appPath));
-		if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || parentInfo.uid !== process.getuid?.())
+		if (
+			!parentInfo.isDirectory() ||
+			parentInfo.isSymbolicLink() ||
+			(process.platform !== "win32" && parentInfo.uid !== process.getuid?.())
+		)
 			throw new DesktopInstallationError(
 				"installation_changed",
 				"The Applications directory must be a real user-owned directory.",
 			);
+		const pending = await readJournal();
+		if (pending) {
+			const pendingOwner = pending.newReceipt?.owner ?? pending.oldReceipt?.owner;
+			if (pendingOwner && !sameDesktopOwner(pendingOwner, owner) && !options.replaceOwner)
+				throw new DesktopInstallationError(
+					"owner_conflict",
+					"Another npm prefix owns the interrupted installation. Use --replace-owner to transfer it explicitly.",
+				);
+			const release = await acquire(await journalBootstrap(pending), lockPath);
+			try {
+				await recoverPending();
+				await reapDesktopStages(appPath, null);
+			} finally {
+				await release();
+			}
+		}
 		if (!options.from && !(await desktopPathExists(journalPath))) {
 			const current = await status({ owner });
-			if (current.state === "ready" && current.installation?.version === options.version)
+			if (current.state === "ready" && current.installation?.version === options.version) {
+				await dependencies.presentation?.install(appPath);
 				return current.installation;
+			}
 		}
 		const stagedCount = (await readdir(dirname(appPath))).filter((name) =>
 			/^\.Quarterdeck-install-[a-f0-9-]{36}$/u.test(name),
@@ -449,7 +482,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			let bootstrap: string | undefined;
 			if (pending?.bootstrap) bootstrap = await journalBootstrap(pending);
 			else if (existing && (await matches(appPath, existing)))
-				bootstrap = join(appPath, "Contents/Resources/runtime/installation-admission");
+				bootstrap = desktopBootstrapPath(appPath, dependencies.platform);
 			else if (options.from) {
 				const source = await inspectDesktopApp(
 					resolve(options.from),
@@ -458,7 +491,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 					dependencies,
 				);
 				if (desktopBuildsMatch(owner, source.bundle, "local"))
-					bootstrap = join(source.appPath, "Contents/Resources/runtime/installation-admission");
+					bootstrap = desktopBootstrapPath(source.appPath, dependencies.platform);
 			}
 			if (bootstrap) {
 				const release = await acquire(bootstrap, lockPath);
@@ -512,7 +545,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			if (!oldReceipt && (await desktopPathExists(appPath)))
 				throw new DesktopInstallationError(
 					"installation_changed",
-					"An unmanaged app occupies ~/Applications/Quarterdeck.app. Move it aside explicitly before installing.",
+					`An unmanaged app occupies ${appPath}. Move it aside explicitly before installing.`,
 				);
 			await validateDesktopInstallationOwner(owner);
 			journal = {
@@ -548,6 +581,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			committed = true;
 			let cleanupPending = false;
 			try {
+				await dependencies.presentation?.install(appPath);
 				await dependencies.checkpoint?.("receipt_committed");
 				await cleanup(journal);
 			} catch {
@@ -556,7 +590,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			try {
 				options.onProgress?.({
 					phase: "installed",
-					message: "The npm CLI and macOS app are installed as one pair.",
+					message: "The npm CLI and desktop app are installed as one pair.",
 				});
 			} catch {
 				/* Commit already completed. */
@@ -608,7 +642,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 			}
 		}
 		const receipt = await readReceipt();
-		if (!receipt) return { removed: false, message: "No managed macOS app is installed." };
+		if (!receipt) return { removed: false, message: "No managed desktop app is installed." };
 		const owner = options.owner ?? dependencies.owner ?? (await resolveDesktopInstallationOwner());
 		if (!sameDesktopOwner(owner, receipt.owner) && !options.replaceOwner)
 			throw new DesktopInstallationError(
@@ -620,7 +654,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 				"installation_changed",
 				"The app changed and was retained. No user state was removed.",
 			);
-		const release = await acquire(join(appPath, "Contents/Resources/runtime/installation-admission"), lockPath);
+		const release = await acquire(desktopBootstrapPath(appPath, dependencies.platform), lockPath);
 		try {
 			await recoverPending();
 			const current = await readReceipt();
@@ -637,7 +671,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 				stage,
 				oldReceipt: current,
 				newReceipt: null,
-				bootstrap: await storeBootstrap(stage, join(appPath, "Contents/Resources/runtime/installation-admission")),
+				bootstrap: await storeBootstrap(stage, desktopBootstrapPath(appPath, dependencies.platform)),
 			};
 			if (current.release) {
 				await verifyRetainedManifest(join(root, "release-manifest.json"), current);
@@ -647,6 +681,7 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 				);
 			}
 			await writeDesktopJson(journalPath, journal);
+			await dependencies.presentation?.uninstall(await journalBootstrap(journal));
 			await rename(appPath, join(stage, "backup.app"));
 			await syncDesktopDirectory(dirname(appPath));
 			await rm(receiptPath);
@@ -684,11 +719,13 @@ function productionService() {
 		user.uid === 0 ||
 		process.env.SUDO_UID ||
 		process.env.SUDO_USER ||
-		(process.env.HOME !== undefined && resolve(process.env.HOME) !== resolve(user.homedir))
+		(process.platform !== "win32" &&
+			process.env.HOME !== undefined &&
+			resolve(process.env.HOME) !== resolve(user.homedir))
 	)
 		throw new DesktopInstallationError(
 			"unsupported_platform",
-			"Desktop installation requires your own macOS login home and a user-owned npm prefix. Run it without sudo or a HOME override.",
+			"Desktop installation requires your own login profile and a user-owned npm prefix. Run it without sudo or a home override.",
 		);
 	return createDesktopInstallationService({
 		platform: process.platform,
@@ -697,6 +734,15 @@ function productionService() {
 		appPath: desktopStableAppPath(),
 		runCommand: runDesktopInstallCommand,
 		download: downloadDesktopAsset,
+		...(process.platform === "win32"
+			? {
+					presentation: {
+						install: (path: string) =>
+							updateWindowsDesktopShortcut(desktopBootstrapPath(path, "win32"), "install"),
+						uninstall: (bootstrap: string) => updateWindowsDesktopShortcut(bootstrap, "remove"),
+					},
+				}
+			: {}),
 	});
 }
 export function ensureDesktopInstallation(options: EnsureDesktopInstallationOptions) {

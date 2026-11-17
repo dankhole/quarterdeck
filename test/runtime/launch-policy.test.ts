@@ -46,7 +46,7 @@ describe("CLI launch policy", () => {
 	});
 	it.each([
 		{ platform: "linux" },
-		{ platform: "win32" },
+		{ platform: "win32", osRelease: "6.3.0" },
 		{ arch: "ia32" },
 		{ osRelease: "21.6.0" },
 		{ osRelease: "unknown" },
@@ -55,6 +55,13 @@ describe("CLI launch policy", () => {
 		expect(supportsDesktopHost(host)).toBe(false);
 		expect(resolveLaunchPolicy(plain, host).mode).toBe("runtime");
 		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, host)).toThrow("macOS 13");
+	});
+	it.each(["x64", "arm64"])("supports explicit and eligible default Windows launches on %s", (arch) => {
+		const host = { ...mac, platform: "win32", arch, osRelease: "10.0.26100", desktopDefault: true };
+		expect(supportsDesktopHost(host)).toBe(true);
+		expect(resolveLaunchPolicy(plain, host).mode).toBe("desktop");
+		expect(resolveLaunchPolicy({ ...plain, desktop: true }, host).mode).toBe("desktop");
+		expect(resolveLaunchPolicy({ ...plain, browser: true }, host).mode).toBe("runtime");
 	});
 	it.each(["darwin", "linux", "win32"])("never recurses from a desktop runtime helper on %s", (platform) => {
 		const helper = { ...mac, platform, desktopHelper: true, desktopDefault: true };

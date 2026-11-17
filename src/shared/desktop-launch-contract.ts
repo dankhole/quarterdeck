@@ -1,15 +1,12 @@
 import { z } from "zod";
+import { desktopAbsolutePathSchema } from "./desktop-path-contract.js";
 
 export const DESKTOP_LAUNCH_ARGUMENT = "--quarterdeck-launch";
 export const DESKTOP_LAUNCH_MAX_BYTES = 16_384;
 export const DESKTOP_LAUNCH_PROTOCOL_VERSION = 1;
 
 /** A native project-open intent, never executable arguments or environment overrides. */
-export const desktopLaunchPathSchema = z
-	.string()
-	.min(1)
-	.max(4096)
-	.regex(/^\/[^\p{Cc}]*$/u);
+export const desktopLaunchPathSchema = desktopAbsolutePathSchema;
 export const desktopLaunchAppIdentitySchema = z.strictObject({
 	version: z
 		.string()

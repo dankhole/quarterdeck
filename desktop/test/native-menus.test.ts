@@ -10,6 +10,7 @@ describe("native menus", () => {
 	it("shows checked availability and blocks the item during update coordination", () => {
 		const actions = {
 			appName: "Quarterdeck",
+			platform: "darwin" as const,
 			productReady: true,
 			updateGuidanceAvailable: true,
 			updateLabel: "Update available · v0.12.9…",
@@ -32,6 +33,7 @@ describe("native menus", () => {
 		const showUpdateGuidance = vi.fn();
 		const template = desktopMenuTemplate({
 			appName: "Quarterdeck",
+			platform: "darwin" as const,
 			productReady: false,
 			updateGuidanceAvailable: true,
 			dispatch: vi.fn(),
@@ -53,6 +55,7 @@ describe("native menus", () => {
 		const dispatch = vi.fn();
 		const template = desktopMenuTemplate({
 			appName: "Quarterdeck",
+			platform: "darwin" as const,
 			productReady: true,
 			availableCommands: ["settings"],
 			updateGuidanceAvailable: false,
@@ -70,6 +73,7 @@ describe("native menus", () => {
 	it("defaults to disabled until publication and preserves only published offline recovery commands", () => {
 		const base = {
 			appName: "Quarterdeck",
+			platform: "darwin" as const,
 			productReady: true,
 			updateGuidanceAvailable: false,
 			dispatch: vi.fn(),
@@ -89,6 +93,7 @@ describe("native menus", () => {
 	it("keeps product actions unavailable on startup and omits unchecked reload/devtools roles", () => {
 		const template = desktopMenuTemplate({
 			appName: "Quarterdeck",
+			platform: "darwin" as const,
 			productReady: false,
 			updateGuidanceAvailable: false,
 			dispatch: vi.fn(),

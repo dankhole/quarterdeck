@@ -1,14 +1,16 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
+import { userInfo } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { extractFile } from "@electron/asar";
 import { FuseState, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { readBuildManifest } from "../../scripts/build-manifest.mjs";
 import { verifyAppSignature } from "./app-signature.mjs";
 import { readPairedBuildIdentity } from "./build-identity.mjs";
 import { sha256File } from "./checksums.mjs";
-import { DESKTOP_RESOURCE_PATHS } from "./desktop-resource-paths.mjs";
-import { requireNativeMacTarget } from "./paths.mjs";
+import { desktopResourcePathsForPlatform } from "./desktop-resource-paths.mjs";
+import { requireNativeDesktopTarget } from "./paths.mjs";
 import { run } from "./process.mjs";
 import { distributionModeFor, validateReleasePolicy } from "./release-policy.mjs";
 import { validateRuntimeDependencyLinks } from "./runtime-resources.mjs";
@@ -17,19 +19,24 @@ import {
 	verifyDeveloperIdIdentity,
 	verifySignedAppEntitlements,
 } from "./signing-entitlements.mjs";
+import { windowsPeArchitecture } from "./windows-pe.mjs";
 
 const nativeSmoke = `
 const pty = require('node-pty');
 const token = 'quarterdeck-bundled-pty-ok';
 let output = '';
-const terminal = pty.spawn('/bin/sh', ['-c', 'printf ' + token], {
+const windows = process.platform === 'win32';
+const shell = windows ? require('node:path').join(process.env.SystemRoot || 'C:\\\\Windows', 'System32', 'cmd.exe') : '/bin/sh';
+const terminal = pty.spawn(shell, windows ? ['/d', '/s', '/c', 'echo ' + token] : ['-c', 'printf ' + token], {
   name: 'xterm-256color', cols: 80, rows: 24, cwd: process.cwd(),
-  env: { PATH: '/usr/bin:/bin' }
+  env: windows ? process.env : { PATH: '/usr/bin:/bin' }
 });
 const timer = setTimeout(() => { terminal.kill(); process.exit(1); }, 5000);
 terminal.onData(data => { output += data; });
 terminal.onExit(({exitCode}) => {
   clearTimeout(timer);
+  // ConPTY's output worker needs disposal even after the shell exits.
+  if (windows) terminal.destroy();
   if (exitCode !== 0 || !output.includes(token)) process.exit(1);
   console.log(token);
 });
@@ -37,14 +44,27 @@ terminal.onExit(({exitCode}) => {
 
 export async function verifyRuntime(runtimePath) {
 	const manifest = JSON.parse(await readFile(join(runtimePath, "bundle-manifest.json"), "utf8"));
-	requireNativeMacTarget(manifest.arch);
-	if (manifest.schemaVersion !== 1 || manifest.desktopLaunchProtocolVersion !== 1 || manifest.platform !== "darwin")
+	requireNativeDesktopTarget(manifest.arch);
+	if (
+		manifest.schemaVersion !== 1 ||
+		manifest.desktopLaunchProtocolVersion !== 1 ||
+		manifest.platform !== process.platform
+	)
 		throw new Error("Unsupported desktop bundle manifest.");
 	validateReleasePolicy(JSON.parse(await readFile(join(runtimePath, "release-policy.json"), "utf8")), manifest);
 	await validateRuntimeDependencyLinks(runtimePath);
-	const nodeBin = join(runtimePath, "bin", "node");
+	const windows = process.platform === "win32";
+	const windowsHost =
+		windows &&
+		(await lstat(join(runtimePath, "bin", "nodeHost.exe")).catch((error) => {
+			if (error.code === "ENOENT") return null;
+			throw error;
+		}));
+	// Fixed verification probes run against a noncanonical candidate's real Node.
+	// Installed launches still enter through the native admission executable.
+	const nodeBin = join(runtimePath, "bin", windows ? (windowsHost ? "nodeHost.exe" : "node.exe") : "node");
 	if (!(await lstat(nodeBin)).isFile()) throw new Error("Bundled Node must be a real executable file.");
-	const env = { ...process.env, PATH: "/usr/bin:/bin" };
+	const env = { ...process.env, ...(process.platform === "darwin" ? { PATH: "/usr/bin:/bin" } : {}) };
 	delete env.NODE_PATH;
 	delete env.NODE_OPTIONS;
 	delete env.ELECTRON_RUN_AS_NODE;
@@ -55,6 +75,12 @@ export async function verifyRuntime(runtimePath) {
 		if (error.code === "ENOENT") return null;
 		throw error;
 	});
+	if (
+		windowsHost &&
+		(await realpath(runtimePath)).toLowerCase() ===
+			join(userInfo().homedir, "AppData/Local/Programs/Quarterdeck/resources/runtime").toLowerCase()
+	)
+		throw new Error("Verify a separate packaging candidate; installed Windows hosts require native admission.");
 	if (wrappedNode) {
 		if (!wrappedNode.isFile()) throw new Error("Bundled Node host must be a real executable file.");
 		env.QUARTERDECK_DESKTOP_LAB_CONFIG = join(runtimePath, "packaging-verification-only.json");
@@ -91,27 +117,54 @@ export async function verifyRuntime(runtimePath) {
 }
 
 export async function verifyApp(appPath) {
-	if (!appPath.endsWith(".app")) throw new Error("Pass the packaged .app path.");
-	verifyAppSignature(appPath);
-	const resources = join(appPath, "Contents", "Resources");
+	const windows = process.platform === "win32";
+	if (!windows && !appPath.endsWith(".app")) throw new Error("Pass the packaged .app path.");
+	if (!windows) verifyAppSignature(appPath);
+	const resources = windows ? join(appPath, "resources") : join(appPath, "Contents", "Resources");
 	if (!(await lstat(join(resources, "app.asar"))).isFile())
 		throw new Error("Desktop shell must be packaged in app.asar.");
 	const runtimePath = join(resources, "runtime");
 	if (!(await lstat(runtimePath)).isDirectory()) throw new Error("Bundled helper must be outside app.asar.");
 	const manifest = await verifyRuntime(runtimePath);
-	for (const name of ["Quarterdeck", "QuarterdeckHost"]) {
-		if (!(await lstat(join(appPath, "Contents/MacOS", name))).isFile())
-			throw new Error(`Native admission requires the real ${name} executable.`);
+	if (windows) {
+		if (!["local", "windows-unsigned"].includes(distributionModeFor(manifest)))
+			throw new Error("Invalid Windows desktop distribution.");
+		for (const binary of [
+			"Quarterdeck.exe",
+			"QuarterdeckHost.exe",
+			"resources/runtime/bin/node.exe",
+			"resources/runtime/bin/nodeHost.exe",
+			"resources/runtime/installation-admission.exe",
+		]) {
+			const path = join(appPath, binary);
+			const info = await lstat(path);
+			if (!info.isFile() || info.isSymbolicLink() || (await windowsPeArchitecture(path)) !== manifest.arch)
+				throw new Error("Windows desktop binaries do not match the native target.");
+		}
+		const bootstrap = await sha256File(join(runtimePath, "installation-admission.exe"));
+		if (
+			(await sha256File(join(appPath, "Quarterdeck.exe"))) !== bootstrap ||
+			(await sha256File(join(runtimePath, "bin", "node.exe"))) !== bootstrap
+		)
+			throw new Error("Windows admission entrypoints differ from their installer helper.");
+		const shell = JSON.parse(extractFile(join(resources, "app.asar"), "package.json").toString("utf8"));
+		if (shell.name !== "quarterdeck-desktop" || shell.version !== manifest.version)
+			throw new Error("Windows shell and runtime product identities differ.");
+	} else {
+		for (const name of ["Quarterdeck", "QuarterdeckHost"]) {
+			if (!(await lstat(join(appPath, "Contents/MacOS", name))).isFile())
+				throw new Error(`Native admission requires the real ${name} executable.`);
+		}
+		if (!(await lstat(join(runtimePath, "installation-admission"))).isFile())
+			throw new Error("Native admission installer helper must be a real executable.");
+		const appVersion = run(
+			"/usr/libexec/PlistBuddy",
+			["-c", "Print :CFBundleShortVersionString", join(appPath, "Contents", "Info.plist")],
+			{ encoding: "utf8", stdio: "pipe" },
+		).stdout.trim();
+		if (appVersion !== manifest.version) throw new Error("Desktop shell and runtime product versions differ.");
 	}
-	if (!(await lstat(join(runtimePath, "installation-admission"))).isFile())
-		throw new Error("Native admission installer helper must be a real executable.");
-	const appVersion = run(
-		"/usr/libexec/PlistBuddy",
-		["-c", "Print :CFBundleShortVersionString", join(appPath, "Contents", "Info.plist")],
-		{ encoding: "utf8", stdio: "pipe" },
-	).stdout.trim();
-	if (appVersion !== manifest.version) throw new Error("Desktop shell and runtime product versions differ.");
-	const wire = await getCurrentFuseWire(appPath);
+	const wire = await getCurrentFuseWire(windows ? join(appPath, "QuarterdeckHost.exe") : appPath);
 	for (const [option, enabled] of [
 		[FuseV1Options.RunAsNode, false],
 		[FuseV1Options.EnableCookieEncryption, true],
@@ -159,8 +212,9 @@ export async function verifyArtifactManifest(manifestPath) {
 			throw new Error(`Artifact provenance differs from its packaged runtime: ${key}.`);
 		}
 	}
-	const resources = join(appPath, "Contents", "Resources");
-	for (const required of DESKTOP_RESOURCE_PATHS) {
+	const windows = bundleManifest.platform === "win32";
+	const resources = windows ? join(appPath, "resources") : join(appPath, "Contents", "Resources");
+	for (const required of desktopResourcePathsForPlatform(bundleManifest.platform)) {
 		if (!artifactManifest.checksums?.[required]) throw new Error(`Artifact manifest lacks checksum: ${required}.`);
 	}
 	for (const [file, expected] of Object.entries(artifactManifest.checksums)) {
@@ -170,13 +224,13 @@ export async function verifyArtifactManifest(manifestPath) {
 	if (artifactManifest.nativeAdmission?.schemaVersion !== 1)
 		throw new Error("Artifact manifest lacks native admission provenance.");
 	for (const [field, name] of [
-		["bootstrapSha256", "Quarterdeck"],
-		["hostSha256", "QuarterdeckHost"],
+		["bootstrapSha256", windows ? "Quarterdeck.exe" : "Contents/MacOS/Quarterdeck"],
+		["hostSha256", windows ? "QuarterdeckHost.exe" : "Contents/MacOS/QuarterdeckHost"],
 	]) {
-		if (artifactManifest.nativeAdmission[field] !== (await sha256File(join(appPath, "Contents/MacOS", name))))
+		if (artifactManifest.nativeAdmission[field] !== (await sha256File(join(appPath, name))))
 			throw new Error(`Native admission checksum mismatch: ${name}.`);
 	}
-	const wire = await getCurrentFuseWire(appPath);
+	const wire = await getCurrentFuseWire(windows ? join(appPath, "QuarterdeckHost.exe") : appPath);
 	for (const [name, index] of Object.entries(FuseV1Options).filter(([, value]) => typeof value === "number")) {
 		if (artifactManifest.fuses?.[name] !== (wire[index] === FuseState.ENABLE)) {
 			throw new Error(`Artifact security fuse record differs from the packaged app: ${name}.`);
