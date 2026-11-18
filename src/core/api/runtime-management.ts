@@ -30,10 +30,8 @@ export const runtimeOwnershipClaimSchema = z
 	);
 export type RuntimeOwnershipClaim = z.infer<typeof runtimeOwnershipClaimSchema>;
 
-export const runtimeTransportCapabilitiesSchema = z.object({
+export const runtimeTransportCapabilitiesSchema = z.strictObject({
 	transportVersion: z.literal(1),
-	browserHttp: z.boolean(),
-	browserWebSocket: z.boolean(),
 	desktopProxy: z.boolean(),
 	desktopBridgeVersion: z.number().int().positive().nullable(),
 });

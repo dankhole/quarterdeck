@@ -5,7 +5,6 @@ import { join } from "node:path";
 
 import type { Page } from "playwright-core";
 
-import { DesktopBrowserCoexistenceError, exerciseDesktopBrowserCoexistence } from "./desktop-browser-coexistence";
 import { exerciseDesktopCompareWindow, validateDesktopCompareWindowSelection } from "./desktop-compare-window";
 import { DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import { exerciseDesktopEnvironmentSettings } from "./desktop-environment-settings";
@@ -32,8 +31,10 @@ import {
 	exerciseDesktopNpmLaunch,
 	prepareDesktopNpmLaunch,
 } from "./desktop-npm-launch";
+import { exercisePackagedDesktopPerformance } from "./desktop-performance-run";
 import { validateDesktopPerformanceSelection } from "./desktop-performance-scenario";
 import { collectOwnedDesktopProcesses, listDesktopProcesses, sameDesktopProcess } from "./desktop-processes";
+import { exerciseDesktopLifecycleCoverage, exerciseDesktopProductCoverage } from "./desktop-product-coverage";
 import { validateDesktopProviderSelection } from "./desktop-provider";
 import { exerciseDesktopRealProvider } from "./desktop-real-scenario";
 import { exerciseDesktopRendererRecovery, openDesktopPrimaryProject } from "./desktop-renderer-recovery";
@@ -125,6 +126,13 @@ async function findPtyProof(directory: string): Promise<string | null> {
 
 export async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, confirmWorking = false): Promise<string> {
 	await page.locator("section.kb-board").waitFor({ state: "visible" });
+	const existingTasks = new Set(
+		await page
+			.locator("[data-task-id]")
+			.evaluateAll((cards) =>
+				cards.map((card) => card.getAttribute("data-task-id")).filter((id): id is string => id !== null),
+			),
+	);
 	await page.getByRole("button", { name: "Create task", exact: true }).first().click();
 	const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task" }) });
 	await dialog.getByPlaceholder("Describe the task").fill("[agent-lab:idle] packaged desktop smoke");
@@ -134,11 +142,20 @@ export async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, co
 	await driver.inspect("task-dialog");
 	await dialog.getByRole("button", { name: "Start task", exact: true }).click();
 	await dialog.waitFor({ state: "hidden" });
-	const task = page.locator("[data-task-id]").first();
-	await task.waitFor({ state: "visible" });
-	const taskId = await task.getAttribute("data-task-id");
+	let createdTaskId: string | undefined;
+	await waitFor(async () => {
+		createdTaskId = (
+			await page
+				.locator("[data-task-id]")
+				.evaluateAll((cards) =>
+					cards.map((card) => card.getAttribute("data-task-id")).filter((id): id is string => id !== null),
+				)
+		).find((id) => !existingTasks.has(id));
+		return createdTaskId !== undefined;
+	}, "new task identity");
+	const taskId = createdTaskId;
 	if (!taskId) throw new Error("Desktop task did not expose its identity.");
-	await task.click();
+	await page.locator(`[data-task-id="${taskId}"]`).first().click();
 	const input = page.getByRole("textbox", { name: "Terminal input" });
 	await input.waitFor({ state: "visible" });
 	try {
@@ -229,46 +246,6 @@ export async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, co
 		proofPath,
 		historySeeded: true,
 	});
-	return taskId;
-}
-
-/** One fixture/task/browser owner shared by ordinary smoke and the exclusive measurement lane. */
-async function exerciseFakeAgentCoexistence(
-	page: Page,
-	driver: DesktopLabDriver,
-	performance: boolean,
-): Promise<string> {
-	const taskId = await exerciseFakeAgent(page, driver);
-	const fixture = driver.fixture;
-	try {
-		let performanceAdmission = 0;
-		const coexistence = await exerciseDesktopBrowserCoexistence(page, fixture, taskId, {
-			resizeDesktop: (width, height) => driver.resizeOwnedWindow(width, height),
-			performance: performance
-				? {
-						readAdmittedDesktop: async () => {
-							await driver.inspect(`performance-admission-${performanceAdmission++}`);
-							return fixture.manifest.processes;
-						},
-					}
-				: undefined,
-		});
-		await writeJsonAtomic(join(fixture.manifest.artifactDir, "browser-coexistence-proof.json"), coexistence);
-		await driver.inspect("browser-coexistence");
-	} catch (error) {
-		if (error instanceof DesktopBrowserCoexistenceError) {
-			if (!error.cleanupConfirmed) fixture.keepTemp = true;
-			await writeJsonAtomic(join(fixture.manifest.artifactDir, "browser-coexistence-failure.json"), {
-				failureStage: error.failureStage,
-				browserSession: error.browserSession,
-				owner: error.owner,
-				cleanupConfirmed: error.cleanupConfirmed,
-				startupFailure: error.startupFailure,
-			});
-		}
-		throw error;
-	}
-	driver.sockets.assertTraffic();
 	return taskId;
 }
 
@@ -596,8 +573,9 @@ export async function runDesktopSmoke(options: {
 			}
 			await driver.inspect("completed");
 		} else if (options.performance) {
-			// Measurement is exclusive: do not repeat crash, reload, second-launch, or runtime-recovery acceptance.
-			await exerciseFakeAgentCoexistence(page, driver, true);
+			const taskId = await exerciseFakeAgent(page, driver);
+			await exercisePackagedDesktopPerformance(page, driver, taskId);
+			driver.sockets.assertTraffic();
 			await driver.inspect("completed");
 		} else {
 			if (!options.agentMode || options.agentMode === "fake") await exerciseDesktopEnvironmentSettings(page, driver);
@@ -667,7 +645,10 @@ export async function runDesktopSmoke(options: {
 				await exerciseDesktopRealProvider(page, driver);
 			} else if (options.includeAgent !== false) {
 				if (!fixture.config.showWindow) page = await exerciseDesktopRendererRecovery(page, driver);
-				const taskId = await exerciseFakeAgentCoexistence(page, driver, false);
+				await exerciseDesktopProductCoverage(page, driver);
+				const taskId = await exerciseFakeAgent(page, driver, false);
+				await exerciseDesktopLifecycleCoverage(page, driver, taskId);
+				driver.sockets.assertTraffic();
 				if (options.mainLoss) {
 					const recovered = await exerciseDesktopMainLoss(page, driver, taskId, {
 						setCleanupOwner: (replacement) => {

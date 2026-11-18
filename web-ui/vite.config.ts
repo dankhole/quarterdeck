@@ -3,14 +3,11 @@ import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, minify, type Plugin, type ResolvedConfig } from "vite";
-import { runtimeDevAdmissionPlugin } from "./dev-runtime-admission.js";
 
 const rootPkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf-8")) as {
 	version: string;
 };
 const XTERM_CHUNK_NAME = "xterm-vendor";
-const runtimeProxyPort = process.env.QUARTERDECK_E2E_RUNTIME_PORT ?? process.env.QUARTERDECK_RUNTIME_PORT ?? "3500";
-const runtimeProxyTarget = `http://127.0.0.1:${runtimeProxyPort}`;
 
 function isXtermModule(id: string): boolean {
 	return id.includes("/node_modules/@xterm/") || id.includes("\\node_modules\\@xterm\\");
@@ -58,7 +55,7 @@ export default defineConfig({
 	// 770 KB raw and 108.5 KB gzipped across emitted frontend assets.
 	// Compared with fully minifying everything, this costs about 545 KB raw and
 	// 58.5 KB gzipped, which is the current tradeoff for keeping TUI agents stable.
-	plugins: [tailwindcss(), react(), selectiveBuildMinifyPlugin(), runtimeDevAdmissionPlugin(runtimeProxyTarget)],
+	plugins: [tailwindcss(), react(), selectiveBuildMinifyPlugin()],
 	envPrefix: ["VITE_"],
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version),
@@ -98,18 +95,6 @@ export default defineConfig({
 			"@runtime-task-worktree-path": resolve(import.meta.dirname, "../src/workdir/task-worktree-path.ts"),
 			"@runtime-task-state": resolve(import.meta.dirname, "../src/core/task-board-mutations.ts"),
 			"@runtime-terminal-utils": resolve(import.meta.dirname, "../src/terminal/output-utils.ts"),
-		},
-	},
-	server: {
-		host: "127.0.0.1",
-		port: 4173,
-		strictPort: true,
-		proxy: {
-			"/api": {
-				target: runtimeProxyTarget,
-				changeOrigin: true,
-				ws: true,
-			},
 		},
 	},
 });

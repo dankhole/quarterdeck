@@ -1,4 +1,3 @@
-export { AlreadyOpenFallback } from "./already-open-fallback";
 export { AppDialogs } from "./app-dialogs";
 export { AppErrorBoundary } from "./app-error-boundary";
 export { ConnectedTopBar } from "./connected-top-bar";

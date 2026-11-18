@@ -10,6 +10,7 @@ import { buildQuarterdeckRuntimeUrl } from "../../src/core/runtime-endpoint";
 
 import {
 	buildClaudeHookPayload,
+	createFakeAgentTerminalInput,
 	type FakeAgentCommand,
 	getFakeAgentVersionOutput,
 	hasFakeClaudeHookCommand,
@@ -51,6 +52,7 @@ let approvalOverlayActive = false;
 let nativePermissionActive = false;
 let pendingApprovalCompletion: NodeJS.Timeout | null = null;
 let preserveRenderedPromptOnce = false;
+const clipboardReadReports: boolean[] = [];
 
 function clearPendingApprovalCompletion(): void {
 	if (!pendingApprovalCompletion) return;
@@ -357,10 +359,13 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			return;
 		case "redraw-interruption-history":
 			preserveRenderedPromptOnce = true;
+			clipboardReadReports.push(false);
+			// Receipt follows this exact frame. A later Readline command can erase
+			// its final composer and is not a neutral historical-redraw fence.
 			process.stdout.write(
 				"\u001b[2J\u001b[H\u001b[31m■ Conversation interrupted - tell the model what to do differently. " +
 					"Something went wrong? Hit `/feedback` to report the issue.\u001b[0m\r\n\r\n" +
-					"› Ask Codex to do anything\r\n\r\nAGENT LAB CURRENT TURN WORKING\r\n\r\n› Ask Codex to do anything",
+					"› Ask Codex to do anything\r\n\r\nAGENT LAB CURRENT TURN WORKING\r\n\r\n› Ask Codex to do anything\u001b]52;c;?\u0007",
 			);
 			return;
 		case "local-action":
@@ -585,6 +590,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			return;
 		}
 		case "clipboard-read":
+			clipboardReadReports.push(true);
 			process.stdout.write("\u001b]52;c;?\u0007");
 			writeLine("AGENT LAB CLIPBOARD READ REQUESTED");
 			return;
@@ -949,8 +955,27 @@ async function main(): Promise<void> {
 		sessionSource: invocation.resumeKind === "fresh" ? "startup" : "resume",
 	});
 
+	const terminalInput = createFakeAgentTerminalInput(process.stdin, {
+		// Every query queues its response policy before writing OSC 52, so
+		// unrelated keyboard input never enters reply-prefix buffering.
+		hasPendingClipboardRead: () => clipboardReadReports.length > 0,
+		onClipboardRead: (encodedText) => {
+			// An inline historical-frame receipt is protocol-only: printing a marker
+			// on its composer would invalidate the very screen the scenario tests.
+			const report = clipboardReadReports.shift();
+			if (!report || encodedText === null) return;
+			const clipboardText = Array.from(Buffer.from(encodedText, "base64").toString("utf8"))
+				.map((character) => {
+					const code = character.charCodeAt(0);
+					return code < 32 || code === 127 ? " " : character;
+				})
+				.join("")
+				.slice(0, 200);
+			writeLine(`AGENT LAB CLIPBOARD READ: ${clipboardText}`);
+		},
+	});
 	const terminal = createInterface({
-		input: process.stdin,
+		input: terminalInput,
 		output: process.stdout,
 		terminal: true,
 		// The fake consumes bare Escape as an immediate approval cancellation.
@@ -958,8 +983,7 @@ async function main(): Promise<void> {
 		// swallow the leading slash of the next deterministic command.
 		escapeCodeTimeout: 25,
 	});
-	let clipboardResponseBuffer = "";
-	process.stdin.on("data", (chunk: Buffer | string) => {
+	terminalInput.on("data", (chunk: Buffer | string) => {
 		const input = String(chunk);
 		if (nativePermissionActive && input.toLowerCase() === "y") {
 			nativePermissionActive = false;
@@ -994,23 +1018,6 @@ async function main(): Promise<void> {
 			writeLine("AGENT LAB APPROVAL RESPONSE SUBMITTED");
 			scheduleApprovedToolCompletion("Approved tool completed");
 		}
-		clipboardResponseBuffer = `${clipboardResponseBuffer}${input}`.slice(-4096);
-		const responsePrefix = "\u001b]52;c;";
-		const responseStart = clipboardResponseBuffer.indexOf(responsePrefix);
-		const responseEnd = clipboardResponseBuffer.indexOf("\u0007", responseStart + responsePrefix.length);
-		if (responseStart === -1 || responseEnd === -1) {
-			return;
-		}
-		const encodedText = clipboardResponseBuffer.slice(responseStart + responsePrefix.length, responseEnd);
-		clipboardResponseBuffer = clipboardResponseBuffer.slice(responseEnd + 1);
-		const clipboardText = Array.from(Buffer.from(encodedText, "base64").toString("utf8"))
-			.map((character) => {
-				const code = character.charCodeAt(0);
-				return code < 32 || code === 127 ? " " : character;
-			})
-			.join("")
-			.slice(0, 200);
-		writeLine(`AGENT LAB CLIPBOARD READ: ${clipboardText}`);
 	});
 	terminal.setPrompt("lab> ");
 	let commandQueue = Promise.resolve();

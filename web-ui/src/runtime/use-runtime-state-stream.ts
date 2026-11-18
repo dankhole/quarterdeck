@@ -5,7 +5,6 @@ import { useStreamErrorHandler } from "@/hooks/notifications/use-stream-error-ha
 import { invalidateProjectBoardCache } from "@/runtime/project-board-cache";
 import { consumeProjectPreload, invalidateProjectPreload } from "@/runtime/project-preload-cache";
 import { invalidateRuntimeConfig } from "@/runtime/runtime-config-invalidation";
-import { applyRuntimeNotificationPresentation } from "@/runtime/runtime-notification-presentation";
 import type { RuntimeProjectNotificationStateMap } from "@/runtime/runtime-notification-projects";
 import { resolveRuntimeProtocolCompatibility } from "@/runtime/runtime-protocol-compatibility";
 import {
@@ -123,7 +122,6 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 					const compatibility = resolveRuntimeProtocolCompatibility(
 						payload.runtimeProtocolVersion,
 						QUARTERDECK_RUNTIME_PROTOCOL_VERSION,
-						() => sessionStorage,
 					);
 					if (compatibility !== "compatible") {
 						recordBrowserEvent(
@@ -136,19 +134,14 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 								runtimeProtocolVersion: payload.runtimeProtocolVersion ?? null,
 							},
 							{},
-							{ level: compatibility === "reload" ? "warn" : "error", essential: true },
+							{ level: "error", essential: true },
 						);
 						transport?.dispose();
 						dispatchStreamAction({
 							type: "stream_disconnected",
 							message:
-								compatibility === "reload"
-									? "Quarterdeck's browser and runtime are incompatible. Reloading this page to load a compatible browser application."
-									: "Quarterdeck's browser and runtime are incompatible. Restart Quarterdeck and refresh this page.",
+								"Quarterdeck's renderer and runtime are incompatible. Save your drafts, then restart Quarterdeck.",
 						});
-						if (compatibility === "reload") {
-							window.location.reload();
-						}
 						return;
 					}
 					transport?.acceptCurrentConnection();
@@ -157,7 +150,6 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 						shouldInvalidateConfigOnNextSnapshotRef.current = false;
 						invalidateRuntimeConfig();
 					}
-					applyRuntimeNotificationPresentation(payload.notificationPresentation);
 				}
 				if (payload.type === "ui_preferences") {
 					sharedUiPreferences.apply(payload.preferences);
@@ -168,7 +160,6 @@ export function useRuntimeStateStream(requestedProjectId: string | null): UseRun
 					return;
 				}
 				if (payload.type === "notification_presentation") {
-					applyRuntimeNotificationPresentation(payload.state);
 					return;
 				}
 				if (handleBrowserDiagnosticsStreamMessage(payload)) {

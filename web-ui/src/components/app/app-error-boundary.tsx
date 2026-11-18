@@ -1,4 +1,4 @@
-import { RefreshCw, RotateCcw, TriangleAlert } from "lucide-react";
+import { RotateCcw, TriangleAlert } from "lucide-react";
 import { Component, type ErrorInfo, type ReactElement, type ReactNode } from "react";
 import { RuntimeDisconnectedFallback } from "@/components/app/runtime-disconnected-fallback";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,8 @@ function AppErrorFallback({ error, resetError }: { error: unknown; resetError: (
 					<div>
 						<h1 className="text-lg font-semibold">Quarterdeck hit an unexpected UI error.</h1>
 						<p className="mt-1 text-sm text-text-secondary">
-							You can try rendering the app again or reload the page.
+							Try rendering the app again. Use the native Reload Window or Quit action to check unsaved work
+							before leaving.
 						</p>
 					</div>
 				</div>
@@ -31,16 +32,6 @@ function AppErrorFallback({ error, resetError }: { error: unknown; resetError: (
 				<div className="mt-5 flex flex-wrap gap-2">
 					<Button size="md" variant="default" icon={<RotateCcw size={16} />} onClick={resetError}>
 						Try again
-					</Button>
-					<Button
-						size="md"
-						variant="primary"
-						icon={<RefreshCw size={16} />}
-						onClick={() => {
-							window.location.reload();
-						}}
-					>
-						Reload page
 					</Button>
 				</div>
 			</div>

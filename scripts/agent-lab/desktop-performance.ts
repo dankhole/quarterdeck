@@ -7,10 +7,10 @@ const INTERVAL_MS = 1_000;
 
 /** Caller must obtain these from the isolated driver's admitted process tree, never executable-name matches. */
 export interface PerformanceProcessIdentity {
-	client: "desktop" | "browser" | "shared-runtime";
+	client: "desktop" | "shared-runtime";
 	pid: number;
 	startedAt: string;
-	role: "main" | "renderer" | "helper" | "browser" | "agent" | "other-owned";
+	role: "main" | "renderer" | "helper" | "agent" | "other-owned";
 }
 export interface PerformanceProcessSample extends PerformanceProcessIdentity {
 	status: "observed" | "missing" | "identity-changed" | "unavailable";
@@ -29,7 +29,7 @@ export interface PerformanceProcessInterval extends PerformanceProcessIdentity {
 	cpuPercentOneCore: number | null;
 	cpuCounterReset: boolean;
 }
-export type PerformanceAcknowledgementBoundary = "driver-to-ui-ack" | "wrapper-round-trip";
+export type PerformanceAcknowledgementBoundary = "driver-to-ui-ack";
 export interface PerformanceDurationSample {
 	label: string;
 	boundary: PerformanceAcknowledgementBoundary;
@@ -70,7 +70,7 @@ export const DESKTOP_PERFORMANCE_LIMITATIONS = [
 	"PID and lstart birth time fence each observation. lstart has one-second precision, so same-second PID reuse cannot be excluded by this probe alone.",
 	"Only caller-admitted identities are sampled. Exited or newly created untracked processes are not inferred; process churn and missing samples limit comparisons.",
 	"Process collection is bracketed by monotonic timestamps, not instantaneous or synchronized with a renderer clock.",
-	"Driver-to-UI acknowledgement includes automation overhead. Wrapper round-trip includes wrapper startup and is not browser UI latency. Hidden window runs do not measure visible native focus or paint.",
+	"Driver-to-UI acknowledgement includes automation overhead. Hidden window runs do not measure visible native focus or paint.",
 	"UI-action-to-terminal-visible uses renderer monotonic clock reads inside the same automation flow, from before Back to board click through Terminal input visibility. It includes automation and clock-read overhead, excludes wrapper startup, and is not event-to-paint latency.",
 ] as const;
 

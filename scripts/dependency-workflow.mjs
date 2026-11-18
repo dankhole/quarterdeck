@@ -7,7 +7,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { requireNativeDesktopTarget } from "../desktop/scripts/paths.mjs";
-import { prepareAgentLabBrowserCache } from "./agent-lab/browser-cache.mjs";
 import { buildCheckout as buildRuntimeCheckout } from "./build-all.mjs";
 import { readBuildManifest } from "./build-manifest.mjs";
 import { assertStandaloneBuildIsSafe } from "./managed-installation-guard.mjs";
@@ -74,11 +73,9 @@ function runNpm(args, checkoutRoot = repoRoot) {
 
 export async function bootstrapDependencies(checkoutRoot, options = {}) {
 	await assertLinkedRuntimeIsStopped(checkoutRoot, options.runtime);
-	const browserCache = await prepareAgentLabBrowserCache(checkoutRoot, options.gitCommonDirectory);
 	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
 	executeNpm(["ci"]);
 	executeNpm(["ci", "--prefix", "web-ui"]);
-	return browserCache;
 }
 
 /** Prepare only the dependency trees needed by the requested source workflow. */
@@ -99,9 +96,6 @@ export async function ensureDependencies(checkoutRoot, options = {}) {
 	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
 	for (const prefix of prefixes) {
 		if (await dependencyTreeMatchesLockfile(join(checkoutRoot, prefix))) continue;
-		if (prefix === "web-ui") {
-			await prepareAgentLabBrowserCache(checkoutRoot, options.gitCommonDirectory);
-		}
 		console.log(`Installing locked ${prefix || "root"} dependencies…`);
 		await executeNpm(prefix ? ["ci", "--prefix", prefix] : ["ci"]);
 	}
@@ -115,17 +109,15 @@ async function runBootstrap() {
 	await bootstrapDependencies(repoRoot);
 }
 
-/** Select desktop installation by host support, independently of terminal interactivity. */
+/** Linking always installs the paired desktop app; source checks need no global link. */
 export function shouldLinkDesktop(options = {}) {
-	if (options.desktop === true && options.browser === true) throw new Error("Choose --desktop or --browser, not both.");
-	if (options.browser === true || options.desktop === false) return false;
+	if (options.browser === true || options.desktop === false) throw new Error("Browser-only linking is no longer supported. Run npm run link to install the paired desktop app, or use source development without a global link.");
 	const platform = options.platform ?? process.platform;
 	const arch = options.arch ?? process.arch;
 	const osRelease = options.osRelease ?? release();
 	const supported = ["arm64", "x64"].includes(arch) && ((platform === "darwin" && Number.parseInt(osRelease,10)>=22) || (platform === "win32" && Number.parseInt(osRelease,10)>=10));
-	if (options.desktop === true && !supported) throw new Error("Desktop linking requires macOS 13+ or Windows 10+ on arm64 or x64.");
-	if (options.desktop === true) return true;
-	return supported && (options.installMode ?? process.env.QUARTERDECK_INSTALL_MODE) !== "browser";
+	if (!supported) throw new Error("Desktop linking requires macOS 13+ or Windows 10+ on arm64 or x64. Shared source checks remain available without linking.");
+	return true;
 }
 
 export function resolveGlobalPackageLocation() {
@@ -197,7 +189,7 @@ function readLinkedDesktopStatus(checkoutRoot) {
 }
 
 export async function linkCheckout(checkoutRoot, options = {}) {
-	const desktop = shouldLinkDesktop(options);
+	shouldLinkDesktop(options);
 	const executeNpm = options.executeNpm ?? ((args) => runNpm(args, checkoutRoot));
 	// This must precede even the packaging command: dependencies and dist can be in use.
 	await assertLinkedRuntimeIsStopped(checkoutRoot, options.runtime);
@@ -205,27 +197,15 @@ export async function linkCheckout(checkoutRoot, options = {}) {
 	await assertStandaloneBuildIsSafe(checkoutRoot, {
 		...options.managedInstallation,
 		packageSlot: location.packageSlot,
-		pairedDesktopInstall: desktop,
+		pairedDesktopInstall: true,
 	});
-	let expectedIdentity;
-	if (desktop) {
-		// Authorization stays in this invocation, never in an inherited environment flag.
-		await (options.buildDesktop ?? buildDesktopCheckout)(checkoutRoot, {
-			...options,
-			pairedDesktopInstall: true,
-		});
-		expectedIdentity = await (options.readBuildIdentity ?? (() => readBuildManifest(join(checkoutRoot, "dist"))))();
-	} else {
-		await ensureDependencies(checkoutRoot, options);
-		await executeNpm(["run", "build"]);
-		// Recheck the destination immediately before a browser-only relink.
-		await assertStandaloneBuildIsSafe(checkoutRoot, {
-			...options.managedInstallation,
-			packageSlot: location.packageSlot,
-		});
-	}
+	// Authorization stays in this invocation, never in an inherited environment flag.
+	await (options.buildDesktop ?? buildDesktopCheckout)(checkoutRoot, {
+		...options,
+		pairedDesktopInstall: true,
+	});
+	const expectedIdentity = await (options.readBuildIdentity ?? (() => readBuildManifest(join(checkoutRoot, "dist"))))();
 	await executeNpm(["link", "--ignore-scripts"]);
-	if (!desktop) return;
 	const resolvedCheckout = await realpath(checkoutRoot);
 	const verifyLink = async () => {
 		const linkedCheckout = await (options.resolveLinkedCheckout ?? (() => realpath(location.packageSlot)))();
@@ -253,8 +233,8 @@ export async function linkCheckout(checkoutRoot, options = {}) {
 async function main() {
 	const command = process.argv[2];
 	const flags = process.argv.slice(3);
-	if (flags.length > 0 && !(command === "link" && flags.length === 1 && ["--desktop", "--browser"].includes(flags[0]))) {
-		throw new Error("Usage: npm run bootstrap | npm run link [-- --desktop|--browser]");
+	if (flags.length > 0 && !(command === "link" && flags.length === 1 && flags[0] === "--desktop")) {
+		throw new Error("Usage: npm run bootstrap | npm run link [-- --desktop]");
 	}
 	if (command === "bootstrap") {
 		await runBootstrap();
@@ -263,7 +243,6 @@ async function main() {
 	if (command === "link") {
 		await linkCheckout(repoRoot, {
 			...(flags.includes("--desktop") ? { desktop: true } : {}),
-			browser: flags.includes("--browser"),
 		});
 		return;
 	}

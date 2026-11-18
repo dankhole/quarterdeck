@@ -58,14 +58,14 @@ export function getSettingsProjectName(project: SettingsProject | null, projectI
 	return project?.displayName ?? project?.name ?? (projectId ? "Unknown project" : "No project selected");
 }
 
-export function getSettingsNavigationGroups(projectName: string, desktop: boolean): SettingsNavigationGroup[] {
+export function getSettingsNavigationGroups(projectName: string): SettingsNavigationGroup[] {
 	const labels: Record<SettingsCategoryScope, string> = {
 		global: "All projects",
 		project: `Project: ${projectName}`,
 		desktop: "This desktop",
 		tools: "Tools",
 	};
-	return (["global", "project", ...(desktop ? ["desktop" as const] : []), "tools"] as const).map((scope) => ({
+	return (["global", "project", "desktop", "tools"] as const).map((scope) => ({
 		id: scope,
 		label: labels[scope],
 		categories: CATEGORIES.filter((category) => category.scope === scope),

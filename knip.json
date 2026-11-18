@@ -13,15 +13,11 @@
 			"project": ["src/**/*.ts", "scripts/**/*.{ts,mjs,cjs}", "test/**/*.{ts,cjs}"]
 		},
 		"web-ui": {
-			"ignoreDependencies": ["@playwright/cli"],
-			"playwright": false,
 			"entry": [
 				"src/**/*.test.{ts,tsx}",
-				"tests/**/*.{ts,tsx}",
-				"*.config.ts",
-				"public/sw.js"
+				"*.config.ts"
 			],
-			"project": ["src/**/*.{ts,tsx,css}", "tests/**/*.{ts,tsx}", "*.ts"]
+			"project": ["src/**/*.{ts,tsx,css}", "*.ts"]
 		}
 	}
 }

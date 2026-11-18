@@ -12,7 +12,7 @@ import {
 } from "./desktop-install/index.js";
 import { desktopGlobalPackageSlot } from "./desktop-install/layout.js";
 import { formatLegacyDesktopMigrationGuidance, inventoryLegacyDesktopInstallations } from "./desktop-install/legacy.js";
-import { hasBrowserInstallPreference, wantsDesktopInstallation } from "./distribution-policy.js";
+import { isDesktopRelease } from "./distribution-policy.js";
 import { readLaunchEnvironment } from "./launch-environment.js";
 import { supportsDesktopHost } from "./launch-policy.js";
 import type { DesktopInstallationOwner } from "./shared/desktop-installation-contract.js";
@@ -29,7 +29,6 @@ export interface NpmInstallContext {
 	sourceCheckout: boolean;
 	/** Defaults to the immutable package release capability; injectable for policy tests. */
 	desktopRelease?: boolean;
-	browserPreference?: boolean;
 	/** Automatic desktop installs require a verified local GUI; explicit install mode does not. */
 	graphicalSession?: boolean;
 }
@@ -40,10 +39,7 @@ export type NpmInstallPolicy = { action: "skip" } | { action: "install" } | { ac
 export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallPolicy {
 	const { env } = context;
 	if (
-		!wantsDesktopInstallation(
-			env.QUARTERDECK_INSTALL_MODE || (context.browserPreference ? "browser" : undefined),
-			context.desktopRelease,
-		) ||
+		(env.QUARTERDECK_INSTALL_MODE !== "desktop" && !(context.desktopRelease ?? isDesktopRelease())) ||
 		env.npm_config_global !== "true" ||
 		!["install", "update"].includes(env.npm_command ?? "") ||
 		env.npm_lifecycle_event !== "postinstall" ||
@@ -65,14 +61,14 @@ export function resolveNpmInstallPolicy(context: NpmInstallContext): NpmInstallP
 		return {
 			action: "reject",
 			message:
-				"Desktop installation requires an unambiguous non-root user. Configure a user-owned npm prefix and install without sudo, or set QUARTERDECK_INSTALL_MODE=browser.",
+				"Desktop installation requires an unambiguous non-root user. Configure a user-owned npm prefix and install without sudo.",
 		};
 	}
 	return { action: "install" };
 }
 
 export function npmInstallRecoveryMessage(version: string, reason: string): string {
-	return `${reason}\nRetry: ${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm install -g quarterdeck@${version} --foreground-scripts\nIf the CLI remains available: quarterdeck desktop install\nFor an owning-prefix conflict, first install with QUARTERDECK_INSTALL_MODE=browser, then use that prefix's CLI with desktop install --replace-owner.`;
+	return `${reason}\nRetry: ${process.platform === "win32" ? "$env:QUARTERDECK_INSTALL_MODE='desktop';" : "QUARTERDECK_INSTALL_MODE=desktop"} npm install -g quarterdeck@${version} --foreground-scripts\nIf the CLI remains available: quarterdeck desktop install\nFor an owning-prefix conflict, quit the existing app and use the intended prefix's CLI with desktop install --replace-owner. If npm removed that CLI, reinstall with --ignore-scripts first, then run the explicit desktop repair command; skipping scripts does not install a working app.`;
 }
 
 export async function installNpmDesktopPair(version: string, owner: DesktopInstallationOwner): Promise<void> {
@@ -102,7 +98,6 @@ async function run(): Promise<void> {
 		osRelease: release(),
 		uid: process.getuid?.(),
 		sourceCheckout: existsSync(join(packageRoot, ".git")),
-		browserPreference: await hasBrowserInstallPreference(packageRoot),
 		graphicalSession:
 			process.env.QUARTERDECK_INSTALL_MODE === "desktop"
 				? undefined

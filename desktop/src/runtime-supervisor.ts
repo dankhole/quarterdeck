@@ -115,7 +115,7 @@ export class RuntimeSupervisor {
 		const { bundle, launch } = this.options;
 		if (launch.synthetic && !launch.hostSimulationConfigPath)
 			throw new Error("Synthetic launch requires host simulation.");
-		const argumentsForRuntime = [bundle.cliPath, "--no-open", "--host", "127.0.0.1", "--port", "auto"];
+		const argumentsForRuntime = [bundle.cliPath, "--internal-runtime", "--host", "127.0.0.1", "--port", "auto"];
 		if (launch.synthetic && launch.hostSimulationConfigPath)
 			argumentsForRuntime.push("--no-native-ui", "--simulate-host-integrations", launch.hostSimulationConfigPath);
 		const environment = sanitizeDesktopHelperEnvironment(this.options.environment, bundle.nodePath);

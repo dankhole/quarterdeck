@@ -1,6 +1,6 @@
 // Keep source dependency installation safe before dist or dependencies exist.
 const { spawnSync } = require("node:child_process");
-const { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } = require("node:fs");
+const { existsSync, realpathSync } = require("node:fs");
 const { release } = require("node:os");
 const { isAbsolute, join } = require("node:path");
 
@@ -27,44 +27,36 @@ function hasLocalGraphicalSession(env) {
 	return !result.error && result.status === 0 && result.stdout.trim() === (windows?"Interactive":"Aqua");
 }
 
+function supportsDesktopInstallation(platform, arch, osRelease) {
+	return ["arm64", "x64"].includes(arch) &&
+		((platform === "darwin" && Number.parseInt(osRelease, 10) >= 22) || (platform === "win32" && Number.parseInt(osRelease, 10) >= 10));
+}
+
 function shouldRunPostinstall(env, platform, arch, osRelease, sourceCheckout, desktopRelease = false, directGlobalSlot = false, graphicalSession = false) {
 	return (
 		isGlobalLifecycle(env, sourceCheckout, directGlobalSlot) &&
-		(env.QUARTERDECK_INSTALL_MODE === "desktop" || (!env.QUARTERDECK_INSTALL_MODE && desktopRelease && graphicalSession && !env.SSH_CONNECTION && !env.SSH_TTY)) &&
+		(env.QUARTERDECK_INSTALL_MODE === "desktop" || (desktopRelease && graphicalSession && !env.SSH_CONNECTION && !env.SSH_TTY)) &&
 		(!env.CI || ["0", "false"].includes(env.CI.toLowerCase())) &&
-		((platform === "darwin" && Number.parseInt(osRelease,10)>=22) || (platform === "win32" && Number.parseInt(osRelease,10)>=10)) &&
-		["arm64", "x64"].includes(arch)
+		supportsDesktopInstallation(platform, arch, osRelease)
 	);
 }
 
 module.exports = { shouldRunPostinstall };
 
 // Global npm flags are inherited by nested dependencies too; only this prefix's
-// direct Quarterdeck package may install an app or change its browser preference.
+// direct Quarterdeck package may install an app.
 if (require.main === module && isGlobalLifecycle(process.env, existsSync(join(__dirname, ".git")), occupiesGlobalPackageSlot(process.env))) {
 	const metadata = require("./package.json");
 	const desktopRelease = process.platform === "win32"?metadata.quarterdeck?.windowsDesktopRelease === "unsigned-v1":["adhoc-v1", "signed-v1"].includes(metadata.quarterdeck?.desktopRelease);
-	const preferencePath = join(__dirname, "..", ".quarterdeck-install-mode.json");
-	let browserPreference = false;
-	if (preferencePath) {
-		try {
-			const preference = JSON.parse(readFileSync(preferencePath, "utf8"));
-			browserPreference = preference?.schemaVersion === 1 && preference.mode === "browser";
-		} catch {
-			// Absent/skipped hooks do not establish an opt-out.
-		}
+	const continuousIntegration = process.env.CI && !["0", "false"].includes(process.env.CI.toLowerCase());
+	const legacyPreference = existsSync(join(__dirname, "..", ".quarterdeck-install-mode.json"));
+	if (!continuousIntegration && (process.env.QUARTERDECK_INSTALL_MODE === "browser" || legacyPreference)) {
+		console.warn("[quarterdeck-install] Browser mode and saved browser installation preferences no longer apply. Quarterdeck now requires the desktop app; existing project data is preserved.");
 	}
-	const mode = process.env.QUARTERDECK_INSTALL_MODE || (browserPreference || !desktopRelease ? "browser" : undefined);
-	// This npm-prefix preference survives package replacement; it is not runtime
-	// state or app ownership. Explicit desktop installation clears the opt-out.
-	if (preferencePath && mode === "browser") {
-		writeFileSync(preferencePath, JSON.stringify({ schemaVersion: 1, mode: "browser" }) + "\n", { mode: 0o600 });
-	} else if (preferencePath && mode === "desktop") {
-		rmSync(preferencePath, { force: true });
-	}
-	const env = { ...process.env, QUARTERDECK_INSTALL_MODE: mode };
-	const graphicalSession = !mode && desktopRelease && hasLocalGraphicalSession(env);
-	if (shouldRunPostinstall(env, process.platform, process.arch, release(), false, desktopRelease, true, graphicalSession)) {
+	const env = { ...process.env };
+	const graphicalSession = !continuousIntegration && desktopRelease && hasLocalGraphicalSession(env);
+	const osRelease = release();
+	if (shouldRunPostinstall(env, process.platform, process.arch, osRelease, false, desktopRelease, true, graphicalSession)) {
 		const entrypoint = join(__dirname, "dist", "npm-install.js");
 		const retry = `${process.platform === "win32"?"$env:QUARTERDECK_INSTALL_MODE='desktop';":"QUARTERDECK_INSTALL_MODE=desktop"} npm install -g quarterdeck@${metadata.version} --foreground-scripts`;
 		if (!existsSync(entrypoint)) {
@@ -78,5 +70,7 @@ if (require.main === module && isGlobalLifecycle(process.env, existsSync(join(__
 				console.log("[quarterdeck-install] The app is ad-hoc signed, not Apple-notarized. Before first launch, macOS may require System Settings > Privacy & Security > Open Anyway. Managed Macs may block it.");
 			}
 		}
+	} else if (!continuousIntegration && desktopRelease && supportsDesktopInstallation(process.platform, process.arch, osRelease)) {
+		console.warn("[quarterdeck-install] Desktop app installation was skipped because no verified local graphical session is available. The CLI package alone is not a working Quarterdeck app. From a local desktop session, run quarterdeck desktop install, then quarterdeck. To install explicitly from this session, retry with QUARTERDECK_INSTALL_MODE=desktop.");
 	}
 }

@@ -16,7 +16,7 @@ process.on("message", (message) => {
 		if (process.env.DESKTOP_FIXTURE_MODE === "ownership-failure") {
 			process.send({
 				type: "quarterdeck:desktop-failed",
-				protocolVersion: 1,
+				protocolVersion: Number(process.env.DESKTOP_FIXTURE_RUNTIME_PROTOCOL),
 				startupId: message.startupId,
 				code: "recovery_custody_unconfirmed",
 				message: "Synthetic private error text",
@@ -25,7 +25,7 @@ process.on("message", (message) => {
 		}
 		process.send({
 			type: "quarterdeck:desktop-ready",
-			protocolVersion: 1,
+			protocolVersion: Number(process.env.DESKTOP_FIXTURE_RUNTIME_PROTOCOL),
 			startupId: process.env.DESKTOP_FIXTURE_MODE === "wrong-startup" ? randomUUID() : message.startupId,
 			runtimeOrigin: "http://127.0.0.1:12345",
 			runtimeGeneration: randomUUID(),
@@ -44,17 +44,12 @@ process.on("message", (message) => {
 		if (process.env.DESKTOP_FIXTURE_MODE === "control-timeout") return;
 		const response = {
 			type: "quarterdeck:desktop-control-result",
-			protocolVersion: 1,
+			protocolVersion: Number(process.env.DESKTOP_FIXTURE_RUNTIME_PROTOCOL),
 			startupId: message.startupId,
 			requestId: message.requestId,
 			result: { method: "get-quit-summary", owned: true, liveProcessCount: 2, pendingLaunches: false },
 		};
 		process.send({ ...response, requestId: randomUUID() });
-		if (message.method === "create-browser-launch")
-			response.result = {
-				method: "create-browser-launch",
-				url: `http://127.0.0.1:12345/api/runtime/client-bootstrap?capability=${"a".repeat(43)}`,
-			};
 		process.send(response);
 	}
 	if (message.type === "quarterdeck:desktop-shutdown") {
@@ -67,7 +62,7 @@ process.on("message", (message) => {
 		}
 		const result = {
 			type: "quarterdeck:desktop-shutdown-result",
-			protocolVersion: 1,
+			protocolVersion: Number(process.env.DESKTOP_FIXTURE_RUNTIME_PROTOCOL),
 			startupId: message.startupId,
 			requestId: message.requestId,
 			outcome: { status: "clean", safeToExit: true, safeToReleaseOwnership: true },

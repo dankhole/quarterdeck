@@ -4,7 +4,7 @@ Start with the guide for the work in front of you. Current guides describe the p
 
 ## Use Quarterdeck
 
-- [Quick start](../README.md): requirements, npm installation, desktop/browser modes, and updates.
+- [Quick start](../README.md): requirements, npm desktop installation, migration, and updates.
 - [User guide](usage.md): agent setup, configuration, everyday workflow, and troubleshooting.
 - [Desktop guide](desktop.md#using-the-app): installation, window behavior, updates, and recovery.
 - [Desktop environment](desktop-environment.md): executable discovery and optional shell import.
@@ -17,7 +17,7 @@ Start with the guide for the work in front of you. Current guides describe the p
 - [Development](../DEVELOPMENT.md): dependencies, builds, linking, local workflow, and debugging.
 - [Architecture](architecture.md): system map, ownership, and source navigation.
 - [Testing](testing.md): select the smallest check that establishes the changed behavior.
-- [Agent Lab](agent-functional-testing.md): isolated browser/desktop functional testing and evidence.
+- [Agent Lab](agent-functional-testing.md): isolated packaged desktop functional testing and evidence.
 - [Diagnostics](diagnostics.md): recorder, privacy, and ownership; [commands](../DEVELOPMENT.md#unified-diagnostics).
 - [Agent instructions](../AGENTS.md): compact shared rules and routing; `CLAUDE.md` imports them.
 

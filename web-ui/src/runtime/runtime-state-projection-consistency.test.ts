@@ -3,16 +3,16 @@
 import { describe, expect, it } from "vitest";
 import { resolveProjectNavigationTaskCounts } from "@/components/app/project-navigation-counts";
 import { createInitialBoardData } from "@/data/board-data";
-import {
-	deriveAudibleTaskNotificationState,
-	isNewAudibleNotification,
-} from "@/hooks/notifications/audible-notifications";
 import { buildProjectNotificationProjection } from "@/hooks/notifications/project-notifications";
 import { createInitialRuntimeStateStreamStore, runtimeStateStreamReducer } from "@/runtime/runtime-state-stream-store";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { createTestProjectStateResponse, createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 import { countTasksByColumn } from "@/utils/app-utils";
 import { describeSessionState } from "@/utils/session-status";
+import {
+	deriveTaskNotificationState as deriveAudibleTaskNotificationState,
+	isNewTaskNotification as isNewAudibleNotification,
+} from "../../../src/shared/task-notification-policy";
 
 function createUnprovenCodexAttention(taskId: string): RuntimeTaskSessionSummary {
 	return createTestTaskSessionSummary({

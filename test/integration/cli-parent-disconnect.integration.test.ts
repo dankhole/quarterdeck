@@ -56,7 +56,7 @@ describe("CLI parent disconnect integration", { concurrent: false }, () => {
 			cwd: projectPath,
 			homeDir: sandboxRoot,
 			port: await getAvailablePort(),
-			extraEnv: { QUARTERDECK_STATE_HOME: stateHome },
+			extraEnv: { QUARTERDECK_STATE_HOME: stateHome, QUARTERDECK_AGENT_LAB: "1", CI: "true" },
 		});
 		let stopped = false;
 		try {
@@ -76,13 +76,21 @@ describe("CLI parent disconnect integration", { concurrent: false }, () => {
 		const port = await getAvailablePort();
 		const child = spawn(
 			process.execPath,
-			[resolve(process.cwd(), "scripts/dev-runtime.mjs"), "--no-open", "--no-native-ui", "--port", String(port)],
+			[
+				resolve(process.cwd(), "scripts/dev-runtime.mjs"),
+				"--internal-runtime",
+				"--no-native-ui",
+				"--port",
+				String(port),
+			],
 			{
 				cwd: process.cwd(),
 				env: createGitTestEnv({
 					HOME: sandboxRoot,
 					USERPROFILE: sandboxRoot,
 					QUARTERDECK_STATE_HOME: stateHome,
+					QUARTERDECK_AGENT_LAB: "1",
+					CI: "true",
 				}),
 				stdio: ["pipe", "pipe", "pipe"],
 			},

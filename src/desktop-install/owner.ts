@@ -170,9 +170,7 @@ export async function resolveDesktopReleaseDistribution(
 			? quarterdeck.desktopRelease
 			: undefined;
 	if (capability === "adhoc-v1") return "ad-hoc";
-	// Explicit desktop installation from browser-only and legacy packages retains the signed requirement.
-	if (capability === undefined || capability === "browser-only" || capability === "signed-v1")
-		return "signed-notarized";
+	if (capability === "signed-v1") return "signed-notarized";
 	throw new DesktopInstallationError(
 		"invalid_artifact",
 		"The owning npm package has an unknown desktop release capability.",

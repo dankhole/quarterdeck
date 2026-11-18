@@ -73,7 +73,7 @@ function exitWrapper(exitCode) {
 function launchRuntime() {
 	const managed = launchManagedProcess(
 		process.execPath,
-		["--import", tsxLoaderImportSpecifier, "src/cli.ts", ...process.argv.slice(2)],
+		["--import", tsxLoaderImportSpecifier, "src/cli.ts", "--internal-runtime", ...process.argv.slice(2)],
 		{
 			cwd: repoRoot,
 			env: mergeProcessEnvironment(process.env, {

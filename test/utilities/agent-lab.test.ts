@@ -1,13 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { describe, expect, it, vi } from "vitest";
-import { _testing as browserActionTesting } from "../../scripts/agent-lab/browser-actions";
-import { resolveGitCommonDirectory } from "../../scripts/agent-lab/browser-cache.mjs";
-import { describeAgentLabAgent, parseAgentLabPort, runAgentLabCli } from "../../scripts/agent-lab/cli";
 import { buildAgentLabEnvironment, buildSupervisorEnvironment } from "../../scripts/agent-lab/environment";
 import {
 	buildClaudeHookPayload,
@@ -24,18 +21,7 @@ import {
 	writeRealCodexLauncher,
 } from "../../scripts/agent-lab/fixture";
 import { createAgentLabLaunchConfig, persistAgentLabLaunchConfig } from "../../scripts/agent-lab/launch-config";
-import { resolveLoopbackPort } from "../../scripts/agent-lab/loopback-port";
-import {
-	AGENT_LAB_BROWSER_INSTALL_COMMAND,
-	assertSafeRunId,
-	createAgentLabRunId,
-	getAgentBrowserLocalPaths,
-	getAgentLabArtifactRoot,
-	getAgentLabBrowserCachePath,
-	getAgentLabBrowserCachePaths,
-	prepareAgentLabBrowserCache,
-	readAgentLabManifest,
-} from "../../scripts/agent-lab/paths";
+import { assertSafeRunId, createAgentLabRunId } from "../../scripts/agent-lab/paths";
 import { toPublicAgentConfig } from "../../scripts/agent-lab/public-agent-config";
 import {
 	AGENT_LAB_REAL_CLAUDE_ENVIRONMENT_POLICY,
@@ -60,184 +46,6 @@ import { isBinaryAvailableOnPath, mergeProcessEnvironment, resolveWindowsPowerSh
 import { prepareAgentLaunch } from "../../src/terminal/agent-session-adapters";
 
 const execFileAsync = promisify(execFile);
-
-describe("agent-lab browser cache", () => {
-	it("derives a linked worktree common directory without launching Git from the checkout", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-gitdir-"));
-		try {
-			const repoRoot = join(root, "task-worktree");
-			const commonDirectory = join(root, "primary", ".git");
-			const worktreeGitDirectory = join(commonDirectory, "worktrees", "task");
-			await mkdir(repoRoot, { recursive: true });
-			await mkdir(worktreeGitDirectory, { recursive: true });
-			await writeFile(join(repoRoot, ".git"), `gitdir: ${worktreeGitDirectory}\n`, "utf8");
-			await writeFile(join(worktreeGitDirectory, "commondir"), "../..\n", "utf8");
-
-			expect(resolveGitCommonDirectory(repoRoot)).toBe(resolve(commonDirectory));
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	it("shares browser binaries through the primary checkout", () => {
-		const commonDirectory = "/repo/quarterdeck/.git";
-		expect(getAgentLabBrowserCachePath("/repo/.quarterdeck/worktrees/task/quarterdeck", commonDirectory)).toBe(
-			join(resolve(commonDirectory), "quarterdeck", "agent-lab", "playwright-browsers"),
-		);
-	});
-
-	it("falls back to the active checkout for nonstandard Git layouts", () => {
-		const commonDirectory = "/repo/quarterdeck.git";
-		expect(getAgentLabBrowserCachePath("/repo/quarterdeck", commonDirectory)).toBe(
-			join(resolve(commonDirectory), "quarterdeck", "agent-lab", "playwright-browsers"),
-		);
-	});
-
-	it("keeps the durable cache outside every node_modules tree", () => {
-		const paths = getAgentLabBrowserCachePaths(
-			"/repo/.quarterdeck/worktrees/task/quarterdeck",
-			"/repo/quarterdeck/.git",
-		);
-		expect(paths.stablePath.split(/[\\/]/u)).not.toContain("node_modules");
-		expect(paths.legacyPath).toBe(
-			join(dirname(resolve("/repo/quarterdeck/.git")), "web-ui", "node_modules", ".cache", "agent-lab-playwright"),
-		);
-	});
-
-	it("resolves the same cache for two worktrees sharing a Git common directory", () => {
-		const commonDirectory = "/repo/quarterdeck/.git";
-		expect(getAgentLabBrowserCachePath("/worktrees/one/quarterdeck", commonDirectory)).toBe(
-			getAgentLabBrowserCachePath("/worktrees/two/quarterdeck", commonDirectory),
-		);
-	});
-
-	it("keeps browser profiles, daemon state, and artifacts worktree-local", () => {
-		const firstRepoRoot = "/worktrees/one/quarterdeck";
-		const secondRepoRoot = "/worktrees/two/quarterdeck";
-		const first = getAgentBrowserLocalPaths(firstRepoRoot);
-		const second = getAgentBrowserLocalPaths(secondRepoRoot);
-		expect(first).toEqual({
-			artifactRoot: join(firstRepoRoot, "test-results", "agent-lab"),
-			browserHomePath: join(firstRepoRoot, "test-results", "agent-lab", "browser-home"),
-			daemonSessionPath: join(firstRepoRoot, "test-results", "agent-lab", "browser-daemon"),
-		});
-		expect(second.artifactRoot).not.toBe(first.artifactRoot);
-	});
-
-	it("uses a worktree-local fallback when legacy test-results is a shared symlink", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-artifact-root-"));
-		const repoRoot = join(root, "worktree");
-		const sharedResults = join(root, "shared-results");
-		const previousOverride = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
-		try {
-			delete process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
-			await mkdir(repoRoot, { recursive: true });
-			await mkdir(sharedResults, { recursive: true });
-			await symlink(
-				sharedResults,
-				join(repoRoot, "test-results"),
-				process.platform === "win32" ? "junction" : "dir",
-			);
-
-			expect(getAgentLabArtifactRoot(repoRoot)).toBe(join(repoRoot, ".agent-lab-results"));
-		} finally {
-			if (previousOverride === undefined) {
-				delete process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
-			} else {
-				process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT = previousOverride;
-			}
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	it("survives root and web dependency reinstalls", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-survival-"));
-		const repoRoot = join(root, "repo");
-		const commonDirectory = join(repoRoot, ".git");
-		try {
-			await mkdir(join(repoRoot, "node_modules"), { recursive: true });
-			await mkdir(join(repoRoot, "web-ui", "node_modules"), { recursive: true });
-			const prepared = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
-			const sentinelPath = join(prepared.path, "cache-sentinel");
-			await writeFile(sentinelPath, "browser-binary-cache\n", "utf8");
-			await rm(join(repoRoot, "node_modules"), { recursive: true, force: true });
-			await rm(join(repoRoot, "web-ui", "node_modules"), { recursive: true, force: true });
-			expect(await readFile(sentinelPath, "utf8")).toBe("browser-binary-cache\n");
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	it("migrates a complete legacy Chromium cache without deleting it", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-migration-"));
-		const repoRoot = join(root, "repo");
-		const commonDirectory = join(repoRoot, ".git");
-		const paths = getAgentLabBrowserCachePaths(repoRoot, commonDirectory);
-		const legacyInstallation = join(paths.legacyPath, "chromium-1237");
-		try {
-			await mkdir(legacyInstallation, { recursive: true });
-			await writeFile(join(legacyInstallation, "INSTALLATION_COMPLETE"), "", "utf8");
-			await writeFile(join(legacyInstallation, "browser-binary"), "complete\n", "utf8");
-
-			const prepared = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
-			expect(prepared).toEqual({ path: paths.stablePath, status: "migrated" });
-			const launchPreparation = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
-			expect(launchPreparation).toEqual({ path: prepared.path, status: "ready" });
-			expect(await readFile(join(paths.stablePath, "chromium-1237", "browser-binary"), "utf8")).toBe("complete\n");
-			expect(await readFile(join(legacyInstallation, "browser-binary"), "utf8")).toBe("complete\n");
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	it("does not migrate a partial Playwright installation", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-partial-"));
-		const repoRoot = join(root, "repo");
-		const commonDirectory = join(repoRoot, ".git");
-		const paths = getAgentLabBrowserCachePaths(repoRoot, commonDirectory);
-		try {
-			await mkdir(join(paths.legacyPath, "chromium-1237"), { recursive: true });
-			await writeFile(join(paths.legacyPath, "chromium-1237", "browser-binary"), "partial\n", "utf8");
-			const prepared = await prepareAgentLabBrowserCache(repoRoot, commonDirectory);
-			expect(prepared).toEqual({ path: paths.stablePath, status: "empty" });
-			expect(await readFile(join(paths.legacyPath, "chromium-1237", "browser-binary"), "utf8")).toBe("partial\n");
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	it("rejects a symlink at the stable cache path without following it", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-symlink-"));
-		const repoRoot = join(root, "repo");
-		const commonDirectory = join(repoRoot, ".git");
-		const paths = getAgentLabBrowserCachePaths(repoRoot, commonDirectory);
-		const externalDirectory = join(root, "external-cache-target");
-		try {
-			await mkdir(externalDirectory, { recursive: true });
-			await writeFile(join(externalDirectory, "sentinel"), "untouched\n", "utf8");
-			await mkdir(join(commonDirectory, "quarterdeck", "agent-lab"), { recursive: true });
-			await symlink(externalDirectory, paths.stablePath, process.platform === "win32" ? "junction" : "dir");
-
-			await expect(prepareAgentLabBrowserCache(repoRoot, commonDirectory)).rejects.toThrow(
-				"must be a real directory",
-			);
-			expect(await readFile(join(externalDirectory, "sentinel"), "utf8")).toBe("untouched\n");
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-
-	it("keeps the explicit install flow when no browser cache exists", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-browser-cache-empty-"));
-		try {
-			const prepared = await prepareAgentLabBrowserCache(join(root, "repo"), join(root, "repo", ".git"));
-			expect(prepared.status).toBe("empty");
-			expect(AGENT_LAB_BROWSER_INSTALL_COMMAND).toBe("npm run agent:browser -- install-browser chromium");
-		} finally {
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-});
 
 describe("agent-lab environment", () => {
 	it("preserves Windows system variables from a copied mixed-case supervisor environment", () => {
@@ -616,13 +424,6 @@ describe("agent-lab provider isolation", () => {
 });
 
 describe("agent-lab real Claude", () => {
-	it("describes the selected authentication boundary in human-readable summaries", () => {
-		expect(describeAgentLabAgent(resolveRealClaudeAgent({}, {}))).toBe("real Claude (haiku, existing CLI auth)");
-		expect(describeAgentLabAgent(resolveRealClaudeAgent({ environmentAuthentication: true }, {}))).toBe(
-			"real Claude (haiku, environment auth)",
-		);
-	});
-
 	it("resolves cheap defaults without exposing the selected config path", () => {
 		const agent = resolveRealClaudeAgent({}, { CLAUDE_CONFIG_DIR: "/profiles/claude", PATH: "/host/bin" });
 		expect(agent).toMatchObject({
@@ -1385,30 +1186,6 @@ describe("agent-lab real Codex", () => {
 			}
 		},
 	);
-
-	it.each([
-		["--model", "gpt-5.6-luna"],
-		["--codex-home", "/profiles/codex"],
-		["--claude-config-dir", "/profiles/claude"],
-		["--codex-sandbox", "workspace-write"],
-		["--codex-approval-policy", "never"],
-	])("rejects real-only option %s in fake mode", async (flag, value) => {
-		await expect(runAgentLabCli(["node", "agent-lab", "start", flag, value])).rejects.toThrow(
-			"require --agent real-codex or --agent real-claude",
-		);
-	});
-
-	it.each(["fake", "fake-claude", "real-claude"])("rejects Codex subagents in %s mode", async (agent) => {
-		await expect(
-			runAgentLabCli(["node", "agent-lab", "start", "--agent", agent, "--codex-multi-agent"]),
-		).rejects.toThrow(/require --agent/);
-	});
-
-	it("rejects Claude environment authentication in fake mode", async () => {
-		await expect(runAgentLabCli(["node", "agent-lab", "start", "--claude-environment-auth"])).rejects.toThrow(
-			"require --agent real-codex or --agent real-claude",
-		);
-	});
 });
 
 describe("agent-lab fake agent protocol", () => {
@@ -1691,12 +1468,6 @@ describe("agent-lab fake agent protocol", () => {
 		});
 		expect(parseFakeAgentCommand("/spam nope")).toEqual({ kind: "spam", count: 100 });
 	});
-
-	it("keeps Claude-only scenarios out of the default fake lane", async () => {
-		await expect(
-			runAgentLabCli(["node", "agent-lab", "start", "--agent", "fake", "--scenario", "claude-lifecycle"]),
-		).rejects.toThrow("require --agent fake-claude");
-	});
 });
 
 describe("agent-lab run ids", () => {
@@ -1707,169 +1478,5 @@ describe("agent-lab run ids", () => {
 		expect(() => assertSafeRunId("../escape")).toThrow("Invalid agent-lab run id");
 		expect(() => assertSafeRunId("con", "win32")).toThrow("Invalid agent-lab run id");
 		expect(assertSafeRunId("con", "linux")).toBe("con");
-	});
-});
-
-describe("agent-lab manifest compatibility", () => {
-	it("keeps version-1 runs readable for status, list, and stop lifecycle operations", async () => {
-		const root = await mkdtemp(join(tmpdir(), "quarterdeck-agent-lab-manifest-test-"));
-		const runDirectory = join(root, "legacy-run");
-		const manifestPath = join(runDirectory, "manifest.json");
-		const previousArtifactRoot = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
-		const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-		try {
-			await mkdir(runDirectory, { recursive: true });
-			process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT = root;
-			await writeFile(
-				manifestPath,
-				`${JSON.stringify({
-					schemaVersion: 1,
-					runId: "legacy-run",
-					status: "stopped",
-					repoRoot: "/repo",
-					artifactDir: root,
-					manifestPath,
-					stopRequestPath: join(root, "stop-request.json"),
-					tempRoot: join(root, "temp"),
-					homePath: join(root, "home"),
-					statePath: join(root, "state"),
-					projectPath: join(root, "project"),
-					additionalProjectPath: join(root, "project-secondary"),
-					forbiddenHostLaunchLogPath: join(root, "forbidden-host-launches.log"),
-					runtimeCapabilities: { nativeUiAvailable: false },
-					projectUrl: "http://127.0.0.1:4174/project",
-					runtimeUrl: "http://127.0.0.1:3597",
-					webUrl: "http://127.0.0.1:4174",
-					browserConfigPath: join(root, "browser.json"),
-					browserOutputPath: join(root, "browser"),
-					browserSession: "qd-legacy-run",
-					scenario: "idle",
-					keepTemp: true,
-					supervisorPid: process.pid,
-					processes: { runtime: null, web: null },
-					createdAt: "2026-08-23T12:34:56.000Z",
-					readyAt: "2026-08-23T12:34:57.000Z",
-					stoppedAt: "2026-08-23T12:35:00.000Z",
-					failure: null,
-				})}\n`,
-				"utf8",
-			);
-
-			await expect(readAgentLabManifest(manifestPath)).resolves.toMatchObject({
-				schemaVersion: 1,
-				runId: "legacy-run",
-				status: "stopped",
-				stopRequestPath: join(root, "stop-request.json"),
-			});
-
-			for (const args of [
-				["node", "agent-lab", "status", "legacy-run", "--json"],
-				["node", "agent-lab", "list", "--json"],
-				["node", "agent-lab", "stop", "legacy-run", "--json"],
-			]) {
-				stdout.mockClear();
-				await runAgentLabCli(args);
-				expect(stdout.mock.calls.map(([value]) => String(value)).join("")).toContain('"runId": "legacy-run"');
-			}
-			stdout.mockClear();
-			await runAgentLabCli(["node", "agent-lab", "snapshot", "legacy-run", "--label", "legacy", "--json"]);
-			expect(stdout.mock.calls.map(([value]) => String(value)).join("")).toContain('"label": "legacy"');
-
-			const versionOneManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
-			await writeFile(
-				manifestPath,
-				`${JSON.stringify({
-					...versionOneManifest,
-					schemaVersion: 2,
-					hostEventLedgerPath: join(root, "host-events.jsonl"),
-					runtimeCapabilities: { nativeUiAvailable: false, hostIntegrationMode: "simulated" },
-				})}\n`,
-				"utf8",
-			);
-			await expect(readAgentLabManifest(manifestPath)).resolves.toMatchObject({
-				schemaVersion: 2,
-				runId: "legacy-run",
-			});
-			await expect(runAgentLabCli(["node", "agent-lab", "restart-runtime", "legacy-run", "--json"])).rejects.toThrow(
-				"predates same-state runtime restart support",
-			);
-
-			const versionTwoManifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
-			await writeFile(
-				manifestPath,
-				`${JSON.stringify({
-					...versionTwoManifest,
-					schemaVersion: 3,
-					runtimeRestartRequestPath: join(root, "runtime-restart-request.json"),
-					runtimeRestartResultPath: join(root, "runtime-restart-result.json"),
-					runtimeGeneration: 1,
-					runtimeRestarts: [],
-				})}\n`,
-				"utf8",
-			);
-			await expect(readAgentLabManifest(manifestPath)).resolves.toMatchObject({
-				schemaVersion: 3,
-				runtimeGeneration: 1,
-			});
-		} finally {
-			stdout.mockRestore();
-			if (previousArtifactRoot === undefined) {
-				delete process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT;
-			} else {
-				process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT = previousArtifactRoot;
-			}
-			await rm(root, { recursive: true, force: true });
-		}
-	});
-});
-
-describe("agent-lab Node launch preflight", () => {
-	it.each([
-		"/Users/synthetic/Applications/Quarterdeck.app/Contents/Resources/runtime/bin/nodeHost",
-		"/tmp/synthetic/Quarterdeck.app/Contents/Resources/runtime/bin/nodeHost",
-	])("rejects bundled Node before creating a run: %s", async (execPath) => {
-		const previousExecPath = process.execPath;
-		process.execPath = execPath;
-		try {
-			await expect(runAgentLabCli(["node", "agent-lab", "start", "--json"])).rejects.toThrow(
-				"Prepend an external Node.js bin directory to PATH for agent:lab and agent:browser commands",
-			);
-		} finally {
-			process.execPath = previousExecPath;
-		}
-	});
-});
-
-describe("agent-lab loopback ports", () => {
-	it("maps the documented auto CLI value to an ephemeral numeric port", () => {
-		expect(parseAgentLabPort("auto")).toBe(0);
-		expect(parseAgentLabPort("41731")).toBe(41_731);
-		expect(() => parseAgentLabPort("invalid")).toThrow('use 1-65535 or "auto"');
-	});
-
-	it("allocates an ephemeral port through the shared supervisor boundary", async () => {
-		const port = await resolveLoopbackPort(null, "test");
-		expect(port).toBeGreaterThan(0);
-		expect(port).toBeLessThanOrEqual(65_535);
-	});
-});
-
-describe("agent-lab browser action summaries", () => {
-	it("keeps synthetic interaction text while aliasing lab paths", () => {
-		const manifest = {
-			artifactDir: "/repo/test-results/agent-lab/run-1",
-			tempRoot: "/tmp/lab-run",
-			repoRoot: "/repo",
-		} as Parameters<typeof browserActionTesting.summarizeArguments>[0];
-		const summary = browserActionTesting.summarizeArguments(manifest, [
-			"-s=qd-run-1",
-			"fill",
-			"e12",
-			"synthetic prompt",
-			"--filename=/repo/test-results/agent-lab/run-1/browser/checkpoint.png",
-		]);
-		expect(summary).toContain("synthetic prompt");
-		expect(summary).toContain("--filename=$LAB_ARTIFACT/browser/checkpoint.png");
-		expect(summary.join(" ")).not.toContain("/repo/test-results");
 	});
 });

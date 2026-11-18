@@ -24,8 +24,8 @@ Quarterdeck is pre-1.0 and under active development. Only the latest published r
 In scope:
 
 - The `quarterdeck` CLI and runtime server.
-- The bundled web UI served by the runtime.
-- The macOS desktop shell and its runtime/host integration boundary.
+- The bundled React renderer and authenticated local runtime transport.
+- The macOS and Windows desktop shells and their runtime/host integration boundaries.
 - Build, packaging, and release tooling in this repository.
 
 Out of scope:

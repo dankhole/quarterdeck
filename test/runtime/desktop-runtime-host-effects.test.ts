@@ -33,7 +33,7 @@ describe("bounded private desktop host requests", () => {
 		const message = f.sent[0];
 		const response = {
 			type: "quarterdeck:desktop-host-result",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId: message.startupId,
 			runtimeGeneration: message.runtimeGeneration,
 			requestId: message.requestId,

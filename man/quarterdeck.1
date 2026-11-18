@@ -3,12 +3,7 @@
 quarterdeck \- local orchestration board for coding agents
 .SH SYNOPSIS
 .B quarterdeck
-.RI [ --browser | --desktop ]
-.RI [ --host " " ip ]
-.RI [ --port " " number|auto ]
-.RI [ --no-open ]
-.RI [ --no-native-ui ]
-.RI [ --skip-shutdown-cleanup ]
+.RI [ --desktop ]
 .br
 .B quarterdeck hooks
 .RI " " ingest|notify
@@ -30,66 +25,46 @@ quarterdeck \- local orchestration board for coding agents
 .RI " " [ options ]
 .SH DESCRIPTION
 .B quarterdeck
-opens the installed desktop app on supported local graphical Macs after a
-global npm installation, unless that npm prefix retains a browser installation
-preference. Other platforms use the local runtime and browser UI. Source, npx, CI, headless and explicit
-runtime-option invocations remain on the runtime path. When launched inside a Git
+opens the installed desktop app on supported local graphical macOS or Windows
+hosts after a global npm installation. Standalone browser and Linux/headless
+product use are not supported. Internal headless runtimes and hidden desktop
+tests remain development infrastructure. When launched inside a Git
 repository, it opens that repository's indexed workspace. When launched
 outside Git, it starts without an active workspace or uses an indexed project.
 .SH OPTIONS
 .TP
-.B --browser
-Open browser mode explicitly. Runtime options and headless environments also
-select this mode.
-Launch-mode flags cannot be combined with subcommands.
-.TP
 .B --desktop
-Validate the installed macOS app and request native launch.
-Cannot be combined with browser-runtime flags or subcommands.
-A desktop-capable supported global npm installation installs the matching app
-unless opted out. Launch never downloads or repairs it and never silently falls
-back from an invalid pair. Use desktop status and desktop install for repair,
-including when npm lifecycle scripts were disabled; --browser remains available.
-.TP
-.B --host <ip>
-Bind the runtime to an IP address. The default is 127.0.0.1.
-.TP
-.B --port <number|auto>
-Bind to a port from 1 through 65535, or select an available port
-automatically.
-.TP
-.B --no-open
-Do not open the browser automatically.
-.TP
-.B --no-native-ui
-Disable integrations that launch or interact with host-native UI.
-.TP
-.B --skip-shutdown-cleanup
-Skip graceful shutdown cleanup, including session marking and orphan-process
-cleanup. Intended for controlled testing and recovery only.
+Validate the installed macOS or Windows app and request native launch.
+This is equivalent to an ordinary launch and cannot be combined with subcommands.
+Global npm installation on a supported host installs the matching app.
+Launch never downloads, repairs, or falls back from an invalid pair.
+Use desktop status and desktop install for repair, including when npm lifecycle
+scripts were disabled. Internal runtime options are not standalone product modes.
 .TP
 .B -h, --help
 Show help text and exit.
 .TP
 .B -v, --version
 Show the version and exit.
-.SH INSTALLATION MODE
-Set QUARTERDECK_INSTALL_MODE=browser during global npm installation to retain
-browser-only behavior across upgrades in that npm prefix. Browser-only releases
-also record this preference. Set QUARTERDECK_INSTALL_MODE=desktop to explicitly
-install the matching app and clear the preference. npm remains the installer and
-update authority; Finder/Dock launches do not make the app independent of npm.
+.SH INSTALLATION AND MIGRATION
+npm remains the installer and update authority; Finder/Dock and Start menu
+launches do not make the app independent of npm.
+Before upgrading a browser installation, save unsaved work in its old profile,
+stop the old runtime, remove QUARTERDECK_INSTALL_MODE=browser from shell settings,
+and install the current global npm package. Old browser preferences no longer
+opt out of desktop. Projects, tasks, settings and provider identities remain in
+the canonical state home; do not delete it. Browser-profile-only unsaved data is
+not automatically transferred to Electron.
 Public macOS apps are ad-hoc signed, not Apple-notarized. A blocked launch may
 require System Settings > Privacy & Security > Open Anyway; managed Macs may
 prohibit approval. Updates may require renewed Keychain consent. Installation
 never removes quarantine or disables Gatekeeper.
-Installations predating this preference should explicitly select browser during
-the first desktop-capable upgrade to preserve their behavior. Disabled lifecycle
-scripts cannot record a preference or install the app; use --browser explicitly.
+If lifecycle scripts were disabled, run quarterdeck desktop install to install
+or repair the matching app.
 .SH COMMANDS
 .TP
 .B desktop install [--from <app-path>] [--replace-owner]
-Install the matching published macOS app without launching it,
+Install the matching published macOS or Windows app without launching it,
 or explicitly import a local app candidate.
 Native self-updates are disabled for npm-managed copies.
 Replacement uses a temporary backup and journal. Quit the running app and
@@ -163,7 +138,7 @@ Show recorder and journal health for a selected runtime.
 .B diagnostics doctor
 Run read-only subsystem checks. Use
 .B --request-browser
-to request a fresh metadata-only browser snapshot and
+to request a fresh metadata-only desktop renderer snapshot and
 .B --fail-on-error
 to return exit status 5 when an error-severity finding exists.
 .TP
@@ -200,12 +175,6 @@ automatically.
 .TP
 Open Quarterdeck in the default launch mode:
 .B quarterdeck
-.TP
-Start without browser or host-native integrations:
-.B quarterdeck --no-open --no-native-ui
-.TP
-Bind to a custom address and port:
-.B quarterdeck --host 0.0.0.0 --port 9000
 .TP
 Create and list state backups:
 .B quarterdeck backup create

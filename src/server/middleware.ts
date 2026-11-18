@@ -3,7 +3,6 @@ import type { Duplex } from "node:stream";
 
 import { getQuarterdeckRuntimeHost, getQuarterdeckRuntimeOrigin, getQuarterdeckRuntimePort } from "../core";
 
-const VITE_DEV_PORT = 4173;
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 const ALLOWED_METHODS = ["GET", "POST", "OPTIONS"].join(", ");
 const ALLOWED_HEADERS = [
@@ -34,10 +33,6 @@ export interface HostGateInput {
 	allowedHosts: ReadonlySet<string>;
 }
 
-function isDevelopmentMode(): boolean {
-	return process.env.NODE_ENV === "development";
-}
-
 function normalizeHeaderValue(value: string | undefined): string | null {
 	const trimmed = value?.trim();
 	return trimmed ? trimmed : null;
@@ -51,26 +46,8 @@ function addHostHeader(hosts: Set<string>, host: string, port: number): void {
 	hosts.add(`${host}:${port}`.toLowerCase());
 }
 
-function readOptionalPort(value: string | undefined): number | null {
-	const normalized = value?.trim();
-	if (!normalized || !/^\d+$/.test(normalized)) {
-		return null;
-	}
-	const parsed = Number.parseInt(normalized, 10);
-	return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? parsed : null;
-}
-
-function getDevelopmentWebUiPorts(): number[] {
-	const ports = new Set<number>([VITE_DEV_PORT]);
-	for (const rawPort of [process.env.QUARTERDECK_WEB_UI_PORT, process.env.QUARTERDECK_E2E_WEB_PORT]) {
-		const parsed = readOptionalPort(rawPort);
-		if (parsed !== null) {
-			ports.add(parsed);
-		}
-	}
-	return [...ports];
-}
-
+// Transport-level origins for runtime-local/internal callers, not product admission.
+// Product HTTP/WebSocket access still requires the separate desktop credential gate.
 export function getAllowedRuntimeOrigins(): ReadonlySet<string> {
 	const port = getQuarterdeckRuntimePort();
 	const runtimeHost = getQuarterdeckRuntimeHost().toLowerCase();
@@ -80,14 +57,6 @@ export function getAllowedRuntimeOrigins(): ReadonlySet<string> {
 	addHttpOrigin(allowed, "127.0.0.1", port);
 	addHttpOrigin(allowed, "localhost", port);
 	addHttpOrigin(allowed, "[::1]", port);
-
-	if (isDevelopmentMode()) {
-		for (const webUiPort of getDevelopmentWebUiPorts()) {
-			addHttpOrigin(allowed, "127.0.0.1", webUiPort);
-			addHttpOrigin(allowed, "localhost", webUiPort);
-			addHttpOrigin(allowed, "[::1]", webUiPort);
-		}
-	}
 
 	return allowed;
 }

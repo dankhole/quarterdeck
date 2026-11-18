@@ -32,7 +32,6 @@ import { buildSettingsSaveRequest } from "@/hooks/settings/settings-form";
 import { useSettingsForm } from "@/hooks/settings/use-settings-form";
 import { useLayoutCustomizations } from "@/resize/layout-customizations";
 import { openFileOnHost } from "@/runtime/runtime-config-query";
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { useRuntimeConfig } from "@/runtime/use-runtime-config";
 import { formatPathForDisplay } from "@/utils/path-display";
@@ -83,8 +82,7 @@ function SettingsDialogSession({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [selectedCategory, setSelectedCategory] = useState<SettingsCategoryId>(initialSection ?? "agents");
 	const pageRef = useRef<HTMLDivElement | null>(null);
-	const desktop = getRuntimeEnvironment().kind === "desktop";
-	const groups = getSettingsNavigationGroups(projectName, desktop);
+	const groups = getSettingsNavigationGroups(projectName);
 	const category = getSettingsCategory(selectedCategory);
 	const destinationError = !projectId
 		? null

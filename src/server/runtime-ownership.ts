@@ -22,6 +22,7 @@ import {
 	type RuntimeTransportCapabilities,
 	runtimeOwnerDescriptorSchema,
 	runtimeOwnershipClaimSchema,
+	runtimeTransportCapabilitiesSchema,
 } from "../core/api/runtime-management.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../core/api/runtime-protocol.js";
 import { normalizeFileSystemPathForComparison } from "../core/path-comparison.js";
@@ -39,6 +40,12 @@ const OWNERSHIP_DIRECTORY = "runtime-ownership";
 const MAX_CLAIM_DEPTH = 100_000;
 const MONITOR_INTERVAL_MS = 1_000;
 const MAX_CLAIM_BYTES = 16_384;
+
+// Read older owners well enough to reject their runtime protocol, without treating a
+// live legacy descriptor as absent. Writes and public handshakes remain desktop-only.
+const persistedRuntimeOwnerDescriptorSchema = runtimeOwnerDescriptorSchema.extend({
+	capabilities: runtimeTransportCapabilitiesSchema.strip(),
+});
 
 export type RuntimeOwnershipErrorCode =
 	| "invalid_claim"
@@ -212,7 +219,9 @@ async function readDescriptor(root: string, claim: RuntimeOwnershipClaim): Promi
 		const path = descriptorPath(root, claim.generation);
 		const stat = await lstat(path);
 		if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_CLAIM_BYTES) return null;
-		const descriptor = runtimeOwnerDescriptorSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
+		const descriptor = persistedRuntimeOwnerDescriptorSchema.parse(
+			JSON.parse(await readFile(path, "utf8")) as unknown,
+		);
 		return descriptor.generation === claim.generation &&
 			descriptor.canonicalStateHome === claim.canonicalStateHome &&
 			descriptor.process.pid === claim.process.pid &&
@@ -611,8 +620,6 @@ export async function acquireRuntimeOwnership(
 					managementProtocolVersion: QUARTERDECK_MANAGEMENT_PROTOCOL_VERSION,
 					capabilities: options.capabilities ?? {
 						transportVersion: 1,
-						browserHttp: true,
-						browserWebSocket: true,
 						desktopProxy: false,
 						desktopBridgeVersion: null,
 					},

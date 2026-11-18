@@ -1,5 +1,5 @@
 export const RUNTIME_ADMISSION_REQUIRED_MESSAGE =
-	"Your Quarterdeck session has expired or the runtime restarted. Reopen this project from the Quarterdeck CLI or desktop app to connect again. Your unsaved changes remain on this page.";
+	"Your Quarterdeck connection is no longer authorized. Reopen the Quarterdeck desktop app to connect again. Your unsaved changes remain in this window.";
 
 const listeners = new Set<() => void>();
 

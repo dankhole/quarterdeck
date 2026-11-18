@@ -18,7 +18,9 @@ const executeFile = promisify(execFile);
 /** LaunchServices owns presentation; the CLI neither starts nor owns a runtime. */
 export async function launchDesktop(version: string): Promise<void> {
 	if (!["darwin", "win32"].includes(process.platform)) {
-		throw new Error("Desktop mode is available on macOS and Windows. Use quarterdeck --browser on this platform.");
+		throw new Error(
+			"Quarterdeck requires the desktop app on macOS or Windows. Standalone browser access is no longer supported.",
+		);
 	}
 	if (process.env.QUARTERDECK_DESKTOP_CHILD === "1") {
 		throw new Error("A desktop runtime helper cannot launch another desktop app.");

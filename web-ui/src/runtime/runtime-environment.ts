@@ -14,14 +14,12 @@ declare global {
 
 export type RuntimeWebSocketPath = "/api/runtime/ws" | "/api/terminal/io" | "/api/terminal/control";
 
-export type RuntimeEnvironment =
-	| { readonly kind: "browser"; readonly runtimeOrigin: string }
-	| {
-			readonly kind: "desktop";
-			readonly runtimeOrigin: string;
-			readonly runtimeGeneration: string;
-			readonly capabilities: DesktopCapabilities;
-	  };
+export interface RuntimeEnvironment {
+	readonly kind: "desktop";
+	readonly runtimeOrigin: string;
+	readonly runtimeGeneration: string;
+	readonly capabilities: DesktopCapabilities;
+}
 
 function hasExactKeys(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
 	return (
@@ -63,7 +61,7 @@ function hasDesktopBridgeKeys(value: unknown): value is Record<string, unknown> 
 	);
 }
 
-/** Browser clients keep their HTTP origin; desktop clients require the pinned preload endpoint. */
+/** Product transport requires the pinned preload endpoint and the approved desktop origin. */
 export function resolveRuntimeEnvironment(
 	location: Pick<Location, "protocol" | "host">,
 	desktopBridge: unknown,
@@ -111,10 +109,7 @@ export function resolveRuntimeEnvironment(
 		};
 	}
 
-	if (location.protocol !== "http:" && location.protocol !== "https:") {
-		throw new Error("Runtime transport requires an HTTP origin or a valid desktop bootstrap.");
-	}
-	return { kind: "browser", runtimeOrigin: new URL(`${location.protocol}//${location.host}`).origin };
+	return invalidDesktopEnvironment();
 }
 
 export function getRuntimeEnvironment(): RuntimeEnvironment {

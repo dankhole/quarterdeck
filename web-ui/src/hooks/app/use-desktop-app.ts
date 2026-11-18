@@ -42,19 +42,16 @@ export interface UseDesktopAppInput {
 	openProjectByPath?: (path: string, canNavigate: () => boolean) => Promise<void>;
 }
 
-const noFileSubscription = (): (() => void) => () => {};
-const browserProjectLaunchReady = (): boolean => true;
 function desktopFileProjectLaunchReady(): boolean {
 	const recovery = getDesktopFileEditorRecoveryCommitStatus();
 	return recovery.ready || recovery.problem !== null || getFileEditorDrafts(null).length > 0;
 }
 
 export function useDesktopApp(input: UseDesktopAppInput): boolean {
-	const desktop = getRuntimeEnvironment().kind === "desktop";
 	const fileProjectLaunchReady = useSyncExternalStore(
-		desktop ? subscribeFileEditorCache : noFileSubscription,
-		desktop ? desktopFileProjectLaunchReady : browserProjectLaunchReady,
-		browserProjectLaunchReady,
+		subscribeFileEditorCache,
+		desktopFileProjectLaunchReady,
+		desktopFileProjectLaunchReady,
 	);
 	const [frozen, setFrozen] = useState(false);
 	const latest = useRef(input);
@@ -63,7 +60,6 @@ export function useDesktopApp(input: UseDesktopAppInput): boolean {
 	latest.current = input;
 	useEffect(() => {
 		const environment = getRuntimeEnvironment();
-		if (environment.kind !== "desktop") return;
 		const bridge = window.quarterdeckDesktop;
 		let subscribed = true;
 		const freeze = new DesktopTransitionFreeze(setFrozen);
@@ -242,7 +238,6 @@ export function useDesktopApp(input: UseDesktopAppInput): boolean {
 		frozen,
 	]);
 	useEffect(() => {
-		if (getRuntimeEnvironment().kind !== "desktop") return;
 		window.quarterdeckDesktop?.reportNotificationContext?.({
 			currentProjectId: input.runtimeConnected ? (notification?.currentProjectId ?? null) : null,
 		});
@@ -260,7 +255,6 @@ export function useDesktopApp(input: UseDesktopAppInput): boolean {
 		fileProjectLaunchReady || input.taskDraftCount > 0 || getDesktopProtectedDraftLabels().length > 0;
 	useEffect(() => {
 		const environment = getRuntimeEnvironment();
-		if (environment.kind !== "desktop") return;
 		window.quarterdeckDesktop?.publishCommandAvailability?.({
 			runtimeGeneration: environment.runtimeGeneration,
 			runtimeConnected: input.runtimeConnected,

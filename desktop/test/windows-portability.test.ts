@@ -94,7 +94,6 @@ describe("Windows desktop portability", () => {
 			availableCommands: ["settings", "new-task"],
 			updateGuidanceAvailable: true,
 			dispatch: vi.fn(),
-			openInBrowser: vi.fn(),
 			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		});

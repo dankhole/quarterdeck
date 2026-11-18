@@ -34,7 +34,7 @@ Model metadata is reused per project for five minutes, including across dialog r
 
 Pi users need exactly Pi 1.5.2. When upgrading from a Quarterdeck build pinned to Pi 1.4.0, update Quarterdeck and Pi together, restart the owning runtime, and restart managed Pi tasks. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
 
-Pi runs with its native tools, extensions, and project-trust settings. Quarterdeck adds no tool approval dialogs or project-trust override. Existing Pi tasks must be restarted to pick up this change. The retired `piToolApprovalsEnabled` setting is ignored and removed on the next configuration save. After upgrading Quarterdeck, restart the owning runtime and refresh browser clients to load the matching configuration protocol.
+Pi runs with its native tools, extensions, and project-trust settings. Quarterdeck adds no tool approval dialogs or project-trust override. Existing Pi tasks must be restarted to pick up this change. The retired `piToolApprovalsEnabled` setting is ignored and removed on the next configuration save. After upgrading Quarterdeck, restart the desktop app and owning runtime to load the matching configuration protocol.
 
 ## Environment Variables
 
@@ -48,8 +48,7 @@ Optional variables:
 | --- | --- |
 | `QUARTERDECK_STATE_HOME` | Override the runtime state directory. Defaults to `~/.quarterdeck`. |
 | `QUARTERDECK_BACKUP_HOME` | Override the state backup directory. Defaults to `~/.quarterdeck-backups`. |
-| `QUARTERDECK_RUNTIME_HOST` | Override the runtime host. Defaults to `127.0.0.1`; the `--host` flag is usually clearer. |
-| `QUARTERDECK_RUNTIME_PORT` | Override the runtime port. Defaults to `3500`; the `--port` flag is usually clearer. |
+| `QUARTERDECK_RUNTIME_HOST` / `QUARTERDECK_RUNTIME_PORT` | Internal runtime fixture/development settings, not desktop launch options or a standalone browser mode. Desktop-owned helpers select loopback endpoints. |
 | `QUARTERDECK_DEBUG_MODE` | Enable extra debug behavior for agent availability checks. `DEBUG_MODE` and `debug_mode` are also recognized. |
 | `QUARTERDECK_TITLE_PROVIDER` | Select task-title generation: `codex` (default; tries Codex, then Claude, then gateway), `claude` (tries Claude, then gateway; skips Codex), `llm` (gateway only), or `local` (no model call). Initial generation falls back to deterministic local text; failed follow-up generation keeps the current title. |
 | `QUARTERDECK_CODEX_TITLE_MODEL` | Override the Codex model used for task titles. Defaults to `gpt-6-luna`. |
@@ -62,7 +61,7 @@ Titles, branch names, and commit messages first use the installed Codex CLI’s 
 
 To stop Quarterdeck from using a locally signed-in Claude login for these background calls—for example, to avoid spending Claude usage on automatic titles—sign Claude out, remove `claude` from Quarterdeck's PATH, or set `QUARTERDECK_TITLE_PROVIDER=llm` (gateway only) or `QUARTERDECK_TITLE_PROVIDER=local` (no model calls for titles); setting `QUARTERDECK_TITLE_PROVIDER=codex` alone is not enough, since that mode still falls through to Claude once Codex fails. Branch-name/commit-message generation follow the same Codex → Claude → gateway chain and are not controlled by `QUARTERDECK_TITLE_PROVIDER`; signing Claude out or removing it from PATH is the way to keep those calls off a local Claude login.
 
-Conversation-summary display controls and AI summary polishing have been removed. Task cards retain completed agent responses and live progress without a separate generated synopsis. When upgrading from runtime protocol 7 or 8, restart Quarterdeck and refresh open browser tabs. Existing completed responses migrate automatically; retired summary settings are ignored.
+Conversation-summary display controls and AI summary polishing have been removed. Task cards retain completed agent responses and live progress without a separate generated synopsis. When upgrading from runtime protocol 7 or 8, quit and restart the matching desktop app/runtime pair. Existing completed responses migrate automatically; retired summary settings are ignored.
 
 New task titles fall back to deterministic local text if all providers fail. Initial titles describe the broad subject or purpose, such as “UI Work” or “Kafka Investigation.” Titles stay unchanged as the conversation progresses. Use Auto-generate title to explicitly regenerate from bounded recent conversation history when the thread’s direction changes; failed follow-up generation keeps the current name. `QUARTERDECK_TITLE_PROVIDER=local` skips model calls for titles; `QUARTERDECK_TITLE_PROVIDER=llm` skips Codex and Claude for titles; `QUARTERDECK_TITLE_PROVIDER=claude` skips Codex for titles. `QUARTERDECK_CODEX_TITLE_MODEL` overrides the Codex title model; `QUARTERDECK_CLAUDE_TITLE_MODEL` overrides the Claude title model. Branch-name and commit-message generation report failure if no provider succeeds; generating a message does not commit files.
 
@@ -197,7 +196,7 @@ If `quarterdeck` is not found after `npm install --global quarterdeck`, make sur
 
 If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 1.5.2 for supported task-agent launches.
 
-If terminal symbols look wrong, install [JetBrainsMono Nerd Font](https://www.nerdfonts.com/), which Quarterdeck prefers when available, then reopen the app or browser.
+If terminal symbols look wrong, install [JetBrainsMono Nerd Font](https://www.nerdfonts.com/), which Quarterdeck prefers when available, then reopen the app.
 
 If startup reports an unconfirmed prior shutdown, choose **Recover sessions…** in the desktop app, or run `quarterdeck recover`. After checking and stopping any remaining agents or background commands, confirm in the app or run `quarterdeck recover --confirm-stopped`, then reopen Quarterdeck. Recovery preserves saved projects, task work, and session history. It refuses live saved processes or unreadable evidence and does not kill processes. Older runs cannot account for detached commands; reboot remains an option when you cannot verify those commands have stopped.
 

@@ -73,13 +73,6 @@ describe("desktop update product control", () => {
 		expect(request).toHaveBeenCalledExactlyOnceWith("details");
 	});
 
-	it("renders nothing in browsers", async () => {
-		vi.mocked(getRuntimeEnvironment).mockReturnValue({ kind: "browser", runtimeOrigin: "http://localhost:3000" });
-		await render();
-		expect(container.textContent).toBe("");
-		expect(getSnapshot).not.toHaveBeenCalled();
-	});
-
 	it.each([undefined, { version: 2 }])(
 		"renders nothing without a supported optional update namespace: %s",
 		async (value) => {

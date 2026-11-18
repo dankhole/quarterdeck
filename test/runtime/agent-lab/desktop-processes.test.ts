@@ -1,8 +1,6 @@
 import type * as childProcess from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { findAgentLabBrowserProcessTree } from "../../../scripts/agent-lab/browser-processes";
-
 import {
 	collectOwnedDesktopProcesses,
 	findMarkedDesktopProcesses,
@@ -39,12 +37,12 @@ describe("desktop lab owned process cleanup", () => {
 	it.each([
 		["it_IT.UTF-8", "gio ott  1 12:00:00 2026"],
 		["nl_NL.UTF-8", "do  okt  1 12:00:00 2026"],
-	])("keeps browser discovery admissible with a localized %s desktop census", async (locale, localizedBirth) => {
+	])("keeps process identities stable with a localized %s desktop census", async (locale, localizedBirth) => {
 		vi.stubEnv("LC_ALL", locale);
 		vi.stubEnv("LC_TIME", locale);
 		vi.stubEnv("LANG", locale);
 		vi.stubEnv("LC_CTYPE", "UTF-8");
-		const daemonPath = "/repo/café/web-ui/node_modules/playwright-core/lib/entry/cliDaemon.js";
+		const daemonPath = "/repo/café/Quarterdeck.app/Contents/MacOS/Quarterdeck";
 		processList.run.mockImplementation(
 			async (_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
 				const englishDates = options.env?.LC_TIME === "C" && !options.env.LC_ALL;
@@ -56,18 +54,8 @@ describe("desktop lab owned process cleanup", () => {
 			},
 		);
 		const census = await listDesktopProcesses("darwin");
-		const tree = await findAgentLabBrowserProcessTree("/repo/café", "qd-localized-census", {
-			platform: "darwin",
-			resolveDaemonEntrypoint: () => daemonPath,
-			runProcessList: async () => ({
-				ok: true,
-				stdout: census
-					.map(({ pid, parentPid, startedAt, command }) => `${pid} ${parentPid} ${startedAt} ${command}`)
-					.join("\n"),
-			}),
-		});
-		expect(tree.rootPids).toEqual([10]);
-		expect(tree.processPids).toEqual([10, 11]);
+		expect(census.map(({ pid }) => pid)).toEqual([10, 11]);
+		expect(census.every(({ startedAt }) => startedAt === "Thu Oct  1 12:00:00 2026")).toBe(true);
 		expect(processList.run).toHaveBeenCalledWith(
 			"/bin/ps",
 			["-ax", "-o", "pid=,ppid=,stat=,lstart=,command="],

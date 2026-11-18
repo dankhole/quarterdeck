@@ -1,28 +1,17 @@
-# Quarterdeck Web UI
+# Quarterdeck Renderer
 
-This package contains the Quarterdeck frontend served by the runtime.
+This package contains the React UI embedded in Quarterdeck's macOS and Windows Electron apps. It is not a standalone browser product. The production renderer requires the validated desktop preload bridge and authenticated local runtime transport.
 
 ## Stack
 
-- React + TypeScript + Vite
-- Tailwind CSS v4
-- Radix UI
-- Hello Pangea drag-and-drop
-- Vitest
-- Playwright
+React, TypeScript, Vite, Tailwind CSS, Radix UI, drag-and-drop, CodeMirror, xterm and Vitest. Packaged end-to-end tests use the root Playwright Electron driver, not a web-package browser test suite.
 
 ## Scripts
 
-- `npm run dev`: start only the Vite development server; follow the [root hot-reload workflow](../DEVELOPMENT.md#hot-reload-workflow) to start its runtime
-- `npm run build`: typecheck and create the production bundle
-- `npm run typecheck`: typecheck without bundling
-- `npm run test -- <paths...>`: run all or focused colocated Vitest tests
-- `npm run e2e`: run the Playwright smoke suite
+Run these from `web-ui/`; root equivalents use `web:` prefixes:
 
-Run these commands from `web-ui/`; the root equivalents use `web:` prefixes. `npm run e2e` starts a disposable Quarterdeck runtime and Git fixture for the
-Playwright run. It does not use or mutate the developer's normal
-`~/.quarterdeck` state.
+- `npm run build`: typecheck and create the production renderer bundle.
+- `npm run typecheck`: typecheck without bundling.
+- `npm run test -- <paths...>`: all or focused colocated Vitest tests.
 
-Use [`../docs/testing.md`](../docs/testing.md) to decide between focused web tests, the complete web suite, Playwright, and Agent Lab. UI tests are colocated with their source under `src`; `tests/` is reserved for Playwright smoke coverage.
-
-From the repository root, `npm run web:smoke:production` checks startup against existing production build output in an isolated fixture. Run `npm run build` first. This narrower smoke serves the bundled UI and does not start Vite; it does not replace the development E2E suite.
+See [development](../DEVELOPMENT.md#development-and-internal-runtimes) and [test selection](../docs/testing.md). UI tests remain colocated under `src`. Functional tests use a fresh local candidate in the isolated [packaged Agent Lab](../docs/agent-functional-testing.md); hidden Electron runs and internal headless runtime fixtures remain supported.

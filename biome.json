@@ -27,10 +27,8 @@
 			"vitest.config.ts",
 			"web-ui/src/**/*.ts",
 			"web-ui/src/**/*.tsx",
-			"web-ui/tests/**/*.ts",
 			"web-ui/vite.config.ts",
 			"web-ui/vitest.config.ts",
-			"web-ui/playwright.config.ts",
 			"!dist/**/*",
 			"!node_modules/**/*",
 			"!!**/node_modules",
@@ -39,7 +37,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["web-ui/src/**/*.ts", "web-ui/src/**/*.tsx", "web-ui/tests/**/*.ts"],
+			"includes": ["web-ui/src/**/*.ts", "web-ui/src/**/*.tsx"],
 			"linter": {
 				"rules": {
 					"a11y": {

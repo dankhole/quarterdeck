@@ -202,9 +202,7 @@ describe("desktop frontend lifecycle bridge", () => {
 		expect(publish).toHaveBeenCalled();
 		expect(publish.mock.lastCall?.[0]).not.toHaveProperty("projectLaunchReady");
 	});
-	it.each(["desktop", "browser"] as const)("does not rerender %s App for file cache content changes", (kind) => {
-		if (kind === "browser")
-			vi.mocked(getRuntimeEnvironment).mockReturnValue({ kind: "browser", runtimeOrigin: "http://127.0.0.1:54321" });
+	it("does not rerender App for file cache content changes", () => {
 		mount();
 		const renders = renderHarness.mock.calls.length;
 		act(() => cache("hidden"));
@@ -492,13 +490,6 @@ describe("desktop frontend lifecycle bridge", () => {
 		expect(reply).toHaveBeenLastCalledWith(expect.objectContaining({ decision: "blocked" }));
 		act(() => command?.({ runtimeGeneration: "current", command: "new-task" }));
 		expect(props.handlers.newTask).toHaveBeenCalledOnce();
-	});
-
-	it("keeps ordinary browser mode free of desktop listeners", () => {
-		vi.mocked(getRuntimeEnvironment).mockReturnValue({ kind: "browser", runtimeOrigin: "http://localhost" });
-		mount();
-		expect(command).toBeUndefined();
-		expect(preflight).toBeUndefined();
 	});
 
 	it("preserves Settings and prompt-shortcut drafts until their ordinary save or cancel flow resolves them", () => {

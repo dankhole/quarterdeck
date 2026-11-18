@@ -5,7 +5,7 @@ import { runtimeOpenTargetIdSchema } from "./host-integrations.js";
 import { type RuntimeShutdownOutcome, runtimeShutdownOutcomeSchema } from "./runtime-shutdown.js";
 
 /** Private parent/Node-helper channel. These messages never enter a renderer. */
-export const QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION = 1;
+export const QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION = 2;
 export const QUARTERDECK_DESKTOP_TRANSPORT_VERSION = 1;
 export const QUARTERDECK_DESKTOP_ORIGIN = "app://quarterdeck";
 export const QUARTERDECK_DESKTOP_TOKEN_HEADER = "x-quarterdeck-desktop-token";
@@ -111,7 +111,7 @@ export const desktopControlMessageSchema = z
 		type: z.literal("quarterdeck:desktop-control"),
 		...channelIdentity,
 		requestId: z.string().uuid(),
-		method: z.enum(["get-quit-summary", "create-browser-launch"]),
+		method: z.literal("get-quit-summary"),
 	})
 	.strict();
 export type DesktopControlMessage = z.infer<typeof desktopControlMessageSchema>;
@@ -133,7 +133,6 @@ export const desktopControlResultMessageSchema = z
 		requestId: z.string().uuid(),
 		result: z.discriminatedUnion("method", [
 			desktopQuitSummarySchema,
-			z.object({ method: z.literal("create-browser-launch"), url: z.string().url() }).strict(),
 			z.object({ method: z.literal("failed"), code: z.literal("unavailable") }).strict(),
 		]),
 	})

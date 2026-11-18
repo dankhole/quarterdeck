@@ -18,8 +18,7 @@ const FAILURE_GUIDANCE = {
 } as const;
 
 export function DesktopEnvironmentSection({ open }: { open: boolean }): React.ReactElement | null {
-	const { visible, snapshot, busy, error, message, request } = useDesktopEnvironment(open);
-	if (!visible) return null;
+	const { snapshot, busy, error, message, request } = useDesktopEnvironment(open);
 	const preferences = snapshot?.preferences;
 	const disabled = busy || !preferences || snapshot?.ownership === "attached";
 	const supportsShellImport = snapshot?.supportsLoginShellImport !== false;

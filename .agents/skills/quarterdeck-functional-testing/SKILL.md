@@ -1,122 +1,48 @@
 ---
 name: quarterdeck-functional-testing
-description: Boot, inspect, and drive Quarterdeck through an isolated browser UI or packaged macOS app with a deterministic fake coding agent or an explicitly authorized real Codex or Claude provider. Use for Quarterdeck functional testing, visual debugging, browser/terminal lifecycle regressions, Git or Files workflow checks, desktop packaging and lifecycle checks, real-provider compatibility checks, and reproducible UI failure reports. Do not use for ordinary unit tests or against the user's active Quarterdeck instance.
+description: Build and exercise an isolated packaged Quarterdeck macOS or Windows app with hidden Electron automation, synthetic projects and a deterministic fake coding agent. Use for functional, visual, terminal lifecycle, Git/Files, host-integration and desktop packaging regressions, or explicitly authorized real-provider compatibility checks. Not for ordinary unit tests or the user's active instance.
 ---
 
 # Quarterdeck Functional Testing
 
-Use this skill only after [`docs/testing.md`](../../../docs/testing.md) selects the Agent Lab layer. Run the narrowest scenario that proves the changed browser/runtime/PTY, persistence, Git/Files, host-integration, or visual invariant.
+Read [testing strategy](../../../docs/testing.md) to select the smallest useful scenario, then [Agent Lab operation](../../../docs/agent-functional-testing.md) for packaged execution, provider boundaries and evidence. Desktop-only product support does not remove internal headless testing: keep hidden Electron, isolated runtime fixtures, fake providers and useful Linux source tests. Standalone browser product access and its old lab/wrapper commands are removed.
 
-Use the repo-owned agent lab instead of `npm run dev`, `npm run dev:full`, `npm run dogfood`, or an already-running Quarterdeck instance. The lab uses disposable state and synthetic projects; its default agent is a deterministic fake `codex`.
+## Prepare and run
 
-## Packaged macOS app
-
-Use the additive desktop lane for claims about an actual `.app`, its bundled helper, stable origin, native command routing, or application lifetime:
+Use a freshly packaged inspection-enabled candidate following the [desktop release guide](../../../docs/desktop-release.md). Do not attach to the user's active app, launch a normal dev/dogfood instance as a substitute, overwrite a global installation, or automate a stale app after changing source.
 
 ```text
-npm run --silent agent:desktop -- smoke --app <absolute-app-path> --json
+npm run --silent agent:desktop -- smoke --app <absolute-packaged-app-path> --json
 ```
 
-The harness owns temporary runtime state, Electron storage, a synthetic project, fake provider launchers, process identity evidence, and cleanup. It launches the packaged executable through Playwright's Electron driver; do not substitute a source Electron launch or attach to the user's application. Record the artifact/build identity from the candidate manifest because rebuilding source does not update an already packaged app.
+On macOS use the `.app`; on Windows use the packaged application directory. The lab owns disposable runtime state, Electron storage, installation paths, synthetic projects, tracked processes and cleanup. It is not a hardened security sandbox. Use synthetic data only.
 
-Windows remain hidden and unfocused by default. Use `--show-window` only for an explicit native visibility/focus check, and explain that it can take focus. `--no-agent` cannot establish PTY, hooks, or provider-session recovery behavior. The exclusive `--session-recovery --no-agent` scenario instead checks custody admission: blocked startup, native cancellation, explicit acknowledgement through the bundled CLI, preserved evidence, and ordinary startup retry. Synthetic runs use the lab-only `--use-mock-keychain` Chromium flag; never reset or modify the user's keychain for a test. Normal app launches retain native encryption.
+Keep windows hidden. `--show-window` is only for explicit visibility/focus claims and can take focus. `--no-agent` does not establish PTY, hooks or exact provider resume. Read `smoke --help` and select the narrowest scenario: manual shells, compare window, notifications, npm launch handoff, native experience, main loss or session recovery. Do not run a full recovery smoke for an unrelated UI change.
 
-Inspect the returned manifest, checkpoints, socket metadata, forbidden-host-launch evidence, and `remainingPids`. The runner always attempts shutdown, but an unconfirmed process remains a failed cleanup: preserve its synthetic fixture and investigate exact identity instead of deleting state or killing processes by name. Screenshots are needed only for visual claims. Public ad-hoc and signed production fuses disallow the inspector used by this driver; use a local inspection-enabled candidate for this lane, and retain separate public-install/update and OS-approval gates in [`docs/desktop-validation.md`](../../../docs/desktop-validation.md).
+The default fake smoke intentionally crashes a renderer and may display an OS alert despite hidden execution. Explain that before running it. Non-crash scenarios should be preferred when crash recovery is not part of the claim. Native runs require application/socket/process-inspection permission; do not retry an OS registration failure blindly or change global crash-report settings.
 
-Desktop real-provider checks require the same explicit account authorization and tiny synthetic scope as the browser lane below. After a fresh candidate passes the full fake scenario, select `--provider real-codex` or `--provider real-claude`; `--provider fake` is the default. Combining a real provider with `--no-agent` is rejected before account access. The real scenario holds a permission request without approving it, verifies the requested synthetic file was not written, and uses the board's restart intent to check exact provider-session identity, a new PTY, and a fresh launch-scoped hook. This proves an unapproved permission boundary, not an explicit denial. Do not send guessed numeric choices or broaden the prompt to force progress. Staged sign-in profiles are removed even with `--keep-temp`. A fake packaged run is not evidence that a real provider accepted the bundled hook invocation.
+Public production fuses disable the inspector used by the lab. Build a local candidate rather than weakening public artifacts. The test-only mock keychain avoids touching the user's macOS Keychain; never reset Keychain, strip quarantine or disable Gatekeeper.
 
-## Start and discover the run
+## Observe and prove
 
-Run `npm run --silent agent:lab -- start --name <short-name> --json`. Parse the returned manifest and retain `runId`, `projectUrl`, `browserConfigPath`, `browserOutputPath`, `browserSession`, `hostEventLedgerPath`, and `forbiddenHostLaunchLogPath`.
+Use the repo-owned Electron driver and scenario modules under `scripts/agent-lab/`. Drive only the isolated synthetic app. Assert semantic state and exact runtime/task/process identities; screenshots are required only for visual claims. UI input/output is not authoritative evidence of Running: require a current launch-scoped provider hook.
 
-### Choose the agent mode
+For manual terminals, Hide/detach must preserve the exact shell session/process and explicit Terminate must retire it. For task recovery, require exact provider session identity, fresh PTY and current hook. Renderer refresh is not a cold runtime restart; select a recovery scenario only when persistence/startup/exact-resume behavior is part of the claim.
 
-Omit `--agent` for the deterministic fake lane. Use it for routine regression work, seeded scenarios, CI, and replayable state assertions.
+Inspect the typed simulated-host ledger for IDE/file/folder/URL/clipboard/notification intent and outcome. Simulation does not prove a physical OS dialog, sound, clipboard or notification. Hidden execution does not establish Dock/taskbar/focus behavior. Keep native-platform acceptance gaps explicit.
 
-Use `--agent fake-claude` only for a Claude-specific deterministic lifecycle invariant. Prefer the focused `claude-lifecycle` or `claude-failure` scenario instead of rerunning the default browser matrix.
+The fake terminal command protocol remains in [references/protocol.md](references/protocol.md). Do not put secrets or real project content into inputs, screenshots or retained diagnostic artifacts.
 
-Use an authenticated lane only when the user has authorized real provider/account use and the question depends on that provider's actual TUI, hooks, model behavior, launcher, or event ordering:
+## Real providers
 
-```text
-npm run --silent agent:lab -- start --name <short-name> --agent real-codex --json
-npm run --silent agent:lab -- start --name <short-name> --agent real-claude --json
-npm run --silent agent:lab -- start --name <short-name> --agent real-claude --claude-environment-auth --json
-```
+Default to `fake`. Use `--provider real-codex` or `--provider real-claude` only after explicit user/account authorization and only when real TUI, hooks, event order, version compatibility or exact resume is the unresolved risk. First pass a fresh candidate through fake smoke. Keep prompts tiny and synthetic; never use real providers in CI. No real-provider use is implied by a request to run tests.
 
-Real modes preflight the selected authentication and do not load profile integrations. Real Claude defaults to the current `haiku` alias and manual permissions, isolates settings/session/MCP state under a disposable `CLAUDE_CONFIG_DIR`, disables unmanaged Chrome and slash-command integrations, and normally reuses the platform credential store; on macOS that means Keychain remains a host boundary. Use `--claude-environment-auth` only with explicit authorization for the configured gateway or Bedrock environment: it forwards the documented Claude provider allowlist, including direct Bedrock environment credentials and custom CA configuration, through the disposable supervisor/runtime and into Claude descendants, never Quarterdeck's generic LLM key. It does not import AWS profiles or shared credential files. Organization-managed Claude settings still apply. Interactive Claude has no hard budget cap, so model and prompt selection only keep the run inexpensive. Real runs are nondeterministic and consume the user's provider plan. Use only tiny synthetic prompts, keep effectful commands behind approval, never run them in CI, and always stop them. See [`docs/agent-functional-testing.md`](../../../docs/agent-functional-testing.md#agent-modes) for the isolation contracts and supported overrides.
+Keep effectful commands behind normal approval. The packaged real scenario holds a permission request without approving it and verifies that the write did not occur; this is not an explicit Deny test. Never send guessed numeric answers. Read the owning provider-policy modules for exact isolation and auth behavior; removed browser-lab options are not supported command contracts. Interactive Claude has no enforced budget ceiling.
 
-If the required Chromium build is missing, run `npm run agent:browser -- install-browser chromium` automatically. Installing managed browser binaries into the clone-wide Agent Lab cache is authorized as part of Agent Lab testing and does not require separate confirmation. Use the wrapper, not `playwright-cli`; the wrapper keeps shared browser binaries and run-specific profiles/artifacts in their documented isolated locations.
+When a scenario requests screenshot review, inspect the actual PNG, verify the exact run/task/process/document/output identity and return only its requested accept/refuse observation. This is an observation, not approval or extra user authorization. A composer visible while resuming is not ready for input.
 
-The repo-owned `npm run agent:browser` wrapper is the authoritative browser capability for Agent Lab. Do not infer that browser automation is unavailable from a missing in-app Browser connector, disabled Computer Use, or the absence of another browser MCP. Before reporting a browser blocker, invoke the wrapper against the run's `browserConfigPath`, `browserSession`, and `projectUrl` and inspect its actual failure. Never bypass it with direct `playwright-cli`, an ad hoc Playwright script, an unrelated browser profile, or the user's active Quarterdeck instance.
+## Finish
 
-Open the run once with configuration:
+The runner always attempts shutdown. Inspect `desktop-manifest.json`, candidate build/artifact identity, checkpoints, forbidden-host-launch evidence, shutdown evidence and remaining processes even if execution fails. Require confirmed graceful Quit without fallback termination for a passing acceptance claim. Preserve an unconfirmed fixture and exact process evidence; do not kill by executable name or delete live state.
 
-```text
-npm run --silent agent:browser -- --config <browserConfigPath> -s=<browserSession> open <projectUrl>
-```
-
-The config is accepted when the session opens. For every later browser command, omit `--config` and keep only `-s=<browserSession>`.
-
-## Observe, interact, and see pixels
-
-Start with `snapshot` and use returned semantic refs for `click`, `fill`, `type`, `press`, `hover`, and `find`. Do not guess refs after navigation or a large UI update; take another snapshot.
-
-For visual issues, capture an explicit pixel artifact with an absolute filename inside `browserOutputPath`. Skip screenshots when the claim is purely semantic:
-
-```text
-npm run --silent agent:browser -- -s=<browserSession> screenshot --filename=<browserOutputPath>/checkpoint.png --hires
-```
-
-Inspect that PNG with the available local image-viewing capability. Use `resize <width> <height>` plus named screenshots for responsive checkpoints. The screenshot is the source of truth for spacing, clipping, contrast, stacking, terminal paint, and other visual behavior; the semantic snapshot is the source of truth for accessible names and interactions.
-
-For a difficult failure, use `tracing-start` before reproduction and `tracing-stop` afterward. Inspect `console` and `requests`; capture last-good and failed screenshots only when pixels matter. The CLI writes snapshots, console records, network records, traces, and videos to `browserOutputPath`.
-
-Quarterdeck exposes `window.__quarterdeckDumpTerminalState()` in the lab. Use `eval "JSON.stringify(window.__quarterdeckDumpTerminalState?.())"` to inspect each slot's task identity, session state, buffer metrics, and bounded visible terminal lines without OCR.
-
-For host-integration work, assert the typed simulated-host event ledger's sanitized target and outcome instead of claiming a real IDE, picker, clipboard, or sound was used. Keep `forbidden-host-launches.log` as the separate hard-failure assertion. The endpoint and event contract are documented in [`docs/agent-functional-testing.md`](../../../docs/agent-functional-testing.md#host-integration-modes-and-event-ledger).
-
-## Drive deterministic fake-agent behavior
-
-Use a prompt directive such as `[agent-lab:idle] investigate terminal restore` when creating the task. Then type deterministic commands into the task's `Terminal input` textbox. See [references/protocol.md](references/protocol.md) for scenarios and commands, including `/turn-interrupted` for Codex's hookless rendered turn-failure path.
-
-This protocol is available in the deterministic fake lanes. Claude-only lifecycle scenarios and commands require `--agent fake-claude`; Codex rendered-screen commands and Pi run-settlement commands remain provider-specific. In real mode, use an ordinary tiny synthetic prompt and interact with the provider's actual forms exactly as rendered, including numeric choices and arrow selection plus Enter when relevant.
-
-A fresh explicit Start with `[agent-lab:idle]` initially appears Running, then becomes Review/Unconfirmed after the 45-second work-confirmation deadline. Restores remain conservative. Use `/working` whenever a scenario needs authoritative Running before testing interruption, permission, or completion convergence.
-
-### Select only the relevant regression class
-
-- For state projections, drive the exact changed transition and assert every affected projection together. Do not run the complete lifecycle matrix for an unrelated change.
-- For approvals, use only the fake protocol path whose ownership changed: native wait, automatic resolution, rendered-overlay fallback, cancellation, or response-pending convergence.
-- For interruption or rendered-failure work, establish authoritative Running first, then assert the affected interruption and any newer-turn ordering fence.
-- For bulk board-revision work, use the multi-task UI; independent single-task submissions do not exercise that regression class.
-- For ordinary Git, Files, or host-integration work, use the matching UI action and ledger assertion without adding lifecycle scenarios.
-
-Neither terminal input nor overlay disappearance proves Running. Require a current provider hook for that transition. A browser reconnect does not prove cold-start behavior; use `restart-runtime` only when persisted hydration, startup recovery, or exact-session restore is in scope.
-
-Capture runtime/state evidence with `npm run --silent agent:lab -- snapshot <runId> --label <checkpoint> --json`. The checkpoint directory is a canonical unified diagnostic bundle: start with `manifest.json`, then correlate `records.jsonl`, `doctor.json`, live provider snapshots, fixture state/Git evidence, process logs, and Playwright artifacts. The lab enables the bounded rich diagnostic profile automatically; never start a separate deep-recording mode for it.
-
-For persisted hydration, startup recovery, project-pill classification, or browser reconnection across a real process boundary, restart only the runtime while preserving the disposable HOME, state, projects, web process, and browser session:
-
-```text
-npm run --silent agent:lab -- restart-runtime <runId> --mode graceful --json
-```
-
-The supervisor automatically captures `pre-runtime-restart-<generation>` and `post-runtime-restart-<generation>` checkpoints and records the old/new process generations in the manifest. Do not replace this operation with a browser refresh or reconnect when validating cold-start behavior. A completed command means the old runtime exited, the replacement became healthy on the same port, and the post-restart checkpoint was attempted.
-
-For a multi-project startup regression, leave the affected project inactive before restarting, inspect its projections before selecting it, then confirm selection does not change them. Skip this expansion when project-scoped startup is not part of the claim.
-
-The bundle stores the validated simulated host-event ledger at `lab/host-events.json`. Use its typed sequences for host-workflow assertions and keep `forbidden-host-launches.log` as the separate hard failure signal.
-
-Every session-linked `agent:browser` command is recorded in `browser-actions.jsonl` with bounded arguments, outcome, and diagnostic marks before and after the action. Checkpoints copy the transcript available at capture time. Do not put real credentials or data into browser actions: the lab retains synthetic fill/type/eval text to make failures replayable.
-
-## Finish and report
-
-Always stop the run, even after a failed reproduction:
-
-```text
-npm run --silent agent:lab -- stop <runId> --json
-```
-
-Shutdown captures the final evidence, closes the named browser and owned daemon tree, terminates the managed runtime/web processes, and removes temporary state unless `--keep-temp` was selected. Evidence remains under the manifest's `artifactDir`; a residual owned browser process fails the run.
-
-A useful failure report includes the run id, exact actions, expected and observed behavior, the relevant semantic/diagnostic evidence, visual artifacts only when pixels matter, and confirmation that the forbidden-launch log is empty. Treat the lab as data/process isolation from the user's app, not as a hardened security sandbox; use only synthetic data.
+Report the scenario, exact candidate identity, observed result, evidence paths, cleanup outcome and untested native/public-release boundaries. Native Windows/ARM64/minimum OS, signing/approval, public updates and elapsed daily use require their own evidence; source tests and hidden local runs do not establish them.

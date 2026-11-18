@@ -1,7 +1,7 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { PassThrough } from "node:stream";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	getQuarterdeckRuntimeHost,
 	getQuarterdeckRuntimePort,
@@ -13,13 +13,12 @@ import {
 	evaluateHost,
 	getAllowedHostHeaders,
 	getAllowedRuntimeOrigins,
+	handleHttpRequest,
 	handleSocketUpgrade,
 } from "../../../src/server/middleware";
 
 const originalRuntimeHost = getQuarterdeckRuntimeHost();
 const originalRuntimePort = getQuarterdeckRuntimePort();
-const originalNodeEnv = process.env.NODE_ENV;
-const originalE2eWebPort = process.env.QUARTERDECK_E2E_WEB_PORT;
 
 function makeFakeRequest(headers: Partial<IncomingMessage["headers"]>, method = "GET"): IncomingMessage {
 	return { method, headers } as IncomingMessage;
@@ -28,16 +27,7 @@ function makeFakeRequest(headers: Partial<IncomingMessage["headers"]>, method = 
 afterEach(() => {
 	setQuarterdeckRuntimeHost(originalRuntimeHost);
 	setQuarterdeckRuntimePort(originalRuntimePort);
-	if (originalNodeEnv === undefined) {
-		delete process.env.NODE_ENV;
-	} else {
-		process.env.NODE_ENV = originalNodeEnv;
-	}
-	if (originalE2eWebPort === undefined) {
-		delete process.env.QUARTERDECK_E2E_WEB_PORT;
-	} else {
-		process.env.QUARTERDECK_E2E_WEB_PORT = originalE2eWebPort;
-	}
+	vi.unstubAllEnvs();
 });
 
 describe("evaluateCors", () => {
@@ -113,21 +103,95 @@ describe("runtime allowlists", () => {
 		expect(getAllowedRuntimeOrigins()).toContain("http://localhost:4567");
 	});
 
-	it("allows Vite dev origins only in development", () => {
-		setQuarterdeckRuntimePort(4567);
-		process.env.NODE_ENV = "test";
-		expect(getAllowedRuntimeOrigins()).not.toContain("http://127.0.0.1:4173");
+	it.each(["development", "production", "test"])(
+		"ignores retired web-port settings and Vite defaults in %s",
+		(nodeEnv) => {
+			setQuarterdeckRuntimeHost("127.0.0.1");
+			setQuarterdeckRuntimePort(4567);
+			vi.stubEnv("NODE_ENV", nodeEnv);
+			vi.stubEnv("QUARTERDECK_E2E_WEB_PORT", "4174");
+			vi.stubEnv("QUARTERDECK_WEB_UI_PORT", "4175");
+			expect(getAllowedRuntimeOrigins()).toEqual(
+				new Set(["http://127.0.0.1:4567", "http://localhost:4567", "http://[::1]:4567"]),
+			);
+		},
+	);
+});
 
-		process.env.NODE_ENV = "development";
-		expect(getAllowedRuntimeOrigins()).toContain("http://127.0.0.1:4173");
-		expect(getAllowedRuntimeOrigins()).toContain("http://localhost:4173");
+describe("handleHttpRequest", () => {
+	function makeFakeResponse() {
+		return { setHeader: vi.fn(), writeHead: vi.fn(), end: vi.fn() };
+	}
 
-		process.env.QUARTERDECK_E2E_WEB_PORT = "4174";
-		expect(getAllowedRuntimeOrigins()).toContain("http://127.0.0.1:4174");
+	it("retains opt-in desktop-origin preflight headers", () => {
+		setQuarterdeckRuntimePort(3500);
+		const response = makeFakeResponse();
+		const request = makeFakeRequest({ host: "127.0.0.1:3500", origin: "app://quarterdeck" }, "OPTIONS");
+		expect(handleHttpRequest(request, response as unknown as ServerResponse, true)).toEqual({ end: true });
+		expect(response.writeHead).toHaveBeenCalledWith(204);
+		expect(response.setHeader).toHaveBeenCalledWith("Access-Control-Allow-Origin", "app://quarterdeck");
+		expect(response.setHeader).toHaveBeenCalledWith(
+			"Access-Control-Allow-Headers",
+			expect.stringContaining("X-Quarterdeck-Desktop-Token"),
+		);
+	});
+
+	it("does not admit the desktop origin when its caller has not opted in", () => {
+		setQuarterdeckRuntimePort(3500);
+		const response = makeFakeResponse();
+		const request = makeFakeRequest({ host: "127.0.0.1:3500", origin: "app://quarterdeck" });
+		expect(handleHttpRequest(request, response as unknown as ServerResponse)).toEqual({ end: true });
+		expect(response.writeHead).toHaveBeenCalledWith(403, expect.anything());
+	});
+
+	it.each([4173, 4174, 4175])("rejects retired browser development origin on port %s", (port) => {
+		setQuarterdeckRuntimePort(3500);
+		vi.stubEnv("NODE_ENV", "development");
+		vi.stubEnv("QUARTERDECK_E2E_WEB_PORT", "4174");
+		vi.stubEnv("QUARTERDECK_WEB_UI_PORT", "4175");
+		const response = makeFakeResponse();
+		const request = makeFakeRequest({ host: "127.0.0.1:3500", origin: `http://127.0.0.1:${port}` });
+		expect(handleHttpRequest(request, response as unknown as ServerResponse, true)).toEqual({ end: true });
+		expect(response.writeHead).toHaveBeenCalledWith(403, expect.anything());
+		expect(response.setHeader).not.toHaveBeenCalled();
+	});
+
+	it("keeps no-Origin internal requests subject to the Host gate", () => {
+		setQuarterdeckRuntimePort(3500);
+		const response = makeFakeResponse();
+		expect(
+			handleHttpRequest(makeFakeRequest({ host: "127.0.0.1:3500" }), response as unknown as ServerResponse),
+		).toEqual({ end: false });
+		expect(
+			handleHttpRequest(
+				makeFakeRequest({ host: "attacker.example.com:3500" }),
+				response as unknown as ServerResponse,
+			),
+		).toEqual({ end: true });
+		expect(response.writeHead).toHaveBeenCalledWith(403, expect.anything());
 	});
 });
 
 describe("handleSocketUpgrade", () => {
+	it("retains explicitly enabled desktop upgrades", () => {
+		setQuarterdeckRuntimePort(3500);
+		const socket = new PassThrough();
+		const request = makeFakeRequest({ host: "127.0.0.1:3500", origin: "app://quarterdeck" });
+		expect(handleSocketUpgrade(request, socket, true)).toEqual({ end: false });
+		expect(socket.destroyed).toBe(false);
+	});
+
+	it.each([4173, 4174, 4175])("rejects a retired browser development upgrade on port %s", (port) => {
+		setQuarterdeckRuntimePort(3500);
+		vi.stubEnv("NODE_ENV", "development");
+		vi.stubEnv("QUARTERDECK_E2E_WEB_PORT", "4174");
+		vi.stubEnv("QUARTERDECK_WEB_UI_PORT", "4175");
+		const socket = new PassThrough();
+		const request = makeFakeRequest({ host: "127.0.0.1:3500", origin: `http://127.0.0.1:${port}` });
+		expect(handleSocketUpgrade(request, socket, true)).toEqual({ end: true });
+		expect(socket.destroyed).toBe(true);
+	});
+
 	it("passes through upgrades whose Host and Origin are allowed", () => {
 		setQuarterdeckRuntimePort(3500);
 		const socket = new PassThrough();

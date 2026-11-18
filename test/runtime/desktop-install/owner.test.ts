@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	resolveDesktopInstallationOwner,
+	resolveDesktopReleaseDistribution,
 	validateDesktopInstallationOwner,
 } from "../../../src/desktop-install/owner.js";
 import { desktopBuildsMatch } from "../../../src/shared/desktop-installation-contract.js";
@@ -70,6 +71,24 @@ describe("recorded npm package slot", () => {
 		await symlink(other, dependencies.owner.packageSlot);
 		await expect(validateDesktopInstallationOwner(dependencies.owner)).rejects.toThrow("owning npm CLI");
 	});
+	it.each([undefined, "browser-only", "unknown"])(
+		"rejects removed or undeclared release capability %s",
+		async (capability) => {
+			const fixture = await createDesktopAppFixture(root);
+			const { dependencies } = await createInstallerDependencies(root, fixture);
+			await writeFile(
+				join(dependencies.owner.packageRoot, "package.json"),
+				JSON.stringify({
+					name: "quarterdeck",
+					version: dependencies.owner.identity.version,
+					quarterdeck: { desktopRelease: capability },
+				}),
+			);
+			await expect(resolveDesktopReleaseDistribution(dependencies.owner, "darwin")).rejects.toMatchObject({
+				code: "invalid_artifact",
+			});
+		},
+	);
 	it("requires package.json name and version to agree with the shipped build stamp", async () => {
 		const fixture = await createDesktopAppFixture(root);
 		const { dependencies } = await createInstallerDependencies(root, fixture);

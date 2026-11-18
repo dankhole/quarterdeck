@@ -1,51 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { lstatSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
 import { isWindowsSafePathComponent } from "../../src/core/windows-path-component.js";
 
-import type { AgentLabBrowserCachePaths, AgentLabBrowserCachePreparation } from "./browser-cache.mjs";
-import {
-	prepareAgentLabBrowserCache as prepareSharedAgentLabBrowserCache,
-	getAgentLabBrowserCachePath as resolveAgentLabBrowserCachePath,
-	getAgentLabBrowserCachePaths as resolveAgentLabBrowserCachePaths,
-} from "./browser-cache.mjs";
-import { type ReadableAgentLabManifest, ReadableAgentLabManifestSchema } from "./types";
-
 export const AGENT_LAB_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const AGENT_LAB_BROWSER_INSTALL_COMMAND = "npm run agent:browser -- install-browser chromium";
-
-export type { AgentLabBrowserCachePaths, AgentLabBrowserCachePreparation };
-
-export function getAgentLabBrowserCachePaths(
-	repoRoot = AGENT_LAB_REPO_ROOT,
-	gitCommonDirectory?: string | null,
-): AgentLabBrowserCachePaths {
-	return gitCommonDirectory === undefined
-		? resolveAgentLabBrowserCachePaths(repoRoot)
-		: resolveAgentLabBrowserCachePaths(repoRoot, gitCommonDirectory);
-}
-
-export function getAgentLabBrowserCachePath(
-	repoRoot = AGENT_LAB_REPO_ROOT,
-	gitCommonDirectory?: string | null,
-): string {
-	return gitCommonDirectory === undefined
-		? resolveAgentLabBrowserCachePath(repoRoot)
-		: resolveAgentLabBrowserCachePath(repoRoot, gitCommonDirectory);
-}
-
-export function prepareAgentLabBrowserCache(
-	repoRoot = AGENT_LAB_REPO_ROOT,
-	gitCommonDirectory?: string | null,
-): Promise<{ path: string; status: AgentLabBrowserCachePreparation }> {
-	return gitCommonDirectory === undefined
-		? prepareSharedAgentLabBrowserCache(repoRoot)
-		: prepareSharedAgentLabBrowserCache(repoRoot, gitCommonDirectory);
-}
 
 export function getAgentLabArtifactRoot(repoRoot = AGENT_LAB_REPO_ROOT): string {
 	const override = process.env.QUARTERDECK_AGENT_LAB_ARTIFACT_ROOT?.trim();
@@ -60,19 +22,6 @@ export function getAgentLabArtifactRoot(repoRoot = AGENT_LAB_REPO_ROOT): string 
 		}
 	});
 	return followsSharedSymlink ? join(repoRoot, ".agent-lab-results") : agentLabPath;
-}
-
-export function getAgentBrowserLocalPaths(repoRoot = AGENT_LAB_REPO_ROOT): {
-	artifactRoot: string;
-	browserHomePath: string;
-	daemonSessionPath: string;
-} {
-	const artifactRoot = getAgentLabArtifactRoot(repoRoot);
-	return {
-		artifactRoot,
-		browserHomePath: join(artifactRoot, "browser-home"),
-		daemonSessionPath: join(artifactRoot, "browser-daemon"),
-	};
 }
 
 function sanitizeRunName(value: string): string {
@@ -115,11 +64,6 @@ export async function writeJsonAtomic(path: string, value: unknown): Promise<voi
 	const temporaryPath = `${path}.tmp-${process.pid}-${randomBytes(3).toString("hex")}`;
 	await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
 	await rename(temporaryPath, path);
-}
-
-export async function readAgentLabManifest(path: string): Promise<ReadableAgentLabManifest> {
-	const contents = await readFile(path, "utf8");
-	return ReadableAgentLabManifestSchema.parse(JSON.parse(contents) as unknown);
 }
 
 export function isProcessAlive(pid: number): boolean {

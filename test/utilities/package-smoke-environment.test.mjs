@@ -8,7 +8,7 @@ describe("package smoke download cache", () => {
 		const env = createPackageSmokeEnvironment({ npm_config_cache: "/host-cache", NPM_CONFIG_CACHE: "/other-cache" }, "/fixture");
 		expect(env.npm_config_cache).toBe(join("/fixture", "npm-cache"));
 		expect(env.NPM_CONFIG_CACHE).toBeUndefined();
-		expect(env.QUARTERDECK_INSTALL_MODE).toBe("browser");
+		expect(env.QUARTERDECK_INSTALL_MODE).toBeUndefined();
 	});
 	it("shares downloads without inheriting lifecycle overrides or user state", () => {
 		const base = {
@@ -21,7 +21,6 @@ describe("package smoke download cache", () => {
 		expect(env).toEqual({
 			HOME: join("/fixture", "state"), USERPROFILE: join("/fixture", "state"),
 			QUARTERDECK_STATE_HOME: join("/fixture", "state", ".quarterdeck"),
-			QUARTERDECK_INSTALL_MODE: "browser",
 			npm_config_cache: "/downloads", npm_config_userconfig: join("/fixture", "user.npmrc"),
 			npm_config_globalconfig: join("/fixture", "global.npmrc"),
 		});
@@ -43,8 +42,8 @@ describe("package smoke download cache", () => {
 			quarterdeck_install_mode: "desktop",
 		};
 		const env = createPackageSmokeEnvironment(base, "/fixture");
-		expect(Object.keys(env).filter((key) => /^QUARTERDECK_/iu.test(key))).toEqual(["QUARTERDECK_STATE_HOME", "QUARTERDECK_INSTALL_MODE"]);
-		expect(env.QUARTERDECK_INSTALL_MODE).toBe("browser");
+		expect(Object.keys(env).filter((key) => /^QUARTERDECK_/iu.test(key))).toEqual(["QUARTERDECK_STATE_HOME"]);
+		expect(env.QUARTERDECK_INSTALL_MODE).toBeUndefined();
 		expect(env.QUARTERDECK_STATE_HOME).toBe(join("/fixture", "state", ".quarterdeck"));
 		expect(env.PATH).toBe(base.PATH);
 		expect(base.QUARTERDECK_INSTALLATION_LOCK_FD).toBe("99");

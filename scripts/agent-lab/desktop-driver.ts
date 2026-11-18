@@ -37,6 +37,7 @@ import { captureDesktopShutdownEvidence } from "./desktop-shutdown-evidence";
 import { DesktopSocketObserver } from "./desktop-sockets";
 import { type DesktopLabProcess, type DesktopLabShutdownEvidence, DesktopProcessEvidenceSchema } from "./desktop-types";
 import { writeJsonAtomic } from "./paths";
+import { captureDesktopDiagnosticSnapshot } from "./snapshot";
 
 function wait(milliseconds: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -560,6 +561,18 @@ export class DesktopLabDriver {
 				await page.locator("body").ariaSnapshot(),
 				"utf8",
 			);
+		}
+		if (label !== "performance-admission") {
+			try {
+				await captureDesktopDiagnosticSnapshot(this.fixture, label);
+			} catch {
+				// An owner/renderer lifecycle checkpoint must not fail solely because its
+				// former diagnostic instance has already stopped or changed generations.
+				this.log(
+					"diagnostic-capture-warnings.log",
+					`${label}: canonical diagnostic capture unavailable; checkpoint evidence retained.\n`,
+				);
+			}
 		}
 	}
 

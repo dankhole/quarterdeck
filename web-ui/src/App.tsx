@@ -1,12 +1,12 @@
 import { UiPreferencesBoundary } from "@/providers/ui-preferences-boundary";
-// Main React composition root for the browser app.
+// Main React composition root for the desktop renderer.
 // Keep this file focused on wiring top-level hooks and surfaces together, and
 // push runtime-specific orchestration down into hooks and service modules.
 
 import { CONFIG_DEFAULTS } from "@runtime-config-defaults";
 import type { ReactElement, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlreadyOpenFallback, AppDialogs, ConnectedTopBar, HomeView, ProjectNavigationPanel } from "@/components/app";
+import { AppDialogs, ConnectedTopBar, HomeView, ProjectNavigationPanel } from "@/components/app";
 import { AppRuntimeBoundary } from "@/components/app/app-runtime-boundary";
 import { GitHistoryView } from "@/components/git";
 import { FileEditorDraftsDialog } from "@/components/git/file-editor-drafts-dialog";
@@ -23,7 +23,6 @@ import {
 	useDesktopApp,
 	useHomeSidePanelResize,
 	useNavbarState,
-	useSingleTabGuard,
 } from "@/hooks/app";
 import { usePromptShortcuts } from "@/hooks/board";
 import { useFileEditorDirtyUnloadGuard } from "@/hooks/git";
@@ -79,8 +78,6 @@ interface AppContentProps {
 // ---------------------------------------------------------------------------
 
 export default function App(): ReactElement {
-	const { isBlocked, forceOpen } = useSingleTabGuard();
-	if (isBlocked) return <AlreadyOpenFallback onForceOpen={forceOpen} />;
 	return (
 		<UiPreferencesBoundary>
 			<AppInner />
@@ -257,7 +254,6 @@ function AppContent({ searchOverlayResetRef }: AppContentProps): ReactElement {
 		projectNavigation,
 		projectStream,
 		projectSync,
-		projectNotifications,
 		projectRuntime,
 		board: boardContext,
 		taskEditor: taskEditorContext,

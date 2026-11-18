@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type DesktopReadyMessage, desktopChildMessageSchema } from "../../src/core/api/desktop-runtime-protocol.js";
-import { readLaunchEnvironment } from "../../src/launch-environment.js";
 import {
 	acquireRuntimeOwnership,
 	discoverRuntimeOwner,
@@ -23,7 +22,7 @@ import {
 
 const execute = promisify(execFile);
 
-describe("actual CLI and desktop relay coexistence", () => {
+describe("internal runtime ownership and desktop relay attachment", () => {
 	let directory: string;
 	let stateHome: string;
 	let projectPath: string;
@@ -53,7 +52,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 	});
 
 	async function invoke(...args: string[]) {
-		return await execute(process.execPath, [...resolveIntegrationNodeArgs(), "--no-open", ...args], {
+		return await execute(process.execPath, [...resolveIntegrationNodeArgs(), "--internal-runtime", ...args], {
 			cwd: projectPath,
 			env: { ...process.env, HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },
 			timeout: 20_000,
@@ -63,7 +62,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 	async function launchDesktopRelay() {
 		const startupId = randomUUID();
 		const entrypoint = resolveIntegrationEntrypoint();
-		const child = fork(entrypoint.path, ["--no-open", "--port", "auto"], {
+		const child = fork(entrypoint.path, ["--internal-runtime", "--port", "auto"], {
 			execArgv: entrypoint.execArgv,
 			cwd: projectPath,
 			env: {
@@ -90,7 +89,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 		});
 		child.send({
 			type: "quarterdeck:desktop-startup",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId,
 			clientToken: "b".repeat(43),
 			allowedOrigins: ["app://quarterdeck"],
@@ -100,7 +99,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 
 	// Three real CLI processes load source and verify native process identity.
 	// The complete scenario must outlive each subprocess's own startup budget.
-	it("attaches a second CLI and desktop relay to the same owner without starting another runtime", async () => {
+	it("attaches a second internal launcher and desktop relay without starting another runtime", async () => {
 		server = await startQuarterdeckServer({
 			cwd: projectPath,
 			homeDir: directory,
@@ -110,7 +109,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 		const original = await discoverRuntimeOwner(stateHome);
 		const beforeInstances = await readdir(join(stateHome, "diagnostics", "instances"));
 		const other = await invoke("--port", String(await getAvailablePort()));
-		expect(other.stdout.includes("Quarterdeck already running at")).toBe(true);
+		expect(other.stdout.includes("Quarterdeck internal runtime already running.")).toBe(true);
 		const relay = await launchDesktopRelay();
 		expect(relay.ready.ownership).toBe("attached");
 		expect(relay.ready.diagnosticInstanceId).toBeNull();
@@ -119,7 +118,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 		const shutdown = new Promise<unknown>((done) => relay.child.once("message", done));
 		relay.child.send({
 			type: "quarterdeck:desktop-shutdown",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId: relay.startupId,
 			requestId: randomUUID(),
 		});
@@ -138,15 +137,29 @@ describe("actual CLI and desktop relay coexistence", () => {
 		expect(response.status).toBe(200);
 	}, 60_000);
 
-	it("refuses an incompatible live owner before runtime startup cleanup", async () => {
+	it("recognizes a live protocol-12 browser-capable descriptor and rejects it before startup cleanup", async () => {
 		const admission = await acquireRuntimeOwnership({
 			stateHome,
 			quarterdeckVersion: "legacy-test",
-			runtimeProtocolVersion: 1,
+			runtimeProtocolVersion: 12,
 		});
 		if (admission.kind !== "acquired") throw new Error("Expected isolated ownership.");
 		lease = admission.lease;
 		await lease.markReady({ host: "127.0.0.1", port: await getAvailablePort() });
+		const descriptorPath = join(stateHome, "runtime-ownership", "descriptors", `${lease.generation}.json`);
+		const descriptor = JSON.parse(await readFile(descriptorPath, "utf8")) as {
+			capabilities: Record<string, unknown>;
+		};
+		await writeFile(
+			descriptorPath,
+			JSON.stringify({
+				...descriptor,
+				capabilities: { ...descriptor.capabilities, browserHttp: true, browserWebSocket: true },
+			}),
+		);
+		const legacyOwner = await discoverRuntimeOwner(stateHome);
+		expect(legacyOwner?.descriptor?.runtimeProtocolVersion).toBe(12);
+		expect(legacyOwner?.descriptor?.capabilities).not.toHaveProperty("browserHttp");
 		const marker = join(stateHome, "sentinel.lock");
 		await writeFile(marker, "preserve");
 		await expect(invoke()).rejects.toMatchObject({
@@ -157,7 +170,7 @@ describe("actual CLI and desktop relay coexistence", () => {
 		await expect(readdir(join(stateHome, "diagnostics"))).rejects.toMatchObject({ code: "ENOENT" });
 	}, 30_000);
 
-	it("keeps the live owner's simulation ledger intact when an attached CLI requests auto-open", async () => {
+	it("keeps the live owner's simulation ledger intact when an internal launcher attaches", async () => {
 		const ledgerPath = join(directory, "host-events.json");
 		const configPath = join(directory, "host-simulation.json");
 		await writeFile(
@@ -188,31 +201,9 @@ describe("actual CLI and desktop relay coexistence", () => {
 		expect(seeded.status).toBe(201);
 		await seeded.arrayBuffer();
 		const beforeLedger = await readFile(ledgerPath);
-		// Deliberately omit invoke()'s --no-open. Exercise auto-open where the
-		// host permits it, and its suppression in macOS CI/headless sessions.
-		// Host integration simulation prevents native effects in either case.
-		const launchEnvironment = await readLaunchEnvironment();
-		const canAutoOpen = process.platform !== "darwin" || launchEnvironment.graphicalSession;
-		const attached = await execute(
-			process.execPath,
-			[...resolveIntegrationNodeArgs(), "--no-native-ui", "--simulate-host-integrations", configPath],
-			{
-				cwd: projectPath,
-				env: { ...process.env, HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },
-				timeout: 20_000,
-			},
-		).catch(() => {
-			throw new Error("Attached simulated CLI failed; browser capability output withheld.");
-		});
-		// Boolean assertions keep the one-use browser capability out of failures.
-		expect(attached.stdout.includes("Quarterdeck already running at")).toBe(true);
-		expect(
-			attached.stderr.includes(
-				"Simulated browser launch is unavailable while attaching; use the Browser URL below.",
-			),
-		).toBe(canAutoOpen);
-		expect(attached.stdout.includes(`Browser URL: ${new URL(server.runtimeUrl).origin}/`)).toBe(true);
-		expect(attached.stdout.includes("Browser launcher accepted")).toBe(false);
+		const attached = await invoke("--no-native-ui", "--simulate-host-integrations", configPath);
+		expect(attached.stdout.includes("Quarterdeck internal runtime already running.")).toBe(true);
+		expect(attached.stdout.includes("Browser URL:")).toBe(false);
 		expect((await readFile(ledgerPath)).equals(beforeLedger)).toBe(true);
 		const after = await discoverRuntimeOwner(stateHome);
 		expect(after?.claim).toEqual(original?.claim);

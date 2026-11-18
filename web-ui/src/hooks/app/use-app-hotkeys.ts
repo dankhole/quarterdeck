@@ -1,6 +1,5 @@
 import { useHotkeys } from "react-hotkeys-hook";
 
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import type { CardSelection } from "@/types";
 import { deriveAppCommandAvailability } from "./desktop-app";
 
@@ -37,8 +36,7 @@ export function useAppHotkeys({
 }: UseAppHotkeysInput): void {
 	// Electron menu accelerators deliver typed commands, independently of the focused input.
 	// Keep a single owner even if a renderer key event also reaches React's hotkey listener.
-	const nativeCommands =
-		getRuntimeEnvironment().kind === "desktop" && typeof window.quarterdeckDesktop?.onCommand === "function";
+	const nativeCommands = typeof window.quarterdeckDesktop?.onCommand === "function";
 	const commands = deriveAppCommandAvailability({
 		runtimeConnected,
 		onboarding,

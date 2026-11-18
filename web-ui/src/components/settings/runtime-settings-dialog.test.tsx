@@ -129,6 +129,21 @@ describe("RuntimeSettingsDialog", () => {
 		configHookState.configOverride = undefined;
 		saveMock.mockReset();
 		saveMock.mockResolvedValue(true);
+		Object.defineProperty(window, "quarterdeckDesktopEnvironment", {
+			configurable: true,
+			value: {
+				version: 1,
+				getSnapshot: async () => ({
+					ownership: "owned",
+					source: "inherited",
+					failureReason: null,
+					appliedDirectories: [],
+					appliedImportLoginShellEnvironment: false,
+					preferences: { importLoginShellEnvironment: false, extraExecutableDirectories: [] },
+				}),
+				request: vi.fn(),
+			},
+		});
 		previousActEnvironment = (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
 			.IS_REACT_ACT_ENVIRONMENT;
 		(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -142,6 +157,7 @@ describe("RuntimeSettingsDialog", () => {
 			root.unmount();
 		});
 		container.remove();
+		Reflect.deleteProperty(window, "quarterdeckDesktopEnvironment");
 		document.body.innerHTML = "";
 		if (previousActEnvironment === undefined) {
 			delete (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
@@ -162,12 +178,13 @@ describe("RuntimeSettingsDialog", () => {
 		const groupLabels = Array.from(document.body.querySelectorAll("nav ul[aria-labelledby]")).map(
 			(list) => document.getElementById(list.getAttribute("aria-labelledby")!)?.textContent,
 		);
-		expect(groupLabels).toEqual(["All projects", "Project: No project selected", "Tools"]);
+		expect(groupLabels).toEqual(["All projects", "Project: No project selected", "This desktop", "Tools"]);
 		const select = document.getElementById("settings-category") as HTMLSelectElement;
 		expect(document.body.querySelector('label[for="settings-category"]')?.textContent).toBe("Settings category");
 		expect(Array.from(select.querySelectorAll("optgroup")).map((group) => group.label)).toEqual([
 			"All projects",
 			"Project: No project selected",
+			"This desktop",
 			"Tools",
 		]);
 		await act(async () => {

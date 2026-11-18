@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -6,10 +7,16 @@ import { pathToFileURL } from "node:url";
 import { inject } from "vitest";
 
 import { sanitizeRuntimeLogOutput } from "../../scripts/agent-lab/runtime-log-sanitizer.js";
+import {
+	QUARTERDECK_DESKTOP_ORIGIN,
+	QUARTERDECK_DESKTOP_TOKEN_HEADER,
+} from "../../src/core/api/desktop-runtime-protocol.js";
+import { runtimeProjectsResponseSchema } from "../../src/core/api/project-state.js";
 import { terminateProcessTree } from "../../src/core/process-termination.js";
-import { createOwnerBrowserBootstrap, verifyRuntimeOwner } from "../../src/server/runtime-owner-client.js";
+import { enrollDesktopClient, verifyRuntimeOwner } from "../../src/server/runtime-owner-client.js";
 import { discoverRuntimeOwner } from "../../src/server/runtime-ownership.js";
 import { createGitTestEnv } from "./git-env";
+import { requestJson } from "./trpc-request";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -67,7 +74,7 @@ export async function waitForProcessStart(
 	// fixtures (see test/utilities/process-test-budget.ts) rather than the
 	// previous 10s, which raced real load even for a correctly starting server.
 	timeoutMs = 30_000,
-): Promise<{ runtimeUrl: string }> {
+): Promise<void> {
 	return await new Promise((resolveStart, rejectStart) => {
 		if (!childProcess.stdout || !childProcess.stderr) {
 			rejectStart(new Error("Expected child process stdout/stderr pipes to be available."));
@@ -94,17 +101,10 @@ export async function waitForProcessStart(
 			} else {
 				stderr += text;
 			}
-			const match = stdout.match(/Quarterdeck running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
-			if (!match || settled) {
-				return;
-			}
-			const runtimeUrl = match[1];
-			if (!runtimeUrl) {
-				return;
-			}
+			if (!/Quarterdeck internal runtime (?:already )?running\./.test(stdout) || settled) return;
 			settled = true;
 			clearTimeout(timeoutId);
-			resolveStart({ runtimeUrl });
+			resolveStart();
 		};
 		childProcess.stdout.on("data", (chunk: Buffer) => {
 			handleOutput(chunk, "stdout");
@@ -157,21 +157,26 @@ export async function requestGracefulShutdown(childProcess: ChildProcess): Promi
 	childProcess.kill(getShutdownSignal());
 }
 
-/** Enroll a browser against this disposable fixture, without exposing management credentials to clients. */
-export async function createFixtureBrowserHeaders(
-	runtimeUrl: string,
-	stateHome: string,
-): Promise<Readonly<Record<string, string>>> {
+/** Use production desktop enrollment for synthetic clients; never create a browser authentication bypass. */
+async function createFixtureDesktopAccess(stateHome: string, expectedPid: number | undefined) {
 	const owner = await discoverRuntimeOwner(stateHome);
 	const descriptor = owner?.descriptor;
 	if (descriptor?.status !== "ready") throw new Error("Isolated runtime owner is not ready.");
-	const origin = await verifyRuntimeOwner(descriptor, false);
-	if (origin !== new URL(runtimeUrl).origin) throw new Error("Isolated runtime endpoint changed during admission.");
-	const bootstrapUrl = await createOwnerBrowserBootstrap(descriptor);
-	const exchange = await fetch(bootstrapUrl, { redirect: "manual", signal: AbortSignal.timeout(3_000) });
-	const cookie = exchange.headers.get("set-cookie")?.split(";")[0];
-	if (exchange.status !== 303 || !cookie) throw new Error("Isolated browser admission failed.");
-	return Object.freeze({ cookie, origin });
+	if (expectedPid === undefined || descriptor.process.pid !== expectedPid)
+		throw new Error("Isolated runtime is not owned by the fixture process.");
+	const runtimeOrigin = await verifyRuntimeOwner(descriptor, true);
+	const token = randomBytes(32).toString("base64url");
+	await enrollDesktopClient(descriptor, token);
+	const headers = Object.freeze({ [QUARTERDECK_DESKTOP_TOKEN_HEADER]: token, origin: QUARTERDECK_DESKTOP_ORIGIN });
+	const projects = await requestJson<unknown>({
+		baseUrl: runtimeOrigin,
+		procedure: "projects.list",
+		type: "query",
+		headers,
+	});
+	if (projects.status !== 200) throw new Error("Isolated runtime project discovery failed.");
+	const { currentProjectId } = runtimeProjectsResponseSchema.pick({ currentProjectId: true }).parse(projects.payload);
+	return { runtimeUrl: `${runtimeOrigin}/${currentProjectId ? encodeURIComponent(currentProjectId) : ""}`, headers };
 }
 
 export async function startQuarterdeckServer(input: {
@@ -183,23 +188,28 @@ export async function startQuarterdeckServer(input: {
 	startupTimeoutMs?: number;
 }): Promise<{
 	runtimeUrl: string;
+	/** Renderer clients use management-enrolled desktop headers, despite this retained fixture property name. */
 	browserHeaders: Readonly<Record<string, string>>;
 	crash: () => Promise<void>;
 	stop: () => Promise<void>;
 }> {
 	const stateHome = resolve(input.extraEnv?.QUARTERDECK_STATE_HOME ?? join(input.homeDir, ".quarterdeck"));
-	const child = spawn(process.execPath, [...resolveIntegrationNodeArgs(), "--no-open", ...(input.extraArgs ?? [])], {
-		cwd: input.cwd,
-		env: createGitTestEnv({
-			...input.extraEnv,
-			HOME: input.homeDir,
-			USERPROFILE: input.homeDir,
-			QUARTERDECK_STATE_HOME: stateHome,
-			QUARTERDECK_RUNTIME_PORT: String(input.port),
-		}),
-		stdio: ["pipe", "pipe", "pipe"],
-		windowsHide: true,
-	});
+	const child = spawn(
+		process.execPath,
+		[...resolveIntegrationNodeArgs(), "--internal-runtime", ...(input.extraArgs ?? [])],
+		{
+			cwd: input.cwd,
+			env: createGitTestEnv({
+				...input.extraEnv,
+				HOME: input.homeDir,
+				USERPROFILE: input.homeDir,
+				QUARTERDECK_STATE_HOME: stateHome,
+				QUARTERDECK_RUNTIME_PORT: String(input.port),
+			}),
+			stdio: ["pipe", "pipe", "pipe"],
+			windowsHide: true,
+		},
+	);
 	// Observe close from launch: exit alone can precede stdio/descendant cleanup,
 	// and the process may already have closed by the time teardown starts.
 	const closed = new Promise<void>((resolveClose) => child.once("close", () => resolveClose()));
@@ -243,8 +253,8 @@ export async function startQuarterdeckServer(input: {
 		}
 	};
 	try {
-		const { runtimeUrl } = await waitForProcessStart(child, input.startupTimeoutMs);
-		const browserHeaders = await createFixtureBrowserHeaders(runtimeUrl, stateHome);
+		await waitForProcessStart(child, input.startupTimeoutMs);
+		const { runtimeUrl, headers: browserHeaders } = await createFixtureDesktopAccess(stateHome, child.pid);
 		return {
 			runtimeUrl,
 			browserHeaders,

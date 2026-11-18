@@ -2,6 +2,7 @@ import type { RuntimeSelection } from "./runtime-selection.js";
 import {
 	DESKTOP_ORIGIN,
 	DESKTOP_TOKEN_HEADER,
+	type DesktopHttpPolicy,
 	desktopCsp,
 	desktopUrl,
 	isPermittedHttpPath,
@@ -19,11 +20,12 @@ export async function proxyRuntimeRequest(
 	request: DesktopProtocolRequest,
 	selection: RuntimeSelection,
 	transport: FetchTransport = fetch,
+	policy: DesktopHttpPolicy = {},
 ): Promise<Response> {
 	const url = desktopUrl(request.url);
 	if (!url || (request.initiatorOrigin !== undefined && request.initiatorOrigin !== DESKTOP_ORIGIN))
 		return rejected(403);
-	if (!isPermittedHttpPath(url.pathname, request.method)) return rejected(403);
+	if (!isPermittedHttpPath(url.pathname, request.method, policy)) return rejected(403);
 	const selected = selection.get();
 	if (!selected) return rejected(503);
 	const headers = new Headers(request.headers);

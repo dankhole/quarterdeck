@@ -18,7 +18,6 @@ import { createFileEditorTab } from "@/hooks/git/file-editor-workspace";
 import { FileEditorDraftsDialog } from "./file-editor-drafts-dialog";
 
 const recoveryMock = vi.hoisted(() => ({
-	kind: "desktop" as "desktop" | "browser",
 	status: {
 		loaded: true,
 		pending: false,
@@ -40,7 +39,6 @@ vi.mock("@/hooks/git/use-desktop-file-editor-recovery", () => ({
 }));
 vi.mock("@/hooks/git/file-editor-draft-export", () => ({ exportFileEditorDraft: vi.fn() }));
 vi.mock("@/components/app-toaster", () => ({ showAppToast: vi.fn() }));
-vi.mock("@/runtime/runtime-environment", () => ({ getRuntimeEnvironment: () => ({ kind: recoveryMock.kind }) }));
 vi.mock("@/providers/project-provider", () => ({
 	useProjectRuntimeStreamContext: () => ({ isRuntimeDisconnected: true, streamError: "Connection lost" }),
 }));
@@ -74,7 +72,6 @@ describe("offline desktop draft review", () => {
 	}
 	beforeEach(async () => {
 		vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-		recoveryMock.kind = "desktop";
 		recoveryMock.status = {
 			loaded: true,
 			pending: false,
@@ -171,12 +168,6 @@ describe("offline desktop draft review", () => {
 		act(() => setFileEditorReviewTarget("all"));
 		expect(document.querySelectorAll('[data-testid="file-editor-recovery-status"]')).toHaveLength(1);
 		expect(marker()?.closest('[role="dialog"]')).toBeNull();
-	});
-	it("does not expose the desktop recovery marker in a browser", () => {
-		recoveryMock.kind = "browser";
-		act(() => root.render(<FileEditorDraftsDialog />));
-		expect(document.querySelector('[data-testid="file-editor-recovery-status"]')).toBeNull();
-		expect(button("Download draft")).toBeDefined();
 	});
 	it("disables recovery actions only during physical work and permits retry of a failed revision", () => {
 		act(() => setRecoveryStatus({ problem: "storage", pending: true, busy: true, ready: false }));

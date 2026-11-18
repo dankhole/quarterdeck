@@ -89,7 +89,7 @@ export async function prepareDesktopLabFixture(options: {
 		const providerVersion = await readDesktopProviderVersion(launch.agent, source);
 		// The desktop owns its helper. Reuse synthetic data and fake-agent launchers,
 		// never start the Chromium supervisor or another runtime for this state home.
-		const fixture = await prepareAgentLabFixture(launch, "http://127.0.0.1");
+		const fixture = await prepareAgentLabFixture(launch);
 		const tempRoot = await realpath(launch.tempRoot);
 		if (process.platform === "win32") {
 			const prepared = await prepareWindowsDesktopLabApp(app.appPath, tempRoot);

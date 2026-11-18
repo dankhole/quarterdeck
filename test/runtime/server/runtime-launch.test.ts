@@ -136,6 +136,13 @@ describe("admitted runtime shutdown composition", () => {
 		vi.unstubAllEnvs();
 		process.exitCode = exitCode;
 	});
+	it("returns internal runtime identity without a standalone-browser launch capability", async () => {
+		const result = await launch();
+		expect(result).not.toHaveProperty("createBrowserUrl");
+		expect(mocks.state.bootstrap?.clientAccess).toBeDefined();
+		await result.shutdown(true);
+	});
+
 	it("awaits recovery admission and rechecks the lease before removing abandoned Pi prompts", async () => {
 		let allowRecovery!: () => void;
 		mocks.assertRecoveryAdmission.mockImplementationOnce(

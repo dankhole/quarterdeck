@@ -4,26 +4,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getTerminalWebSocketUrl } from "@/terminal/terminal-socket-utils";
 import type { DesktopBridge } from "../../../src/shared/desktop-bridge-contract";
 
+vi.unmock("@/runtime/runtime-environment");
+
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
 describe("getTerminalWebSocketUrl", () => {
-	it.each(["io", "control"] as const)(
-		"keeps browser %s sockets on the HTTP origin and encodes identifiers",
-		(path) => {
-			vi.stubGlobal("window", { location: { protocol: "https:", host: "example.test:4321" } });
-			const url = new URL(getTerminalWebSocketUrl(path, "task /&?#", "project ü /&", "client +&#"));
-			expect(url.origin).toBe("wss://example.test:4321");
-			expect(url.pathname).toBe(`/api/terminal/${path}`);
-			expect([...url.searchParams.entries()]).toEqual([
-				["taskId", "task /&?#"],
-				["projectId", "project ü /&"],
-				["clientId", "client +&#"],
-			]);
-			expect(url.hash).toBe("");
-		},
-	);
+	it.each(["io", "control"] as const)("rejects standalone browser %s sockets without native admission", (path) => {
+		vi.stubGlobal("window", { location: { protocol: "https:", host: "example.test:4321" } });
+		expect(() => getTerminalWebSocketUrl(path, "task /&?#", "project ü /&", "client +&#")).toThrow(
+			"Desktop runtime bootstrap is invalid",
+		);
+	});
 
 	it.each(["io", "control"] as const)("uses the pinned desktop endpoint for %s", (path) => {
 		const bridge: DesktopBridge = {
@@ -49,6 +42,8 @@ describe("getTerminalWebSocketUrl", () => {
 
 	it.each(["io", "control"] as const)("does not construct a desktop %s URL without bootstrap", (path) => {
 		vi.stubGlobal("window", { location: { protocol: "app:", host: "quarterdeck" } });
-		expect(() => getTerminalWebSocketUrl(path, "task", "project", "client")).toThrow("valid desktop bootstrap");
+		expect(() => getTerminalWebSocketUrl(path, "task", "project", "client")).toThrow(
+			"Desktop runtime bootstrap is invalid",
+		);
 	});
 });

@@ -16,7 +16,6 @@ import {
 } from "@/hooks/git/file-editor-cache";
 import { exportFileEditorDraft } from "@/hooks/git/file-editor-draft-export";
 import { useDesktopFileEditorRecovery } from "@/hooks/git/use-desktop-file-editor-recovery";
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 
 /** Mounted outside the runtime boundary so orphan drafts stay accessible after removal/disconnection. */
 export function FileEditorDraftsDialog(): React.ReactElement | null {
@@ -26,7 +25,6 @@ export function FileEditorDraftsDialog(): React.ReactElement | null {
 	useSyncExternalStore(subscribeFileEditorCache, getFileEditorCacheRevision);
 	const [discardCandidate, setDiscardCandidate] = useState<FileEditorDraft | null>(null);
 	const [exportingDraftId, setExportingDraftId] = useState<string | null>(null);
-	const desktop = getRuntimeEnvironment().kind === "desktop";
 	const target = getFileEditorReviewTarget();
 	const drafts = target ? getFileEditorDrafts(target) : [];
 	const detached = getFileEditorDrafts("detached");
@@ -59,18 +57,15 @@ export function FileEditorDraftsDialog(): React.ReactElement | null {
 				timeout: 6_000,
 			});
 	}
-	if (!desktop && !target && detached.length === 0 && !recovery.problem && recovery.expired === 0) return null;
 	return (
 		<>
-			{desktop ? (
-				<span
-					data-testid="file-editor-recovery-status"
-					data-state={recoveryState}
-					aria-hidden="true"
-					className="sr-only"
-				/>
-			) : null}
-			{desktop && (recovery.problem || recovery.expired > 0) ? (
+			<span
+				data-testid="file-editor-recovery-status"
+				data-state={recoveryState}
+				aria-hidden="true"
+				className="sr-only"
+			/>
+			{recovery.problem || recovery.expired > 0 ? (
 				<div
 					role="alert"
 					className="fixed bottom-16 right-4 z-40 max-w-md rounded-md border border-border bg-surface-1 p-3 text-sm text-text-primary"
@@ -207,7 +202,7 @@ export function FileEditorDraftsDialog(): React.ReactElement | null {
 											});
 									}}
 								>
-									{desktop ? "Save draft…" : "Download draft"}
+									Save draft…
 								</Button>
 								<Button
 									size="sm"

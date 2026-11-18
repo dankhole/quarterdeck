@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/desktop-runtime-protocol.js";
 import { DesktopHostEffectDispatcher, type DesktopHostEffectIdentity } from "../src/desktop-host-effects.js";
 
 vi.mock("electron", () => ({
@@ -41,7 +42,7 @@ function fixture() {
 	});
 	const message = (sequence = 1, action: Record<string, unknown> = { method: "pick-directory" }) => ({
 		type: "quarterdeck:desktop-host-request",
-		protocolVersion: 1,
+		protocolVersion: QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION,
 		startupId: identity.startupId,
 		runtimeGeneration: identity.runtimeGeneration,
 		requestId: randomUUID(),

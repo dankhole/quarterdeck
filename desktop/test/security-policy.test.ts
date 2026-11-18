@@ -73,6 +73,27 @@ describe("desktop transport boundaries", () => {
 		expect(isPermittedHttpPath("/api/trpc/project.load", "DELETE")).toBe(false);
 	});
 
+	it("admits only the exact lab host-event POST during a synthetic launch", () => {
+		const endpoint = "/api/agent-lab/host-events";
+		expect(isPermittedHttpPath(endpoint, "POST")).toBe(false);
+		expect(isPermittedHttpPath(endpoint, "POST", { syntheticLaunch: false })).toBe(false);
+		expect(isPermittedHttpPath(endpoint, "POST", { syntheticLaunch: true })).toBe(true);
+		for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"])
+			expect(isPermittedHttpPath(endpoint, method, { syntheticLaunch: true })).toBe(false);
+		for (const pathname of [
+			`${endpoint}/`,
+			`${endpoint}/flush`,
+			`${endpoint}/reset`,
+			`${endpoint}/command`,
+			"/api/agent-lab/%68ost-events",
+			"/%61pi/agent-lab/host-events",
+			"/api/agent-lab//host-events",
+			"/api/agent-lab/../host-events",
+			"/api/agent-lab/host-events%00",
+		])
+			expect(isPermittedHttpPath(pathname, "POST", { syntheticLaunch: true })).toBe(false);
+	});
+
 	it("denies native notification subscription claims in renderer WebSocket queries", () => {
 		for (const path of ["/api/runtime/ws", "/api/terminal/io", "/api/terminal/control"]) {
 			for (const query of [

@@ -15,17 +15,18 @@ assert.ok(guardBody, "execute the actual publication guard, not a duplicate poli
 const guard = guardBody.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
 
 for (const scenario of [
-	{ name: "browser-only with signing lane disabled", capability: "browser-only", lane: "", allowed: true, distribution: "none", checkoutCapability: "signed-v1" },
-	{ name: "browser-only with optional signed assets enabled", capability: "browser-only", lane: "1", allowed: true, distribution: "signed", checkoutCapability: "adhoc-v1" },
+	{ name: "browser-only is rejected without signing", capability: "browser-only", lane: "", allowed: false, error: /explicit adhoc-v1 or signed-v1/u },
+	{ name: "browser-only is rejected even with signing", capability: "browser-only", lane: "1", allowed: false, error: /explicit adhoc-v1 or signed-v1/u },
 	{ name: "ad-hoc without the signing lane", capability: "adhoc-v1", lane: "", allowed: true, distribution: "ad-hoc", checkoutCapability: "browser-only" },
-	{ name: "ad-hoc remains free when the signed lane is enabled", capability: "adhoc-v1", lane: "1", allowed: true, distribution: "ad-hoc", checkoutCapability: "signed-v1" },
-	{ name: "signed-v1 with signing lane disabled", capability: "signed-v1", lane: "", allowed: false, checkoutCapability: "browser-only", error: /require the enabled signed desktop publication lane/u },
-	{ name: "signed-v1 with signing lane enabled", capability: "signed-v1", lane: "1", allowed: true, distribution: "signed", checkoutCapability: "invalid" },
-	{ name: "unknown capability", capability: "invalid", lane: "1", allowed: false, checkoutCapability: "signed-v1", error: /Unknown desktop release capability/u },
-	{ name: "legacy metadata without a capability", capability: undefined, lane: "", allowed: true, distribution: "none", checkoutCapability: "signed-v1" },
-	{ name: "legacy metadata with optional signed assets enabled", capability: undefined, lane: "1", allowed: true, distribution: "signed", checkoutCapability: "adhoc-v1" },
-	{ name:"Windows unsigned assets are mandatory",capability:"browser-only",windows:"unsigned-v1",lane:"",allowed:true,distribution:"none",checkoutCapability:"adhoc-v1"},
-	{ name:"unknown Windows capability is rejected",capability:"browser-only",windows:"invalid",lane:"",allowed:false,checkoutCapability:"adhoc-v1",error:/Unknown Windows desktop release capability/u},
+	{ name: "ad-hoc remains free when signing is enabled", capability: "adhoc-v1", lane: "1", allowed: true, distribution: "ad-hoc", checkoutCapability: "signed-v1" },
+	{ name: "signed-v1 requires signing enabled", capability: "signed-v1", lane: "", allowed: false, error: /require the enabled signed desktop publication lane/u },
+	{ name: "signed-v1 with signing enabled", capability: "signed-v1", lane: "1", allowed: true, distribution: "signed", checkoutCapability: "invalid" },
+	{ name: "unknown capability", capability: "invalid", lane: "1", allowed: false, error: /explicit adhoc-v1 or signed-v1/u },
+	{ name: "missing capability without signing", capability: undefined, lane: "", allowed: false, error: /explicit adhoc-v1 or signed-v1/u },
+	{ name: "missing capability with signing", capability: undefined, lane: "1", allowed: false, error: /explicit adhoc-v1 or signed-v1/u },
+	{ name: "missing Windows capability", capability: "adhoc-v1", windows: undefined, lane: "", allowed: false, error: /explicit unsigned-v1 Windows/u },
+	{ name: "browser-only Windows capability", capability: "adhoc-v1", windows: "browser-only", lane: "", allowed: false, error: /explicit unsigned-v1 Windows/u },
+	{ name: "unknown Windows capability", capability: "adhoc-v1", windows: "invalid", lane: "", allowed: false, error: /explicit unsigned-v1 Windows/u },
 ]) {
 	test(`immutable publication guard: ${scenario.name}`, async () => {
 		const root = await mkdtemp(join(tmpdir(), "quarterdeck-default-capability-"));
@@ -48,7 +49,7 @@ for (const scenario of [
 			const templates = join(root, "empty-templates");
 			await mkdir(templates);
 			git(["init", "--quiet", `--template=${templates}`]);
-			const metadata = { name: "quarterdeck", version: "0.0.123",quarterdeck: { desktopRelease: scenario.capability,windowsDesktopRelease:scenario.windows } };
+			const metadata = { name: "quarterdeck", version: "0.0.123",quarterdeck: { desktopRelease: scenario.capability,windowsDesktopRelease: Object.hasOwn(scenario, "windows") ? scenario.windows : "unsigned-v1" } };
 			const blob = git(["hash-object", "-w", "--stdin"], JSON.stringify(metadata));
 			const tree = git(["mktree"], `100644 blob ${blob}\tpackage.json\n`);
 			const commit = git(["commit-tree", tree, "-m", "Synthetic release metadata"]);
@@ -69,7 +70,7 @@ for (const scenario of [
 			assert.equal(result.signal, null);
 			if (scenario.allowed) {
 				assert.equal(result.status, 0, result.stderr);
-				assert.equal(await readFile(outputPath, "utf8"), `windows_enabled=${scenario.windows === "unsigned-v1"}\ndesktop_mode=${scenario.distribution}\n`);
+				assert.equal(await readFile(outputPath, "utf8"), `desktop_mode=${scenario.distribution}\n`);
 			} else {
 				assert.notEqual(result.status, 0);
 				assert.match(result.stderr, scenario.error);

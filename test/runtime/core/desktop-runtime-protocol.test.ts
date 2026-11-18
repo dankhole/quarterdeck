@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
 	desktopChildMessageSchema,
+	desktopControlMessageSchema,
+	desktopControlResultMessageSchema,
 	desktopRuntimeOriginSchema,
 	desktopStartupMessageSchema,
 } from "../../../src/core/api/desktop-runtime-protocol.js";
@@ -22,21 +24,46 @@ describe("private desktop runtime protocol", () => {
 	it("admits only the private capability and exact desktop origin", () => {
 		const startup = {
 			type: "quarterdeck:desktop-startup",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId: randomUUID(),
 			clientToken: "a".repeat(43),
 			allowedOrigins: ["app://quarterdeck"],
 		};
 		expect(desktopStartupMessageSchema.safeParse(startup).success).toBe(true);
+		expect(desktopStartupMessageSchema.safeParse({ ...startup, protocolVersion: 1 }).success).toBe(false);
 		expect(
 			desktopStartupMessageSchema.safeParse({ ...startup, allowedOrigins: ["https://example.com"] }).success,
 		).toBe(false);
 		expect(desktopStartupMessageSchema.safeParse({ ...startup, command: "open" }).success).toBe(false);
 	});
+	it("rejects removed standalone-browser launch controls and results", () => {
+		const identity = { protocolVersion: 2, startupId: randomUUID(), requestId: randomUUID() };
+		expect(
+			desktopControlMessageSchema.safeParse({
+				...identity,
+				type: "quarterdeck:desktop-control",
+				method: "get-quit-summary",
+			}).success,
+		).toBe(true);
+		expect(
+			desktopControlMessageSchema.safeParse({
+				...identity,
+				type: "quarterdeck:desktop-control",
+				method: "create-browser-launch",
+			}).success,
+		).toBe(false);
+		expect(
+			desktopControlResultMessageSchema.safeParse({
+				...identity,
+				type: "quarterdeck:desktop-control-result",
+				result: { method: "create-browser-launch", url: "http://127.0.0.1:3500/" },
+			}).success,
+		).toBe(false);
+	});
 	it("cannot label deadline-limited shutdown as permission to exit", () => {
 		const message = {
 			type: "quarterdeck:desktop-shutdown-result",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId: randomUUID(),
 			requestId: randomUUID(),
 			outcome: { status: "incomplete", safeToExit: false, safeToReleaseOwnership: false, reasons: ["deadline"] },

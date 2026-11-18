@@ -2,11 +2,11 @@
 
 Quarterdeck is a local Node runtime plus a React app for running many coding-agent tasks across one or more Git repositories or folder projects.
 
-The macOS desktop shell packages this same UI with a separate bundled Node helper. CLI and desktop share lifetime runtime admission before any startup mutation; browsers submit authenticated intent to that owner. See [desktop architecture](./desktop.md) for process custody, attachment, renderer security, and shutdown boundaries. npm/browser use remains independent of Electron.
+The macOS and Windows Electron shells package this UI with a separate bundled Node helper. Desktop helpers share lifetime runtime admission before any startup mutation; admitted renderers submit authenticated intent to that owner. See [desktop architecture](./desktop.md) for process custody, attachment, renderer security, and shutdown boundaries. There is no standalone browser product. Internal headless runtime fixtures and hidden packaged Electron tests remain engineering infrastructure. Browser-named renderer modules and diagnostic records describe the shared web technology, not a second product mode.
 
 There are two big ideas to hold in your head:
 
-1. The browser is mostly a control surface. It renders state, submits typed commands, applies optimistic presentation, and reacts to live updates.
+1. The desktop renderer is mostly a control surface. It renders state, submits typed commands, applies optimistic presentation, and reacts to live updates.
 2. The local runtime is the source of truth for durable board state, project registration, worktrees, sessions, git operations, and streaming state.
 
 Desktop task sessions run as PTY-backed CLI processes. The runtime can temporarily transfer an exact Codex or Claude session to an internal provider-native structured owner; no remote transport exposes that boundary yet.
@@ -20,7 +20,7 @@ If you remember nothing else, remember this:
 
 ```text
 +----------------------------------------------------------------------------------+
-| Browser UI                                                                       |
+| Desktop renderer (Electron)                                                       |
 | web-ui/src                                                                       |
 |                                                                                  |
 | App.tsx, hooks/, components/, runtime/, terminal/                               |
@@ -260,7 +260,7 @@ Different state lives in different places on purpose.
 | lifecycle command receipts | project `lifecycle-operations.json` | retries and recovery must not duplicate managed task effects |
 | structured execution ownership | project `execution-ownership.json` | exact Claude/Codex owner generation, handoff, and interaction receipts survive restart |
 | git metadata | streamed project metadata | it is refreshed by runtime policy instead of browser polling |
-| shared UI preferences | state-home `ui-preferences.json` | remembered layout preferences are shared across browser and desktop clients; current navigation stays local |
+| shared UI preferences | state-home `ui-preferences.json` | remembered layout preferences are shared across desktop windows; current navigation stays local |
 | runtime diagnostics | state-home `diagnostics/` instances and bundles | recorder journals and captures remain private and separate from product state |
 
 ### State directory layout

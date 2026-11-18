@@ -24,7 +24,11 @@ export function isProductPage(value: string): boolean {
 	return url !== null && !url.pathname.startsWith("/__desktop/");
 }
 
-export function isPermittedHttpPath(pathname: string, method: string): boolean {
+export interface DesktopHttpPolicy {
+	readonly syntheticLaunch?: boolean;
+}
+
+export function isPermittedHttpPath(pathname: string, method: string, policy: DesktopHttpPolicy = {}): boolean {
 	let decoded: string;
 	try {
 		decoded = decodeURIComponent(pathname);
@@ -55,6 +59,8 @@ export function isPermittedHttpPath(pathname: string, method: string): boolean {
 		].includes(decoded)
 	)
 		return method === "POST";
+	if (decoded === "/api/agent-lab/host-events")
+		return policy.syntheticLaunch === true && method === "POST" && pathname === decoded;
 	if (decoded.startsWith("/api/") || decoded.startsWith("/__desktop/")) return false;
 	return method === "GET" || method === "HEAD";
 }

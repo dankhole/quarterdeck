@@ -21,36 +21,26 @@ There is no maintained changelog or chronological implementation log. Record exc
 npm run bootstrap
 ```
 
-Quarterdeck's npm/browser development uses two independent dependency trees: the repository root and `web-ui/`. The optional `desktop/` package has a third, separately installed tree; ordinary bootstrap and root builds do not install Electron. Bootstrap preserves or migrates the clone-wide Agent Lab browser cache before running `npm ci` for the root and web UI. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
+Quarterdeck uses independent dependency trees in the repository root, `web-ui/` and `desktop/`. Shared source builds and tests need root and web dependencies; packaged desktop validation also needs the separate Electron tree. Ordinary bootstrap and root builds do not install Electron. Task worktrees start without shared `node_modules`; run bootstrap (or the individual `npm ci` commands) inside a worktree before building or testing there. Stop a globally linked Quarterdeck runtime before reinstalling or relinking its checkout.
 
-Update shared Zod and tRPC dependencies in both trees together. The browser imports runtime schemas and router types directly, so independently resolved versions can break the web build even when both ranges permit the upgrade. Dependabot groups these updates across both directories; the root dependency-contract test checks the committed lockfiles. Keep the Claude Agent SDK update separate because its version is paired with an exact native executable in `src/execution/claude-structured-owner.ts`.
+Update shared Zod and tRPC dependencies in both trees together. The renderer imports runtime schemas and router types directly, so independently resolved versions can break the web build even when both ranges permit the upgrade. Dependabot groups these updates across both directories; the root dependency-contract test checks the committed lockfiles. Keep the Claude Agent SDK update separate because its version is paired with an exact native executable in `src/execution/claude-structured-owner.ts`.
 
 ## Quick reference
 
 ```bash
-npm run bootstrap        # Locked install of root + web-ui deps
-npm run dev -- --browser --port 3500 # Runtime server with managed source restarts
-npm run dev:full -- --browser --port 3500 # Runtime + web UI together
-npm run web:dev          # Web UI dev server (Vite HMR, port 4173)
-npm run build            # Web typecheck/build + runtime package build
-npm run check            # Agent docs + Biome + runtime typecheck/tests
-npm run test             # All root runtime + integration tests
-npm run test:fast        # Runtime + utility tests only
-npm run test:integration # Integration tests only
-npm run test:package     # Pack, clean-install, launch, fetch, and stop the publishable tarball
-npm run test:windows-smoke # Built CLI + focused native checks (Windows only)
-npm run web:test         # Web UI unit tests
-npm run web:e2e          # Playwright smoke tests with isolated runtime state
-npm run agent:lab -- --help       # Disposable Quarterdeck runtime/UI/fake-agent lab
-npm run agent:browser -- --help   # Isolated Playwright CLI for semantic + visual UI driving
-quarterdeck diagnostics --help    # Discover and inspect local runtime diagnostics
-npm run web:typecheck    # Web UI typecheck
-npm run typecheck        # Runtime typecheck
-npm run lint             # Biome lint
-npm run format           # Biome check --write
-npm run dogfood          # Build and launch against a target project
-npm run link             # Build/link and install the app on supported Macs
-npm run link -- --browser # Build and link only the CLI/browser mode
+npm run bootstrap        # Locked install of root + web-ui dependencies
+npm run build            # Renderer typecheck/build + runtime package
+npm run check            # Instruction bridge, lint, runtime types/tests and release policy
+npm run test -- <paths>   # Focused root tests
+npm run web:test -- <paths> # Focused renderer tests
+npm run test:package     # Isolated npm artifact, native PTY and internal runtime checks
+npm run typecheck        # Runtime TypeScript
+npm run web:typecheck    # Renderer TypeScript
+npm --prefix desktop ci  # Separate native-shell dependencies
+npm --prefix desktop run check # Desktop source validation
+npm run agent:desktop -- smoke --app <path> --json # Isolated packaged test
+npm run link             # Build/link/install the exact desktop pair
+quarterdeck diagnostics --help # Read-only runtime investigation
 ```
 
 ## Repo orientation
@@ -58,7 +48,7 @@ npm run link -- --browser # Build and link only the CLI/browser mode
 For deeper architecture reading, start with [`docs/README.md`](./docs/README.md) and [`docs/architecture.md`](./docs/architecture.md). The quick mental model is:
 
 ```text
-Browser UI (React + Vite, port 4173)
+Desktop renderer (React + Vite assets in Electron)
   | tRPC + WebSocket
   v
 Runtime server (Node.js, port 3500)
@@ -78,112 +68,39 @@ Major directories:
 - `docs/`: current architecture, conventions, developer guides, and explicitly archived history
 - `scripts/`: build/dev utility scripts
 
-Choose validation with [`docs/testing.md`](./docs/testing.md). When that strategy calls for agent-driven functional or visual debugging, use [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md); the workflow is isolated from the normal dev/dogfood runtime and the user's Quarterdeck state.
+Choose validation with [`docs/testing.md`](./docs/testing.md). When that strategy calls for agent-driven functional or visual debugging, use [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md); the workflow is isolated from source-development runtimes and the user's Quarterdeck state.
 
-## Hot reload workflow
+## Development and internal runtimes
 
-These manual development commands use the normal runtime state home unless `QUARTERDECK_STATE_HOME` is explicitly set. Stop an existing owner before reusing that home, or choose a separate development state home; a different port alone does not isolate runtime ownership or data. Agent-driven functional work uses the isolated [Agent Lab](docs/agent-functional-testing.md).
+Quarterdeck is a desktop-only product. Opening a Vite HTTP page or running the CLI with a port no longer provides a standalone browser application. Use focused renderer/component tests for fast UI iteration and a freshly packaged local app in Agent Lab for complete product behavior. Source Vite tooling remains an asset-build tool, not an authenticated desktop substitute.
 
-Run two terminals:
+The app still needs a local Node runtime, and tests still need isolated headless runtimes. Those are explicit internal execution paths, not product launch modes. Source runtime development uses `npm run dev -- --port 3500` (the wrapper explicitly adds `--internal-runtime`); the source checkout, an isolated lab launcher, or a desktop helper must authorize that entrypoint. Runtime flags alone never select it. Keep desktop admission, scoped management authentication, provider hooks, process custody and shutdown safeguards enabled. Internal fixture access must not restore browser launch URLs, cookies or unauthenticated product routes.
 
-1. Runtime server (API + PTY agent runtime):
+Before manual development against any runtime, stop its owner or choose a separate `QUARTERDECK_STATE_HOME`; a different port alone does not isolate data or ownership. Do not start an extra source-development runtime while the user's app may already be running. Agent-driven functional work uses the isolated [packaged Agent Lab](docs/agent-functional-testing.md).
 
-```bash
-npm run dev -- --browser --port 3500
-```
+## VS Code debugging
 
-- Runs on `http://127.0.0.1:3500`
+The **Internal Runtime** configuration passes `--internal-runtime` and uses a checkout-local `.quarterdeck-debug-state` state home. It is for explicit internal source execution only; stop another owner of that state before starting it. Tests can be debugged through the Vitest configuration. Neither path grants native renderer authority or creates a browser product.
 
-2. Web UI (Vite HMR):
-
-```bash
-npm run web:dev
-```
-
-- Runs on `http://127.0.0.1:4173`
-- `/api/*` requests from Vite are proxied to `http://127.0.0.1:3500`
-
-Use `http://127.0.0.1:4173` while developing UI so changes hot reload. `--browser` and a plain launch select the source runtime; `--desktop` explicitly selects the installed native app on a supported graphical macOS or Windows host. The explicit port also matches Vite's default API proxy. If you change it, set `QUARTERDECK_RUNTIME_PORT` for the Vite process to match.
-
-## VS Code F5 debugging
-
-The repo includes `.vscode/launch.json` with two configurations:
-
-- **Dev Server**: Directly runs `tsx watch src/cli.ts` with the debugger attached; it does not use the managed restart/shutdown wrapper from `npm run dev`. Add `--browser` and `--port 3500` to its `args` when debugging the source runtime, and set `NODE_ENV=development` plus a separate `QUARTERDECK_STATE_HOME` in its `env` for Vite admission and isolated development. Run `npm run web:dev` separately for the UI.
-- **Run Tests**: Runs `vitest run` with the debugger so you can set breakpoints in tests.
-
-## Build and run packaged CLI
+## Build and launch
 
 ```bash
 npm run build
-node dist/cli.js --browser
+npm run link
+quarterdeck
 ```
 
-This explicitly starts or attaches to the shared runtime; plain `node dist/cli.js` selects the installed desktop on supported graphical macOS or Windows hosts. Browser mode serves built web assets from `dist/web-ui` and does not hot reload the web UI.
-
-Runtime port options:
-
-```bash
-# fixed port
-node dist/cli.js --port 3500
-
-# pick the first free port starting at 3500
-node dist/cli.js --port auto
-```
-
-You can still use `QUARTERDECK_RUNTIME_PORT` if needed, but `--port` is preferred for explicit runtime launches. Separate runtime instances also require separate canonical state homes; port selection alone attaches to a compatible existing owner.
+Linking installs a matching local desktop pair on supported macOS/Windows hosts; it changes the global link and app installation, so use it intentionally. Build-only validation belongs in a different worktree from the installed app's owning checkout. For isolated packaged execution, follow [desktop packaging](docs/desktop-release.md) and pass the resulting candidate to Agent Lab instead.
 
 ### Browser/runtime compatibility
 
-`QUARTERDECK_RUNTIME_PROTOCOL_VERSION` in [`src/core/api/runtime-protocol.ts`](src/core/api/runtime-protocol.ts) declares the shared browser/runtime contract. Different package versions and build IDs may connect when this version matches. Build IDs remain available for diagnostics and packaged-artifact verification; rebuilding alone does not require a browser reload.
+The heading remains a stable documentation anchor; this is now the **renderer/runtime** contract.
 
-Increment the protocol version deliberately when compatibility breaks in **either direction**: removing or changing an API, changing a WebSocket message shape or meaning, or requiring a new runtime endpoint/field from the browser without a fallback. Optional additions, bug fixes, and presentation changes keep the version when both older browsers and older runtimes still work. Cover any fallback with a regression test; do not derive this version from package semver or generate it during builds.
+`QUARTERDECK_RUNTIME_PROTOCOL_VERSION` in [`src/core/api/runtime-protocol.ts`](src/core/api/runtime-protocol.ts) declares the shared renderer/runtime contract. Increment it when compatibility breaks in either direction: removed/changed APIs, WebSocket shapes or meaning, or newly required fields/endpoints without a fallback. Optional compatible additions do not require a bump. Do not derive this version from package semver or generate it during builds.
 
-Protocol 12 separates manual shell lifetime from panel visibility and requires exact-exited-session admission for automatic shell restart. Restart the runtime and refresh browser tabs when upgrading from protocol 11; older runtimes cannot enforce the conditional restart request. No stored project data needs migration. Runtime restart stops existing manual shells; after upgrading, Hide leaves commands running and Terminate stops them.
+Desktop-only admission removes browser bootstrap URLs, cookie sessions and standalone HTTP UI entrypoints. Quit the previous runtime before upgrading and install the matching desktop pair. Existing projects, settings and provider identities need no state-home migration; unsaved browser-profile data must be saved before upgrade. See [migration guidance](docs/desktop.md#desktop-installation-and-migration).
 
-Protocol 11 adds task-scoped Git tab and folder preferences to the shared UI-preference contract. Restart the runtime and refresh browser tabs when upgrading from protocol 10; older clients reject the new strict preference shape. Existing preferences are preserved, and each task defaults to Uncommitted with expanded folders until changed.
-
-Protocol 10 changes `project.listFiles` from an exhaustive tree to a paginated immediate-directory listing. Restart the runtime and refresh browser tabs when upgrading from protocol 9; the admission check prevents older clients from treating a partial page as a complete tree. File contents, open editor drafts, and stored project data need no migration.
-
-Protocol 9 removes optional display-summary generation and settings, and publishes retained agent responses as `completedResponses`. Restart the runtime and refresh browser tabs when upgrading from protocol 7 or 8. Legacy persisted `conversationSummaries` migrate automatically; discarded short display summaries are not completed-response history.
-
-Every initial runtime snapshot includes `runtimeProtocolVersion`. Keep the snapshot `type` and this field stable across protocol bumps so an older browser can reject the contract before applying state. The browser accepts the connection only after this check. An unequal, missing, or malformed version permits one automatic reload per protocol pair, then shows restart/refresh guidance if the served browser still cannot use the running process. Storage failures block incompatible connections without a reload loop and do not block compatible ones.
-
-Runtimes predating the protocol field require a one-time restart when upgrading to this policy. Older browsers that compare build IDs reload into the served browser; the existing production guard still rejects clients that predate even build identity because they cannot check snapshot compatibility. This browser admission check is separate from API authentication. Protocol version 4 requires a one-use browser launch capability, exchanged for an HttpOnly session cookie, or a private desktop client credential. Reopen Quarterdeck from the CLI or app when browser access expires. Desktop attachment additionally checks the independent bridge and transport capabilities before loading the owner's UI.
-
-## Dogfooding with isolated Quarterdeck instances
-
-Run your stable orchestrator first (main checkout):
-
-```bash
-cd /path/to/quarterdeck-main
-npm run build
-node dist/cli.js --port 3500
-```
-
-Then run a test checkout against a target project (feature worktree):
-
-```bash
-cd /path/to/quarterdeck-feature-worktree
-npm run dogfood -- --project /path/to/target/repo --port auto
-```
-
-If `--project` is omitted, the launcher starts Quarterdeck from a non-git cwd so runtime behaves like launching outside a git repo and opens the first indexed project (if any):
-
-```bash
-npm run dogfood -- --port auto
-```
-
-A canonical state home has one writable runtime. A second compatible CLI or desktop launch attaches to that owner even when it requests another port; it never takes shutdown ownership. A live legacy runtime must be stopped or upgraded first. Backup restore uses exclusive maintenance admission. State homes must be on a host-local filesystem with hard-link support.
-
-Dogfood launcher behavior:
-
-- uses a stable, checkout-specific state home under `~/.quarterdeck-dogfood/checkouts/` by default; an explicit `QUARTERDECK_STATE_HOME` override is honored
-- builds the current checkout by default
-- launches `dist/cli.js` with `cwd` set to the target project
-- supports `--port <number|auto>`
-- supports `--no-open`
-- supports `--skip-build` when you already built and want faster restarts
+Every initial snapshot retains its stable `type` and `runtimeProtocolVersion` so clients can reject incompatible state before applying it. A missing/malformed/different version blocks normal operation and provides app/runtime restart guidance. Build IDs remain diagnostic and packaged-identity evidence, not a substitute for protocol compatibility. Desktop bridge/capability admission is separate from API authentication.
 
 ## Unified diagnostics
 
@@ -252,7 +169,7 @@ Deep recording admits lower-level candidates matching the optional project/task/
 
 ### Isolated lab behavior and visual evidence
 
-`QUARTERDECK_AGENT_LAB=1` is set only by the agent-lab supervisor. It automatically selects the richer bounded `agent-lab` admission profile for synthetic data and cannot be stopped through deep-recording controls. Lab ready/failure/pre-shutdown/final/manual checkpoints use the same canonical bundle format and may additionally contain synthetic fixture state, Git diffs, terminal viewport text, process logs, Playwright artifacts, and a causally marked browser-action transcript. Pre-shutdown preserves the connected browser view; the final checkpoint is deliberately captured only after the browser and child processes stop and the lab manifest is finalized, while disposable state still exists.
+`QUARTERDECK_AGENT_LAB=1` is set by isolated lab/fixture launchers. It automatically selects the richer bounded `agent-lab` admission profile for synthetic data and cannot be stopped through deep-recording controls. Packaged lab checkpoints use the same canonical bundle format and may additionally contain synthetic fixture state, Git diffs, terminal viewport text, process logs and Playwright artifacts. Cleanup evidence must distinguish a confirmed graceful stop from fallback termination or unconfirmed remaining processes.
 
 Live diagnostics can describe viewport/layout bounds, terminal buffer metrics, and application state, but they cannot recreate pixels that were never captured. For spacing, clipping, contrast, stacking, responsive, or terminal-paint failures, use the isolated lab and save explicit screenshots or a Playwright trace as described in [`docs/agent-functional-testing.md`](./docs/agent-functional-testing.md).
 
@@ -264,7 +181,7 @@ After cloning, prepare dependencies and create/update the global CLI link from t
 npm run link
 ```
 
-`npm run link` checks dependency trees against their lockfiles, prepares the required independent trees, builds once, and updates the global CLI link. On supported Macs it packages and installs the same build at `~/Applications/Quarterdeck.app`. `-- --desktop` remains a redundant compatibility option; use `-- --browser` to link only the CLI. Shared dependency symlinks are rejected. Stop a linked runtime before rebuilding its checkout and quit the installed app before replacement. If either global linking or app installation fails, resolve the reported incomplete pairing before launching the app.
+`npm run link` checks dependency trees against their lockfiles, prepares the required independent trees, builds once, and updates the global CLI link. On supported macOS and Windows hosts it packages and installs the same desktop build. `-- --desktop` remains a redundant compatibility option; browser-only linking is removed. Shared dependency symlinks are rejected. Stop a linked runtime before rebuilding its checkout and quit the installed app before replacement. If either global linking or app installation fails, resolve the reported incomplete pairing before launching the app.
 
 Verify:
 
@@ -280,13 +197,11 @@ cd /path/to/your/project
 quarterdeck
 ```
 
-After local code changes, run `npm run link -- --desktop` again to update both the linked command and installed app. Standalone build and clean commands refuse to replace output in the checkout that owns the installed desktop app. This includes `npm run build`, `npm run desktop:build`, and dogfood's build step. Use another worktree for build-only validation. A browser-only relink also refuses to change the installed app's owning checkout or global package slot; uninstall the owned desktop app first if you intend to switch to browser-only use.
+After local code changes, run `npm run link -- --desktop` again to update both the linked command and installed app. Standalone build and clean commands refuse to replace output in the checkout that owns the installed desktop app. This includes `npm run build`, `npm run desktop:build`, and paired desktop builds. Use another worktree for build-only validation.
 
 The paired workflow reports success only after verifying that the installed app and linked CLI match the new build and have no pending installation work. A failed paired build or install may still require rerunning `npm run link -- --desktop`; rebuilding and replacing the app are not one atomic operation. Dock startup continues to reject mismatched installations.
 
 When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `quarterdeck` binary points at the right `dist/cli.js`.
-
-For a CLI-only link created with `--browser`, launch with `quarterdeck --browser`.
 
 Remove the global link:
 
@@ -305,16 +220,15 @@ Important command boundaries:
 - `npm run check` covers the instruction bridge, repository Biome check, runtime typecheck, release-policy tests, and all root Vitest tests. It does not cover web typechecking/tests, Playwright, or Agent Lab.
 - `npm run build` already performs the web typecheck as part of the production web build before packaging the runtime.
 - The pre-commit hook runs local Biome on staged paths and checks the instruction bridge when its inputs change. It does not run typechecks or tests; complete the appropriate checks before review using the [test selection guide](docs/testing.md#command-scopes). Checks read working-tree contents and never restage files. Local root tests default to two workers, with a standard `--maxWorkers` override; CI retains its existing parallelism.
-- `npm run web:e2e` is the automated disposable-browser smoke suite.
-- `npm run agent:lab` plus `npm run agent:browser` is the interactive isolated functional lane.
+- `npm run agent:desktop -- smoke --app <path>` is the isolated packaged functional lane, hidden and fake-provider by default. Internal headless source tests and shared Linux checks remain supported.
 
-See [`test/README.md`](./test/README.md) for root-test placement and naming. Web unit tests are colocated under `web-ui/src`; Playwright smoke tests live under `web-ui/tests`.
+See [`test/README.md`](./test/README.md) for root-test placement and naming. Renderer unit tests are colocated under `web-ui/src`; packaged Electron scenarios live under `scripts/agent-lab`.
 
 ## CI/CD
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
 - `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
-- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes npm via OIDC, optionally publishing and anonymously verifying matching signed desktop assets first when `QUARTERDECK_DESKTOP_RELEASES=1`; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
+- `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes npm via OIDC, publishing and anonymously verifying matching macOS and Windows desktop assets first; paid macOS signing remains optional; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
 
 ## Agent tracking and runtime hooks
 

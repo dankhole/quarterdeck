@@ -19,7 +19,6 @@ export interface AgentLabFixturePaths {
 	projectPath: string;
 	additionalProjectPath: string;
 	fakeBinPath: string;
-	browserConfigPath: string;
 	forbiddenHostLaunchLogPath: string;
 	hostEventLedgerPath: string;
 	hostSimulationConfigPath: string;
@@ -529,10 +528,7 @@ async function seedGitRepository(projectPath: string, label: string): Promise<vo
 	await runGit(projectPath, ["commit", "-m", "seed agent-lab fixture"]);
 }
 
-export async function prepareAgentLabFixture(
-	config: AgentLabLaunchConfig,
-	webUrl: string,
-): Promise<AgentLabFixturePaths> {
+export async function prepareAgentLabFixture(config: AgentLabLaunchConfig): Promise<AgentLabFixturePaths> {
 	const homePath = join(config.tempRoot, "home");
 	const statePath = join(config.tempRoot, "state");
 	const projectPath = join(config.tempRoot, "project");
@@ -541,16 +537,12 @@ export async function prepareAgentLabFixture(
 	const forbiddenHostLaunchLogPath = join(config.artifactDir, "forbidden-host-launches.log");
 	const hostEventLedgerPath = join(config.artifactDir, "host-events.json");
 	const hostSimulationConfigPath = join(config.artifactDir, "host-simulation-config.json");
-	const browserConfigPath = join(config.artifactDir, "playwright-cli.config.json");
-	const browserInitPath = join(config.artifactDir, "browser-init.js");
-	const browserOutputPath = join(config.artifactDir, "browser");
 	await Promise.all([
 		mkdir(homePath, { recursive: true }),
 		mkdir(statePath, { recursive: true }),
 		mkdir(projectPath, { recursive: true }),
 		mkdir(additionalProjectPath, { recursive: true }),
 		mkdir(fakeBinPath, { recursive: true }),
-		mkdir(browserOutputPath, { recursive: true }),
 		writeFile(join(config.tempRoot, "empty-gitconfig"), "", "utf8"),
 		writeFile(forbiddenHostLaunchLogPath, "", "utf8"),
 		writeFile(
@@ -588,44 +580,6 @@ export async function prepareAgentLabFixture(
 			)}\n`,
 			"utf8",
 		),
-		writeFile(
-			browserInitPath,
-			`try {
-	if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
-		window.__quarterdeckAgentLab = ${JSON.stringify({ additionalProjectPath })};
-		localStorage.setItem("quarterdeck.onboarding.dialog.shown", "true");
-		localStorage.setItem("quarterdeck.onboarding.tips.dismissed", "true");
-		localStorage.removeItem("quarterdeck-active-tab");
-	}
-} catch {
-	// about:blank does not expose localStorage; the script runs again on navigation.
-}
-`,
-			"utf8",
-		),
-		writeFile(
-			browserConfigPath,
-			`${JSON.stringify(
-				{
-					browser: {
-						browserName: "chromium",
-						isolated: true,
-						launchOptions: { headless: true },
-						contextOptions: { viewport: { width: 1440, height: 900 } },
-						initScript: [browserInitPath],
-					},
-					outputDir: browserOutputPath,
-					outputMode: "file",
-					console: { level: "debug" },
-					network: {
-						allowedOrigins: [webUrl, "http://127.0.0.1:*", "ws://127.0.0.1:*"],
-					},
-				},
-				null,
-				2,
-			)}\n`,
-			"utf8",
-		),
 	]);
 	await Promise.all([
 		writeAgentProviderLaunchers(fakeBinPath, config.agent),
@@ -642,7 +596,6 @@ export async function prepareAgentLabFixture(
 		projectPath,
 		additionalProjectPath,
 		fakeBinPath,
-		browserConfigPath,
 		forbiddenHostLaunchLogPath,
 		hostEventLedgerPath,
 		hostSimulationConfigPath,

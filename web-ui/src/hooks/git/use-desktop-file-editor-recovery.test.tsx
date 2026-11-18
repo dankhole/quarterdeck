@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const environment = vi.hoisted(() => ({ kind: "browser" }));
+const environment = vi.hoisted(() => ({ kind: "desktop" }));
 const database = vi.hoisted(() => {
 	const state = { raw: undefined as string | undefined, commit: Promise.resolve() };
 	const adapter = {
@@ -34,23 +34,6 @@ afterEach(() => {
 	localStorage.clear();
 });
 describe("desktop-only recovery adapter", () => {
-	it("does not read or write recovery storage in a browser client", async () => {
-		environment.kind = "browser";
-		const read = vi.spyOn(Storage.prototype, "getItem");
-		const write = vi.spyOn(Storage.prototype, "setItem");
-		const node = document.createElement("div");
-		const root = createRoot(node);
-		await act(async () => {
-			root.render(<Harness />);
-		});
-		expect(read).not.toHaveBeenCalled();
-		expect(write).not.toHaveBeenCalled();
-		expect(database.create).not.toHaveBeenCalled();
-		expect(database.adapter.read).not.toHaveBeenCalled();
-		await act(async () => {
-			root.unmount();
-		});
-	});
 	it("hydrates legacy text before committing and keeps one writer through a hook remount", async () => {
 		environment.kind = "desktop";
 		let acknowledge!: () => void;

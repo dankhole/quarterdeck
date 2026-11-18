@@ -39,7 +39,7 @@ function fixture() {
 	};
 }
 
-describe("isolated desktop/browser performance evidence", () => {
+describe("isolated desktop performance evidence", () => {
 	it("admits bounded shared navigation timing and retains only nonsecret measurement fields", () => {
 		const timing = {
 			boundary: "ui-action-to-terminal-visible",
@@ -157,7 +157,7 @@ describe("isolated desktop/browser performance evidence", () => {
 		expect(reset[0]).toMatchObject({ stableComparison: false, cpuCounterReset: true, cpuDeltaMs: null });
 	});
 	it("keeps client trees separate and reports newly tracked process churn as incomplete", () => {
-		const browser: PerformanceProcessIdentity = { ...identity, client: "browser", pid: 202 };
+		const browser: PerformanceProcessIdentity = { ...identity, client: "shared-runtime", pid: 202 };
 		const summary = summarizeDesktopPerformanceSamples([
 			{
 				startedMonoMs: 0,
@@ -175,11 +175,11 @@ describe("isolated desktop/browser performance evidence", () => {
 				]),
 			},
 		]);
-		expect(summary.map(({ client }) => client)).toEqual(["desktop", "browser"]);
+		expect(summary.map(({ client }) => client)).toEqual(["desktop", "shared-runtime"]);
 		expect(summary[1]).toMatchObject({ stableComparison: false, cpuDeltaMs: null, missingSamples: 1 });
 	});
 	it("measures acknowledged operations on one clock and labels wrapper overhead honestly", async () => {
-		expectTypeOf<PerformanceAcknowledgementBoundary>().toEqualTypeOf<"driver-to-ui-ack" | "wrapper-round-trip">();
+		expectTypeOf<PerformanceAcknowledgementBoundary>().toEqualTypeOf<"driver-to-ui-ack">();
 		const { dependencies, advance } = fixture();
 		expect(
 			await measureDesktopPerformanceOperation(
@@ -192,11 +192,11 @@ describe("isolated desktop/browser performance evidence", () => {
 		expect(
 			await measureDesktopPerformanceOperation(
 				"wrapper-observation",
-				"wrapper-round-trip",
+				"driver-to-ui-ack",
 				async () => advance(50),
 				dependencies.now,
 			),
-		).toMatchObject({ boundary: "wrapper-round-trip", durationMs: 50 });
+		).toMatchObject({ boundary: "driver-to-ui-ack", durationMs: 50 });
 	});
 	it("preserves before/after and raw repeated-cycle evidence while stopping on a failed acknowledgement", async () => {
 		const { dependencies, advance } = fixture();

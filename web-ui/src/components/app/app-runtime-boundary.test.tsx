@@ -7,8 +7,6 @@ import { type UseTaskEditorResult, useTaskEditor } from "@/hooks/board/use-task-
 import type { BoardData, TaskImage } from "@/types";
 
 const connection = vi.hoisted(() => ({ isRuntimeDisconnected: false, streamError: null as string | null }));
-const environment = vi.hoisted(() => ({ kind: "browser" }));
-vi.mock("@/runtime/runtime-environment", () => ({ getRuntimeEnvironment: () => environment }));
 const runtime = vi.hoisted(() => ({ isQuarterdeckAccessBlocked: false }));
 vi.mock("@/providers/project-provider", () => ({ useProjectRuntimeStreamContext: () => connection }));
 vi.mock("@/providers/project-runtime-provider", () => ({ useProjectRuntimeContext: () => runtime }));
@@ -51,7 +49,6 @@ describe("AppRuntimeBoundary", () => {
 		vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 		Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: showModal });
 		Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: close });
-		environment.kind = "browser";
 		connection.isRuntimeDisconnected = false;
 		connection.streamError = null;
 		runtime.isQuarterdeckAccessBlocked = false;
@@ -84,7 +81,7 @@ describe("AppRuntimeBoundary", () => {
 			connection.isRuntimeDisconnected = disconnected;
 			connection.streamError = disconnected ? "Connection lost" : null;
 			render();
-			expect(document.querySelector("dialog") !== null).toBe(disconnected);
+			expect(document.querySelector('[role="status"]') !== null).toBe(disconnected);
 			expect(container.querySelector("textarea")).toBe(input);
 			expect(editor.newTaskPrompt).toBe("Unsaved prompt");
 			expect(editor.newTaskImages).toEqual(images);
@@ -93,43 +90,11 @@ describe("AppRuntimeBoundary", () => {
 			expect(editor.isInlineTaskCreateOpen).toBe(true);
 			expect(unmount).not.toHaveBeenCalled();
 		}
-		expect(showModal).toHaveBeenCalledTimes(2);
-		expect(close).toHaveBeenCalledTimes(2);
-	});
-
-	it("blocks background shortcuts and dismissal until reconnected", () => {
-		const shortcut = vi.fn();
-		const outsidePointerDown = vi.fn();
-		document.addEventListener("keydown", shortcut, true);
-		document.addEventListener("pointerdown", outsidePointerDown);
-		try {
-			// Radix hides the app root while a task dialog is open.
-			container.setAttribute("aria-hidden", "true");
-			connection.isRuntimeDisconnected = true;
-			connection.streamError = "Connection lost";
-			render();
-			expect(document.body.textContent).toContain("Connection lost");
-			const dialog = document.querySelector("dialog");
-			expect(dialog?.closest('[aria-hidden="true"]')).toBeNull();
-			dialog?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
-			expect(outsidePointerDown).not.toHaveBeenCalled();
-			dialog?.dispatchEvent(new KeyboardEvent("keydown", { key: "b", metaKey: true, bubbles: true }));
-			expect(shortcut).not.toHaveBeenCalled();
-			const cancel = new Event("cancel", { cancelable: true });
-			dialog?.dispatchEvent(cancel);
-			expect(cancel.defaultPrevented).toBe(true);
-			connection.isRuntimeDisconnected = false;
-			render();
-			document.dispatchEvent(new KeyboardEvent("keydown", { key: "b", bubbles: true }));
-			expect(shortcut).toHaveBeenCalledTimes(1);
-		} finally {
-			document.removeEventListener("keydown", shortcut, true);
-			document.removeEventListener("pointerdown", outsidePointerDown);
-		}
+		expect(showModal).not.toHaveBeenCalled();
+		expect(close).not.toHaveBeenCalled();
 	});
 
 	it("keeps local controls and portaled draft review reachable while desktop is offline", () => {
-		environment.kind = "desktop";
 		connection.isRuntimeDisconnected = true;
 		const review = vi.fn();
 		const keydown = vi.fn();

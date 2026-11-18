@@ -1,4 +1,3 @@
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import { createFileEditorRecoveryIndexedDB, type FileEditorRecoveryIndexedDB } from "./file-editor-recovery-indexed-db";
 import {
 	connectFileEditorRecoveryStorage,
@@ -14,7 +13,6 @@ import {
 let storage: FileEditorRecoveryIndexedDB | undefined;
 
 export function connectDesktopFileEditorRecovery(): () => void {
-	if (getRuntimeEnvironment().kind !== "desktop") return () => {};
 	storage ??= createFileEditorRecoveryIndexedDB();
 	return connectFileEditorRecoveryStorage(storage, Date.now, {
 		getItem: (key) => window.localStorage.getItem(key),
@@ -23,16 +21,6 @@ export function connectDesktopFileEditorRecovery(): () => void {
 }
 
 export function getDesktopFileEditorRecoveryCommitStatus(): FileEditorRecoveryCommitStatus {
-	if (getRuntimeEnvironment().kind !== "desktop")
-		return {
-			loaded: true,
-			pending: false,
-			busy: false,
-			problem: null,
-			desiredRevision: 0,
-			committedRevision: 0,
-			ready: true,
-		};
 	return storage
 		? getFileEditorRecoveryCommitStatus(storage)
 		: {
@@ -47,16 +35,13 @@ export function getDesktopFileEditorRecoveryCommitStatus(): FileEditorRecoveryCo
 }
 
 export async function flushDesktopFileEditorRecovery(): Promise<boolean> {
-	if (getRuntimeEnvironment().kind !== "desktop") return true;
 	return storage ? flushFileEditorRecoveryStorage(storage) : false;
 }
 
 export async function retryDesktopFileEditorRecovery(): Promise<boolean> {
-	if (getRuntimeEnvironment().kind !== "desktop" || !storage) return false;
-	return retryFileEditorRecoveryStorage(storage);
+	return storage ? retryFileEditorRecoveryStorage(storage) : false;
 }
 
 export async function resetDesktopFileEditorRecovery(): Promise<boolean> {
-	if (getRuntimeEnvironment().kind !== "desktop" || !storage) return false;
-	return resetFileEditorRecoveryStorage(storage);
+	return storage ? resetFileEditorRecoveryStorage(storage) : false;
 }

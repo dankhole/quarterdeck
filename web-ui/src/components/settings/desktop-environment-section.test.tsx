@@ -68,10 +68,10 @@ describe("desktop environment Settings section", () => {
 		return match;
 	}
 
-	it("hides native settings in browser mode without invoking the bridge", async () => {
-		vi.mocked(getRuntimeEnvironment).mockReturnValue({ kind: "browser", runtimeOrigin: "http://localhost" });
+	it("reports an unavailable native environment bridge without substituting browser settings", async () => {
+		Reflect.deleteProperty(window, "quarterdeckDesktopEnvironment");
 		await render();
-		expect(container.textContent).toBe("");
+		expect(container.textContent).toContain("Could not read desktop environment settings");
 		expect(bridge.getSnapshot).not.toHaveBeenCalled();
 	});
 

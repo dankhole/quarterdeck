@@ -49,14 +49,14 @@ describe("private desktop runtime shutdown channel", () => {
 		});
 		child.send({
 			type: "quarterdeck:desktop-startup",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId,
 			clientToken: "a".repeat(43),
 			allowedOrigins: ["app://quarterdeck"],
 		});
 		await ready;
 		function requestStop(requestId = randomUUID()) {
-			child.send({ type: "quarterdeck:desktop-shutdown", protocolVersion: 1, startupId, requestId });
+			child.send({ type: "quarterdeck:desktop-shutdown", protocolVersion: 2, startupId, requestId });
 			return requestId;
 		}
 		return { child, requestStop, exit, evidencePath };

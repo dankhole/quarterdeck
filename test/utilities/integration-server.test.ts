@@ -5,6 +5,8 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, inject, it, vi } from "vitest";
 
 import { terminateProcessTree } from "../../src/core/process-termination.js";
+import { enrollDesktopClient, verifyRuntimeOwner } from "../../src/server/runtime-owner-client.js";
+import { discoverRuntimeOwner } from "../../src/server/runtime-ownership.js";
 import {
 	resolveIntegrationEntrypoint,
 	resolveTsxLoaderImportSpecifier,
@@ -19,12 +21,10 @@ vi.mock("node:child_process", async (importOriginal) => ({
 vi.mock("../../src/core/process-termination.js", () => ({ terminateProcessTree: vi.fn() }));
 vi.mock("../../src/server/runtime-owner-client.js", () => ({
 	verifyRuntimeOwner: vi.fn(async () => "http://127.0.0.1:1234"),
-	createOwnerBrowserBootstrap: vi.fn(
-		async () => "http://127.0.0.1:1234/api/runtime/client-bootstrap?capability=synthetic",
-	),
+	enrollDesktopClient: vi.fn(async () => undefined),
 }));
 vi.mock("../../src/server/runtime-ownership.js", () => ({
-	discoverRuntimeOwner: vi.fn(async () => ({ descriptor: { status: "ready" } })),
+	discoverRuntimeOwner: vi.fn(async () => ({ descriptor: { status: "ready", process: { pid: 12345 } } })),
 }));
 
 async function startFakeServer() {
@@ -36,7 +36,7 @@ async function startFakeServer() {
 	child.stderr = new PassThrough();
 	vi.mocked(childProcess.spawn).mockReturnValue(child);
 	const starting = startQuarterdeckServer({ cwd: process.cwd(), homeDir: process.cwd(), port: 1234 });
-	stdout.write("Quarterdeck running at http://127.0.0.1:1234/test\n");
+	stdout.write("Quarterdeck internal runtime running.\n");
 	return { child, server: await starting };
 }
 
@@ -57,13 +57,7 @@ describe("integration server teardown", () => {
 		vi.clearAllMocks();
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(
-				async () =>
-					new Response(null, {
-						status: 303,
-						headers: { "set-cookie": "qd-synthetic=synthetic; HttpOnly; Path=/" },
-					}),
-			),
+			vi.fn(async () => Response.json({ result: { data: { currentProjectId: "test" } } })),
 		);
 	});
 	afterEach(() => {
@@ -78,13 +72,59 @@ describe("integration server teardown", () => {
 		expect(childProcess.spawn).toHaveBeenCalledWith(
 			process.execPath,
 			compiled
-				? [compiled, "--no-open"]
-				: ["--import", resolveTsxLoaderImportSpecifier(), resolve("src/cli.ts"), "--no-open"],
+				? [compiled, "--internal-runtime"]
+				: ["--import", resolveTsxLoaderImportSpecifier(), resolve("src/cli.ts"), "--internal-runtime"],
 			expect.objectContaining({ cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] }),
 		);
 		exitChild(child);
 		child.emit("close", 0, null);
 		await server.stop();
+	});
+
+	it("uses management-issued desktop credentials without browser cookies or URL capabilities", async () => {
+		const { child, server } = await startFakeServer();
+		const descriptor = (await discoverRuntimeOwner("unused"))?.descriptor;
+		expect(verifyRuntimeOwner).toHaveBeenCalledWith(descriptor, true);
+		expect(enrollDesktopClient).toHaveBeenCalledWith(descriptor, expect.stringMatching(/^[A-Za-z0-9_-]{43}$/));
+		expect(server.browserHeaders).toEqual({
+			origin: "app://quarterdeck",
+			"x-quarterdeck-desktop-token": vi.mocked(enrollDesktopClient).mock.calls[0]?.[1],
+		});
+		expect(server.browserHeaders).not.toHaveProperty("cookie");
+		expect(server.runtimeUrl).toBe("http://127.0.0.1:1234/test");
+		expect(fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:1234/api/trpc/projects.list",
+			expect.objectContaining({ headers: expect.any(Headers) }),
+		);
+		exitChild(child);
+		child.emit("close", 0, null);
+		await server.stop();
+	});
+
+	it("refuses to enroll clients into an owner other than the fixture child", async () => {
+		const owner = await discoverRuntimeOwner("unused");
+		if (!owner?.descriptor) throw new Error("Expected the synthetic owner fixture.");
+		vi.mocked(discoverRuntimeOwner).mockResolvedValueOnce({
+			...owner,
+			descriptor: { ...owner.descriptor, process: { ...owner.descriptor.process, pid: 99999 } },
+		});
+		const child = new childProcess.ChildProcess();
+		Object.defineProperty(child, "pid", { value: 12345 });
+		child.stdin = new PassThrough();
+		const stdout = new PassThrough();
+		child.stdout = stdout;
+		child.stderr = new PassThrough();
+		vi.mocked(childProcess.spawn).mockReturnValue(child);
+		const rejected = expect(
+			startQuarterdeckServer({ cwd: process.cwd(), homeDir: process.cwd(), port: 1234 }),
+		).rejects.toThrow("Isolated runtime is not owned by the fixture process.");
+		stdout.write("Quarterdeck internal runtime running.\n");
+		await vi.advanceTimersByTimeAsync(1);
+		exitChild(child);
+		child.emit("close", 0, null);
+		await rejected;
+		expect(verifyRuntimeOwner).not.toHaveBeenCalled();
+		expect(enrollDesktopClient).not.toHaveBeenCalled();
 	});
 
 	it("resolves compiled entrypoints without a loader and retains deliberate source fixtures", () => {

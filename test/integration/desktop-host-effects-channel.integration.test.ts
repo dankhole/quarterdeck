@@ -50,7 +50,7 @@ describe("private host effects across the actual helper IPC channel", () => {
 		});
 		child.send({
 			type: "quarterdeck:desktop-startup",
-			protocolVersion: 1,
+			protocolVersion: 2,
 			startupId,
 			clientToken: "a".repeat(43),
 			allowedOrigins: ["app://quarterdeck"],

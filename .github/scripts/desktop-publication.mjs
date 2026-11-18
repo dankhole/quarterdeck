@@ -89,22 +89,33 @@ export async function releaseChecksums(files) {
 	return `${(await Promise.all(files.map(async (path) => `${await checksum(path)}  ${basename(path)}`))).join("\n")}\n`;
 }
 
-async function validateAllAssets(options,directory) {
-	const files=options.desktop?await validateRelease(directory,options.version,options.sourceSha,options.expectedDistribution):[];
-	if(options.windows) files.push(...await validateRelease(directory,options.version,options.sourceSha,"windows-unsigned"));
+function publicationDistribution(options) {
+	if ((Object.hasOwn(options, "desktop") && options.desktop !== true) ||
+		(Object.hasOwn(options, "windows") && options.windows !== true))
+		throw new Error("Publication requires all macOS and Windows assets; platform opt-outs are removed.");
+	const distribution = options.expectedDistribution ?? "signed-notarized";
+	if (!["ad-hoc", "signed-notarized"].includes(distribution))
+		throw new Error("Choose an explicit public macOS ad-hoc or signed-notarized distribution.");
+	publicDistributionMode(distribution);
+	return distribution;
+}
+
+async function validateAllAssets(options, directory) {
+	const files = await validateRelease(directory, options.version, options.sourceSha, options.expectedDistribution);
+	files.push(...(await validateRelease(directory, options.version, options.sourceSha, "windows-unsigned")));
 	return files;
 }
 
 export async function verifyPublicRelease(options, directory, download = downloadAnonymous) {
 	const tag = identity(options);
-	const expectedDistribution =
-		options.expectedDistribution === undefined ? "signed-notarized" : options.expectedDistribution;
-	publicDistributionMode(expectedDistribution);
+	const expectedDistribution = publicationDistribution(options);
 	await mkdir(directory, { recursive: true });
-	const names = [...(options.desktop===false?[]:["darwin"]),...(options.windows?["win32"]:[])].flatMap(platform=>["arm64", "x64"].flatMap((arch) => [
-		...artifactNames(options.version, arch,platform),
-		`artifact-manifest-${platform}-${arch}.json`,
-	]));
+	const names = ["darwin", "win32"].flatMap((platform) =>
+		["arm64", "x64"].flatMap((arch) => [
+			...artifactNames(options.version, arch, platform),
+			`artifact-manifest-${platform}-${arch}.json`,
+		]),
+	);
 	for (const name of [...names, "SHA256SUMS"]) {
 		const limit = /\.(dmg|zip)$/u.test(name) ? 1024 * 1024 * 1024 : 128 * 1024;
 		await download(
@@ -113,7 +124,7 @@ export async function verifyPublicRelease(options, directory, download = downloa
 			limit,
 		);
 	}
-	const files = await validateAllAssets({...options,desktop:options.desktop!==false,expectedDistribution},directory);
+	const files = await validateAllAssets({ ...options, expectedDistribution }, directory);
 	if ((await readFile(join(directory, "SHA256SUMS"), "utf8")) !== (await releaseChecksums(files)))
 		throw new Error("Public SHA256SUMS differs from the immutable downloaded release bytes.");
 	return files;
@@ -125,25 +136,13 @@ export async function publishRelease(
 	{ execute = gh, inspect = findRelease, verifyPublic = verifyPublicRelease } = {},
 ) {
 	const tag = identity(options);
-	if (typeof options.desktop !== "boolean") throw new Error("Choose browser-only or public desktop publication.");
-	options = {
-		...options,
-		expectedDistribution:
-			options.expectedDistribution === undefined ? "signed-notarized" : options.expectedDistribution,
-	};
-	if (options.desktop) publicDistributionMode(options.expectedDistribution);
+	options = { ...options, expectedDistribution: publicationDistribution(options) };
 	let release = inspect(options, execute);
 	if (!release || release.draft) {
-		let assets = [];
-		if (options.desktop || options.windows) {
-			const files = await validateAllAssets(options,options.directory);
-			const sums = join(options.directory, "SHA256SUMS");
-			await writeFile(sums, await releaseChecksums(files));
-			assets = [...files, sums];
-		} else {
-			assertBrowserDraft(release);
-			await mkdir(options.directory, { recursive: true });
-		}
+		const files = await validateAllAssets(options, options.directory);
+		const sums = join(options.directory, "SHA256SUMS");
+		await writeFile(sums, await releaseChecksums(files));
+		const assets = [...files, sums];
 		const generated = JSON.parse(
 			execute([
 				"api",
@@ -179,11 +178,9 @@ export async function publishRelease(
 		// never turn --clobber into a public artifact replacement.
 		release = inspect(options, execute);
 		if (!release?.draft) throw new Error("Release is no longer draft; retry to verify immutable public assets.");
-		if (options.desktop || options.windows) execute(["release", "upload", tag, ...assets, "--repo", options.repository, "--clobber"]);
-		else assertBrowserDraft(release);
+		execute(["release", "upload", tag, ...assets, "--repo", options.repository, "--clobber"]);
 		release = inspect(options, execute);
 		if (!release?.draft) throw new Error("Release changed before promotion; retry without replacing public bytes.");
-		if (!options.desktop && !options.windows) assertBrowserDraft(release);
 		execute([
 			"release",
 			"edit",
@@ -198,12 +195,7 @@ export async function publishRelease(
 			notes,
 		]);
 	}
-	if (options.desktop || options.windows) await verifyPublic(options, options.publicDirectory);
-}
-
-function assertBrowserDraft(release) {
-	if (release && (!Array.isArray(release.assets) || release.assets.length))
-		throw new Error("Browser-only publication cannot promote a draft containing unverified assets.");
+	await verifyPublic(options, options.publicDirectory);
 }
 
 async function main() {
@@ -215,8 +207,10 @@ async function main() {
 			repository: { type: "string" },
 			dir: { type: "string" },
 			"public-dir": { type: "string" },
-			desktop: { type: "boolean", default: false },
-			windows: {type:"boolean",default:false},
+			// Compatibility assertions for workflows retrying older immutable tags.
+			// These never select platforms: both platforms are always required.
+			desktop: { type: "boolean" },
+			windows: { type: "boolean" },
 			distribution: { type: "string", default: "signed-notarized" },
 		},
 	});
@@ -228,15 +222,13 @@ async function main() {
 		await appendFile(process.env.GITHUB_OUTPUT, `public=${isPublic}\n`);
 		return;
 	}
-	if (positionals[0] !== "publish" || !values.dir || ((values.desktop || values.windows) && !values["public-dir"]))
+	if (positionals[0] !== "publish" || !values.dir || !values["public-dir"])
 		throw new Error("Pass inspect|publish with exact release identity and publication paths.");
 	await publishRelease({
 		...options,
-		desktop: values.desktop,
-		windows:values.windows,
 		expectedDistribution: values.distribution,
 		directory: resolve(values.dir),
-		publicDirectory: values["public-dir"] ? resolve(values["public-dir"]) : undefined,
+		publicDirectory: resolve(values["public-dir"]),
 	});
 }
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/desktop-runtime-protocol.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/runtime-protocol.js";
 import { DesktopQuitCoordinator } from "../src/quit-coordinator.js";
 import {
@@ -60,6 +61,7 @@ function supervisor(
 			...process.env,
 			DESKTOP_FIXTURE_MODE: mode,
 			DESKTOP_FIXTURE_BROWSER_PROTOCOL: String(QUARTERDECK_RUNTIME_PROTOCOL_VERSION),
+			DESKTOP_FIXTURE_RUNTIME_PROTOCOL: String(QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION),
 			QUARTERDECK_INSTALLATION_LOCK_FD: "99",
 			QUARTERDECK_INSTALLATION_LOCK_PATH: "/untrusted/inherited.lock",
 			QUARTERDECK_DESKTOP_LAB_CONFIG: "/untrusted/lab.json",
@@ -82,7 +84,8 @@ function supervisor(
 				children.push(child);
 				return child;
 			}
-			expect(args).toContain("--no-open");
+			expect(args).toContain("--internal-runtime");
+			expect(args).not.toContain("--no-open");
 			expect(args).toContain("--no-native-ui");
 			expect(args).not.toContainEqual(expect.stringContaining("clientToken"));
 			expect(options.env?.QUARTERDECK_STATE_HOME).toBe("/synthetic/state");
@@ -285,7 +288,6 @@ describe("private bundled runtime supervision", () => {
 			liveProcessCount: 2,
 			pendingLaunches: false,
 		});
-		expect(await owner.control("create-browser-launch")).toMatchObject({ method: "create-browser-launch" });
 		await owner.stop();
 		expect(await owner.control("get-quit-summary")).toBeNull();
 		const timeout = supervisor("control-timeout").owner;

@@ -36,7 +36,7 @@ export default defineConfig({
 	test: {
 		environment: "jsdom",
 		include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-		setupFiles: ["./vitest.setup.ts"],
+		setupFiles: ["./vitest.setup.ts", "./src/test-utils/desktop-runtime-setup.ts"],
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.{ts,tsx}"],

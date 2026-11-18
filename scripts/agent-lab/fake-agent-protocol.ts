@@ -1,8 +1,88 @@
+import { PassThrough, type Readable } from "node:stream";
 import { buildShellCommandLine } from "../../src/core/shell";
 import { buildWindowsProcessArgsCommandLine } from "../../src/core/windows-cmd-launch";
 import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
 
 export type FakeAgentProvider = "claude" | "codex" | "pi";
+
+/** Consume replies to our own queries before Readline can echo them into its edit buffer. */
+export function createFakeAgentTerminalInput(
+	source: Readable & { setRawMode?: (enabled: boolean) => unknown },
+	options: {
+		hasPendingClipboardRead: () => boolean;
+		onClipboardRead: (encodedText: string | null) => void;
+	},
+): PassThrough & { setRawMode(enabled: boolean): unknown } {
+	const input = Object.assign(new PassThrough(), {
+		setRawMode: (enabled: boolean) => source.setRawMode?.(enabled),
+	});
+	const prefix = "\u001b]52;c;";
+	let pending = "";
+	let oversizedResponse = false;
+	let prefixTimer: NodeJS.Timeout | undefined;
+	const clearPrefixTimer = () => {
+		clearTimeout(prefixTimer);
+		prefixTimer = undefined;
+	};
+	source.setEncoding("utf8");
+	source.on("data", (chunk: string) => {
+		clearPrefixTimer();
+		pending += chunk;
+		while (pending) {
+			// Ordinary keyboard input must retain Readline's original Escape
+			// timing, including the remainder of a chunk after the last reply.
+			if (!options.hasPendingClipboardRead()) {
+				input.write(pending);
+				pending = "";
+				return;
+			}
+			const start = pending.indexOf(prefix);
+			if (start < 0) {
+				let retained = Math.min(pending.length, prefix.length - 1);
+				while (retained > 0 && !prefix.startsWith(pending.slice(-retained))) retained--;
+				input.write(pending.slice(0, pending.length - retained));
+				pending = retained > 0 ? pending.slice(-retained) : "";
+				if (pending) {
+					// Only an outstanding query makes an Escape ambiguous here.
+					// Do not retain a partial reply prefix indefinitely.
+					prefixTimer = setTimeout(() => {
+						input.write(pending);
+						pending = "";
+					}, 25);
+					prefixTimer.unref();
+				}
+				return;
+			}
+			if (start > 0) {
+				input.write(pending.slice(0, start));
+				pending = pending.slice(start);
+			}
+			const bell = pending.indexOf("\u0007", prefix.length);
+			const stringEnd = pending.indexOf("\u001b\\", prefix.length);
+			const end = bell < 0 ? stringEnd : stringEnd < 0 ? bell : Math.min(bell, stringEnd);
+			if (end < 0) {
+				if (pending.length > 4096) {
+					oversizedResponse = true;
+					pending = prefix + (pending.endsWith("\u001b") ? "\u001b" : "");
+				}
+				return;
+			}
+			const encodedText = !oversizedResponse && end <= 4096 ? pending.slice(prefix.length, end) : null;
+			oversizedResponse = false;
+			pending = pending.slice(end + (pending[end] === "\u0007" ? 1 : 2));
+			// Even a discarded oversized reply retires its query; otherwise a
+			// later ordinary Escape would still be treated as a pending reply.
+			options.onClipboardRead(encodedText);
+		}
+	});
+	source.once("end", () => {
+		clearPrefixTimer();
+		if (!pending.startsWith(prefix)) input.write(pending);
+		input.end();
+	});
+	source.once("close", clearPrefixTimer);
+	return input;
+}
 
 export interface FakeAgentInvocation {
 	prompt: string;

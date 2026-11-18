@@ -16,7 +16,6 @@ import { createDesktopRuntimeHostEffects, type DesktopHostEffectRequest } from "
 import { type RuntimeHandle, startRuntime } from "./runtime-bootstrap.js";
 import { RuntimeClientAccess } from "./runtime-client-access.js";
 import {
-	createOwnerBrowserBootstrap,
 	enrollDesktopClient,
 	openOwnerProject,
 	revokeDesktopClient,
@@ -42,7 +41,6 @@ export interface AdmittedRuntimeLaunch {
 	url: string;
 	capabilities: RuntimeCapabilities;
 	ready: Omit<DesktopReadyMessage, "type" | "protocolVersion" | "startupId">;
-	createBrowserUrl: () => Promise<string>;
 	/** A resolved full completion also proves writes are fenced and drained, even when cleanup is incomplete. */
 	shutdown: (waitForCompletion?: boolean) => Promise<RuntimeShutdownOutcome>;
 }
@@ -62,8 +60,6 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 		quarterdeckVersion: options.quarterdeckVersion,
 		capabilities: {
 			transportVersion: 1,
-			browserHttp: true,
-			browserWebSocket: true,
 			desktopProxy: true,
 			desktopBridgeVersion: 1,
 		},
@@ -109,7 +105,6 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 				desktopTransportVersion: 1,
 				ownership: "attached",
 			},
-			createBrowserUrl: () => createOwnerBrowserBootstrap(descriptor, path),
 			shutdown: () => {
 				detach ??= (async () => {
 					if (options.desktopStartup) {
@@ -266,7 +261,6 @@ export async function startAdmittedRuntime(options: RuntimeLaunchOptions): Promi
 			desktopTransportVersion: 1,
 			ownership: "owned",
 		},
-		createBrowserUrl: async () => `${url.origin}${access.createBrowserBootstrap(url.pathname)}`,
 		shutdown,
 	};
 }

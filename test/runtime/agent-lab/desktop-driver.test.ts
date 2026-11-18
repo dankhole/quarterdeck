@@ -15,10 +15,12 @@ import type * as desktopProcesses from "../../../scripts/agent-lab/desktop-proce
 import { listDesktopProcesses, stopOwnedDesktopProcesses } from "../../../scripts/agent-lab/desktop-processes";
 import { captureDesktopShutdownEvidence } from "../../../scripts/agent-lab/desktop-shutdown-evidence";
 import type { DesktopLabProcess } from "../../../scripts/agent-lab/desktop-types";
+import { captureDesktopDiagnosticSnapshot } from "../../../scripts/agent-lab/snapshot";
 
 const cleanupPollWait = vi.fn(async (_milliseconds: number) => {});
 
 vi.mock("playwright-core", () => ({ _electron: { launch: vi.fn() } }));
+vi.mock("../../../scripts/agent-lab/snapshot", () => ({ captureDesktopDiagnosticSnapshot: vi.fn(async () => {}) }));
 vi.mock("../../../scripts/agent-lab/desktop-shutdown-evidence", () => ({
 	captureDesktopShutdownEvidence: vi.fn(async () => undefined),
 }));
@@ -688,6 +690,13 @@ describe("desktop driver cleanup orchestration", () => {
 			try {
 				await driver.launch();
 				await expect(driver.inspect("hidden")).resolves.toBeUndefined();
+				vi.mocked(captureDesktopDiagnosticSnapshot).mockRejectedValueOnce(
+					new Error("private stale descriptor detail"),
+				);
+				await expect(driver.inspect("diagnostics-unavailable")).resolves.toBeUndefined();
+				vi.mocked(captureDesktopDiagnosticSnapshot).mockClear();
+				await expect(driver.inspect("performance-admission")).resolves.toBeUndefined();
+				expect(captureDesktopDiagnosticSnapshot).not.toHaveBeenCalled();
 				window.focused = true;
 				await expect(driver.inspect("focused")).rejects.toThrow("Hidden desktop lab");
 				window.focused = false;
@@ -698,6 +707,9 @@ describe("desktop driver cleanup orchestration", () => {
 			} finally {
 				await driver.stop();
 			}
+			expect(await readFile(join(fixture.manifest.artifactDir, "diagnostic-capture-warnings.log"), "utf8")).toBe(
+				"diagnostics-unavailable: canonical diagnostic capture unavailable; checkpoint evidence retained.\n",
+			);
 		} finally {
 			await rm(fixture.config.tempRoot, { recursive: true, force: true });
 			await rm(fixture.manifest.artifactDir, { recursive: true, force: true });

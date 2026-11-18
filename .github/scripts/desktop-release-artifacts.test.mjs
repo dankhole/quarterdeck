@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { DESKTOP_RESOURCE_PATHS, desktopResourcePathsForPlatform } from "../../desktop/scripts/desktop-resource-paths.mjs";
+import { desktopResourcePathsForPlatform } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { readBuildManifest, readSourceIdentity, validateBuildManifest } from "../../scripts/build-manifest.mjs";
 import { artifactNames, checksum, validateRelease } from "./desktop-release-artifacts.mjs";
 import {
@@ -19,55 +21,58 @@ const sha = "a".repeat(40);
 
 async function fixture(run, productVersion = version, distribution = "signed-notarized") {
 	const directory = await mkdtemp(join(tmpdir(), "quarterdeck-release-test-"));
-	const platform=distribution === "windows-unsigned"?"win32":"darwin";
 	try {
-		for (const arch of ["arm64", "x64"]) {
-			const artifacts = [];
-			for (const name of artifactNames(productVersion, arch,platform)) {
-				const path = join(directory, name);
-				await writeFile(path, `${arch} synthetic container`);
-				artifacts.push({
-					path: name,
-					bytes: Buffer.byteLength(`${arch} synthetic container`),
-					sha256: await checksum(path),
-				});
+		for (const targetDistribution of distribution === "windows-unsigned" ? [distribution] : [distribution, "windows-unsigned"]) {
+			const distribution = targetDistribution;
+			const platform = distribution === "windows-unsigned" ? "win32" : "darwin";
+			for (const arch of ["arm64", "x64"]) {
+				const artifacts = [];
+				for (const name of artifactNames(productVersion, arch,platform)) {
+					const path = join(directory, name);
+					await writeFile(path, `${arch} synthetic container`);
+					artifacts.push({
+						path: name,
+						bytes: Buffer.byteLength(`${arch} synthetic container`),
+						sha256: await checksum(path),
+					});
+				}
+				await writeFile(
+					join(directory, `artifact-manifest-${platform}-${arch}.json`),
+					JSON.stringify({
+						schemaVersion: 1,
+						platform,
+						arch,
+						version: productVersion,
+						sourceSha: sha,
+						sourceDirty: false,
+						distribution,
+						distributionMode: distribution === "signed-notarized"?"signed":distribution,
+						signedDistribution: distribution === "signed-notarized",
+						expectedTeamId: distribution === "signed-notarized"?"AB12345678":null,
+						updateAuthority: "npm",
+						channel: productVersion.includes("-") ? "preview" : "stable",
+						buildId: `${arch}-build`,
+						electronVersion: "44.5.1",
+						nodeVersion: "22.22.2",
+						nodeAbi: "127",
+						minimumMacOSVersion: "13.0",
+						runtimeLockSha256: "b".repeat(64),
+						nativeAdmission: { schemaVersion: 1, bootstrapSha256: "a".repeat(64), hostSha256: "b".repeat(64) },
+						nodeArchive: { sha256: "c".repeat(64) },
+						checksums: Object.fromEntries(desktopResourcePathsForPlatform(platform).map((resource) => [resource, "e".repeat(64)])),
+						fuses: {
+							RunAsNode: false,
+							EnableNodeOptionsEnvironmentVariable: false,
+							EnableNodeCliInspectArguments: false,
+							EnableCookieEncryption: true,
+							EnableEmbeddedAsarIntegrityValidation: true,
+							OnlyLoadAppFromAsar: true,
+							GrantFileProtocolExtraPrivileges: false,
+						},
+						artifacts,
+					}),
+				);
 			}
-			await writeFile(
-				join(directory, `artifact-manifest-${platform}-${arch}.json`),
-				JSON.stringify({
-					schemaVersion: 1,
-					platform,
-					arch,
-					version: productVersion,
-					sourceSha: sha,
-					sourceDirty: false,
-					distribution,
-					distributionMode: distribution === "signed-notarized"?"signed":distribution,
-					signedDistribution: distribution === "signed-notarized",
-					expectedTeamId: distribution === "signed-notarized"?"AB12345678":null,
-					updateAuthority: "npm",
-					channel: productVersion.includes("-") ? "preview" : "stable",
-					buildId: `${arch}-build`,
-					electronVersion: "44.5.1",
-					nodeVersion: "22.22.2",
-					nodeAbi: "127",
-					minimumMacOSVersion: "13.0",
-					runtimeLockSha256: "b".repeat(64),
-					nativeAdmission: { schemaVersion: 1, bootstrapSha256: "a".repeat(64), hostSha256: "b".repeat(64) },
-					nodeArchive: { sha256: "c".repeat(64) },
-					checksums: Object.fromEntries(desktopResourcePathsForPlatform(platform).map((resource) => [resource, "e".repeat(64)])),
-					fuses: {
-						RunAsNode: false,
-						EnableNodeOptionsEnvironmentVariable: false,
-						EnableNodeCliInspectArguments: false,
-						EnableCookieEncryption: true,
-						EnableEmbeddedAsarIntegrityValidation: true,
-						OnlyLoadAppFromAsar: true,
-						GrantFileProtocolExtraPrivileges: false,
-					},
-					artifacts,
-				}),
-			);
 		}
 		await run(directory);
 	} finally {
@@ -243,91 +248,32 @@ test("requires native bootstrap and installer helper provenance", async () =>
 		await assert.rejects(validateRelease(directory, version, sha), /native admission provenance/u);
 	}));
 
-const releaseIdentity = { repository: "dankhole/quarterdeck", version, sourceSha: sha, desktop: true };
+const releaseIdentity = { repository: "dankhole/quarterdeck", version, sourceSha: sha };
 
-test("browser-only releases generate notes without desktop candidates, uploads, or downloads", async () => {
-	for (const productVersion of [version, "0.12.9-beta.1"]) {
-		for (const retry of [false, true]) {
-			const directory = await mkdtemp(join(tmpdir(), "quarterdeck-browser-release-test-"));
-			try {
-				const calls = [];
-				let inspections = 0;
-				await publishRelease(
-					{ ...releaseIdentity, version: productVersion, desktop: false, directory: join(directory, "notes") },
-					{
-						inspect: () => (++inspections === 1 && !retry ? null : { id: 1, draft: true, assets: [] }),
-						execute: (args) => {
-							calls.push(args);
-							if (args[0] === "api") return JSON.stringify({ body: "Generated browser release notes" });
-						},
-						verifyPublic: async () => assert.fail("Browser releases must not download desktop assets."),
-					},
-				);
-				assert.deepEqual(
-					calls.map((args) => args[1]),
-					retry
-						? ["repos/dankhole/quarterdeck/releases/generate-notes", "edit"]
-						: ["repos/dankhole/quarterdeck/releases/generate-notes", "create", "edit"],
-				);
-				assert.ok(calls[0].includes(`tag_name=v${productVersion}`));
-				assert.ok(calls[0].includes(`target_commitish=${sha}`));
-				if (!retry) {
-					assert.ok(calls[1].includes("--verify-tag"));
-					assert.ok(calls[1].includes("--draft"));
-				}
-				const promotion = calls.at(-1);
-				assert.ok(promotion.includes("--draft=false"));
-				assert.ok(promotion.includes(`--prerelease=${productVersion.includes("-")}`));
-				assert.equal(
-					await readFile(promotion[promotion.indexOf("--notes-file") + 1], "utf8"),
-					"Generated browser release notes",
-				);
-			} finally {
-				await rm(directory, { recursive: true, force: true });
-			}
-		}
+test("removed platform opt-outs cannot publish or verify browser-only or partial releases", async () => {
+	for (const selection of [{ desktop: false }, { desktop: undefined }, { windows: false }, { windows: undefined }]) {
+		const options = { ...releaseIdentity, ...selection, directory: "/missing", publicDirectory: "/public" };
+		await assert.rejects(publishRelease(options, {
+			inspect: () => assert.fail("Removed opt-outs must fail before inspecting a release."),
+			execute: () => assert.fail("Removed opt-outs must never mutate a release."),
+		}), /platform opt-outs are removed/u);
+		await assert.rejects(verifyPublicRelease(options, "/missing", async () => assert.fail("Must not download.")), /platform opt-outs are removed/u);
+	}
+	for (const expectedDistribution of ["browser-only", "none", "windows-unsigned"]) {
+		await assert.rejects(publishRelease({ ...releaseIdentity, expectedDistribution }), /public macOS/u);
 	}
 });
 
-test("browser-only public retries preserve existing notes and assets without desktop access", async () => {
-	await publishRelease(
-		{ ...releaseIdentity, desktop: false, directory: "/missing" },
-		{
-			inspect: () => ({ id: 1, draft: false, assets: [{ name: "existing.zip" }] }),
-			execute: () => assert.fail("Public retries must not regenerate notes or mutate a release."),
-			verifyPublic: async () => assert.fail("Browser-only retries must not require desktop assets."),
-		},
-	);
-});
-
-test("browser-only publication refuses draft assets, including assets added before promotion", async () => {
-	for (const assetInspection of [1, 2, 3]) {
-		await fixture(async (directory) => {
-			const mutations = [];
-			let inspections = 0;
-			await assert.rejects(
-				publishRelease(
-					{ ...releaseIdentity, desktop: false, directory },
-					{
-						inspect: () => ({
-							id: 1,
-							draft: true,
-							assets: ++inspections >= assetInspection ? [{ name: "unverified.dmg" }] : [],
-						}),
-						execute: (args) => {
-							if (args[0] === "api") return JSON.stringify({ body: "Generated notes" });
-							mutations.push(args);
-						},
-					},
-				),
-				/unverified assets/u,
-			);
-			assert.deepEqual(mutations, []);
-		});
+test("publication CLI rejects platform opt-out flags before any GitHub access", () => {
+	for (const flag of ["--no-desktop", "--no-windows"]) {
+		const result = spawnSync(process.execPath, [fileURLToPath(new URL("./desktop-publication.mjs", import.meta.url)), "publish", flag], { encoding: "utf8", timeout: 10_000 });
+		assert.equal(result.error, undefined);
+		assert.notEqual(result.status, 0);
+		assert.match(result.stderr, /Unknown option/u);
 	}
 });
 
-test("enabling desktop on a public browser-only release requires the complete immutable asset set", async () => {
+test("an incomplete public release cannot gain missing desktop assets under an immutable tag", async () => {
 	await assert.rejects(
 		publishRelease(
 			{ ...releaseIdentity, directory: "/missing", publicDirectory: "/public" },
@@ -447,27 +393,25 @@ test("new prereleases create a verified-tag draft with generated notes before up
 });
 
 test("failed or invalid GitHub note generation cannot create, upload, or promote a release", async () => {
-	for (const desktop of [false, true]) {
-		for (const response of ["{", "null", "{}", '{"body":null}', '{"body":"  "}', new Error("API unavailable")]) {
-			await fixture(async (directory) => {
-				const calls = [];
-				await assert.rejects(
-					publishRelease(
-						{ ...releaseIdentity, directory, desktop },
-						{
-							inspect: () => null,
-							execute: (args) => {
-								calls.push(args[0]);
-								if (response instanceof Error) throw response;
-								return response;
-							},
-							verifyPublic: async () => calls.push("verified-public"),
+	for (const response of ["{", "null", "{}", '{"body":null}', '{"body":"  "}', new Error("API unavailable")]) {
+		await fixture(async (directory) => {
+			const calls = [];
+			await assert.rejects(
+				publishRelease(
+					{ ...releaseIdentity, directory },
+					{
+						inspect: () => null,
+						execute: (args) => {
+							calls.push(args[0]);
+							if (response instanceof Error) throw response;
+							return response;
 						},
-					),
-				);
-				assert.deepEqual(calls, ["api"]);
-			});
-		}
+						verifyPublic: async () => calls.push("verified-public"),
+					},
+				),
+			);
+			assert.deepEqual(calls, ["api"]);
+		});
 	}
 });
 
@@ -491,7 +435,7 @@ test("a candidate cannot replace a release promoted by another actor", async () 
 
 test("anonymous full release verification binds every manifest and container to SHA256SUMS", async () =>
 	fixture(async (directory) => {
-		const files = await validateRelease(directory, version, sha);
+		const files = [...await validateRelease(directory, version, sha), ...await validateRelease(directory, version, sha, "windows-unsigned")];
 		await writeFile(join(directory, "SHA256SUMS"), await releaseChecksums(files));
 		const destination = await mkdtemp(join(tmpdir(), "quarterdeck-public-test-"));
 		try {
@@ -501,7 +445,7 @@ test("anonymous full release verification binds every manifest and container to 
 				await writeFile(path, await readFile(join(directory, basename(path))));
 			};
 			await verifyPublicRelease(releaseIdentity, destination, download);
-			assert.equal(seen.length, 7);
+			assert.equal(seen.length, 11);
 			await writeFile(join(directory, "SHA256SUMS"), "wrong\n");
 			await assert.rejects(verifyPublicRelease(releaseIdentity, destination, download), /Public SHA256SUMS/u);
 		} finally {
@@ -541,7 +485,7 @@ test("anonymous retries reject signed/ad-hoc swaps in either direction without m
 	for (const actual of ["signed-notarized", "ad-hoc"]) {
 		await fixture(
 			async (directory) => {
-				const files = await validateRelease(directory, version, sha, actual);
+				const files = [...await validateRelease(directory, version, sha, actual), ...await validateRelease(directory, version, sha, "windows-unsigned")];
 				await writeFile(join(directory, "SHA256SUMS"), await releaseChecksums(files));
 				const destination = await mkdtemp(join(tmpdir(), "quarterdeck-distribution-retry-"));
 				try {
@@ -597,9 +541,21 @@ test("ad-hoc publication uses a separate credential-free native lane and explici
 	assert.ok(lane);
 	assert.doesNotMatch(lane, /secrets:|environment:/u);
 	assert.match(lane, /desktop_mode == 'ad-hoc'/u);
-	assert.match(publish, /ad-hoc\) desktop_args\+=\(--desktop --distribution ad-hoc\)/u);
-	assert.match(publish, /signed\) desktop_args\+=\(--desktop --distribution signed-notarized\)/u);
+	assert.match(publish, /ad-hoc\) desktop_args\+=\(--distribution ad-hoc\)/u);
+	assert.match(publish, /signed\) desktop_args\+=\(--distribution signed-notarized\)/u);
 	assert.match(publish, /needs: \[resolve, test, desktop, desktop-adhoc, desktop-windows\]/u);
+});
+
+test("shared CI has no standalone browser lane and desktop CI retains native packaged smoke", async () => {
+	const shared = await readFile(new URL("../workflows/test.yml", import.meta.url), "utf8");
+	const desktop = await readFile(new URL("../workflows/desktop-ci.yml", import.meta.url), "utf8");
+	for (const workflow of [shared, desktop])
+		assert.doesNotMatch(workflow, /web:smoke:production|web:e2e|agent:browser|playwright install|install-browser chromium/u);
+	for (const required of ["ubuntu-latest", "npm run test:package", "npm run check", "npm run web:test"])
+		assert.ok(shared.includes(required), required);
+	for (const required of ["macos-15", "macos-15-intel", "windows-latest", "windows-11-arm"])
+		assert.ok(desktop.includes(required), required);
+	assert.equal((desktop.match(/agent:desktop -- smoke/gu) ?? []).length, 2, "Both native platform jobs must exercise their packaged app.");
 });
 
 test("anonymous download rejects unsafe redirects and bounded truncated assets", async () => {
@@ -682,12 +638,30 @@ test("root build provenance requires exact source, paired UUID, version, and dir
 });
 
 
-test("Windows publication requires both unsigned native ZIPs and preserves immutable public bytes", async()=>fixture(async directory=>{
-	assert.equal((await validateRelease(directory,version,sha,"windows-unsigned")).length,4);
-	await assert.rejects(validateRelease(directory,version,sha,"ad-hoc"));
-	const calls=[];let verified=false;
-	await publishRelease({...releaseIdentity,desktop:false,windows:true,directory,publicDirectory:join(directory,"verified")},{inspect:()=>({id:1,draft:true,assets:[]}),execute:args=>{calls.push(args);if(args[0]==="api") return JSON.stringify({body:"Generated Windows release notes"});},verifyPublic:async options=>{assert.equal(options.windows,true);verified=true;}});
-	assert.ok(verified);assert.ok(calls.find(args=>args[1]==="upload").some(value=>value.endsWith("artifact-manifest-win32-arm64.json")));
-	await rm(join(directory,"artifact-manifest-win32-x64.json"));
-	await assert.rejects(validateRelease(directory,version,sha,"windows-unsigned"));
-},version,"windows-unsigned"));
+test("Windows publication requires both unsigned native ZIPs alongside macOS assets", async () => fixture(async directory => {
+	assert.equal((await validateRelease(directory, version, sha, "windows-unsigned")).length, 4);
+	const calls = [];
+	let verified = false;
+	await publishRelease({ ...releaseIdentity, desktop: true, windows: true, directory, publicDirectory: join(directory, "verified") }, {
+		inspect: () => ({ id: 1, draft: true, assets: [] }),
+		execute: args => { calls.push(args); if (args[0] === "api") return JSON.stringify({ body: "Generated desktop release notes" }); },
+		verifyPublic: async () => { verified = true; },
+	});
+	assert.ok(verified);
+	const upload = calls.find(args => args[1] === "upload");
+	for (const platform of ["darwin", "win32"])
+		for (const arch of ["arm64", "x64"])
+			assert.ok(upload.some(value => value.endsWith(`artifact-manifest-${platform}-${arch}.json`)));
+	for (const platform of ["darwin", "win32"]) {
+		for (const arch of ["arm64", "x64"]) {
+			const manifest = join(directory, `artifact-manifest-${platform}-${arch}.json`);
+			const original = await readFile(manifest);
+			await rm(manifest);
+			await assert.rejects(publishRelease({ ...releaseIdentity, directory }, {
+				inspect: () => ({ id: 1, draft: true }),
+				execute: () => assert.fail("Missing native assets must fail before any mutation."),
+			}), { code: "ENOENT" });
+			await writeFile(manifest, original);
+		}
+	}
+}));

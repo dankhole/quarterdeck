@@ -6,7 +6,12 @@ import { createGitTestEnv } from "../utilities/git-env.js";
 import { resolveIntegrationNodeArgs } from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir.js";
 
-function expectRejectedLaunch(args: string[], message: string, desktopHelper: boolean): void {
+function expectRejectedLaunch(
+	args: string[],
+	message: string,
+	desktopHelper: boolean,
+	env: NodeJS.ProcessEnv = {},
+): void {
 	const sandbox = createTempDir("quarterdeck-cli-modes-");
 	const stateHome = join(sandbox.path, "state");
 	try {
@@ -17,6 +22,8 @@ function expectRejectedLaunch(args: string[], message: string, desktopHelper: bo
 				USERPROFILE: sandbox.path,
 				QUARTERDECK_STATE_HOME: stateHome,
 				QUARTERDECK_DESKTOP_CHILD: desktopHelper ? "1" : undefined,
+				CI: "true",
+				...env,
 			}),
 			encoding: "utf8",
 			timeout: 10_000,
@@ -33,20 +40,45 @@ function expectRejectedLaunch(args: string[], message: string, desktopHelper: bo
 
 describe("CLI launch mode routing", () => {
 	it.each([
-		{ args: ["--desktop", "--browser"], message: "cannot be used with option" },
-		{ args: ["--desktop", "--no-open"], message: "cannot be used with option" },
+		{ args: ["--desktop", "--browser"], message: "unknown option '--browser'" },
+		{ args: ["--no-open"], message: "unknown option '--no-open'" },
+		{ args: ["--desktop", "--internal-runtime"], message: "cannot be used with option" },
 		{ args: ["--desktop", "--port", "auto"], message: "cannot be used with option" },
-		{ args: ["--browser", "desktop", "install"], message: "cannot be combined with subcommands" },
-		{ args: ["--browser", "--no-open"], message: "native installation admission bootstrap" },
+		{ args: ["--internal-runtime", "desktop", "install"], message: "cannot be combined with subcommands" },
+		{ args: ["--internal-runtime"], message: "native installation admission bootstrap" },
 		{ args: ["desktop", "install", "--desktop"], message: "cannot be combined with subcommands" },
 		{
 			args: ["--desktop"],
-			message: "A desktop runtime helper cannot launch another desktop app",
+			message: "A desktop runtime helper requires --internal-runtime",
 		},
 	])("rejects $args before installation or runtime startup", ({ args, message }) => {
 		expectRejectedLaunch(args, message, true);
 	});
-	it.skipIf(process.platform === "darwin")("rejects unsupported desktop hosts outside a helper", () => {
-		expectRejectedLaunch(["--desktop"], "Desktop mode requires macOS 13", false);
+	it("cannot open the user's desktop app from an ordinary source test invocation", () => {
+		expectRejectedLaunch(
+			[],
+			["darwin", "win32"].includes(process.platform) ? "local graphical session" : "macOS 13+",
+			false,
+		);
+	});
+	it.each(["0.0.0.0", "::", "192.168.1.10", "localhost"])(
+		"rejects internal host %s before runtime state is created",
+		(host) => {
+			expectRejectedLaunch(["--internal-runtime", "--host", host], "bind only to 127.0.0.1", false, {
+				QUARTERDECK_AGENT_LAB: "1",
+			});
+		},
+	);
+	it("applies the same loopback-only restriction to the runtime host environment", () => {
+		expectRejectedLaunch(["--internal-runtime"], "bind only to 127.0.0.1", false, {
+			QUARTERDECK_AGENT_LAB: "1",
+			QUARTERDECK_RUNTIME_HOST: "0.0.0.0",
+		});
+	});
+	it("does not treat runtime flags as a runtime launch", () => {
+		expectRejectedLaunch(["--port", "auto"], "Runtime options require", false);
+	});
+	it.skipIf(process.platform !== "linux")("rejects unsupported desktop hosts outside a helper", () => {
+		expectRejectedLaunch(["--desktop"], "macOS 13+", false);
 	});
 });

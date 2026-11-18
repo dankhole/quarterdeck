@@ -149,7 +149,11 @@ export async function createInstallerDependencies(
 	await writeFile(join(packageRoot, "dist/build-manifest.json"), JSON.stringify(identity));
 	await writeFile(
 		join(packageRoot, "package.json"),
-		JSON.stringify({ name: "quarterdeck", version: identity.version }),
+		JSON.stringify({
+			name: "quarterdeck",
+			version: identity.version,
+			quarterdeck: { desktopRelease: "signed-v1", windowsDesktopRelease: "unsigned-v1" },
+		}),
 	);
 	const owner = { kind: "link" as const, packageSlot, packageRoot, prefix, identity };
 	let mutationActive = false;

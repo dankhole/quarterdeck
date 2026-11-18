@@ -212,14 +212,9 @@ describe("runtime state stream", () => {
 	it.each([undefined, QUARTERDECK_RUNTIME_PROTOCOL_VERSION - 1, QUARTERDECK_RUNTIME_PROTOCOL_VERSION + 1])(
 		"blocks protocol %s before accepting or applying state even when build IDs match",
 		async (runtimeProtocolVersion) => {
-			// Simulate the document after its one automatic reload.
-			expect(
-				resolveRuntimeProtocolCompatibility(
-					runtimeProtocolVersion,
-					QUARTERDECK_RUNTIME_PROTOCOL_VERSION,
-					() => sessionStorage,
-				),
-			).toBe("reload");
+			expect(resolveRuntimeProtocolCompatibility(runtimeProtocolVersion, QUARTERDECK_RUNTIME_PROTOCOL_VERSION)).toBe(
+				"blocked",
+			);
 			await act(async () =>
 				callbacks.onMessage(snapshot({ runtimeBuildId: __QUARTERDECK_BUILD_ID__, runtimeProtocolVersion })),
 			);
@@ -227,7 +222,7 @@ describe("runtime state stream", () => {
 			expect(transport.dispose).toHaveBeenCalledOnce();
 			expect(state.hasReceivedSnapshot).toBe(false);
 			expect(state.isRuntimeDisconnected).toBe(true);
-			expect(state.streamError).toContain("Restart Quarterdeck");
+			expect(state.streamError).toContain("Save your drafts, then restart Quarterdeck");
 		},
 	);
 });

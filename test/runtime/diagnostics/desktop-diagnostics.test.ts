@@ -207,14 +207,14 @@ describe("desktop diagnostics roles and private projection", () => {
 			const startupId = randomUUID();
 			processEvents.emit("message", {
 				type: "quarterdeck:desktop-startup",
-				protocolVersion: 1,
+				protocolVersion: 2,
 				startupId,
 				clientToken: "a".repeat(43),
 				allowedOrigins: ["app://quarterdeck"],
 			});
 			await channel.startup;
 			channel.setDiagnosticsHandler(ingestor.ingest);
-			const message = { type: "quarterdeck:desktop-diagnostics", protocolVersion: 1, startupId, payload: packet() };
+			const message = { type: "quarterdeck:desktop-diagnostics", protocolVersion: 2, startupId, payload: packet() };
 			expect(desktopDiagnosticsPayloadSchema.safeParse(message.payload).success).toBe(true);
 			processEvents.emit("message", { ...message, startupId: randomUUID() });
 			processEvents.emit("message", { ...message, payload: { ...message.payload, env: "synthetic-secret" } });

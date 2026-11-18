@@ -11,7 +11,6 @@ export interface DesktopMenuActions {
 	updateLabel?: string;
 	updateBusy?: boolean;
 	dispatch: (command: DesktopAppCommand["command"]) => void;
-	openInBrowser: () => void;
 	showUpdateGuidance: () => void;
 	reloadWindow: () => void;
 	runtimeFailed?: boolean;
@@ -64,12 +63,6 @@ export function desktopMenuTemplate(actions: DesktopMenuActions): MenuItemConstr
 				command("desktop.addProject", "Add Project…", "open-project", "Cmd+O"),
 				command("desktop.newTask", "New Task…", "new-task", "Cmd+N"),
 				{ type: "separator" },
-				{
-					id: "desktop.openInBrowser",
-					label: "Open in Browser",
-					enabled: actions.productReady && actions.runtimeConnected === true,
-					click: actions.openInBrowser,
-				},
 				{
 					id: "desktop.restartRuntime",
 					label: "Restart Runtime…",

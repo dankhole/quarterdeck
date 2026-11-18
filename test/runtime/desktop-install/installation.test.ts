@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { desktopAppTreeSha256 } from "../../../src/desktop-install/files.js";
+import { desktopAppTreeSha256, desktopFileSha256 } from "../../../src/desktop-install/files.js";
 import { createDesktopInstallationService } from "../../../src/desktop-install/index.js";
 import { managedDesktopInstallationReceiptSchema } from "../../../src/desktop-install/receipt.js";
 import { createDesktopAppFixture, createInstallerDependencies } from "./fixture.js";
@@ -15,6 +15,13 @@ beforeEach(async () => {
 afterEach(async () => {
 	await rm(root, { recursive: true, force: true });
 });
+
+async function retainMutationBootstrap(appPath: string, stage: string) {
+	const bootstrap = join(stage, "mutation-bootstrap");
+	await cp(join(appPath, "Contents/MacOS/Quarterdeck"), bootstrap);
+	const info = await lstat(bootstrap);
+	return { sha256: await desktopFileSha256(bootstrap), dev: info.dev, ino: info.ino };
+}
 
 // Real installer admission requires POSIX ownership and private mode bits, absent on Windows.
 describe.skipIf(process.platform === "win32")("one owned desktop installation", () => {
@@ -178,6 +185,7 @@ describe.skipIf(process.platform === "win32")("one owned desktop installation", 
 		const id = randomUUID();
 		const stage = join(root, "Applications", `.Quarterdeck-install-${id}`);
 		await mkdir(stage, { mode: 0o700 });
+		const bootstrap = await retainMutationBootstrap(first.appPath, stage);
 		await rename(first.appPath, join(stage, "backup.app"));
 		await writeFile(
 			join(dependencies.managedRoot, "transaction.json"),
@@ -187,6 +195,7 @@ describe.skipIf(process.platform === "win32")("one owned desktop installation", 
 				stage,
 				oldReceipt: receipt,
 				newReceipt: { ...receipt, installId: randomUUID() },
+				bootstrap,
 			}),
 		);
 		expect((await service.getDesktopInstallationStatus()).state).toBe("incomplete");
@@ -205,11 +214,12 @@ describe.skipIf(process.platform === "win32")("one owned desktop installation", 
 		const id = randomUUID();
 		const stage = join(root, "Applications", `.Quarterdeck-install-${id}`);
 		await mkdir(stage, { mode: 0o700 });
+		const bootstrap = await retainMutationBootstrap(first.appPath, stage);
 		await cp(first.appPath, join(stage, "backup.app"), { recursive: true });
 		await rm(first.receiptPath);
 		await writeFile(
 			join(dependencies.managedRoot, "transaction.json"),
-			JSON.stringify({ schemaVersion: 1, id, stage, oldReceipt: receipt, newReceipt: receipt }),
+			JSON.stringify({ schemaVersion: 1, id, stage, oldReceipt: receipt, newReceipt: receipt, bootstrap }),
 		);
 		await service.ensureDesktopInstallation({ version: "0.12.8", from: fixture.appPath });
 		expect((await service.getDesktopInstallationStatus()).state).toBe("ready");

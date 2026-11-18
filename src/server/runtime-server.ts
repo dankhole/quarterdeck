@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
@@ -78,7 +79,7 @@ import { createRelocationFailureResume, ProjectRelocationQuiesceGuard } from "./
 import { assertProjectRelocationRuntimeIsExclusive } from "./project-relocation-runtime-guard";
 import type { ProjectStatePublicationScheduler } from "./project-state-publication-scheduler";
 import { ProjectTaskLifecycleService } from "./project-task-lifecycle-service";
-import type { RuntimeClientAccess } from "./runtime-client-access";
+import { RuntimeClientAccess } from "./runtime-client-access";
 import { handleRuntimeHostEventRequest } from "./runtime-host-event-endpoint";
 import type { RuntimeHostEventLedger } from "./runtime-host-event-ledger";
 import { observeRuntimeApiRequest } from "./runtime-request-diagnostics";
@@ -188,6 +189,13 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	if (deps.hostEventLedger && deps.hostIntegrations.capabilities.hostIntegrationMode !== "simulated") {
 		throw new Error("The Agent Lab host-event endpoint requires simulated host integrations.");
 	}
+	// Direct source/test construction must fail closed too; only explicit desktop enrollment admits clients.
+	const clientAccess =
+		deps.clientAccess ??
+		new RuntimeClientAccess({
+			generation: randomUUID(),
+			management: { getPublicDescriptor: () => null, verifyManagementToken: () => false },
+		});
 	const startupCleanup: Array<() => void | Promise<void>> = [];
 	const startupPreparation: Array<() => void | Promise<void>> = [];
 	let shuttingDown = false;
@@ -195,7 +203,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 	let startupCodeNavigation: LanguageNavigationManager | undefined;
 	let startupProcessesConfirmed = false;
 	try {
-		startupCleanup.push(() => deps.clientAccess?.clear());
+		startupCleanup.push(() => clientAccess.clear());
 		const webUiDir = getWebUiDir();
 		const taskResourceOperations = new TaskResourceOperationCoordinator();
 		const projectRegistrationOperations = new KeyedOperationCoordinator();
@@ -277,7 +285,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 		try {
 			await readFile(join(webUiDir, "index.html"));
 		} catch {
-			throw new Error("Could not find web UI assets. Run `npm run build` to generate and package the web UI.");
+			throw new Error("Could not find renderer assets. Run `npm run build` to generate and package the renderer.");
 		}
 		const codeNavigation = new LanguageNavigationManager({ diagnostics: deps.diagnostics });
 		startupCodeNavigation = codeNavigation;
@@ -817,7 +825,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 			createContext: async ({ req }) => await createTrpcContext(req),
 		});
 
-		if (deps.clientAccess) deps.runtimeStateHub.configureNotificationPresentation?.(deps.clientAccess.generation);
+		deps.runtimeStateHub.configureNotificationPresentation?.(clientAccess.generation);
 		const server = createServer(async (req, res) => {
 			try {
 				if (shuttingDown) {
@@ -825,7 +833,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 					res.end("Runtime is shutting down.");
 					return;
 				}
-				if (handleHttpRequest(req, res, deps.clientAccess !== undefined).end) {
+				if (handleHttpRequest(req, res, true).end) {
 					return;
 				}
 
@@ -833,7 +841,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				const pathname = normalizeRequestPath(requestUrl.pathname);
 				requestUrl.pathname = pathname;
 				if (
-					await deps.clientAccess?.handleHttpRequest(req, res, requestUrl, async (projectPath) => {
+					await clientAccess.handleHttpRequest(req, res, requestUrl, async (projectPath) => {
 						const context = await createTrpcContext(req);
 						const result = await context.projectsApi.addProject(null, { path: projectPath });
 						if (!result.ok || !result.project) throw new Error("Project could not be opened.");
@@ -865,12 +873,10 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 					return;
 				}
 
+				// Only desktop-admitted requests can reach Electron's shared renderer assets.
 				const asset = await readAsset(webUiDir, pathname);
-				res.writeHead(200, {
-					"Content-Type": asset.contentType,
-					"Cache-Control": "no-store",
-				});
-				res.end(asset.content);
+				res.writeHead(200, { "Content-Type": asset.contentType, "Cache-Control": "no-store" });
+				res.end(req.method === "HEAD" ? undefined : asset.content);
 			} catch {
 				res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
 				res.end("Not Found");
@@ -889,7 +895,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				socket.destroy();
 				return;
 			}
-			if (handleSocketUpgrade(request, socket, deps.clientAccess !== undefined).end) {
+			if (handleSocketUpgrade(request, socket, true).end) {
 				(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
 				return;
 			}
@@ -901,19 +907,19 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				return;
 			}
 			requestUrl.pathname = normalizeRequestPath(requestUrl.pathname);
-			if (deps.clientAccess?.handleSocketUpgrade(request, socket, requestUrl)) {
+			if (clientAccess.handleSocketUpgrade(request, socket, requestUrl)) {
 				(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
 				return;
 			}
 			(request as IncomingMessage & { __quarterdeckUpgradeAdmitted?: boolean }).__quarterdeckUpgradeAdmitted = true;
-			if (normalizeRequestPath(requestUrl.pathname) !== "/api/runtime/ws") {
+			if (requestUrl.pathname !== "/api/runtime/ws") {
 				return;
 			}
 			(request as IncomingMessage & { __quarterdeckUpgradeHandled?: boolean }).__quarterdeckUpgradeHandled = true;
 			const notificationOnly =
 				requestUrl.searchParams.get("notificationOnly") === "true" &&
 				requestUrl.searchParams.get("notificationPresentation") === "desktop" &&
-				deps.clientAccess?.isDesktopSocketAdmitted(request) === true;
+				clientAccess.isDesktopSocketAdmitted(request);
 			const requestedProjectId = notificationOnly ? null : requestUrl.searchParams.get("projectId")?.trim() || null;
 			const clientId = requestUrl.searchParams.get("clientId")?.trim() || null;
 			const browserBuildId = requestUrl.searchParams.get("browserBuildId");
@@ -1217,7 +1223,7 @@ export async function createRuntimeServer(deps: CreateRuntimeServerDependencies)
 				await runCloseStep(() => disposePiSupportDiagnosticProvider());
 				await runCloseStep(() => disposeCodeNavigationDiagnostics());
 				await runCloseStep(async () => await stopPersistenceForShutdown(options));
-				await runCloseStep(() => deps.clientAccess?.clear());
+				await runCloseStep(() => clientAccess.clear());
 				await runCloseStep(async () => await deps.projectStatePublications?.close());
 				await runCloseStep(async () => await deps.runtimeStateHub.close());
 				await runCloseStep(async () => await terminalWebSocketBridge.close());

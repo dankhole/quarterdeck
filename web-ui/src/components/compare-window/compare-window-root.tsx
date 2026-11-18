@@ -284,7 +284,7 @@ function CompareWindow({ target: initialTarget }: { target: CompareWindowTarget 
 	);
 }
 
-/** No App, single-tab ownership, terminal, notification, or editor-recovery providers. */
+/** No App, terminal, notification, or editor-recovery providers. */
 export function CompareWindowRoot({ target }: { target: CompareWindowTarget }): React.ReactElement {
 	return (
 		<UiPreferencesBoundary readOnly>

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runtimeOwnerDescriptorSchema } from "../../../src/core/api/runtime-management.js";
+import {
+	runtimeOwnerDescriptorSchema,
+	runtimeTransportCapabilitiesSchema,
+} from "../../../src/core/api/runtime-management.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../../src/core/api/runtime-protocol.js";
 import {
-	createOwnerBrowserBootstrap,
+	enrollDesktopClient,
 	revokeDesktopClient,
 	verifyRuntimeOwner,
 } from "../../../src/server/runtime-owner-client.js";
@@ -21,8 +24,6 @@ function owner() {
 		managementProtocolVersion: 1,
 		capabilities: {
 			transportVersion: 1,
-			browserHttp: true,
-			browserWebSocket: true,
 			desktopProxy: true,
 			desktopBridgeVersion: 1,
 		},
@@ -46,6 +47,21 @@ describe("verified runtime attachment", () => {
 			redirect: "error",
 			headers: { authorization: `Bearer ${descriptor.managementToken}` },
 		});
+	});
+	it("rejects the removed browser contract before sending any management credentials", async () => {
+		const descriptor = owner();
+		descriptor.runtimeProtocolVersion = 12;
+		const request = vi.fn();
+		vi.stubGlobal("fetch", request);
+		await expect(verifyRuntimeOwner(descriptor, true)).rejects.toMatchObject({ code: "incompatible_runtime" });
+		expect(request).not.toHaveBeenCalled();
+		expect(
+			runtimeTransportCapabilitiesSchema.safeParse({
+				...descriptor.capabilities,
+				browserHttp: true,
+				browserWebSocket: true,
+			}).success,
+		).toBe(false);
 	});
 	it("rejects a replaced owner even when it serves compatible APIs", async () => {
 		const descriptor = owner();
@@ -75,23 +91,14 @@ describe("verified runtime attachment", () => {
 		["0.0.0.0", "http://127.0.0.1:3580"],
 		["::", "http://[::1]:3580"],
 		["[::]", "http://[::1]:3580"],
-	])("attaches a local CLI to wildcard bind %s using loopback management and browser URLs", async (host, origin) => {
+	])("verifies an internal runtime on wildcard bind %s using loopback management", async (host, origin) => {
 		const descriptor = owner();
 		descriptor.endpoint = { host, port: 3580 };
 		const { managementToken: _private, ...publicDescriptor } = descriptor;
-		const request = vi
-			.fn()
-			.mockResolvedValueOnce(Response.json({ descriptor: publicDescriptor }))
-			.mockResolvedValueOnce(
-				Response.json({ generation: descriptor.generation, bootstrapPath: "/api/runtime/client-bootstrap?test" }),
-			);
+		const request = vi.fn().mockResolvedValueOnce(Response.json({ descriptor: publicDescriptor }));
 		vi.stubGlobal("fetch", request);
 		await expect(verifyRuntimeOwner(descriptor, false)).resolves.toBe(origin);
-		await expect(createOwnerBrowserBootstrap(descriptor)).resolves.toBe(
-			`${origin}/api/runtime/client-bootstrap?test`,
-		);
 		expect(request.mock.calls[0]?.[0]).toBe(`${origin}/api/management/status`);
-		expect(request.mock.calls[1]?.[0]).toBe(`${origin}/api/management/client-bootstrap`);
 	});
 	it("does not accept a normalized endpoint in place of the original authenticated descriptor", async () => {
 		const descriptor = owner();
@@ -118,17 +125,23 @@ describe("verified runtime attachment", () => {
 			expect(request).not.toHaveBeenCalled();
 		},
 	);
-	it("accepts only same-generation bootstrap URLs on the dedicated route", async () => {
+	it("enrolls only desktop credentials and rejects a changed enrollment generation", async () => {
 		const descriptor = owner();
-		vi.stubGlobal(
-			"fetch",
-			vi
-				.fn()
-				.mockResolvedValue(
-					Response.json({ generation: descriptor.generation, bootstrapPath: "https://example.com/" }),
-				),
-		);
-		await expect(createOwnerBrowserBootstrap(descriptor)).rejects.toThrow("Invalid browser launch");
+		const request = vi.fn().mockResolvedValue(Response.json({ generation: descriptor.generation, enrolled: true }));
+		vi.stubGlobal("fetch", request);
+		await enrollDesktopClient(descriptor, "b".repeat(43));
+		expect(request.mock.calls[0]?.[0]).toBe("http://127.0.0.1:3580/api/management/client-bootstrap");
+		expect(request.mock.calls[0]?.[1]).toMatchObject({
+			method: "POST",
+			body: JSON.stringify({
+				generation: descriptor.generation,
+				kind: "desktop",
+				clientToken: "b".repeat(43),
+				origin: "app://quarterdeck",
+			}),
+		});
+		request.mockResolvedValue(Response.json({ generation: randomUUID(), enrolled: true }));
+		await expect(enrollDesktopClient(descriptor, "b".repeat(43))).rejects.toThrow("generation changed");
 	});
 	it("revokes only its enrolled credential through the authenticated management channel", async () => {
 		const descriptor = owner();

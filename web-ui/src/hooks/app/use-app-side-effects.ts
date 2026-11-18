@@ -1,10 +1,9 @@
-import { useProjectMetadataReporting } from "@/hooks/notifications";
+import { useProjectMetadataReporting, useReviewReadyNotifications } from "@/hooks/notifications";
 import type { BoardContextValue } from "@/providers/board-provider";
 import type { DialogContextValue } from "@/providers/dialog-provider";
 import type { GitContextValue } from "@/providers/git-provider";
 import type {
 	ProjectNavigationContextValue,
-	ProjectNotificationContextValue,
 	ProjectRuntimeStreamContextValue,
 	ProjectSyncContextValue,
 } from "@/providers/project-provider";
@@ -13,7 +12,6 @@ import type { SurfaceNavigationContextValue } from "@/providers/surface-navigati
 import type { TaskEditorContextValue } from "@/providers/task-editor-provider";
 import type { TerminalContextValue } from "@/providers/terminal-provider";
 import { useAppHotkeys } from "./use-app-hotkeys";
-import { useAppProjectNotificationEffects } from "./use-app-project-notification-effects";
 import { useAppProjectSyncEffects } from "./use-app-project-sync-effects";
 import { useEscapeHandler } from "./use-escape-handler";
 
@@ -23,7 +21,6 @@ interface UseAppSideEffectsInput {
 	projectNavigation: ProjectNavigationContextValue;
 	projectStream: ProjectRuntimeStreamContextValue;
 	projectSync: ProjectSyncContextValue;
-	projectNotifications: ProjectNotificationContextValue;
 	projectRuntime: ProjectRuntimeContextValue;
 	board: BoardContextValue;
 	taskEditor: TaskEditorContextValue;
@@ -39,7 +36,6 @@ export function useAppSideEffects({
 	projectNavigation,
 	projectStream,
 	projectSync,
-	projectNotifications,
 	projectRuntime,
 	board,
 	taskEditor,
@@ -58,18 +54,10 @@ export function useAppSideEffects({
 			projectStream.hasReceivedSnapshot && projectNavigation.currentProjectAvailability?.status !== "unavailable",
 	});
 
-	useAppProjectNotificationEffects({
-		board: board.board,
-		currentProjectId: projectNavigation.currentProjectId,
-		navigationCurrentProjectId: projectNavigation.navigationCurrentProjectId,
+	useReviewReadyNotifications({
+		activeProjectId: projectNavigation.navigationCurrentProjectId,
 		projectName: projectNavigation.navigationProjectName ?? null,
 		latestTaskReadyForReview: projectStream.latestTaskReadyForReview,
-		notificationProjects: projectNotifications.notificationProjects,
-		audibleNotificationsEnabled: projectRuntime.audibleNotificationsEnabled,
-		audibleNotificationVolume: projectRuntime.audibleNotificationVolume,
-		audibleNotificationEvents: projectRuntime.audibleNotificationEvents,
-		audibleNotificationsOnlyWhenHidden: projectRuntime.audibleNotificationsOnlyWhenHidden,
-		audibleNotificationSuppressCurrentProject: projectRuntime.audibleNotificationSuppressCurrentProject,
 	});
 
 	useAppProjectSyncEffects({

@@ -5,7 +5,7 @@ coverage
 /.cache/
 test-results
 .agent-lab-results
-.playwright-cli
+.quarterdeck-debug-state
 playwright-report
 .worktrees
 .sentry-artifacts

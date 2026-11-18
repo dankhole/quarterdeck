@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { release } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveWindowsPowerShellPath } from "./core/windows-system-paths.js";
-import { usesDesktopLaunchDefault } from "./distribution-policy.js";
 import { type LaunchEnvironment, supportsDesktopHost } from "./launch-policy.js";
 
 /** A TTY is neither necessary nor sufficient for a local Aqua session. */
@@ -14,7 +14,10 @@ export async function readLaunchEnvironment(): Promise<LaunchEnvironment> {
 		osRelease: release(),
 		graphicalSession: false,
 		desktopHelper: process.env.QUARTERDECK_DESKTOP_CHILD === "1",
-		desktopDefault: false,
+		internalRuntimeAllowed:
+			process.env.QUARTERDECK_AGENT_LAB === "1" ||
+			(existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../.git")) &&
+				existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/cli.ts"))),
 	};
 	if (
 		!supportsDesktopHost(environment) ||
@@ -40,15 +43,10 @@ export async function readLaunchEnvironment(): Promise<LaunchEnvironment> {
 				: ["managername"],
 			{ timeout: windows ? 5_000 : 2_000, maxBuffer: 1_024, windowsHide: true },
 			(error, stdout) => {
-				// An unverified graphical session uses the headless runtime path.
+				// An unverified graphical session cannot launch the desktop product.
 				resolveSession(!error && stdout.trim() === (windows ? "Interactive" : "Aqua"));
 			},
 		);
 	});
-	if (environment.graphicalSession && process.env.QUARTERDECK_INSTALL_MODE !== "browser") {
-		environment.desktopDefault = await usesDesktopLaunchDefault(
-			resolve(dirname(fileURLToPath(import.meta.url)), ".."),
-		);
-	}
 	return environment;
 }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import {
 	type DesktopEnvironmentBridge,
 	type DesktopEnvironmentIntent,
@@ -25,7 +24,6 @@ function getBridge(): DesktopEnvironmentBridge | null {
 }
 
 export interface UseDesktopEnvironmentResult {
-	readonly visible: boolean;
 	readonly snapshot: DesktopEnvironmentSnapshot | null;
 	readonly busy: boolean;
 	readonly error: string | null;
@@ -35,7 +33,6 @@ export interface UseDesktopEnvironmentResult {
 
 /** Native launch preferences stay separate from the shared runtime configuration. */
 export function useDesktopEnvironment(open: boolean): UseDesktopEnvironmentResult {
-	const visible = getRuntimeEnvironment().kind === "desktop";
 	const [snapshot, setSnapshot] = useState<DesktopEnvironmentSnapshot | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -49,8 +46,8 @@ export function useDesktopEnvironment(open: boolean): UseDesktopEnvironmentResul
 		setSnapshot(null);
 		setError(null);
 		setMessage(null);
-		setBusy(open && visible);
-		if (!open || !visible) return;
+		setBusy(open);
+		if (!open) return;
 		const apply = (value: unknown): void => {
 			if (epoch.current !== current) return;
 			const parsed = desktopEnvironmentSnapshotSchema.safeParse(value);
@@ -64,7 +61,7 @@ export function useDesktopEnvironment(open: boolean): UseDesktopEnvironmentResul
 		return () => {
 			epoch.current += 1;
 		};
-	}, [open, visible]);
+	}, [open]);
 
 	const request = useCallback(async (intent: DesktopEnvironmentIntent): Promise<void> => {
 		const bridge = getBridge();
@@ -111,5 +108,5 @@ export function useDesktopEnvironment(open: boolean): UseDesktopEnvironmentResul
 		}
 	}, []);
 
-	return { visible, snapshot, busy, error, message, request };
+	return { snapshot, busy, error, message, request };
 }

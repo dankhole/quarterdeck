@@ -88,17 +88,18 @@ Open the workflow in Firefox if desired:
 open -a Firefox "https://github.com/dankhole/quarterdeck/actions/workflows/publish.yml"
 ```
 
-Both triggers share a per-tag concurrency group and resolve one immutable source SHA. The Linux/macOS/Windows matrix validates that exact source, including the packed npm build stamp. The immutable tag's `quarterdeck.desktopRelease` selects the distribution:
+Both triggers share a per-tag concurrency group and resolve one immutable source SHA. The Linux/macOS/Windows matrix validates that exact source, including the packed npm build stamp. Every release requires explicit macOS and Windows desktop capabilities in the immutable tag. `quarterdeck.windowsDesktopRelease` must be `unsigned-v1`, requiring native Windows x64 and ARM64 artifacts. `quarterdeck.desktopRelease` selects the macOS distribution:
 
 - `adhoc-v1` (current): build native ARM/Intel ad-hoc-signed desktop assets and verify them publicly before npm publication. No Apple membership, signing secrets, protected signing environment, or desktop-release repository variable is required.
 - `signed-v1`: require `QUARTERDECK_DESKTOP_RELEASES=1` and the optional protected Developer ID signing/notarization lane. A disabled lane fails rather than publishing a desktop-default package without its app.
-- `browser-only`: keep browser-first defaults. Without the optional signed lane, publish no desktop assets; existing prefix-scoped browser preferences remain honored in later desktop-capable releases.
+
+Missing, unknown, and `browser-only` capabilities fail closed. Linux retains shared source and package checks, but is not a supported graphical product.
 
 Ad-hoc desktop distribution is explicitly **not Apple-notarized** and may require user approval in macOS Privacy & Security. Keep that limitation in user-facing installation and upgrade guidance. Do not describe checksums or ad-hoc signing as Apple developer authentication. See the [desktop release runbook](docs/desktop-release.md) and remaining [validation gates](docs/desktop-validation.md).
 
-For either desktop distribution, the workflow inspects publication state before building. For a new release, it builds and verifies both native architectures, asks GitHub's [generated release notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) for notes using the exact tag and resolved source SHA, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. Draft retries regenerate notes before promotion. A retry of an already-public release preserves its notes, reuses its exact bytes, and skips rebuilding; public assets are immutable.
+For either macOS distribution, the workflow inspects publication state before building. For a new release, it builds and verifies ARM64 and x64 on both macOS and Windows, asks GitHub's [generated release notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) for notes using the exact tag and resolved source SHA, prepares the complete draft, publishes the GitHub Release, and verifies an anonymous download of every public artifact before npm publication. Draft retries regenerate notes before promotion. A retry of an already-public release preserves its notes, reuses its exact bytes, and skips rebuilding; public assets are immutable.
 
-For `browser-only` with the desktop variable unset, the workflow skips desktop builds/assets, publishes a GitHub Release with generated notes, and publishes the browser/CLI package. This does not disable an `adhoc-v1` release: its public app is mandatory. Public retries preserve notes and assets; a browser-only release cannot later acquire desktop assets under the same immutable version. Use a new version when enabling desktop distribution.
+A public release missing any required macOS or Windows artifact cannot be repaired under the same immutable version. Prepare a new version; never add or replace public app bytes.
 
 The npm job validates the version and source stamp. It publishes through OIDC only if the version is absent. An existing version is accepted only when its `gitHead` equals the immutable tag SHA. Stable releases use `latest`; previews specify a prerelease tag so they cannot replace `latest`. Missing or mismatched identity fails closed and requires a new version.
 
@@ -122,24 +123,19 @@ gh release view vX.Y.Z \
   --json tagName,name,url,isPrerelease,publishedAt,targetCommitish
 ```
 
-For a browser-package smoke test, use an isolated prefix and explicitly disable desktop lifecycle installation, regardless of the release capability. A temporary prefix alone does not isolate the per-user app:
+For a package-identity check that cannot install into the user's desktop location, disable lifecycle scripts in an isolated prefix and invoke only `--version`:
 
 ```bash
 RELEASE_PREFIX="$(mktemp -d)"
-QUARTERDECK_INSTALL_MODE=browser npm install --global --prefix "$RELEASE_PREFIX" quarterdeck@X.Y.Z
+npm install --global --ignore-scripts --prefix "$RELEASE_PREFIX" quarterdeck@X.Y.Z
 "$RELEASE_PREFIX/bin/quarterdeck" --version
 ```
 
-Remove the temporary directory after verification. The user-facing install paths are:
+Remove the temporary directory after verification. This is not desktop installation or launch evidence: disabled hooks intentionally leave no installed app pair. Use native isolated installation checks and the [acceptance gates](docs/desktop-validation.md) for those claims. A temporary npm prefix alone does not isolate a per-user app.
 
-```bash
-npm install --global quarterdeck
-npx --yes quarterdeck@latest --browser
-```
+The supported user installation and update path is `npm install --global quarterdeck@latest` on supported macOS or Windows hosts with lifecycle scripts permitted. Ordinary `quarterdeck` invocation launches the installed desktop pair or fails with actionable repair/platform/session guidance; it never starts a standalone browser product. Transient `npx` invocation does not establish app ownership.
 
-npm does not automatically upgrade global installations. Existing users update explicitly with `npm install --global quarterdeck@latest`; the `npx` form resolves the current `latest` release and may reuse npm's download cache.
-
-For the first desktop-default release, document the change and the unnotarized first-launch/Keychain limitations in the release PR and upgrade guidance. Browser-only releases using the current lifecycle save a browser preference outside the replaceable package directory; later upgrades honor it. Older installations and installs with scripts disabled have no reliable preference record. Their browser users must set `QUARTERDECK_INSTALL_MODE=browser` during upgrade (and use `--browser` if scripts stay disabled). Desktop users can explicitly select `QUARTERDECK_INSTALL_MODE=desktop` to clear the preference and install both parts. Verify fresh/default, opted-out upgrade, disabled-hooks repair, and explicit desktop paths on both native architectures before activation. See [release defaults](docs/desktop.md#release-defaults-and-browser-opt-out) for the installation scope and launch matrix.
+For the desktop-only release, call out the breaking change in the release PR and upgrade guidance: previous browser users must install desktop; saved browser preferences and `QUARTERDECK_INSTALL_MODE=browser` no longer opt out. Existing projects, task state, settings and provider resume identity remain in the canonical state home. Save browser-profile-only unsaved drafts/files before upgrading; they do not automatically transfer into Electron. Linux and SSH/headless standalone product access end; internal headless testing and management/diagnostics commands remain. Preserve the unnotarized macOS first-launch/Keychain and unsigned Windows approval limitations. Fresh installation, disabled-hooks repair, native architecture/minimum-OS coverage and actual public updating still require their own evidence.
 
 ## Expected failure cases
 

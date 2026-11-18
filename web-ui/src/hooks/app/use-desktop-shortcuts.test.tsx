@@ -120,11 +120,10 @@ describe("exclusive native shortcut delivery", () => {
 				if (name !== handler) expect(action).not.toHaveBeenCalled();
 		}
 	});
-	it("keeps the same browser shortcuts active with focused form input", () => {
+	it("keeps renderer shortcuts active when the optional native command bridge is unavailable", () => {
 		act(() => root.unmount());
 		root = createRoot(container);
 		Reflect.deleteProperty(window, "quarterdeckDesktop");
-		vi.mocked(getRuntimeEnvironment).mockReturnValue({ kind: "browser", runtimeOrigin: "http://localhost" });
 		act(() => root.render(<Harness />));
 		const input = container.querySelector("input");
 		if (!input) throw new Error("Expected editor input");

@@ -1,9 +1,7 @@
-import { RefreshCw, Unplug } from "lucide-react";
+import { Unplug } from "lucide-react";
 import type { ReactElement } from "react";
 
-import { Button } from "@/components/ui/button";
 import { RUNTIME_ADMISSION_REQUIRED_MESSAGE } from "@/runtime/runtime-client-admission";
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 
 export function RuntimeDisconnectedFallback({
 	message,
@@ -12,9 +10,7 @@ export function RuntimeDisconnectedFallback({
 	message?: string;
 	presentation?: "page" | "banner";
 }): ReactElement {
-	const desktop = getRuntimeEnvironment().kind === "desktop";
 	const requiresAdmission = message === RUNTIME_ADMISSION_REQUIRED_MESSAGE;
-	const canReload = !desktop && (!requiresAdmission || import.meta.env.DEV);
 	return (
 		<div
 			role={presentation === "banner" ? "status" : undefined}
@@ -34,37 +30,15 @@ export function RuntimeDisconnectedFallback({
 							{requiresAdmission ? "Reopen Quarterdeck to connect" : "Disconnected from Quarterdeck"}
 						</h1>
 						<p className="mt-1 text-sm text-text-secondary">
-							{message ??
-								(desktop
-									? "Waiting for the runtime to reconnect."
-									: "Waiting for the server to reconnect. If it stopped, start it again in your terminal.")}
+							{message ?? "Waiting for the runtime to reconnect."}
 						</p>
 					</div>
 				</div>
-				<div className="mt-5">
-					<p className="mb-3 text-sm text-text-secondary">
-						{desktop
-							? "Local drafts remain available to review or save a copy. Use File > Restart Runtime when the runtime is unavailable. View > Reload Window becomes available after it reconnects and checks drafts before reloading."
-							: requiresAdmission
-								? import.meta.env.DEV
-									? "Reload the development app to renew its session. Reloading discards unsaved changes."
-									: "Keep this page open to preserve unsaved changes. Refreshing this page does not renew your session."
-								: "Reloading the page discards unsaved changes. You can wait here to reconnect automatically."}
-					</p>
-					{canReload && (
-						<Button
-							size="md"
-							variant="primary"
-							className="h-auto min-h-8 whitespace-normal py-1.5"
-							icon={<RefreshCw size={16} />}
-							onClick={() => {
-								window.location.reload();
-							}}
-						>
-							{requiresAdmission ? "Reload development app" : "Reload page"}
-						</Button>
-					)}
-				</div>
+				<p className="mt-5 text-sm text-text-secondary">
+					Local drafts remain available to review or save a copy. Use File &gt; Restart Runtime when the runtime is
+					unavailable. View &gt; Reload Window becomes available after it reconnects and checks drafts before
+					reloading.
+				</p>
 			</div>
 		</div>
 	);

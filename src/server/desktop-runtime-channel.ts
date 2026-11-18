@@ -10,6 +10,7 @@ import {
 	type DesktopStartupFailureMessage,
 	type DesktopStartupMessage,
 	desktopParentMessageSchema,
+	QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION,
 } from "../core/api/desktop-runtime-protocol.js";
 import type { RuntimeShutdownOutcome } from "../core/api/runtime-shutdown.js";
 import { DesktopHostEffectClient } from "./desktop-host-effect-client.js";
@@ -109,7 +110,7 @@ export class DesktopRuntimeChannel {
 		}
 		await this.send({
 			type: "quarterdeck:desktop-control-result",
-			protocolVersion: 1,
+			protocolVersion: QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION,
 			startupId: message.startupId,
 			requestId: message.requestId,
 			result,
@@ -118,7 +119,12 @@ export class DesktopRuntimeChannel {
 
 	async ready(message: Omit<DesktopReadyMessage, "type" | "protocolVersion" | "startupId">): Promise<void> {
 		if (this.disconnected || !this.startupId) throw new Error("Desktop parent is unavailable.");
-		await this.send({ type: "quarterdeck:desktop-ready", protocolVersion: 1, startupId: this.startupId, ...message });
+		await this.send({
+			type: "quarterdeck:desktop-ready",
+			protocolVersion: QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION,
+			startupId: this.startupId,
+			...message,
+		});
 		this.hostEffectGeneration = message.ownership === "owned" ? message.runtimeGeneration : null;
 	}
 
@@ -130,7 +136,7 @@ export class DesktopRuntimeChannel {
 		if (!this.startupId || this.disconnected) return;
 		await this.send({
 			type: "quarterdeck:desktop-failed",
-			protocolVersion: 1,
+			protocolVersion: QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION,
 			startupId: this.startupId,
 			code,
 			message,
@@ -178,7 +184,7 @@ export class DesktopRuntimeChannel {
 			if (this.disconnected) break;
 			await this.send({
 				type: "quarterdeck:desktop-shutdown-result",
-				protocolVersion: 1,
+				protocolVersion: QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION,
 				startupId: request.startupId,
 				requestId: request.requestId,
 				outcome,

@@ -6,7 +6,7 @@
 
 - Quarterdeck web-ui uses Tailwind CSS v4 for styling, Radix UI for accessible headless primitives, and Lucide React for icons.
 - Custom UI primitives live in `src/components/ui/` (button, dialog, tooltip, kbd, spinner, cn utility).
-- Toast notifications use `sonner` through `showAppToast` or `notifyError` from `@/components/app-toaster`. Explicit runtime errors notify at message ingestion, not by observing the last error string (identical later failures must still notify). Uncaught UI failures receive a coalesced, content-safe toast with Diagnostics guidance in browser and desktop mode; console logs remain diagnostic-only to avoid duplicate notices and background-warning spam.
+- Toast notifications use `sonner` through `showAppToast` or `notifyError` from `@/components/app-toaster`. Explicit runtime errors notify at message ingestion, not by observing the last error string (identical later failures must still notify). Uncaught UI failures receive a coalesced, content-safe toast with Diagnostics guidance in the desktop renderer; console logs remain diagnostic-only to avoid duplicate notices and background-warning spam.
 
 ## Styling mental model
 
@@ -70,7 +70,7 @@ Hooks live in `src/hooks/` organized by domain. Every hook belongs to a domain s
 - `hooks/diagnostics/` — unified flight-recorder panel, filters, snapshots, and bounded capture controls
 - `hooks/debug/` — explicitly enabled developer-only tooling; do not add a second logging or diagnostic buffer here
 - `hooks/git/` — branch operations, diffs, conflict resolution, commit panel
-- `hooks/notifications/` — alerts, sound, browser notifications
+- `hooks/notifications/` — desktop notification configuration and sound previews
 - `hooks/project/` — project navigation, project switching, sync
 - `hooks/search/` — file finder, text search
 - `hooks/settings/` — settings form, shortcut actions
@@ -146,4 +146,4 @@ Keep their types, persistence, and execution paths distinct.
 
 ## Validation
 
-Follow [`../testing.md`](../testing.md). Start with colocated tests for the changed domain module, hook, component, or runtime helper. Use the complete web suite for broad shared-state or application-shell changes, Playwright for a stable cross-browser smoke path, and Agent Lab only when the claim crosses the live runtime, PTY, persistence, host-integration, or visual boundary. Screenshots are evidence for rendering claims, not a default requirement for semantic UI changes.
+Follow [`../testing.md`](../testing.md). Start with colocated tests for the changed domain module, hook, component, or runtime helper. Use the complete renderer unit suite for broad shared-state or application-shell changes, and the isolated packaged Electron Agent Lab when the claim crosses the live runtime, PTY, persistence, host-integration, or visual boundary. Standalone browser smoke and authenticated Vite development paths are retired. Screenshots are evidence for rendering claims, not a default requirement for semantic UI changes.

@@ -22,10 +22,7 @@ program
 	.option("--compare-window", "Check an independent hidden read-only Compare window; requires --no-agent")
 	.option("--notifications", "Check hidden desktop tone intent, Settings volume, and muted events with a fake task")
 	.option("--native-experience", "Check keyboard navigation, enlarged text, and visible close/reopen when requested")
-	.option(
-		"--performance",
-		"Run only hidden fake task/browser idle and navigation measurements, without crash/recovery",
-	)
+	.option("--performance", "Measure hidden packaged desktop idle CPU/RSS, task navigation and available terminal ACKs")
 	.option("--main-loss", "Verify fake-provider recovery after exact isolated app process loss")
 	.option("--session-recovery", "Check explicit acknowledgement after isolated unclean startup; requires --no-agent")
 	.option("--provider <mode>", "Provider mode: fake, real-codex, or real-claude", "fake")

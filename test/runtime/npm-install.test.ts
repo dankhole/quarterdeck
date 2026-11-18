@@ -98,12 +98,13 @@ describe("npm lifecycle installation policy", () => {
 		const env = { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined };
 		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: false })).toEqual({ action: "skip" });
 		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: true })).toEqual({ action: "install" });
-		expect(resolveNpmInstallPolicy({ ...supported, env, desktopRelease: true, browserPreference: true })).toEqual({
-			action: "skip",
-		});
-		expect(resolveNpmInstallPolicy({ ...supported, desktopRelease: true, browserPreference: true })).toEqual({
-			action: "install",
-		});
+		expect(
+			resolveNpmInstallPolicy({
+				...supported,
+				env: { ...env, QUARTERDECK_INSTALL_MODE: "browser" },
+				desktopRelease: true,
+			}),
+		).toEqual({ action: "install" });
 	});
 	it("uses the public ad-hoc capability for automatic install and explicit npm updates", () => {
 		const env = { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined };
@@ -120,10 +121,19 @@ describe("npm lifecycle installation policy", () => {
 		{ graphicalSession: false },
 		{ env: { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined, SSH_CONNECTION: "remote" } },
 		{ env: { ...supported.env, QUARTERDECK_INSTALL_MODE: undefined, SSH_TTY: "/dev/ttys001" } },
-	])("keeps automatic headless or SSH installation browser-only: %j", (override) => {
+	])("skips automatic app effects in headless or SSH installations: %j", (override) => {
 		const context = { ...supported, desktopRelease: true, ...override };
 		context.env = { ...context.env, QUARTERDECK_INSTALL_MODE: undefined };
 		expect(resolveNpmInstallPolicy(context)).toEqual({ action: "skip" });
+	});
+	it("accepts the shipped in-app updater's explicit desktop mode for headless global npm updates", () => {
+		expect(
+			resolveNpmInstallPolicy({
+				...supported,
+				env: { ...supported.env, npm_command: "update", QUARTERDECK_INSTALL_MODE: "desktop" },
+				graphicalSession: false,
+			}),
+		).toEqual({ action: "install" });
 	});
 	it("retains explicit desktop installation without a GUI while preserving ordinary-user admission", () => {
 		expect(resolveNpmInstallPolicy({ ...supported, graphicalSession: false })).toEqual({ action: "install" });
@@ -167,6 +177,8 @@ describe("npm lifecycle installation policy", () => {
 		);
 		expect(guidance).toContain("quarterdeck desktop install");
 		expect(guidance).toContain("--replace-owner");
+		expect(guidance).not.toContain("INSTALL_MODE=browser");
+		expect(guidance).toContain("skipping scripts does not install a working app");
 	});
 });
 

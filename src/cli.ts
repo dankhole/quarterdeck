@@ -10,7 +10,6 @@ import { registerRecoverCommand } from "./commands/recover.js";
 import {
 	DEFAULT_QUARTERDECK_RUNTIME_PORT,
 	getQuarterdeckRuntimeHost,
-	getQuarterdeckRuntimeOrigin,
 	installGracefulShutdownHandlers,
 	parseRuntimePort,
 	setQuarterdeckRuntimeHost,
@@ -20,14 +19,12 @@ import { validateDesktopNativeAdmission } from "./desktop-install/index.js";
 import { launchDesktop } from "./desktop-launcher.js";
 import { createDesktopRuntimeDiagnosticsIngestor } from "./diagnostics/desktop-diagnostics.js";
 import { readLaunchEnvironment } from "./launch-environment.js";
-import { resolveLaunchPolicy } from "./launch-policy.js";
+import { resolveInternalRuntimeHost, resolveLaunchPolicy } from "./launch-policy.js";
 import { DesktopRuntimeChannel } from "./server/desktop-runtime-channel";
 import { classifyDesktopStartupFailure } from "./server/desktop-startup-failure.js";
-import { createRuntimeHostIntegrations } from "./server/runtime-host-integrations";
 import { startAdmittedRuntime } from "./server/runtime-launch";
 
 interface CliOptions {
-	noOpen: boolean;
 	nativeUiAvailable: boolean;
 	hostSimulationConfigPath: string | null;
 	skipShutdownCleanup: boolean;
@@ -54,10 +51,9 @@ function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } |
 
 interface RootCommandOptions {
 	desktop?: boolean;
-	browser?: boolean;
+	internalRuntime?: boolean;
 	host?: string;
 	port?: { mode: "fixed"; value: number } | { mode: "auto" };
-	open?: boolean;
 	nativeUi?: boolean;
 	simulateHostIntegrations?: string;
 	skipShutdownCleanup?: boolean;
@@ -68,52 +64,6 @@ type ShutdownIndicatorResult = "done" | "interrupted" | "failed";
 interface ShutdownIndicator {
 	start: () => void;
 	stop: (result?: ShutdownIndicatorResult) => void;
-}
-
-/**
- * Decide whether this CLI invocation should auto-open a browser tab.
- *
- * This uses a positive allowlist for app-launch shapes like `quarterdeck` and
- * `quarterdeck --port 3500`. Any subcommand or
- * unexpected argument is treated as a command-style invocation instead.
- */
-function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
-	const launchFlags = new Set([
-		"--browser",
-		"--open",
-		"--no-open",
-		"--no-native-ui",
-		"--no-update-notifier",
-		"--skip-shutdown-cleanup",
-	]);
-	const launchOptionsWithValues = new Set(["--host", "--port", "--simulate-host-integrations"]);
-
-	for (let index = 0; index < argv.length; index += 1) {
-		const arg = argv[index];
-		if (!arg) {
-			continue;
-		}
-		if (!arg.startsWith("-")) {
-			return false;
-		}
-		if (launchFlags.has(arg)) {
-			continue;
-		}
-		const optionName = arg.split("=", 1)[0] ?? arg;
-		if (!launchOptionsWithValues.has(optionName)) {
-			return false;
-		}
-		if (arg.includes("=")) {
-			continue;
-		}
-		const optionValue = argv[index + 1];
-		if (!optionValue) {
-			return false;
-		}
-		index += 1;
-	}
-
-	return true;
 }
 
 function createShutdownIndicator(stream: NodeJS.WriteStream = process.stderr): ShutdownIndicator {
@@ -194,13 +144,7 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 	return autoPort;
 }
 
-function createRuntimeWarnLogger(): (message: string) => void {
-	return (message: string): void => {
-		console.warn(`[quarterdeck] ${message}`);
-	};
-}
-
-async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
+async function runMainCommand(options: CliOptions): Promise<void> {
 	if (process.env.QUARTERDECK_DESKTOP_CHILD === "1" || process.env.QUARTERDECK_INSTALLATION_LOCK_FD !== undefined) {
 		await validateDesktopNativeAdmission({ synthetic: process.env.QUARTERDECK_AGENT_LAB === "1" });
 	}
@@ -236,15 +180,11 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			if (outcome.safeToExit) diagnostics?.dispose();
 			return { outcome, persistenceSettled: true };
 		});
-		desktop.setControlHandler(async (method) =>
-			method === "create-browser-launch"
-				? { method, url: await launch.createBrowserUrl() }
-				: {
-						method,
-						owned: launch.kind === "owned",
-						...(launch.runtime?.getQuitSummary() ?? { liveProcessCount: 0, pendingLaunches: false }),
-					},
-		);
+		desktop.setControlHandler(async (method) => ({
+			method,
+			owned: launch.kind === "owned",
+			...(launch.runtime?.getQuitSummary() ?? { liveProcessCount: 0, pendingLaunches: false }),
+		}));
 		try {
 			await desktop.ready(launch.ready);
 		} catch (error) {
@@ -254,24 +194,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 			throw error;
 		}
 	} else {
-		console.log(`Quarterdeck ${launch.kind === "attached" ? "already " : ""}running at ${launch.url}`);
-		const browserUrl = await launch.createBrowserUrl();
-		if (!options.noOpen && shouldAutoOpenBrowser) {
-			if (launch.kind === "attached" && options.hostSimulationConfigPath) {
-				// The owner's simulator owns its ledger. Loading it again would reset
-				// that evidence and create a second independent sequence writer.
-				console.warn("Simulated browser launch is unavailable while attaching; use the Browser URL below.");
-			} else {
-				const hostIntegrations =
-					launch.runtime?.hostIntegrations ??
-					createRuntimeHostIntegrations({ capabilities: launch.capabilities, warn: createRuntimeWarnLogger() });
-				const result = await hostIntegrations.openExternalUrl(browserUrl);
-				if (!result.ok) console.warn(`Could not open browser automatically: ${result.error}`);
-				else console.log("Browser launcher accepted the Quarterdeck URL.");
-			}
-		}
-		// This capability is single use, expires quickly, and redirects to a clean URL.
-		console.log(`Browser URL: ${browserUrl}`);
+		console.log(`Quarterdeck internal runtime ${launch.kind === "attached" ? "already " : ""}running.`);
 	}
 	if (launch.kind === "attached") return;
 	if (!desktop) console.log("Press Ctrl+C to stop.");
@@ -314,33 +237,29 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	}
 }
 
-function createProgram(invocationArgs: string[]): Command {
-	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
+function createProgram(): Command {
 	const program = new Command();
 	program
 		.name("quarterdeck")
 		.description("Local orchestration board for coding agents.")
 		.version(QUARTERDECK_VERSION, "-v, --version", "Output the version number")
-		.addOption(new Option("--browser", "Open browser mode; never launch the desktop app.").conflicts("desktop"))
 		.addOption(
 			new Option("--desktop", "Open the installed desktop app.").conflicts([
-				"browser",
+				"internalRuntime",
 				"host",
 				"port",
-				"open",
 				"nativeUi",
 				"skipShutdownCleanup",
 				"simulateHostIntegrations",
 			]),
 		)
-		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
-		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
-		.option("--no-open", "Do not open browser automatically.")
-		.option("--no-native-ui", "Disable integrations that launch or interact with host-native UI.")
+		.addOption(new Option("--internal-runtime", "Internal desktop/development runtime entrypoint.").hideHelp())
+		.addOption(new Option("--host <ip>", "Internal runtime bind address.").hideHelp())
+		.addOption(new Option("--port <number|auto>", "Internal runtime port.").argParser(parseCliPortValue).hideHelp())
+		.addOption(new Option("--no-native-ui", "Disable host-native UI effects.").hideHelp())
 		.option("--no-update-notifier", "Compatibility option; background update notifications are no longer used.")
-		.option("--skip-shutdown-cleanup", "Skip graceful shutdown cleanup (session marking, orphan process cleanup).")
-		.showHelpAfterError()
-		.addHelpText("after", `\nRuntime URL: ${getQuarterdeckRuntimeOrigin()}`);
+		.addOption(new Option("--skip-shutdown-cleanup", "Skip internal runtime shutdown cleanup.").hideHelp())
+		.showHelpAfterError();
 
 	program.addOption(
 		new Option(
@@ -356,8 +275,8 @@ function createProgram(invocationArgs: string[]): Command {
 	registerDesktopCommand(program, QUARTERDECK_VERSION);
 	program.hook("preAction", async (_command, actionCommand) => {
 		const options = program.opts<RootCommandOptions>();
-		if (actionCommand !== program && (options.desktop || options.browser)) {
-			throw new Error("--desktop and --browser select launch modes and cannot be combined with subcommands.");
+		if (actionCommand !== program && (options.desktop || options.internalRuntime)) {
+			throw new Error("Launch mode options cannot be combined with subcommands.");
 		}
 		if (actionCommand.name() === "recover" && process.env.QUARTERDECK_INSTALLATION_LOCK_FD !== undefined) {
 			await validateDesktopNativeAdmission({ synthetic: process.env.QUARTERDECK_AGENT_LAB === "1" });
@@ -368,14 +287,12 @@ function createProgram(invocationArgs: string[]): Command {
 		const policy = resolveLaunchPolicy(
 			{
 				desktop: options.desktop,
-				browser: options.browser,
-				noOpen: options.open === false,
+				internalRuntime: options.internalRuntime,
 				runtimeFlags:
 					options.host !== undefined ||
 					options.port !== undefined ||
 					process.env.QUARTERDECK_RUNTIME_HOST !== undefined ||
 					process.env.QUARTERDECK_RUNTIME_PORT !== undefined ||
-					options.open === false ||
 					options.nativeUi === false ||
 					options.skipShutdownCleanup === true ||
 					options.simulateHostIntegrations !== undefined,
@@ -389,17 +306,13 @@ function createProgram(invocationArgs: string[]): Command {
 		if (options.simulateHostIntegrations && options.nativeUi !== false) {
 			throw new Error("--simulate-host-integrations requires --no-native-ui.");
 		}
-		await runMainCommand(
-			{
-				host: options.host ?? null,
-				port: options.port ?? null,
-				noOpen: options.open === false,
-				nativeUiAvailable: options.nativeUi !== false,
-				hostSimulationConfigPath: options.simulateHostIntegrations ?? null,
-				skipShutdownCleanup: options.skipShutdownCleanup === true,
-			},
-			shouldAutoOpenBrowser && policy.openBrowser,
-		);
+		await runMainCommand({
+			host: resolveInternalRuntimeHost(options.host ?? process.env.QUARTERDECK_RUNTIME_HOST),
+			port: options.port ?? null,
+			nativeUiAvailable: options.nativeUi !== false,
+			hostSimulationConfigPath: options.simulateHostIntegrations ?? null,
+			skipShutdownCleanup: options.skipShutdownCleanup === true,
+		});
 	});
 
 	return program;
@@ -407,11 +320,9 @@ function createProgram(invocationArgs: string[]): Command {
 
 async function run(): Promise<void> {
 	const argv = process.argv.slice(2);
-	const program = createProgram(argv);
+	const program = createProgram();
 	await program.parseAsync(argv, { from: "user" });
-	if (!shouldAutoOpenBrowserTabForInvocation(argv)) {
-		process.exit(process.exitCode ?? 0);
-	}
+	if (!program.opts<RootCommandOptions>().internalRuntime) process.exit(process.exitCode ?? 0);
 }
 
 void run().catch(async (error) => {

@@ -1,290 +1,66 @@
 # Agent Functional Testing
 
-Quarterdeck's agent lab is a disposable copy of the runtime and browser UI that coding agents can drive without Computer Use and without attaching to the user's active app. It is designed for functional regression testing and debugging across the board, dialogs, task PTYs, session lifecycle, Git, Files, state persistence, and visual layout.
+Quarterdeck's Agent Lab runs a packaged macOS or Windows app through the repo-owned Playwright Electron driver. Windows stay hidden and unfocused by default. Temporary state, Electron storage, synthetic projects, fake provider launchers, process tracking and cleanup are isolated from the user's app. This is internal headless testing, not a standalone browser product.
 
-The lab provides isolation from the user's data and processes; it is not a hardened container or a security boundary. Use synthetic fixtures only.
+The lab is data/process isolation, not a hardened security sandbox. Use synthetic fixtures only and never attach automation to the user's active Quarterdeck instance. Use [testing strategy](testing.md) to select the smallest scenario; coding agents follow the repo-owned `quarterdeck-functional-testing` skill.
 
-Use [`testing.md`](./testing.md) to decide whether Agent Lab is warranted and which single regression class to exercise. This document is the human-facing architecture and command reference; coding agents use the repo-owned `quarterdeck-functional-testing` skill for the operational workflow.
+## Build and run
 
-## Packaged macOS lane
-
-`npm run agent:desktop -- smoke --app <path-to-Quarterdeck.app> --json` exercises a packaged application through the repo-owned Playwright Electron driver. It reuses synthetic projects, fake provider launchers, and simulated runtime host effects, while the app owns its bundled helper. Temporary runtime state, Electron storage, process tracking, and cleanup are separate from the user's app and browser Agent Lab runs.
-
-The default keeps windows hidden and unfocused. Add `--show-window` only for native close/activate/focus checks. `--no-agent` by itself runs a smaller startup/renderer subset and does not validate PTYs, provider hooks, or exact-session recovery. Chromium's test-only mock keychain avoids keychain prompts without changing normal app encryption or resetting the user's keychain.
-
-Native launches need application, local-socket, and process-inspection permission. A restricted automation host can abort in macOS application registration before Quarterdeck starts, producing a system crash alert even with hidden windows. The driver checks process inspection before launching; a successful check alone does not establish every required permission. Use the scoped native-execution permission from the start rather than retrying a denied environment. Default recovery smoke deliberately crashes a renderer and can also produce alerts. The two exclusive lanes below avoid deliberate crashes; hidden windows do not suppress macOS crash reporting.
-
-Add `--native-experience --no-agent` for keyboard navigation and enlarged-text checks with retained screenshots. Combining these with `--show-window` also checks visible close/reopen/focus on the same document and runtime. Hidden execution does not establish native focus behavior.
-
-Add `--notifications` for a narrow hidden fake-task check of Settings volume, desktop-owned review tone intent, and a muted review event. This exclusive scenario requires the fake provider and rejects `--no-agent` or `--show-window`. Its `notification-proof.json` records desktop task events from the existing simulation ledger. No sound or OS banner is emitted; this does not establish audible output through the system speakers. Renderer duplicate suppression remains covered by existing web ownership tests, since the desktop proxy blocks browser simulation events. The unchanged Settings sound preview remains covered by web audio tests.
-
-`--manual-shells --no-agent` exclusively checks Home and Detail manual terminals. Each shell must survive a hidden native window-close request and panel Hide, reattach through a new browser viewer with the same process/session, then exit on explicit Terminate. Opening after termination must create a fresh shell. It checks hidden-viewer resource disposal and exact process/session retirement, with no task-agent launch or deliberate crash. Hidden close-handler checks do not establish physical Dock or focus behavior.
-
-`--performance` exclusively runs fake-task setup, desktop/browser coexistence, and paired idle CPU/per-process RSS plus repeated navigation. It skips reload, second launch, deliberate crashes, and runtime restarts. Both clients record renderer-clock time from the same navigation action to the same terminal-visible condition at equal CSS viewports; outer wrapper/driver durations remain separate and must not be compared as a speed ratio. The production frontend omits terminal text diagnostics, so measurement sends no input command and records input-response timing as unavailable. Successful idle/navigation collection is separate from full performance acceptance.
-
-`--main-loss` also requires the fake provider and a hidden window; `--show-window` is rejected before fixture creation. It replaces the default helper-restart phase with exact main-process termination and same-fixture relaunch. The old owned process tree must exit and release its runtime claim before relaunch; fallback cleanup cannot satisfy that proof. The replacement keeps the synthetic profile and conversation, verifies targeted session recovery, and remains owned by the runner's final graceful Quit. It cannot be combined with either exclusive lane above. None of these options grants real-provider account access.
-
-With explicit account authorization, a fresh candidate that passed the full fake scenario can run `--provider real-codex` or `--provider real-claude`. These tiny scenarios hold a permission request without approval, check that its synthetic write did not occur, restart through the existing board action, and verify exact provider-session recovery with a new PTY and current launch hook. They do not claim that an explicit Deny action was tested. Real modes reject `--no-agent`, remain hidden by default, and remove staged sign-in profiles even when other evidence is retained with `--keep-temp`.
-
-Codex 0.159 defers its resume hook until the next turn. Its desktop scenario therefore uses one fixed message cancelling the previous write and requesting only a short reply with no tools. Two bounded, agent-reviewed PNG checkpoints confirm the restored exact conversation/history with a normal empty composer and no startup or permission screen before insertion, then the complete fixed message in that composer with no input gate before Enter. A visible composer while “Resuming session…” is still shown is not ready for input. The runner prints each request/PNG/decision path. Inspect the actual PNG, then write a decision containing the exact request fields plus `decision: "accept"` or `decision: "refuse"`; `reviewer: "agent"` denotes a test observation, never provider approval or new user authorization. Each request expires after 120 seconds and is bound to its stage, run, task, exact process/launch, document, image, and output revision. Observed changes or ambiguous evidence fail without automatic retry. Exact provider identity and fresh native SessionStart plus UserPromptSubmit/work evidence remain required after submission; typed input alone cannot satisfy recovery.
-
-Record the returned `desktop-manifest.json`, checkpoints, artifact build identity, and cleanup result. Its `shutdown` evidence distinguishes completed SDK close and an empty owned process tree from fallback cleanup. A normal acceptance run fails if graceful close is unconfirmed or fallback termination is required, even when cleanup ultimately succeeds. Failures preserve diagnostic evidence; unconfirmed remaining processes fail cleanup and retain their fixture. Desktop/browser coexistence uses named-session browser close without PID-signalling fallback; uncertain wrapper or browser closure retains the fixture. Signed release fuses prohibit the inspector required by this driver, so this lane uses an unsigned inspection-enabled candidate. The [desktop validation ledger](./desktop-validation.md) separately tracks signed installation, updates, native Intel, oldest macOS, and daily-use acceptance.
-
-The installed Playwright Electron driver retains a crashed page session after Electron recovers the same WebContents. For renderer-crash checks, the harness reconnects an observation-only CDP client to the original fixture's captured debug endpoint. Exact process, profile, window, WebContents, and document-nonce checks bind the new page; `noDefaults` preserves the app's window settings. The original Electron application remains the Quit owner. Observer detach failure cannot skip application shutdown, and the harness never substitutes a new product window or an unrelated browser for the recovered document.
-
-On fake-startup failure, `fake-readiness-timeout.json` retains selected session, invocation, and owned-process metadata before disposable state is removed. On unconfirmed SDK Quit, `shutdown-timeout.json` records bounded, filtered shutdown journal metadata and fresh process evidence before fallback cleanup. These records help correlate a failure; missing journal entries do not prove that an event did not happen, and neither capture changes process ownership or the acceptance result.
-
-## What one run owns
-
-Each `start` creates:
-
-- two dynamically selected loopback ports for the runtime and Vite UI;
-- a temporary HOME, `QUARTERDECK_STATE_HOME`, Git project, and task-worktree root;
-- a second synthetic Git project for Add Project and project-switching tests;
-- a minimal child environment that omits API keys, cloud credentials, SSH agent access, and user Git config;
-- the mode-declared agent launchers injected at the front of that runtime's PATH, with every other supported provider shadowed by a fail-closed launcher;
-- native UI disabled by launch configuration, plus recording fakes for known picker, open, and IDE launchers that fail the run if invoked;
-- an atomic manifest and stop-request control channel;
-- continuously captured supervisor, runtime, and web logs;
-- a named, in-memory Playwright browser session restricted to loopback origins;
-- the unified diagnostic recorder in its bounded rich `agent-lab` profile, enabled automatically for the run;
-- semantic page snapshots, screenshots, traces, videos, console/network records, and a marked browser-action transcript;
-- canonical diagnostic bundles at ready, failure, pre-shutdown, final, and explicitly requested checkpoints.
-
-The runtime and browser still use Quarterdeck's real project registry, tRPC/WebSocket transport, board persistence, worktree lifecycle, provider adapters, PTY, native-hook ingest, session state machine, xterm renderer, Git APIs, and Files APIs. Quarterdeck-owned host-facing effects are always simulated. The external coding agent is fake by default; an explicit deterministic Claude lane is available for Claude-specific lifecycle coverage, and real Codex or Claude remains restricted to explicitly authorized provider-compatibility runs. Real modes isolate profile-defined hooks and disable unmanaged provider integrations that would bypass the simulated boundary; provider-enforced organization policy can still apply.
-
-Agent Lab keeps `nativeUiAvailable: false` and selects the separate `simulated` host-integration mode. Open in IDE, scoped file/folder opening, CLI-owned external browser launch, clipboard reads/writes, and notification audio complete through the same typed production contracts while recording a simulated outcome instead of touching the desktop. The native directory picker intentionally remains unavailable: Add Project records that attempt, then completes through the existing browser-managed manual-path prompt. Ordinary browser links and terminal links remain browser-contained, observable by Playwright, and subject to the lab's loopback-only page-request policy.
-
-## Agent modes
-
-The default `fake` mode is deterministic, offline, CI-safe, and supports the seeded scenarios and terminal protocol documented below:
+Use a freshly built inspection-enabled local package, not a stale installed app or a public production-fused artifact. Follow [local packaging](desktop-release.md#local-unsigned-candidate) for the current build procedure. Keep root, web and desktop dependency directories local to the worktree.
 
 ```bash
-npm run --silent agent:lab -- start --name terminal-restore --json
+npm run --silent agent:desktop -- smoke --app <absolute-packaged-app-path> --json
 ```
 
-Fake mode exposes only the deterministic Codex and Pi launchers. Claude remains unavailable even when a real `claude` executable exists later on the retained host `PATH`: an explicit discovery allowlist rejects it, and the lab-owned launcher shadows direct command launches without invoking the host provider.
+On macOS the path points to `Quarterdeck.app`; on Windows it points to the packaged `Quarterdeck-win32-x64` or ARM64 directory. The harness imports the candidate into its disposable installation rather than overwriting the user's app or Start menu. It records exact build/artifact identity and always attempts shutdown.
 
-Use `fake-claude` for the small set of Claude-native lifecycle invariants rather than repeating the default browser matrix:
+Native execution requires application, local-socket and process-inspection permission. A restricted macOS runner can fail during OS application registration and display a system crash alert even for hidden windows. The driver checks process inspection before launch; this does not establish every required OS permission. Do not retry a denied native launch blindly or weaken global OS security settings.
 
-```bash
-npm run --silent agent:lab -- start --name claude-lifecycle --agent fake-claude --scenario claude-lifecycle --json
-```
+The default fake-provider smoke deliberately crashes a renderer to check recovery and may display a system alert. Hidden windows do not suppress crash reporting. Explain this before running it. Select a narrow non-crash scenario when recovery is not the claim.
 
-Fake-Claude mode selects and exposes only the lab-owned Claude launcher. It reports Claude Code 2.1.198, requires the launch-scoped settings generated by Quarterdeck's Claude adapter, recognizes fresh, `--continue`, and exact `--resume <session-id>` launches, and sends Claude-shaped JSON through the production hook-ingest path. `claude-lifecycle` covers prompt/tool/permission, notification, elicitation/result, pending-background Stop, SubagentStop, and successful Stop ordering; `claude-failure` covers StopFailure. Generic fake scenarios and interactive commands remain available, but Codex rendered-overlay/interruption commands and Pi run-settlement commands are outside this lane's supported claim.
+The former interactive standalone browser lab (`start`, named browser actions and `restart-runtime`), its wrapper and browser E2E commands are retired. The retained packaged lab is a scenario runner, not a drop-in interactive CLI replacement. Use its scenario modules to extend functional coverage. Source runtime fixtures remain available internally for focused integration tests; they do not create public browser bootstrap URLs or bypass desktop authentication.
 
-Use `real-codex` only when the user has explicitly authorized their Codex account or plan to be used and the test depends on the provider's real TUI, hooks, identity, or event ordering:
+## Scenario selection
 
-```bash
-npm run --silent agent:lab -- start --name codex-approval --agent real-codex --json
-```
+Use `npm run agent:desktop -- smoke --help` for the exact current combinations. Important boundaries:
 
-Real-Codex mode exposes only its generated Codex launcher. The discovery allowlist and lab-owned rejecting Claude and Pi launchers keep host installations from silently widening the selected provider lane.
-
-Real-Codex mode preflights `codex login status` and reuses only the cached credential from the profile already authenticated by the CLI. It does not require or forward `OPENAI_API_KEY`. `$CODEX_HOME` selects the source profile when present; otherwise the default is `~/.codex`. Pass `--codex-home <path>` to select another already-authenticated profile. Agent Lab links the file-backed credential into a private disposable Codex home on macOS/Linux, or makes a permission-restricted temporary copy on Windows; keyring-backed credentials remain in the OS store. The source profile path and credential are omitted from persistent artifacts, public manifests, and diagnostic bundles. Normal shutdown removes the staged credential even when `--keep-temp` retains the synthetic project.
-
-The surrounding Quarterdeck runtime retains its disposable HOME and receives neither `CODEX_HOME` nor API credentials. Its generated launcher gives only the Codex process the isolated credential-only `CODEX_HOME`, resolves only the Codex executable from the host `PATH`, restores Agent Lab's `PATH` before `exec`, immediately removes the wrapper variables, and excludes `CODEX_HOME` from model-generated subprocess environments. The Codex process and its shell tools therefore keep the disposable HOME and forbidden-host-launch sentinels instead of gaining the user's account HOME or bypassing the simulated host boundary. Missing or non-reusable CLI authentication fails startup before the runtime launches, and both preflight outputs are discarded.
-
-The repository defaults for real Codex are `gpt-5.6-luna`, low reasoning effort, the standard/default service tier, the built-in OpenAI provider, read-only sandboxing, approval on request, disabled web search and history indexing, and local task-title generation so the lab does not make a second model request. The disposable Codex home contains no source profile config, so profile MCP servers, apps/connectors, plugins, hooks, skills, and preferences never enter the run. Launch policy additionally disables integrations, subagents by default, memories, automatic goals, background dependencies, notifications, external file opening, feedback, analytics/telemetry, update checks, Fast mode, and login-shell/profile loading; Quarterdeck then adds only its launch-scoped lifecycle hooks. Use `--model`, `--codex-sandbox`, or `--codex-approval-policy` only when the scenario requires a different contract. Real-only flags are rejected in fake mode, and fake scenarios are deliberately rejected in real mode.
-
-This mode is not hermetic: it makes OpenAI network calls and consumes the selected account's plan or API allowance. It reads the selected profile only to validate and stage its cached credential. Provider-owned session/resume records stay in the disposable Codex home rather than the user's normal profile and are removed on normal shutdown. Use only synthetic fixture content, keep effectful commands behind approval, never use the real lane in CI, capture its nondeterminism in the evidence report, and always stop the run. Browser navigation and Quarterdeck/provider host integrations remain isolated or disabled as described above.
-
-For an explicitly authorized native-subagent lifecycle test, add `--codex-multi-agent` to `--agent real-codex`. The public manifest records `agent.multiAgent` (older manifests default to `false`). This enables the native V1 backend with one concurrent child (`agents.max_concurrent_threads_per_session=1`) and one nesting level (`agents.max_depth=1`); V2 remains disabled. Sandbox, approval, credential isolation, and integration restrictions remain unchanged. Keep the child prompt synthetic and bounded, then stop the run normally.
-
-Use `real-claude` only with the same explicit provider/account authorization when the unresolved risk is Claude's actual TUI, hooks, identity, event ordering, or launcher behavior:
-
-```bash
-npm run --silent agent:lab -- start --name claude-smoke --agent real-claude --json
-npm run --silent agent:lab -- start --name claude-gateway-smoke --agent real-claude --claude-environment-auth --json
-```
-
-Real-Claude mode exposes only its generated Claude launcher and defaults to Claude Code's current `haiku` alias, manual permissions, and a tiny synthetic prompt supplied through the UI. Pass `--model <model>` only when a compatibility question requires another model. The lane rejects fake scenarios and conflicting task-command model, settings, MCP, Chrome, plugin, remote-session, added-directory, custom-agent, auto-allow, or permission-bypass flags instead of letting a saved Quarterdeck command silently weaken the lab policy.
-
-The default lane discards the output of `claude auth status --json` and forwards no `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or `CLAUDE_CODE_OAUTH_TOKEN`. `CLAUDE_CONFIG_DIR` selects the source profile when present; otherwise the default is `~/.claude`, with `--claude-config-dir <path>` available for another authenticated profile. Linux and Windows stage only the documented `.credentials.json` into a private disposable config directory. macOS OAuth remains in encrypted Keychain and is reusable from the isolated directory, so the lab documents the host credential store rather than pretending its temporary `HOME` is an authentication boundary.
-
-Use `--claude-environment-auth` only when the user explicitly authorizes the configured Claude gateway or Bedrock environment. That lane allowlists documented Anthropic/Claude gateway variables plus direct Bedrock environment credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`, or `AWS_BEARER_TOKEN_BEDROCK`), mode, endpoint, region, and model variables; it never maps Quarterdeck's generic LLM key into Claude authentication. Custom CA configuration is preserved through preflight and the detached runtime. AWS profiles and shared credential/config files are intentionally not imported into the disposable home; use direct environment credentials or a credential-injecting gateway for this lane. The allowlisted values necessarily cross the disposable supervisor and runtime environment so the generated launcher can pass them to Claude, and Claude's own subprocesses inherit them. Values are absent from manifests and diagnostics, the isolated profile seeds only the non-secret completed-onboarding marker, and all state is removed on normal shutdown. Treat this as authorized credential forwarding, not a hardened secret sandbox.
-
-Only the generated Claude process receives that disposable `CLAUDE_CONFIG_DIR`. It contains an empty strict MCP configuration and provider-owned session records for exact resume; user/project/local setting sources are disabled, unmanaged Chrome integration and slash commands are disabled, and telemetry, error reporting, feedback, update checks, terminal-title control, and background Agent View are suppressed. Quarterdeck's one launch-scoped hook settings file remains required. Server- or machine-managed organization settings still apply because Claude gives them higher precedence and does not permit a client to bypass them. Public manifests retain only the model, authentication/profile-source class, credential-boundary class, manual permission mode, inherited-managed-policy marker, disposable-history marker, and unmanaged-integration/telemetry policy—not config paths or credential contents.
-
-Claude's `--max-budget-usd` applies only to print mode, while Quarterdeck validates the real interactive TUI. The `haiku` default and a tiny prompt make the smoke inexpensive but do not enforce a hard ceiling. A real-Claude run is therefore explicitly authorized, nondeterministic, account-consuming, synthetic-data-only, never run in CI, and always stopped. Normal shutdown removes the disposable config even when `--keep-temp` retains other synthetic state.
-
-## Host-integration modes and event ledger
-
-The launch-derived host integration policy has three modes:
-
-- `native` uses normal desktop integrations and reports `nativeUiAvailable: true`;
-- `unavailable` blocks before launcher, clipboard, or audio implementations and returns typed failures;
-- `simulated` keeps `nativeUiAvailable: false`, substitutes the Agent Lab implementations, and reports simulated success without invoking native launchers.
-
-Every simulated action is written to `host-events.json`, whose absolute path is exposed as `hostEventLedgerPath` in the run manifest. Events have a monotonically increasing sequence, timestamp, origin, typed kind/outcome, and bounded semantic fields. Paths are represented only as a named fixture scope plus relative path; external URLs retain only an `http`/`https` origin and bounded path; clipboard contents are represented only by character count. Project/task identifiers are included when the public action supplies them. A candidate event is runtime-validated and atomically persisted before the endpoint or UI can acknowledge it. The ledger has a fixed capacity; validation, persistence, or overflow failures mark it unhealthy and fail final evidence capture instead of silently producing partial diagnostics.
-
-The lab-only `/api/agent-lab/host-events` endpoint supports listing or long-polling events with `afterSequence`, `kind`, and a bounded `timeoutMs`. A `POST` to `/reset` atomically clears the ledger and restarts sequencing at one; a `POST` to `/flush` waits for queued mutations and rejects an unhealthy ledger. The endpoint is mounted only when the explicit simulation config injects the ledger; native and fail-closed runtimes return the normal API 404. Browser-owned simulations post their semantic events to this surface, while runtime-owned simulations write directly through the same ledger. Synthetic desktop notification audio posts to that same authenticated endpoint with origin `desktop`; ordinary browser audio retains origin `browser`. Clipboard state changes only after its event is accepted, and simulated audio UI feedback waits for the notification event acknowledgement.
-
-Each canonical checkpoint flushes and validates the current ledger while the runtime is live, then stores it at `lab/host-events.json`. The offline final checkpoint validates and copies the already durable ledger after the runtime stops. `forbidden-host-launches.log` remains a separate hard-failure signal: simulated success never calls a shadow launcher, and shutdown fails if that log is non-empty.
-
-### Audited host crossings
-
-| Integration class | Agent Lab disposition |
+| Scenario | Claim |
 | --- | --- |
-| macOS, Linux, and Windows directory pickers (`osascript`, `zenity`, `kdialog`, and PowerShell dialogs) | Intentionally unsupported with a typed result; the attempt is recorded and Add Project uses manual path entry. |
-| Host file/folder open or reveal (`open`, `xdg-open`, Explorer) | Simulated through the runtime boundary; targets must resolve inside a named disposable scope. Settings exposes the reachable file-open flow; folder targets are covered at the public boundary because no current UI action reveals a folder directly. |
-| Open in IDE/Finder/terminal | Simulated through the existing typed target ID and server-owned project path. No executable or command comes from the browser. |
-| CLI-owned external browser launch | Simulated after URL scheme validation and credential/query/fragment removal. |
-| Ordinary browser links and xterm web links | Browser-contained by design and still governed by the lab's loopback network policy; they never produce a host event. |
-| Clipboard read/write, including xterm OSC 52 | Simulated by one in-memory browser clipboard; ledger events store character counts, never contents. |
-| Notification sound | Simulated semantically with event type, volume, and optional project/task identity; no audio context is created. Browser title updates remain browser-contained. Synthetic desktop runs also suppress native notifications; this lane does not prove macOS notification presentation or permissions. |
-| Credential/keychain access | Fake mode omits credentials and real agent configuration. Real Codex grants only its generated wrapper access to the selected cached credential. Default real Claude stages only its file credential on Linux/Windows or reuses macOS Keychain, while keeping its config/session directory disposable. Explicit `--claude-environment-auth` carries only its documented provider allowlist through the disposable supervisor/runtime and into Claude descendants. Other API keys, SSH agent access, and source profile configuration remain excluded. |
-| Agent discovery, Git, PTY, and other runtime subprocesses | Not desktop integrations. Git and ordinary subprocesses remain on the real runtime path inside the disposable environment. Agent discovery is restricted to the mode's explicit allowlist, and every supported agent name is shadowed at the front of `PATH`: declared launchers run while all others fail closed. Binary presence never grants native-UI capability. |
+| Default fake-provider smoke | Packaged startup, task PTY/hooks, card/board/project lifecycle indicators, permissions and interruption; board, diagnostics, unstarted-editor and action-layout checks migrated from web smoke; reload, renderer/session recovery and graceful shutdown |
+| `--no-agent` | Startup/renderer subset only; not task PTY or provider compatibility |
+| `--npm-launch --no-agent` | Synthetic npm/app identity, project handoff and alternate-owner refusal |
+| `--manual-shells --no-agent` | Home/Detail shell process survives Hide and viewer detach, explicit Terminate retires it, reopening creates a fresh shell |
+| `--compare-window --no-agent` | Independent read-only comparison surface without taking editable/native-command authority |
+| `--notifications` | Hidden fake-task tone intent, Settings volume and muted events through the simulation ledger; not actual audible sound or OS banners |
+| `--native-experience --no-agent` | Keyboard and enlarged-text behavior; add `--show-window` only for native focus/close/reopen claims |
+| `--performance` | Desktop-only idle process CPU/RSS, task navigation and available terminal acknowledgements; excludes competing scenarios, reloads and crashes |
+| `--main-loss` | Fake-provider recovery after exact isolated main-process loss; no real-provider account access |
+| `--session-recovery --no-agent` | Blocked unclean startup, cancellation, explicit acknowledgement and ordinary startup retry |
 
-## First-time setup
+Add `--show-window` only when visibility/focus is part of the claim; it can take focus. Do not infer physical Dock, taskbar, folder-picker, display, accessibility, sleep/wake or notification experience from hidden/simulated runs. Performance observations remain bounded samples, not proof of sustained use.
 
-Use an external Node.js installation matching the repository's supported version for browser Agent Lab. A terminal started inside Quarterdeck may put the app's bundled Node first on `PATH`; `node -p 'process.execPath'` must not end in `/Contents/Resources/runtime/bin/nodeHost`. Source-lab children cannot retain the app's native installation admission. Startup rejects that executable before creating a run; this is not a broken app installation. Prepend your external Node.js `bin` directory to `PATH` for both `agent:lab` and `agent:browser` commands, without changing the app or bypassing admission.
+The lab-only mock keychain avoids modifying the user's macOS Keychain. Ordinary app launches retain native encryption. Never reset Keychain, strip quarantine, disable Gatekeeper, or relax production Electron fuses to make a test pass.
 
-Install project dependencies normally, then install the browser used only by the agent wrapper:
+## Providers
 
-```bash
-npm run bootstrap
-npm run agent:browser -- install-browser chromium
-```
+The default `fake` provider is deterministic, offline and suitable for CI. Reusable fixture/provider modules remain under `scripts/agent-lab/`; the terminal protocol is in the skill's `references/protocol.md`. Real provider availability does not authorize using it.
 
-The Chromium build lives under Git's common directory at `.git/quarterdeck/agent-lab/playwright-browsers`, so all worktrees for the clone reuse it while `npm ci`, builds, and relinks leave it intact. Before replacing either dependency tree, `npm run bootstrap` copies a complete symlink-free cache from the legacy `web-ui/node_modules/.cache/agent-lab-playwright` location atomically and retains the source; browser startup performs the same preparation for clones that have not bootstrapped. Only downloaded browser binaries are shared: browser profiles, daemon state, disposable runtime/project state, screenshots, traces, and other artifacts stay under the active worktree's `test-results/agent-lab/` or its disposable temp root.
+Use `--provider real-codex` or `--provider real-claude` only with explicit user/account authorization and only when the unresolved question depends on actual TUI behavior, hook schemas/order, exact resume, or launcher interpretation. First pass the fresh candidate through the fake scenario. Keep the real prompt tiny, synthetic and behind normal approval controls; never run real modes in CI. Interactive Claude has no hard budget ceiling, so its inexpensive model default is not an enforced spending limit.
 
-Each task worktree still needs its own root and web UI npm dependencies to invoke Agent Lab. Do not restore shared `node_modules` links to avoid that local bootstrap.
+Real scenarios hold a permission request without approving it, check the requested synthetic write did not occur, and use the board restart action to verify the exact provider session, fresh PTY and current launch hook. This proves an unapproved boundary, not an explicit Deny. Do not send guessed numeric choices or broaden the prompt to force progress. Real modes reject `--no-agent` and remove staged sign-in profiles even when other evidence is retained.
 
-Mutable installed-dependency directories must never be mirrored into task worktrees. If a legacy dependency symlink already exists, unlink only the symlink at the worktree path. Never follow it, mutate its target, or automatically delete a real task-owned dependency directory.
+Real provider launchers isolate provider-owned history/configuration and suppress unmanaged integrations. They reuse only the scoped authenticated identity required by the selected lane; OS-backed credentials and organization policy remain real host boundaries. Never include credential values in artifacts or diagnostics. Inspect `scripts/agent-lab/provider-policy.ts`, `real-codex.ts`, `real-claude.ts` and `desktop-provider.ts` for the exact enforced policy rather than assuming old browser-lab command flags still exist.
 
-## Lifecycle commands
+Codex can defer its resume hook until the next turn. Its packaged scenario uses bounded, agent-reviewed screenshots before sending a fixed cancellation/no-tools follow-up. Inspect each actual PNG and write only the exact requested accept/refuse observation; an observation is not provider approval or new user authorization. A visible composer during “Resuming session…” is not readiness. Exact session identity and fresh native work evidence remain required; typed input alone never proves Running.
 
-Start a detached run and ask for machine-readable discovery data:
+## Evidence and cleanup
 
-```bash
-npm run --silent agent:lab -- start --name terminal-restore --json
-```
+Keep the returned `desktop-manifest.json`, artifact identity, checkpoints, diagnostic bundles and cleanup result. The runner's typed simulated host effects establish intent and outcome without launching a real IDE, opening user folders, playing sound or showing OS notifications. Never replace those assertions with claims about native presentation.
 
-The manifest includes the run id, status, URLs, temporary paths, artifact paths, browser config/session/output paths, host-event ledger and forbidden-launch log paths, launch capabilities, sanitized agent mode/configuration, PIDs, scenario, timestamps, and any startup failure. Ports default to `auto`; fixed `--runtime-port` and `--web-port` values exist for E2E and targeted debugging. `--keep-temp` retains the synthetic project/state after shutdown when filesystem inspection is necessary. Lifecycle commands can read manifest versions 1 through 4 so older active runs can still be listed, inspected, snapshotted, and stopped after an update; same-state runtime restart requires version 3 or newer, and manifests before version 4 are treated as fake-agent runs.
+Normal acceptance requires confirmed graceful Quit, no remaining owned processes and no fallback termination. If closure is unconfirmed, preserve the fixture and exact identity evidence; do not delete state or kill processes by executable name. `--keep-temp` retains synthetic evidence, not authorization to leave processes running. Check cleanup even when the scenario fails.
 
-Use an explicit run id when several agents are testing concurrently:
+Renderer-crash recovery reobserves the original captured document through an observation-only CDP client, bound to exact process/profile/WebContents/document identity. The original Electron application remains the Quit owner. A fresh unrelated browser or product window is not proof of recovering that document.
 
-```bash
-npm run --silent agent:lab -- status <run-id> --json
-npm run --silent agent:lab -- snapshot <run-id> --label before-restart --json
-npm run --silent agent:lab -- stop <run-id> --json
-npm run --silent agent:lab -- list --json
-```
+On Windows, native lab evidence covers actual installation locks, Chromium/crashpad job membership, ConPTY, replacement, shortcut replacement and uninstall under a private profile. It does not prove a real user's Start menu, SmartScreen, minimum Windows release or another architecture.
 
-`snapshot` writes a canonical diagnostic bundle at `test-results/agent-lab/<run-id>/snapshots/<timestamp>-<checkpoint>/`. Start with its `manifest.json`, which hashes and indexes every retained artifact. In addition to the shared timeline, doctor findings, and live subsystem snapshots, the synthetic lab bundle can include:
-
-- the public lab manifest and checkpoint metadata;
-- bounded fixture state, excluding the private diagnostic descriptor/token directory;
-- Git status, recent log, working-tree diff, and staged diff for the main fixture and task worktrees;
-- supervisor, runtime, and web logs;
-- Playwright semantic snapshots, screenshots, traces, videos, console/network records, and browser actions available at that checkpoint.
-
-The supervisor automatically captures `ready`, `failure` when applicable, `pre-shutdown`, and `final`. The pre-shutdown checkpoint preserves the last connected browser snapshot. The supervisor then closes the browser, stops the web/runtime child trees, finalizes the lab manifest, and captures `final` from the stopped runtime's descriptor and crash-surviving journal while the disposable state still exists. Manual labels are normalized and de-duplicated so a checkpoint never overwrites an earlier one. A missing or timed-out provider produces a partial bundle with a warning instead of failing the run.
-
-Shutdown fences new browser commands, closes the named browser session, resolves and discovers every detached Playwright daemon owned by that exact lab session, and terminates surviving daemon/browser trees until consecutive process snapshots confirm quiescence. It then stops both managed child process trees, finalizes and captures its offline evidence, and removes temporary files unless `--keep-temp` was selected. Cleanup is scoped by both the worktree-local Playwright daemon entrypoint and the exact `qd-<run-id>` session name, so parallel lab sessions are not targeted. A residual browser process fails the run instead of being silently ignored. Evidence under `test-results/agent-lab/<run-id>/` is retained.
-
-## Drive and visually inspect the UI
-
-The repo-owned `npm run agent:browser` command is Agent Lab's browser driver. It wraps Playwright with the run's loopback policy, named browser profile, artifact routing, action transcript, and owned-process cleanup. An unavailable in-app Browser connector or disabled Computer Use is not evidence that Agent Lab lacks browser automation. Before declaring the UI undrivable, invoke this wrapper with the manifest values below and inspect its actual error. If it reports a missing managed Chromium build, run the documented `install-browser chromium` command automatically. Downloading managed browser binaries into the shared clone cache is part of authorized Agent Lab testing and requires no separate confirmation. Never replace the wrapper with direct `playwright-cli`, an ad hoc Playwright script, or automation attached to the user's browser.
-
-Read `browserConfigPath`, `browserSession`, `browserOutputPath`, and `projectUrl` from the manifest. The first command creates the isolated session:
-
-```bash
-npm run --silent agent:browser -- --config <browser-config> -s=<session> open <project-url>
-```
-
-Pass the config only to `open`. Subsequent commands address the existing named session without `--config`:
-
-```bash
-npm run --silent agent:browser -- -s=<session> snapshot
-npm run --silent agent:browser -- -s=<session> click <ref>
-npm run --silent agent:browser -- -s=<session> fill <ref> "[agent-lab:idle] inspect terminal"
-npm run --silent agent:browser -- -s=<session> press Enter
-```
-
-Snapshots expose accessible roles, names, states, and stable action refs. Refresh the snapshot after navigation or a large state change rather than reusing stale refs.
-
-Every session-linked browser command is appended to `browser-actions.jsonl` with a stable action id, start/end timestamps, monotonic offset, bounded arguments, exit/signal/error outcome, and diagnostic mark ids immediately before and after the action. Artifact paths are rewritten to `$LAB_ARTIFACT`, temporary paths to `$LAB_TMP`, and repo paths to `$REPO`; unrelated absolute paths are replaced. Synthetic `fill`, `type`, and `eval` values may be retained because the lab forbids real data. This transcript is copied into each later canonical checkpoint so runtime events can be correlated with the exact browser action without relying on shell history.
-
-For visual debugging, save to an absolute path inside `browserOutputPath`, then inspect the PNG with the agent's local image-viewing capability:
-
-```bash
-npm run --silent agent:browser -- -s=<session> screenshot --filename=<browser-output>/board-wide.png --hires
-npm run --silent agent:browser -- -s=<session> resize 390 844
-npm run --silent agent:browser -- -s=<session> screenshot --filename=<browser-output>/board-narrow.png --hires
-```
-
-This lets an agent directly assess pixel-level spacing, clipping, layering, contrast, terminal paint, and responsive behavior. For intermittent failures, bracket the reproduction with `tracing-start` / `tracing-stop`, and inspect `console` plus `requests`. Playwright traces contain DOM snapshots, screenshots, console output, and network activity.
-
-The unified recorder cannot reconstruct historical pixels from a browser that was never screenshotted. Capture explicit last-good and failed-state PNGs when the problem is visual. The runtime/browser metadata snapshot can explain layout bounds, visibility, connection state, persistence state, and terminal metrics, but the PNG or Playwright trace remains visual truth.
-
-The lab also extends `window.__quarterdeckDumpTerminalState()` with bounded visible viewport lines. Query it through browser `eval` to correlate pixels with exact xterm buffer/session state:
-
-```bash
-npm run --silent agent:browser -- -s=<session> eval "JSON.stringify(window.__quarterdeckDumpTerminalState?.())"
-```
-
-The same terminal provider exists in production, but visible terminal lines are deliberately omitted there. Do not copy lab assumptions about terminal content into live-instance diagnostics.
-
-## Deterministic fake agent
-
-The default fake mode provides seeded `idle`, `needs-input`, `review`, `failure`, `git-dirty`, and `terminal-stress` scenarios plus an interactive protocol for authoritative work, review, approval, interruption, Git, clipboard, and terminal behavior. Fake-Claude adds only `claude-lifecycle` and `claude-failure`, plus Claude-specific notification, elicitation, background-stop, and failed-stop commands. The canonical command list and semantics live in [the skill protocol reference](../.agents/skills/quarterdeck-functional-testing/references/protocol.md); run `/help` inside the fake terminal for the exact syntax available in that checkout.
-
-The fake enters the alternate screen only when its received invocation requests the managed renderer: Claude's fullscreen environment, all three Codex renderer config overrides, or Pi's native `--tui-mode fullscreen`. Provider identity alone must not supply a missing launch policy. The fixtures report Claude 2.1.198 and Codex 0.157.0 (minimum supported versions), and Pi exactly 1.5.2. Prompt-less Pi starts and resumes must not interpret the inserted mode value as prompt text.
-
-Use `/alt-off` to exercise normal-buffer fallback after automatic fullscreen entry, and `/alt-on` to return. This tests buffer transitions and restoration, not supported regular-mode agent UX. Managed launches request fullscreen, but do not force existing processes to restart or prohibit native in-session settings. Explicit task restart applies changed launch arguments; reload/reattach alone does not. Claude's saved `axScreenReader` setting remains a fullscreen caveat and is never silently disabled; any change must be the user's deliberate native preference change followed by restart. See [the launch contract](./conventions/session-lifecycle.md#managed-agent-fullscreen-launch-policy).
-
-These commands exist only in deterministic fake modes. Real providers use ordinary synthetic prompts and their actual rendered controls. Fake coverage does not establish real-provider TUI compatibility, validate Pi releases beyond 1.5.2, or prove Pi compacted-history rendering is fixed. Run only the scenario needed for the changed invariant rather than treating the protocol as a checklist.
-
-## Automated regression suite
-
-`npm run web:e2e` uses the same supervisor and allocates dynamic loopback ports before Playwright loads its configuration. CI can still pin them with `QUARTERDECK_E2E_RUNTIME_PORT` and `QUARTERDECK_E2E_WEB_PORT` when its runner requires explicit ports. Playwright Test blocks non-loopback page requests, attaches safe browser console/network logs, and retains screenshots and video on failure. Automatic traces are disabled because network traces retain admission cookies; do not enable or share them as ordinary content-safe diagnostic evidence. Agent Lab's explicit tracing workflow remains separate. Functional smoke paths assert the startup host-URL simulation while ordinary links remain browser-contained, Open in IDE, config-file opening, notification audio, in-memory clipboard write/read through xterm, Add Project's manual fallback, the unified Diagnostics panel, and the proof-backed lifecycle: launch remains Review, `/working` establishes Running, Escape interrupts immediately, approval cancellation/acceptance clears Needs Input without input claiming Running, and the matching provider hook resumes work. Shutdown verifies the forbidden-launch log stays empty.
-
-## Lifecycle regression classes
-
-Choose the regression class before starting the run:
-
-| Claim | Required Lab evidence |
-| --- | --- |
-| Browser reconnection or remount | Reconnect or refresh the isolated browser; do not claim cold-start coverage. |
-| Persisted hydration, stale-process correction, startup recovery, or exact-session restore | Use the same-state runtime restart below. |
-| Card, project-pill, notification, or sound convergence | Drive only the changed transition and assert the affected projections together. |
-| Approval, cancellation, or rendered-failure behavior | Use the matching fake protocol path; require a current provider hook before claiming Running. |
-| Claude native lifecycle ordering | Use `fake-claude` with only `claude-lifecycle`, `claude-failure`, or the exact interactive Claude command needed. |
-| Real Codex or Claude compatibility | Use one explicitly authorized real-provider scenario focused on the unresolved TUI, hook, version, ordering, or launcher behavior. |
-| Visual layout or terminal paint | Capture the affected viewport; semantic lifecycle evidence alone cannot prove pixels. |
-
-For cold-start claims, use:
-
-```bash
-npm run --silent agent:lab -- restart-runtime <run-id> --mode graceful --json
-```
-
-This preserves disposable state, the web process, and the browser while replacing only the runtime. For a project-scoped startup regression, leave the affected project inactive, verify its projections before selecting it, then confirm selection does not change them.
-
-Static startup state does not prove transition convergence, and a screenshot does not prove lifecycle authority. Conversely, a semantic snapshot does not prove spacing, clipping, stacking, contrast, or terminal paint. Collect the evidence that matches the claim.
-
-## Failure reports
-
-Include:
-
-1. run id and exact command/action sequence;
-2. expected and observed state;
-3. relevant semantic state and, only for visual failures, last-good and failed screenshot paths;
-4. trace, console, and request evidence when needed to explain the failure;
-5. runtime/web log excerpts;
-6. canonical checkpoint path and any doctor findings;
-7. relevant host-event sequence(s) and `lab/host-events.json` path;
-8. whether the forbidden-launch log is empty;
-9. whether the failure reproduces in a fresh run.
-
-This is enough for another agent to replay the failure without the original browser or runtime process.
-
-### Board progress preview scenario
-
-In the fake Codex or Pi lane, `/progress <message>` appends timestamped synthetic assistant text to the isolated provider history and emits an activity hook. Start an idle task and verify the card falls back to its prompt, establish Running with `/working`, then send `/progress` with distinct assistant text. Verify the grid follows the assistant message while remaining Running, without a 30-second cooldown. Use `/review <message>` to verify completion replaces progress immediately. Running and Review preview areas should each reserve six text lines.
-
-For Pi, select Pi when creating the task: the fixture writes native parent-linked session/message records and includes the exact source path on hooks. Pi `/review` also persists its final assistant message. In the Codex lane, follow completion with `/new-turn` to verify the completed response remains the preview until new progress arrives. Send `/progress <message>` and verify only the new progress is shown, with no “Previous response” disclosure.
-
-For incremental-reader coverage, establish the transcript cursor first, then append a timestamped synthetic assistant message followed by more than 128 KiB of synthetic tool records to the exact disposable transcript. Verify the grid catches the message without another provider hook, and that later tool-only appends retain it. Keep all fixture content synthetic and confined to the lab; the focused filesystem tests cover source replacement, partial records, and stale-read fences.
+Public installation, N-to-N+1 updating, actual OS approval, native architecture/minimum-OS coverage, provider compatibility and sustained daily use remain separate [desktop acceptance gates](desktop-validation.md). Report exact candidate scope and limitations; passing source tests or an old package is not current native acceptance.

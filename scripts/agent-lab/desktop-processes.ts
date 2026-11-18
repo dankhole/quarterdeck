@@ -1,9 +1,20 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { processListEnvironment } from "./browser-processes";
 import type { DesktopLabProcess } from "./desktop-types";
 import { listWindowsDesktopProcesses } from "./desktop-windows-processes";
+
+export function processListEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const { LC_ALL, ...environment } = source;
+	return {
+		...environment,
+		// LC_ALL overrides LC_TIME. Preserve its effective character locale when
+		// removing it, rather than forcing ASCII command rendering on macOS.
+		...(LC_ALL ? { LC_CTYPE: LC_ALL } : {}),
+		LC_TIME: "C",
+		TZ: "UTC",
+	};
+}
 
 const execFileAsync = promisify(execFile);
 

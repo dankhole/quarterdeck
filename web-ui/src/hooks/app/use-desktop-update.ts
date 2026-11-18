@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import {
 	type DesktopUpdateBridge,
 	type DesktopUpdateSnapshot,
@@ -26,7 +25,6 @@ function getUpdateBridge(): DesktopUpdateBridge | null {
 export function useDesktopUpdate(): { availableVersion: string | null; showDetails: () => void } {
 	const [snapshot, setSnapshot] = useState<DesktopUpdateSnapshot | null>(null);
 	useEffect(() => {
-		if (getRuntimeEnvironment().kind !== "desktop") return;
 		const bridge = getUpdateBridge();
 		if (!bridge) return;
 		let active = true;
@@ -53,7 +51,6 @@ export function useDesktopUpdate(): { availableVersion: string | null; showDetai
 		};
 	}, []);
 	const showDetails = useCallback(() => {
-		if (getRuntimeEnvironment().kind !== "desktop") return;
 		void getUpdateBridge()
 			?.request("details")
 			.catch(() => {});

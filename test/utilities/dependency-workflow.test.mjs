@@ -103,7 +103,6 @@ describe("dependency workflow preflight", () => {
 		const calls = [];
 		const options = {
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
-			gitCommonDirectory: join(checkoutRoot, ".git"),
 			executeNpm: (args) => calls.push(args),
 		};
 		await ensureDependencies(checkoutRoot, options);
@@ -129,28 +128,28 @@ describe("dependency workflow preflight", () => {
 		]);
 	});
 
-	it("builds browser mode before linking without installing desktop dependencies", async () => {
+	it("rejects browser-only linking before building or changing a global link", async () => {
 		await installFixture("", {});
 		await installFixture("web-ui", {});
 		const calls = [];
-		await linkCheckout(checkoutRoot, {
+		await expect(linkCheckout(checkoutRoot, {
 			browser: true,
 			managedInstallation: { platform: "linux" },
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
 			executeNpm: (args) => calls.push(args),
 			resolveGlobalPackageLocation: () => ({ packageSlot: join(checkoutRoot, "prefix/lib/node_modules/quarterdeck"), prefix: join(checkoutRoot, "prefix") }),
-		});
-		expect(calls).toEqual([["run", "build"], ["link", "--ignore-scripts"]]);
+		})).rejects.toThrow("Browser-only linking is no longer supported");
+		expect(calls).toEqual([]);
 	});
 
-	it("selects desktop by host support and preserves compatibility and browser opt-outs", () => {
+	it("requires desktop support and ignores legacy installation preferences", () => {
 		const supported = { platform: "darwin", arch: "arm64", osRelease: "25.0.0", installMode: "" };
 		expect(shouldLinkDesktop(supported)).toBe(true);
 		expect(shouldLinkDesktop({ ...supported, desktop: true })).toBe(true);
-		expect(shouldLinkDesktop({ ...supported, browser: true })).toBe(false);
-		expect(shouldLinkDesktop({ ...supported, installMode: "browser" })).toBe(false);
-		expect(shouldLinkDesktop({ ...supported, platform: "linux" })).toBe(false);
-		expect(shouldLinkDesktop({ ...supported, osRelease: "21.0" })).toBe(false);
+		expect(() => shouldLinkDesktop({ ...supported, browser: true })).toThrow("no longer supported");
+		expect(shouldLinkDesktop({ ...supported, installMode: "browser" })).toBe(true);
+		expect(() => shouldLinkDesktop({ ...supported, platform: "linux" })).toThrow("requires macOS");
+		expect(() => shouldLinkDesktop({ ...supported, osRelease: "21.0" })).toThrow("requires macOS");
 	});
 
 	function desktopLinkOptions(calls, overrides = {}) {
@@ -356,33 +355,14 @@ describe("dependency workflow preflight", () => {
 		);
 	});
 
-	it("migrates the legacy browser cache before replacing either dependency tree", async () => {
-		const gitCommonDirectory = join(checkoutRoot, ".git");
-		const legacyInstallation = join(
-			checkoutRoot,
-			"web-ui",
-			"node_modules",
-			".cache",
-			"agent-lab-playwright",
-			"chromium-1237",
-		);
-		await mkdir(legacyInstallation, { recursive: true });
-		await writeFile(join(legacyInstallation, "INSTALLATION_COMPLETE"), "", "utf8");
-		await writeFile(join(legacyInstallation, "browser-binary"), "complete\n", "utf8");
+	it("bootstraps the locked source dependency trees", async () => {
 		const npmCalls = [];
-
-		const prepared = await bootstrapDependencies(checkoutRoot, {
+		await bootstrapDependencies(checkoutRoot, {
 			runtime: { activeRuntimePids: [], linkedCheckout: null },
-			gitCommonDirectory,
 			executeNpm(args) {
 				npmCalls.push(args);
 			},
 		});
-
-		expect(prepared.status).toBe("migrated");
 		expect(npmCalls).toEqual([["ci"], ["ci", "--prefix", "web-ui"]]);
-		expect(
-			await readFile(join(prepared.path, "chromium-1237", "browser-binary"), "utf8"),
-		).toBe("complete\n");
 	});
 });

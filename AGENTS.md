@@ -44,7 +44,7 @@ Read the referenced document before editing the listed area:
 - Project naming, folder availability, or project relocation: `docs/project-management.md`.
 - Task-agent start/stop/resume/restart, startup recovery, session reconciliation, PTY identity, terminal restore, agent adapters, native hooks, input state, or host process launches: `docs/conventions/session-lifecycle.md`.
 - Diagnostics recorder, journal, panel delivery, doctor, capture, or bundle format: `docs/diagnostics.md`.
-- Native desktop shell, packaging, preload, runtime admission, process custody, or desktop/browser attachment: `docs/desktop.md`; distribution and updates also require `docs/desktop-release.md`.
+- Native desktop shell, packaging, preload, runtime admission, process custody, or desktop attachment: `docs/desktop.md`; distribution and updates also require `docs/desktop-release.md`.
 - Test selection, validation scope, or deciding whether a heavier testing lane is justified: `docs/testing.md`.
 - Structured/non-PTY execution or provider-session handoff: `docs/conventions/structured-execution.md`.
 - Current architecture priorities or active refactors: `docs/qDeck.yaml` (the local, gitignored Chit source of truth) and the specific linked plan. Keep the list in the primary checkout; worktrees must use that same file with an explicit `--file` path rather than create copies. Use `chit --file docs/qDeck.yaml read` from the primary checkout before updates, preserve existing IDs, and use expected-value edits. `docs/todo.md` points to the frozen migration snapshot; do not maintain tasks there.
@@ -59,7 +59,8 @@ Tracked historical context lives under `docs/history/`. Read it only when curren
 - Runtime session truth comes from the server-owned terminal/session store. Terminal output and input/submit intent are not proof that an agent is working; only a current launch-scoped native provider hook may assert resumed work.
 - `applyAuthoritativeProjectState(...)` is the single browser apply path for authoritative project state.
 - `IRuntimeHostIntegrations` is the sole production boundary for server-side file, application, URL, IDE, and folder-picker effects. Preserve its launch-derived capability checks and typed outcomes; never accept arbitrary browser-supplied commands.
-- Do not start Quarterdeck runtime or dev instances (`npm run dev`, `npm run dev:full`, `npm run dogfood`, `quarterdeck`) without asking when the user's app may already be running. Overlapping runtimes can proxy to the wrong instance. Use build/test validation or the isolated Agent Lab as appropriate.
+- Desktop-only product support does not mean removing internal headless execution. Preserve isolated runtime fixtures, hidden Electron Agent Lab runs, synthetic providers, diagnostics, and useful Linux source checks; do not retain standalone browser product access for them.
+- Do not start Quarterdeck runtime or dev instances (`npm run dev`, `quarterdeck`) without asking when the user's app may already be running. Overlapping runtimes can proxy to the wrong instance. Use build/test validation or the isolated Agent Lab as appropriate.
 - Agent display availability is not launch authority. Task launches must use `resolveAgentCommandForLaunch(...)`; follow the cache, retry, and diagnostics policies in `docs/conventions/session-lifecycle.md#agent-availability-and-launch-admission`.
 
 The summaries above are not substitutes for the routed runtime-state and session-lifecycle documents.
@@ -99,9 +100,9 @@ Avoid broad edits to copied config mocks during feature work. Prefer the shared 
 - Test fixtures that redirect `HOME` must also redirect or remove `QUARTERDECK_STATE_HOME`, which takes precedence over the home directory. Root Vitest strips inherited `QUARTERDECK_*` launcher settings and creates a temporary default `HOME`/`USERPROFILE` with global-setup cleanup; preserve that isolation so fallback paths never target an active instance's state.
 - Do not run an umbrella command and its constituent commands on the same unchanged tree. Reconcile the final base before relying on CI's broad gate, and re-run only validation affected by later changes.
 - Documentation-only work does not require runtime or browser tests. Validate the instruction bridge only when it changed and check only links added or modified.
-- Use the deterministic Agent Lab only when browser/runtime/PTY, persistence, Git/Files, host-integration, or visual behavior is part of the claim. Use screenshots only for visual claims and `restart-runtime` only for cold-start or recovery claims.
+- Use the deterministic Agent Lab only when renderer/runtime/PTY, persistence, Git/Files, host-integration, or visual behavior is part of the claim. Use screenshots only for visual claims and packaged recovery scenarios only for cold-start or recovery claims.
 - Use a real provider only with explicit authorization and only when provider TUI, hooks, event ordering, version compatibility, or launcher behavior is the unresolved risk.
-- When Agent Lab is selected, use the repo-owned `quarterdeck-functional-testing` skill. Never attach automation to the user's active Quarterdeck instance or substitute `npm run dev`, `npm run dev:full`, `npm run dogfood`, or `quarterdeck` for the lab.
+- When Agent Lab is selected, use the repo-owned `quarterdeck-functional-testing` skill. Never attach automation to the user's active Quarterdeck instance or substitute `npm run dev` or `quarterdeck` for the lab.
 - Use only synthetic lab data and always stop the run. The lab isolates data and processes but is not a hardened security sandbox.
 - Mutable dependency directories such as `node_modules` are never shared into task worktrees. Never follow or mutate a legacy dependency symlink target.
 

@@ -1,6 +1,6 @@
 # Deterministic Fake Agent Protocol
 
-The default lane shadows the child runtime's Codex and Pi executables. `--agent fake-claude` instead exposes only a fake Claude executable and blocks Codex/Pi. Each fake reports the validated version needed by normal discovery, and every task runs through Quarterdeck's production provider adapter and hook-ingest path. The user's real agent binaries and configuration are never read by the task process.
+The default packaged lane shadows the child runtime's Codex and Pi executables. Reusable internal fake-Claude fixtures can instead expose only a fake Claude executable and block Codex/Pi; the retired browser lab's `--agent` flag is not a packaged CLI option. Each fake reports the validated version needed by normal discovery, and every task runs through Quarterdeck's production provider adapter and hook-ingest path. The user's real agent binaries and configuration are never read by the task process.
 
 This protocol does not apply to `real-codex` or `real-claude`; authenticated lanes use ordinary tiny synthetic prompts and the provider's actual interactive controls.
 
@@ -13,7 +13,7 @@ Prompt directives override the run's default scenario for one task:
 - `[agent-lab:git-dirty]` — write `agent-lab-output.txt` in the task checkout.
 - `[agent-lab:terminal-stress]` — emit 400 numbered lines for scrollback/restore testing.
 
-Additional fake-Claude run scenarios selected with `--scenario`:
+Additional fake-Claude scenarios available to internal fixture configuration (not a packaged `--scenario` CLI option):
 
 - `claude-lifecycle` — seeded sequence covering prompt, tool/permission, notification, elicitation/result, pending background work, SubagentStop, and successful Stop.
 - `claude-failure` — prompt followed by StopFailure.
@@ -44,7 +44,7 @@ Interactive terminal commands:
 - `/commit [message]` — stage and commit all disposable changes.
 - `/status` — print short Git status.
 - `/hyperlink` — enable SGR mouse tracking and print a labeled OSC 8 link to the isolated runtime health endpoint, without a visible raw URL. Use `/alt-on` first to exercise fullscreen link-click arbitration.
-- `/clipboard-read` — request the browser-owned clipboard through xterm's OSC 52 protocol and print a bounded `AGENT LAB CLIPBOARD READ` marker.
+- `/clipboard-read` — request the renderer-owned simulated clipboard through xterm's OSC 52 protocol and print a bounded `AGENT LAB CLIPBOARD READ` marker.
 - `/spam [1-2000]` — produce bounded terminal output.
 - `/alt-on` and `/alt-off` — enter and leave xterm's alternate screen.
 - `/delay-review <milliseconds> [message]` — schedule a review hook, bounded to 30 seconds.
@@ -53,4 +53,8 @@ Interactive terminal commands:
 
 Every marker begins with `AGENT LAB`, making terminal-buffer checks deterministic. The initial marker is `AGENT LAB READY task=<id> scenario=<scenario>`.
 
-The browser wrapper records synthetic terminal input actions and surrounds each action with unified diagnostic marks. A later lab checkpoint therefore contains both the deterministic `AGENT LAB` marker evidence and the causally adjacent runtime/browser records. Keep command payloads synthetic even though they are bounded and path-aliased in the action transcript.
+## Output-processing receipts
+
+Negative lifecycle assertions must wait for processed output and observe stable state, not immediately pass on the previous Running snapshot. Historical redraw emits an inline OSC 52 query; wait for its fresh simulated clipboard receipt without typing another command or sending a work hook. Consume replies before Readline and suppress receipt text on the historical frame: echoed base64 or a marker can destroy the canonical current prompt and fabricate an interruption. Filter only replies to outstanding queries so ordinary Escape timing is unchanged. Observe bare-Escape neutrality before typing a receipt command; Readline otherwise interprets a rapidly following slash as an Alt-key sequence. Keep the subsequent current-interruption positive assertion.
+
+Use these commands only through the isolated packaged desktop lab's terminal. Retain the deterministic `AGENT LAB` marker evidence alongside the relevant runtime/renderer diagnostics. Keep all command payloads synthetic; the removed standalone browser wrapper is not an execution path.

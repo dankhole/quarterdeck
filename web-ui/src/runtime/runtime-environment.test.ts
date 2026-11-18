@@ -8,6 +8,9 @@ import {
 } from "@/runtime/runtime-environment";
 import type { DesktopBridge } from "../../../src/shared/desktop-bridge-contract";
 
+// This suite exercises the real admission boundary, not the shared renderer fixture.
+vi.unmock("@/runtime/runtime-environment");
+
 const desktopLocation = { protocol: "app:", host: "quarterdeck" };
 const desktopBridge: DesktopBridge = {
 	version: 1,
@@ -23,13 +26,6 @@ afterEach(() => {
 });
 
 describe("resolveRuntimeEnvironment", () => {
-	it.each(["http:", "https:"])("preserves the ordinary %s browser origin without a bridge", (protocol) => {
-		expect(resolveRuntimeEnvironment({ protocol, host: "example.test:4321" }, undefined)).toEqual({
-			kind: "browser",
-			runtimeOrigin: `${protocol}//example.test:4321`,
-		});
-	});
-
 	it("reads only non-secret validated desktop bootstrap metadata", () => {
 		expect(resolveRuntimeEnvironment(desktopLocation, desktopBridge)).toEqual({
 			kind: "desktop",
@@ -68,9 +64,9 @@ describe("resolveRuntimeEnvironment", () => {
 			);
 	});
 
-	it.each(["app:", "file:", "ftp:"])("rejects %s without a valid desktop bridge", (protocol) => {
+	it.each(["http:", "https:", "app:", "file:", "ftp:"])("rejects %s without a valid desktop bridge", (protocol) => {
 		expect(() => resolveRuntimeEnvironment({ protocol, host: "quarterdeck" }, undefined)).toThrow(
-			"Runtime transport requires an HTTP origin or a valid desktop bootstrap.",
+			"Desktop runtime bootstrap is invalid",
 		);
 	});
 
@@ -156,14 +152,9 @@ describe("getRuntimeWebSocketUrl", () => {
 		},
 	);
 
-	it.each([
-		["http:", "ws:"],
-		["https:", "wss:"],
-	])("keeps browser %s WebSocket behavior", (protocol, websocketProtocol) => {
+	it.each(["http:", "https:"])("rejects ordinary %s documents without a preload", (protocol) => {
 		vi.stubGlobal("window", { location: { protocol, host: "example.test:4321" } });
-		expect(getRuntimeWebSocketUrl("/api/runtime/ws").toString()).toBe(
-			`${websocketProtocol}//example.test:4321/api/runtime/ws`,
-		);
-		expect(getRuntimeEnvironment().kind).toBe("browser");
+		expect(() => getRuntimeWebSocketUrl("/api/runtime/ws")).toThrow("Desktop runtime bootstrap is invalid");
+		expect(() => getRuntimeEnvironment()).toThrow("Desktop runtime bootstrap is invalid");
 	});
 });

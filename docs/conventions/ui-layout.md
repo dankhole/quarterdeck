@@ -157,7 +157,7 @@ Named project groups are one level deep. Each project belongs to at most one gro
 
 `useProjectGroupNavigation` owns interaction state, reveal behavior, and drag coordination. `useProjectGroups` submits typed intent to `projects.organize`, with one pending mutation and a reversible optimistic projection. `project-groups.ts` owns pure grouping/drop projections. Group membership/order is runtime-owned global project-index metadata, independent of board state. Revision-checked writes use the index lock, and every project registration/removal preserves metadata and advances its revision. A coherent project list plus organization snapshot travels through the existing state stream; stale organization messages cannot roll back membership or resurrect removed project rows.
 
-Collapse state is a shared preference scoped to the stable organization ID. Each open tab keeps its own view; the runtime-owned preference seeds later visits in both browser and desktop clients. Collapsing never changes selection or stops tasks. Collapsed headers show aggregate activity and indicate when they contain the current project. An explicit project switch reveals its row; background activity does not expand groups. Project and group menus provide keyboard alternatives to drag handles. Dropping on a collapsed header appends without expanding it.
+Collapse state is a shared preference scoped to the stable organization ID. Each open tab keeps its own view; the runtime-owned preference seeds later visits in desktop windows. Collapsing never changes selection or stops tasks. Collapsed headers show aggregate activity and indicate when they contain the current project. An explicit project switch reveals its row; background activity does not expand groups. Project and group menus provide keyboard alternatives to drag handles. Dropping on a collapsed header appends without expanding it.
 
 ### Board (`task_column`)
 
@@ -195,7 +195,7 @@ There is no hidden override layer. If the sidebar auto-collapses, the sidebar hi
 
 ## Persistence
 
-Layout state starts fresh at Home + Projects on mount. Persistent panel sizes and other remembered preferences use the runtime-owned UI preference store shared by desktop and browser. Current navigation remains local. Legacy localStorage values seed missing shared preferences once a client connects; they never replace existing shared values or explicit resets.
+Layout state starts fresh at Home + Projects on mount. Persistent panel sizes and other remembered preferences use the runtime-owned UI preference store shared by desktop windows. Current navigation remains local. Legacy localStorage values seed missing shared preferences once a client connects; they never replace existing shared values or explicit resets.
 
 The storage adapter maps remembered preference keys to the shared store; the enum name does not imply browser-local ownership. Relevant `LocalStorageKey` values:
 

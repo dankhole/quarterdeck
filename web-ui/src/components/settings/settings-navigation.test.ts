@@ -28,10 +28,10 @@ const projects: RuntimeProjectSummary[] = [
 ];
 
 describe("settings navigation", () => {
-	it("groups all categories by scope and only exposes desktop preferences in the desktop", () => {
-		const browser = getSettingsNavigationGroups("Atlas", false);
-		expect(browser.map((group) => group.label)).toEqual(["All projects", "Project: Atlas", "Tools"]);
-		expect(browser[0]?.categories.map((category) => category.title)).toEqual([
+	it("groups all categories by scope including native preferences", () => {
+		const groups = getSettingsNavigationGroups("Atlas");
+		expect(groups.map((group) => group.label)).toEqual(["All projects", "Project: Atlas", "This desktop", "Tools"]);
+		expect(groups[0]?.categories.map((category) => category.title)).toEqual([
 			"Agents",
 			"Notifications",
 			"Terminal & editor",
@@ -39,8 +39,8 @@ describe("settings navigation", () => {
 			"Code navigation",
 			"Prompt shortcuts",
 		]);
-		expect(browser[1]?.categories.map((category) => category.id)).toEqual(["task-creation", "shortcuts"]);
-		expect(getSettingsNavigationGroups("Atlas", true)[2]?.categories[0]?.id).toBe("runtime-environment");
+		expect(groups[1]?.categories.map((category) => category.id)).toEqual(["task-creation", "shortcuts"]);
+		expect(getSettingsNavigationGroups("Atlas")[2]?.categories[0]?.id).toBe("runtime-environment");
 	});
 
 	it("uses the identity-matched registry entry rather than the first or current board project", () => {

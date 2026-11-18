@@ -9,7 +9,6 @@ import {
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../core/api/runtime-protocol.js";
 import { type DiscoveredRuntimeOwner, discoverRuntimeOwner } from "./runtime-ownership.js";
 
-const bootstrapResponseSchema = z.object({ generation: z.string().uuid(), bootstrapPath: z.string() }).strict();
 const enrollmentResponseSchema = z.object({ generation: z.string().uuid(), enrolled: z.literal(true) }).strict();
 const revocationResponseSchema = z.object({ generation: z.string().uuid(), revoked: z.literal(true) }).strict();
 
@@ -28,7 +27,7 @@ function ownerOrigin(descriptor: RuntimeOwnerDescriptor): string {
 	if (!endpoint || !["127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0", "::", "[::]"].includes(endpoint.host)) {
 		throw new Error("The existing runtime does not have a supported loopback endpoint.");
 	}
-	// A wildcard bind accepts local management; never use the wildcard address as a browser origin.
+	// A wildcard bind accepts local management; never use the wildcard address as a client endpoint.
 	const host =
 		endpoint.host === "0.0.0.0"
 			? "127.0.0.1"
@@ -85,8 +84,6 @@ export async function verifyRuntimeOwner(descriptor: RuntimeOwnerDescriptor, des
 		descriptor.managementProtocolVersion !== QUARTERDECK_MANAGEMENT_PROTOCOL_VERSION ||
 		descriptor.runtimeProtocolVersion !== QUARTERDECK_RUNTIME_PROTOCOL_VERSION ||
 		descriptor.capabilities.transportVersion !== 1 ||
-		!descriptor.capabilities.browserHttp ||
-		!descriptor.capabilities.browserWebSocket ||
 		(desktop &&
 			(!descriptor.capabilities.desktopProxy ||
 				descriptor.capabilities.desktopBridgeVersion !== QUARTERDECK_DESKTOP_BRIDGE_VERSION))
@@ -137,29 +134,6 @@ export async function revokeDesktopClient(descriptor: RuntimeOwnerDescriptor, cl
 		}),
 	);
 	if (result.generation !== descriptor.generation) throw new Error("Runtime generation changed during detachment.");
-}
-
-export async function createOwnerBrowserBootstrap(
-	descriptor: RuntimeOwnerDescriptor,
-	returnPath = "/",
-): Promise<string> {
-	const result = bootstrapResponseSchema.parse(
-		await ownerRequest(descriptor, "/api/management/client-bootstrap", {
-			generation: descriptor.generation,
-			kind: "browser",
-			returnPath,
-		}),
-	);
-	if (
-		result.generation !== descriptor.generation ||
-		!result.bootstrapPath.startsWith("/api/runtime/client-bootstrap?")
-	) {
-		throw new Error("Invalid browser launch response from existing runtime.");
-	}
-	const origin = ownerOrigin(descriptor);
-	const url = new URL(result.bootstrapPath, origin);
-	if (url.origin !== origin) throw new Error("Invalid browser launch origin.");
-	return url.href;
 }
 
 export async function openOwnerProject(descriptor: RuntimeOwnerDescriptor, projectPath: string): Promise<string> {

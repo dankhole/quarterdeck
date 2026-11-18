@@ -23,7 +23,6 @@ import { DesktopInstallationError, validateDesktopInstallation } from "../../src
 import { desktopApplicationBundleId } from "../../src/desktop-install/receipt.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { desktopAppRoot } from "./app-layout.js";
-import { admittedBrowserLaunch } from "./browser-launch.js";
 import { DesktopCompareWindows } from "./compare-windows.js";
 import { createDesktopDiagnostics, type DesktopDiagnostics } from "./desktop-diagnostics.js";
 import { DesktopDialogs } from "./desktop-dialogs.js";
@@ -291,9 +290,6 @@ async function launchDesktop(
 					dispatch: (command) => {
 						if (productReady()) commands?.dispatch(command);
 					},
-					openInBrowser: () => {
-						void openInBrowser();
-					},
 					showUpdateGuidance: () => {
 						void updates?.request(update?.phase === "available" ? "details" : "check");
 					},
@@ -433,14 +429,6 @@ async function launchDesktop(
 			reloading = false;
 			rebuildMenu();
 		}
-	};
-	const openInBrowser = async (): Promise<void> => {
-		const runtime = selection.get();
-		if (!runtime || !connectedProduct() || commands?.availability()?.runtimeConnected !== true) return;
-		const result = await supervisor?.control("create-browser-launch");
-		if (result?.method !== "create-browser-launch" || runtime !== selection.get() || !connectedProduct()) return;
-		const destination = admittedBrowserLaunch(result.url, runtime.origin);
-		if (destination && !launch.synthetic) await shell.openExternal(destination).catch(() => undefined);
 	};
 	const evidence = (value: RuntimeSupervisorEvidence): void => {
 		runtimeEvidence = value;
@@ -815,7 +803,7 @@ async function launchDesktop(
 		if (!url) return new Response("Forbidden", { status: 403 });
 		if (url.pathname === "/__desktop/startup" || url.pathname === "/__desktop/error")
 			return startupSurface(surface === "product" ? "starting" : surface, startupFailureCode);
-		return await proxyRuntimeRequest(request, selection);
+		return await proxyRuntimeRequest(request, selection, fetch, { syntheticLaunch: launch.synthetic });
 	});
 	ipcMain.on(DESKTOP_BOOTSTRAP_CHANNEL, (event, payload: unknown) => {
 		const sender = rendererRegistry.get(event.sender.id);

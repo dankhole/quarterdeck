@@ -5,18 +5,18 @@ import App from "@/App";
 import { AppErrorBoundary } from "@/components/app";
 import { resolveBrowserSurface } from "@/components/compare-window/compare-window-bootstrap";
 import { CompareWindowError, CompareWindowRoot } from "@/components/compare-window/compare-window-root";
-import { announceCompareWindowReady } from "@/components/compare-window/open-compare-window";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { initializeBrowserDiagnostics, recordBrowserLog } from "@/diagnostics";
-import { registerBrowserServiceWorker } from "@/service-worker-registration";
+import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import { installGlobalErrorCapture, setGlobalErrorCallback } from "@/utils/global-error-capture";
 import { createUnexpectedErrorNotifier } from "@/utils/unexpected-error-notification";
 import "@/styles/globals.css";
 
+// Reject ordinary browser documents before any runtime or renderer initialization.
+getRuntimeEnvironment();
 initializeBrowserDiagnostics();
 setGlobalErrorCallback(recordBrowserLog);
 installGlobalErrorCapture(createUnexpectedErrorNotifier());
-void registerBrowserServiceWorker();
 
 const root = document.getElementById("root");
 if (!root) {
@@ -51,5 +51,3 @@ ReactDOM.createRoot(root).render(
 		</TooltipProvider>
 	</AppErrorBoundary>,
 );
-
-if (surface.kind === "compare") announceCompareWindowReady(surface.target);

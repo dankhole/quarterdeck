@@ -1,12 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getRuntimeEnvironment } from "@/runtime/runtime-environment";
 import type { DesktopBridge } from "../../../../src/shared/desktop-bridge-contract";
 import { DESKTOP_DRAFT_SAVE_MAX_BYTES } from "../../../../src/shared/desktop-bridge-contract";
 import type { FileEditorDraft } from "./file-editor-cache";
 import { exportFileEditorDraft } from "./file-editor-draft-export";
 import { createFileEditorTab } from "./file-editor-workspace";
-
-vi.mock("@/runtime/runtime-environment", () => ({ getRuntimeEnvironment: vi.fn() }));
 
 describe("file draft export", () => {
 	const save = vi.fn<NonNullable<DesktopBridge["saveEditorDraft"]>>();
@@ -30,12 +27,6 @@ describe("file draft export", () => {
 			tab: { ...tab, value: "unsaved text" },
 		};
 		Object.defineProperty(window, "quarterdeckDesktop", { configurable: true, value: { saveEditorDraft: save } });
-		vi.mocked(getRuntimeEnvironment).mockReturnValue({
-			kind: "desktop",
-			runtimeOrigin: "http://127.0.0.1:54321",
-			runtimeGeneration: "current",
-			capabilities: { desktop: true, nativeDialogs: true, nativeNotifications: false },
-		});
 	});
 	afterEach(() => {
 		Reflect.deleteProperty(window, "quarterdeckDesktop");
@@ -63,17 +54,11 @@ describe("file draft export", () => {
 		expect(save).toHaveBeenCalledTimes(1);
 		expect(oversized.tab.value.length).toBe(DESKTOP_DRAFT_SAVE_MAX_BYTES + 1);
 	});
-	it("preserves ordinary browser Blob download and revokes its URL", async () => {
-		vi.mocked(getRuntimeEnvironment).mockReturnValue({ kind: "browser", runtimeOrigin: "https://example.test" });
-		const create = vi.fn(() => "blob:test");
-		const revoke = vi.fn();
-		vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: revoke });
+	it("never substitutes a browser download when native saving is unavailable", async () => {
+		Object.defineProperty(window, "quarterdeckDesktop", { configurable: true, value: undefined });
 		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-		expect(await exportFileEditorDraft(draft)).toBe("saved");
-		expect(click).toHaveBeenCalledTimes(1);
-		expect(create).toHaveBeenCalledTimes(1);
-		expect(revoke).toHaveBeenCalledWith("blob:test");
-		expect(save).not.toHaveBeenCalled();
-		vi.unstubAllGlobals();
+		expect(await exportFileEditorDraft(draft)).toBe("failed");
+		expect(click).not.toHaveBeenCalled();
+		expect(draft.tab.value).toBe("unsaved text");
 	});
 });

@@ -7,6 +7,24 @@ function items(template: MenuItemConstructorOptions[]): MenuItemConstructorOptio
 }
 
 describe("native menus", () => {
+	it.each(["darwin", "win32"] as const)("never offers a standalone browser action on %s", (platform) => {
+		const flattened = items(
+			desktopMenuTemplate({
+				platform,
+				appName: "Quarterdeck",
+				productReady: true,
+				runtimeConnected: true,
+				availableCommands: ["settings", "new-task", "open-project"],
+				updateGuidanceAvailable: false,
+				dispatch: vi.fn(),
+				showUpdateGuidance: vi.fn(),
+				reloadWindow: vi.fn(),
+			}),
+		);
+		expect(flattened.some((item) => item.id === "desktop.openInBrowser" || item.label === "Open in Browser")).toBe(
+			false,
+		);
+	});
 	it("shows checked availability and blocks the item during update coordination", () => {
 		const actions = {
 			appName: "Quarterdeck",
@@ -15,7 +33,6 @@ describe("native menus", () => {
 			updateGuidanceAvailable: true,
 			updateLabel: "Update available · v0.12.9…",
 			dispatch: vi.fn(),
-			openInBrowser: vi.fn(),
 			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		};
@@ -37,7 +54,6 @@ describe("native menus", () => {
 			productReady: false,
 			updateGuidanceAvailable: true,
 			dispatch: vi.fn(),
-			openInBrowser: vi.fn(),
 			showUpdateGuidance,
 			reloadWindow: vi.fn(),
 		});
@@ -60,7 +76,6 @@ describe("native menus", () => {
 			availableCommands: ["settings"],
 			updateGuidanceAvailable: false,
 			dispatch,
-			openInBrowser: vi.fn(),
 			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		});
@@ -77,7 +92,6 @@ describe("native menus", () => {
 			productReady: true,
 			updateGuidanceAvailable: false,
 			dispatch: vi.fn(),
-			openInBrowser: vi.fn(),
 			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		};
@@ -87,7 +101,7 @@ describe("native menus", () => {
 		);
 		expect(offline.find((item) => item.id === "desktop.settings")?.enabled).toBe(true);
 		expect(offline.find((item) => item.id === "desktop.newTask")?.enabled).toBe(false);
-		expect(offline.find((item) => item.id === "desktop.openInBrowser")?.enabled).toBe(false);
+		expect(offline.find((item) => item.id === "desktop.openInBrowser")).toBeUndefined();
 	});
 
 	it("keeps product actions unavailable on startup and omits unchecked reload/devtools roles", () => {
@@ -97,7 +111,6 @@ describe("native menus", () => {
 			productReady: false,
 			updateGuidanceAvailable: false,
 			dispatch: vi.fn(),
-			openInBrowser: vi.fn(),
 			showUpdateGuidance: vi.fn(),
 			reloadWindow: vi.fn(),
 		});

@@ -1,16 +1,12 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as coexistenceModule from "../../../scripts/agent-lab/desktop-browser-coexistence";
-import {
-	DesktopBrowserCoexistenceError,
-	exerciseDesktopBrowserCoexistence,
-} from "../../../scripts/agent-lab/desktop-browser-coexistence";
 import type * as compareWindowModule from "../../../scripts/agent-lab/desktop-compare-window";
 import { exerciseDesktopCompareWindow } from "../../../scripts/agent-lab/desktop-compare-window";
 import { type DesktopLabFixture, prepareDesktopLabFixture } from "../../../scripts/agent-lab/desktop-fixture";
 import { exerciseDesktopMainLoss } from "../../../scripts/agent-lab/desktop-main-loss-scenario";
+import { exercisePackagedDesktopPerformance } from "../../../scripts/agent-lab/desktop-performance-run";
 import {
 	exerciseDesktopRendererRecovery,
 	openDesktopPrimaryProject,
@@ -33,6 +29,7 @@ const mocks = vi.hoisted(() => {
 		focus = vi.fn(async () => {});
 		isVisible = vi.fn(async () => false);
 		getAttribute = vi.fn(async () => "task-one");
+		evaluateAll = vi.fn(async () => ["task-one"]);
 		first() {
 			return this;
 		}
@@ -68,7 +65,7 @@ const mocks = vi.hoisted(() => {
 			}),
 		},
 	};
-	return { page, driver };
+	return { page, driver, locator };
 });
 
 vi.mock("../../../scripts/agent-lab/desktop-driver", () => ({
@@ -87,6 +84,9 @@ vi.mock("../../../scripts/agent-lab/desktop-renderer-recovery", () => ({
 	exerciseDesktopRendererRecovery: vi.fn(),
 }));
 vi.mock("../../../scripts/agent-lab/desktop-main-loss-scenario", () => ({ exerciseDesktopMainLoss: vi.fn() }));
+vi.mock("../../../scripts/agent-lab/desktop-performance-run", () => ({
+	exercisePackagedDesktopPerformance: vi.fn(async () => {}),
+}));
 vi.mock("../../../scripts/agent-lab/desktop-session-recovery", async (importOriginal) => ({
 	...(await importOriginal<typeof recoveryModule>()),
 	prepareDesktopSessionRecovery: vi.fn(),
@@ -95,10 +95,6 @@ vi.mock("../../../scripts/agent-lab/desktop-session-recovery", async (importOrig
 vi.mock("../../../scripts/agent-lab/desktop-second-launch", async (importOriginal) => ({
 	...(await importOriginal<typeof secondLaunchModule>()),
 	proveDesktopSecondLaunch: vi.fn(),
-}));
-vi.mock("../../../scripts/agent-lab/desktop-browser-coexistence", async (importOriginal) => ({
-	...(await importOriginal<typeof coexistenceModule>()),
-	exerciseDesktopBrowserCoexistence: vi.fn(),
 }));
 vi.mock("../../../scripts/agent-lab/desktop-session-evidence", () => ({
 	readDesktopTaskSession: vi.fn(async () => ({})),
@@ -167,115 +163,49 @@ async function createFixture(): Promise<DesktopLabFixture> {
 	};
 }
 
-describe.skipIf(process.platform !== "darwin")("exclusive packaged performance routing", () => {
+describe.skipIf(process.platform !== "darwin")("packaged scenario routing", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		mocks.locator.evaluateAll.mockResolvedValueOnce([]);
 		fixture = await createFixture();
 		vi.mocked(prepareDesktopLabFixture).mockResolvedValue(fixture);
-		vi.mocked(exerciseDesktopBrowserCoexistence).mockResolvedValue({
-			owner: {
-				pid: 50002,
-				creationIdentity: "synthetic-helper-birth",
-				generation: "generation",
-				origin: "http://127.0.0.1:12345",
-			},
-			browserSession: "named-browser",
-			before: {
-				revision: 1,
-				boardDigest: "board",
-				taskId: "task-one",
-				columnId: "review",
-				sessionInstanceId: "pty",
-				providerSessionId: "fake-session",
-				pid: 50003,
-				state: "awaiting_review",
-				viewportRows: 30,
-			},
-			checkpoints: [],
-			cleanupConfirmed: true,
-			performance: undefined,
-		});
 	});
 	afterEach(async () => {
 		await rm(fixture.config.tempRoot, { recursive: true, force: true });
 	});
 
-	it("runs initial readiness, fake seed and paired measurement then normal owner cleanup without loss/reload/second launch", async () => {
+	it("routes performance without crash/reload, second launch or main loss", async () => {
 		await runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true });
-		expect(mocks.driver.launch).toHaveBeenCalledOnce();
-		expect(mocks.driver.markReady).toHaveBeenCalledOnce();
-		expect(exerciseDesktopBrowserCoexistence).toHaveBeenCalledOnce();
-		const [, passedFixture, taskId, options] = vi.mocked(exerciseDesktopBrowserCoexistence).mock.calls[0] ?? [];
-		expect(passedFixture).toBe(fixture);
-		expect(taskId).toBe("task-one");
-		expect(options?.performance).toEqual({ readAdmittedDesktop: expect.any(Function) });
-		expect(mocks.driver.sockets.assertTraffic).toHaveBeenCalledOnce();
-		expect(mocks.driver.inspect.mock.calls.at(-1)).toEqual(["completed"]);
-		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(undefined);
-		expect(mocks.driver.stop.mock.invocationCallOrder[0]).toBeGreaterThan(
-			mocks.driver.inspect.mock.invocationCallOrder.at(-1) ?? 0,
+		expect(exercisePackagedDesktopPerformance).toHaveBeenCalledExactlyOnceWith(
+			mocks.page,
+			expect.objectContaining({ fixture }),
+			"task-one",
 		);
-		expect(mocks.driver.app.evaluate).not.toHaveBeenCalled();
-		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
 		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
+		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
 		expect(exerciseDesktopMainLoss).not.toHaveBeenCalled();
-		expect(mocks.page.keyboard.press.mock.calls.every(([key]) => key === "Enter")).toBe(true);
-		expect(await options?.performance?.readAdmittedDesktop()).toBe(fixture.manifest.processes);
+		expect(mocks.driver.app.evaluate).not.toHaveBeenCalled();
+		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(undefined);
 	});
-
-	it.each([true, false])(
-		"preserves browser cleanup=%s failure ownership through normal stop",
-		async (cleanupConfirmed) => {
-			const error = new DesktopBrowserCoexistenceError(
-				"named-browser",
-				{
-					pid: 50002,
-					creationIdentity: "synthetic-helper-birth",
-					generation: "generation",
-					origin: "http://127.0.0.1:12345",
-				},
-				cleanupConfirmed,
-				"open_browser",
-				{
-					outcome: "exit",
-					exitCode: 1,
-					signal: null,
-					reason: "socket_path_too_long",
-					osErrorCode: "ENAMETOOLONG",
-				},
-			);
-			vi.mocked(exerciseDesktopBrowserCoexistence).mockRejectedValueOnce(error);
-			await expect(runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true })).rejects.toThrow(
-				"Desktop evidence:",
-			);
-			expect(fixture.keepTemp).toBe(!cleanupConfirmed);
-			expect(
-				JSON.parse(await readFile(join(fixture.manifest.artifactDir, "browser-coexistence-failure.json"), "utf8")),
-			).toMatchObject({ failureStage: "open_browser", cleanupConfirmed, startupFailure: error.startupFailure });
-			expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(error);
-			expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
-			expect(mocks.driver.app.evaluate).not.toHaveBeenCalled();
-		},
-	);
-
 	it.each([
-		{ includeAgent: false },
+		{ notifications: true },
+		{ compareWindow: true },
+		{ mainLoss: true },
+		{ nativeExperience: true },
+		{ manualShells: true },
+		{ npmLaunch: true },
+		{ sessionRecovery: true },
 		{ showWindow: true },
+		{ includeAgent: false },
 		{ agentMode: "real-codex" as const },
 		{ agentMode: "real-claude" as const },
-		{ npmLaunch: true },
-		{ manualShells: true },
-		{ nativeExperience: true },
-		{ mainLoss: true },
-		{ sessionRecovery: true },
-	])("rejects conflicting performance options before fixture or app launch: %j", async (options) => {
+	])("rejects conflicting performance selection before fixture preparation: %j", async (conflict) => {
 		await expect(
-			runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true, ...options }),
-		).rejects.toThrow(/performance|no other scenario/);
+			runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true, ...conflict }),
+		).rejects.toThrow();
 		expect(prepareDesktopLabFixture).not.toHaveBeenCalled();
 		expect(mocks.driver.launch).not.toHaveBeenCalled();
 	});
-
 	it.each([
 		{},
 		{ includeAgent: true },
@@ -314,7 +244,6 @@ describe.skipIf(process.platform !== "darwin")("exclusive packaged performance r
 		expect(openDesktopPrimaryProject).not.toHaveBeenCalled();
 		expect(mocks.page.getByRole).not.toHaveBeenCalled();
 		expect(mocks.page.keyboard.press).not.toHaveBeenCalled();
-		expect(exerciseDesktopBrowserCoexistence).not.toHaveBeenCalled();
 		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
 		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
 		expect(exerciseDesktopMainLoss).not.toHaveBeenCalled();
@@ -329,7 +258,6 @@ describe.skipIf(process.platform !== "darwin")("exclusive packaged performance r
 		expect(mocks.driver.markReady).toHaveBeenCalledOnce();
 		expect(mocks.driver.inspect.mock.calls).toEqual([["ready"], ["completed"]]);
 		expect(mocks.driver.stop).toHaveBeenCalledExactlyOnceWith(undefined);
-		expect(exerciseDesktopBrowserCoexistence).not.toHaveBeenCalled();
 		expect(proveDesktopSecondLaunch).not.toHaveBeenCalled();
 		expect(exerciseDesktopRendererRecovery).not.toHaveBeenCalled();
 		expect(exerciseDesktopMainLoss).not.toHaveBeenCalled();

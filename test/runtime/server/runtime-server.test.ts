@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import * as http from "node:http";
 
@@ -140,6 +141,92 @@ describe("runtime server composition", () => {
 		vi.restoreAllMocks();
 		vi.useRealTimers();
 		setQuarterdeckRuntimePort(configuredPort);
+	});
+
+	it("serves Electron renderer HTML only after explicit desktop admission", async () => {
+		stubRuntimeBoundaries();
+		const { deps } = createDependencies();
+		const generation = randomUUID();
+		const token = "a".repeat(43);
+		deps.clientAccess = new RuntimeClientAccess({
+			generation,
+			management: {
+				getPublicDescriptor: () => ({
+					version: 1,
+					generation,
+					canonicalStateHome: "/synthetic/quarterdeck",
+					process: { pid: process.pid, creationIdentity: "synthetic" },
+					status: "ready",
+					endpoint: { host: "127.0.0.1", port: 9999 },
+					quarterdeckVersion: "test",
+					runtimeProtocolVersion: 13,
+					managementProtocolVersion: 1,
+					capabilities: { transportVersion: 1, desktopProxy: true, desktopBridgeVersion: 1 },
+					startedAt: new Date().toISOString(),
+					readyAt: new Date().toISOString(),
+				}),
+				verifyManagementToken: () => false,
+			},
+		});
+		deps.clientAccess.registerDesktopClient(token);
+		const server = await createRuntimeServer(deps);
+		try {
+			const handler = vi.mocked(http.createServer).mock.calls[0]?.[0] as http.RequestListener;
+			const headers: Record<string, string>[] = [
+				{},
+				{ origin: "app://quarterdeck", "x-quarterdeck-desktop-token": token },
+			];
+			for (const clientHeaders of headers) {
+				const request = Object.assign(new EventEmitter(), {
+					method: "GET",
+					url: "/",
+					headers: { host: "127.0.0.1:9999", ...clientHeaders },
+					socket: { remoteAddress: "127.0.0.1" },
+				});
+				const response = Object.assign(new EventEmitter(), {
+					setHeader: vi.fn(),
+					writeHead: vi.fn(),
+					end: vi.fn(),
+				});
+				await handler(request as unknown as http.IncomingMessage, response as unknown as http.ServerResponse);
+				if (clientHeaders.origin) {
+					expect(response.writeHead).toHaveBeenCalledWith(
+						200,
+						expect.objectContaining({ "Content-Type": "text/html; charset=utf-8" }),
+					);
+					expect(String(response.end.mock.calls[0]?.[0])).toMatch(/<html/i);
+				} else expect(response.writeHead).toHaveBeenCalledWith(401, expect.anything());
+			}
+		} finally {
+			await server.close();
+		}
+	});
+
+	it.each([
+		"/api/trpc/projects.list",
+		"/",
+		"/index.html",
+		"/assets/main.js",
+		"/api/runtime/client-bootstrap?capability=removed",
+	])("fails closed for %s when a source/test caller omits client admission", async (url) => {
+		stubRuntimeBoundaries();
+		const { deps } = createDependencies();
+		const server = await createRuntimeServer(deps);
+		try {
+			const handler = vi.mocked(http.createServer).mock.calls[0]?.[0] as http.RequestListener;
+			const request = Object.assign(new EventEmitter(), {
+				method: "GET",
+				url,
+				headers: { host: "127.0.0.1:9999", cookie: "quarterdeck_client_legacy=removed" },
+				socket: { remoteAddress: "127.0.0.1" },
+			});
+			const response = Object.assign(new EventEmitter(), { setHeader: vi.fn(), writeHead: vi.fn(), end: vi.fn() });
+			await handler(request as unknown as http.IncomingMessage, response as unknown as http.ServerResponse);
+			expect(response.writeHead).toHaveBeenCalledWith(401, expect.anything());
+			expect(response.end).toHaveBeenCalledWith(expect.stringContaining("QUARTERDECK_CLIENT_ACCESS_REQUIRED"));
+		} finally {
+			await server.close();
+		}
 	});
 
 	it("publishes the actual ephemeral listener port before readiness", async () => {

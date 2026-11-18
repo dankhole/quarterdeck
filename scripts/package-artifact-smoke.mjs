@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,12 +7,9 @@ import { parseArgs } from "node:util";
 
 import { validateBuildManifest } from "./build-manifest.mjs";
 import { resolveNpmCommand } from "./npm-command.mjs";
-import { fetchInstalledApplication, readInstalledBrowserBootstrap } from "./package-smoke-client.mjs";
 import { createPackageSmokeEnvironment } from "./package-smoke-environment.mjs";
-import { terminateProcessTree } from "./process-tree.mjs";
 
 const START_TIMEOUT_MS = 15_000;
-const STOP_TIMEOUT_MS = 10_000;
 
 function runNpm(args, cwd, env, captureOutput = false) {
 	const invocation = resolveNpmCommand(args, { env });
@@ -29,82 +26,6 @@ function runNpm(args, cwd, env, captureOutput = false) {
 		throw new Error(`npm ${args.join(" ")} failed with exit code ${result.status ?? "unknown"}.${stderr}`);
 	}
 	return captureOutput ? String(result.stdout) : "";
-}
-
-/** Last stderr lines with URL queries, long tokens, and quoted values removed. */
-function redactStartupDiagnostics(text) {
-	return text
-		.split(/\r?\n/)
-		.filter((line) => line.trim().length > 0)
-		.slice(-12)
-		.map((line) =>
-			line
-				.replace(/\?[^\s"']*/g, "?<redacted>")
-				.replace(/[A-Za-z0-9+/_=-]{24,}/g, "<redacted>")
-				.slice(0, 300),
-		)
-		.join("\n");
-}
-
-function waitForStart(child) {
-	return new Promise((resolveStart, rejectStart) => {
-		let stdout = "";
-		let settled = false;
-		const timeout = setTimeout(() => {
-			if (settled) return;
-			settled = true;
-			rejectStart(new Error("Timed out launching installed CLI."));
-		}, START_TIMEOUT_MS);
-		const inspect = (chunk) => {
-			stdout = (stdout + String(chunk)).slice(-64 * 1024);
-			const runtimeUrl = readInstalledBrowserBootstrap(stdout);
-			if (settled || !runtimeUrl) return;
-			settled = true;
-			clearTimeout(timeout);
-			resolveStart(runtimeUrl);
-		};
-		child.stdout?.on("data", inspect);
-		// Keep only a bounded stderr tail for early-exit evidence; it is redacted
-		// before printing so startup capabilities and credentials never appear.
-		let stderrTail = "";
-		child.stderr?.on("data", (chunk) => {
-			stderrTail = (stderrTail + String(chunk)).slice(-8 * 1024);
-		});
-		child.once("error", () => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeout);
-			rejectStart(new Error("Installed CLI process could not be launched."));
-		});
-		child.once("exit", (code, signal) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeout);
-			const evidence = redactStartupDiagnostics(stderrTail);
-			rejectStart(
-				new Error(
-					`Installed CLI exited before startup (code=${String(code)} signal=${String(signal)}).${
-						evidence ? `\nRedacted stderr tail:\n${evidence}` : ""
-					}`,
-				),
-			);
-		});
-	});
-}
-
-function waitForExit(child) {
-	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
-	return new Promise((resolveExit) => {
-		const timeout = setTimeout(() => {
-			child.removeListener("exit", handleExit);
-			resolveExit(false);
-		}, STOP_TIMEOUT_MS);
-		const handleExit = () => {
-			clearTimeout(timeout);
-			resolveExit(true);
-		};
-		child.once("exit", handleExit);
-	});
 }
 
 function resolveInstalledCli(installRoot) {
@@ -168,15 +89,14 @@ const smokeRoot = mkdtempSync(join(tmpdir(), "quarterdeck-package-smoke-"));
 const artifactRoot = join(smokeRoot, "artifact");
 const installRoot = join(smokeRoot, "install");
 const projectRoot = join(smokeRoot, "project");
-// A consumer-default install must not inherit the maintainer's script policy,
-// npm configuration, app admission, launch settings, or Node execution overrides.
+// Never run the package desktop install hook, even on a desktop-capable host.
+// Only the isolated native PTY dependency is rebuilt explicitly below.
 const smokeEnv = createPackageSmokeEnvironment(
 	process.env,
 	smokeRoot,
 	values["npm-cache"] === undefined ? undefined : resolve(values["npm-cache"]),
 );
 smokeEnv.npm_config_prefix = installRoot;
-let child;
 let retainSmokeRoot = false;
 
 try {
@@ -197,10 +117,10 @@ try {
 	const tarballPath = join(artifactRoot, filename);
 	const tarballSha256 = createHash("sha256").update(readFileSync(tarballPath)).digest("hex");
 	console.log(
-		`Artifact ${filename} SHA-256 ${tarballSha256}; Node ${process.version}; npm ${runNpm(["--version"], repoRoot, smokeEnv, true).trim()}; default isolated npm script policy and browser/CLI installation mode.`,
+		`Artifact ${filename} SHA-256 ${tarballSha256}; Node ${process.version}; npm ${runNpm(["--version"], repoRoot, smokeEnv, true).trim()}; isolated --ignore-scripts installation with explicit node-pty rebuild.`,
 	);
 	runNpm(
-		["install", "--global", "--prefix", installRoot, "--package-lock=false", "--foreground-scripts", tarballPath],
+		["install", "--global", "--prefix", installRoot, "--package-lock=false", "--ignore-scripts", tarballPath],
 		repoRoot,
 		smokeEnv,
 	);
@@ -211,6 +131,7 @@ try {
 
 	const installedCli = resolveInstalledCli(installRoot);
 	const installedBin = resolveInstalledBin(installRoot);
+	runNpm(["rebuild", "node-pty", "--ignore-scripts=false", "--foreground-scripts"], resolve(installedCli, "..", ".."), smokeEnv);
 	const installedIdentity = validateBuildManifest(JSON.parse(readFileSync(join(resolve(installedCli, "..", ".."), "dist", "build-manifest.json"), "utf8")));
 	if (JSON.stringify(installedIdentity) !== JSON.stringify(builtIdentity) || !readFileSync(installedCli, "utf8").includes(installedIdentity.buildId)) {
 		throw new Error("The packed npm manifest and CLI do not match the exact paired source build.");
@@ -242,7 +163,7 @@ try {
 			.filter(Boolean)
 			.join("\n");
 		throw new Error(
-			`The default isolated npm install did not finish its native PTY probe successfully. Check npm's blocked-script report and the installed node-pty assets; if script approval is required, approve only node-pty for the consumer's npm version and repeat this gate. The smoke test never automatically approves or bypasses lifecycle policy.\n${diagnostics}`,
+			`The isolated package native PTY probe did not finish successfully after the explicit node-pty rebuild. Check the installed native assets; Quarterdeck desktop lifecycle hooks were deliberately not executed.\n${diagnostics}`,
 		);
 	}
 	console.log(ptyResult.stdout.trim());
@@ -259,40 +180,26 @@ try {
 		);
 	}
 
-	child = spawn(process.execPath, [installedCli, "--browser", "--no-open", "--no-native-ui", "--port", "auto"], {
-		cwd: projectRoot,
-		env: smokeEnv,
-		stdio: ["pipe", "pipe", "pipe"],
-		detached: process.platform !== "win32",
-		windowsHide: true,
-	});
-	const runtimeUrl = await waitForStart(child);
-	await fetchInstalledApplication(runtimeUrl, { timeoutMs: START_TIMEOUT_MS });
-	child.stdin?.end();
-	if (!(await waitForExit(child))) {
-		if (child.pid != null) terminateProcessTree(child.pid, "SIGKILL");
-		await waitForExit(child);
-		throw new Error("Installed CLI did not exit after its parent-disconnect shutdown request.");
+	retainSmokeRoot = true;
+	const runtimeResult = spawnSync(process.execPath,
+		["--import", import.meta.resolve("tsx"), join(repoRoot, "scripts", "package-smoke-runtime.ts"), installedCli],
+		{ cwd: projectRoot, env: { ...smokeEnv, QUARTERDECK_AGENT_LAB: "1" }, encoding: "utf8", windowsHide: true });
+	retainSmokeRoot = !runtimeResult.stdout?.split(/\r?\n/u).includes("Installed runtime cleanup confirmed.");
+	if (runtimeResult.error || runtimeResult.status !== 0 || retainSmokeRoot) {
+		// The helper emits only fixed diagnostics or locally authored safe failures,
+		// never runtime stdout, private transport errors, or descriptor credentials.
+		if (runtimeResult.stdout) process.stderr.write(runtimeResult.stdout);
+		if (runtimeResult.stderr) process.stderr.write(runtimeResult.stderr);
+		throw new Error("Packed internal-runtime admission or cleanup failed; synthetic fixture retained when cleanup is unconfirmed.");
 	}
-	const expectedExitCode = process.platform === "win32" ? 143 : 129;
-	if (child.exitCode !== expectedExitCode) {
-		throw new Error(
-			`Installed CLI exited with ${String(child.exitCode)} instead of the graceful code ${expectedExitCode}.`,
-		);
-	}
-	console.log(
-		`quarterdeck package artifact ${filename} excludes desktop dependencies, installed under default npm policy, passed native PTY input/output/exit, authenticated, served the UI, and stopped cleanly`,
-	);
+	console.log(runtimeResult.stdout.trim());
+	console.log(`quarterdeck package artifact ${filename} preserves exact identity, installed native PTY, management/desktop admission and graceful cleanup; no desktop installation was attempted.`);
 } catch (error) {
-	if (child && child.exitCode === null && child.signalCode === null) {
-		if (child.pid != null) terminateProcessTree(child.pid, "SIGKILL");
-		await waitForExit(child);
-	}
 	console.error(error instanceof Error ? error.message : String(error));
 	process.exitCode = 1;
 } finally {
 	if (retainSmokeRoot) {
-		console.error(`PTY cleanup could not be confirmed; retained isolated fixture ${smokeRoot}.`);
+		console.error(`Owned process cleanup could not be confirmed; retained isolated fixture ${smokeRoot}.`);
 	} else {
 		rmSync(smokeRoot, { recursive: true, force: true, maxRetries: 15, retryDelay: 300 });
 		console.log(`Removed isolated package fixture ${smokeRoot}.`);

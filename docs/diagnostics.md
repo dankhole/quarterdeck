@@ -1,6 +1,6 @@
 # Unified Diagnostics Contract
 
-Quarterdeck has one diagnostics system for runtime, native desktop, browser, terminal, and isolated Agent Lab evidence. The system is designed for post-incident investigation: its lightweight recorder starts automatically, so a newly started agent can inspect recent behavior without asking the user to reproduce the problem after enabling logs.
+Quarterdeck has one diagnostics system for runtime, native desktop, renderer, terminal, and isolated Agent Lab evidence. Existing `browser` record names, bundle paths and the `--request-browser` flag refer to the web renderer inside Electron; they remain part of the diagnostics contract, not standalone browser product support. The system is designed for post-incident investigation: its lightweight recorder starts automatically, so a newly started agent can inspect recent behavior without asking the user to reproduce the problem after enabling logs.
 
 For commands and operator workflow, see [Unified diagnostics](../DEVELOPMENT.md#unified-diagnostics). For deterministic UI and lifecycle testing, see [Agent functional testing](./agent-functional-testing.md). The completed design plan and migration record are retained in [history](./history/agent-diagnostics-plan.md).
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type LaunchEnvironment, resolveLaunchPolicy, supportsDesktopHost } from "../../src/launch-policy.js";
+import {
+	type LaunchEnvironment,
+	resolveInternalRuntimeHost,
+	resolveLaunchPolicy,
+	supportsDesktopHost,
+} from "../../src/launch-policy.js";
 
 const mac: LaunchEnvironment = {
 	platform: "darwin",
@@ -7,42 +12,34 @@ const mac: LaunchEnvironment = {
 	osRelease: "25.0.0",
 	graphicalSession: true,
 	desktopHelper: false,
-	desktopDefault: false,
+	internalRuntimeAllowed: false,
 };
-const plain = { runtimeFlags: false, noOpen: false };
+const plain = { runtimeFlags: false };
 
-describe("CLI launch policy", () => {
-	it("defaults to browser mode on supported graphical Macs without requiring an installed app", () => {
-		expect(resolveLaunchPolicy(plain, mac)).toEqual({ mode: "runtime", openBrowser: true });
+describe("desktop-only CLI launch policy", () => {
+	it.each([undefined, null, "", "127.0.0.1", " 127.0.0.1 "])(
+		"binds internal runtime host %s to literal loopback",
+		(host) => {
+			expect(resolveInternalRuntimeHost(host)).toBe("127.0.0.1");
+		},
+	);
+	it.each(["0.0.0.0", "::", "::1", "localhost", "127.0.0.2", "192.168.1.10", "example.com"])(
+		"rejects unsupported internal bind %s",
+		(host) => {
+			expect(() => resolveInternalRuntimeHost(host)).toThrow("bind only to 127.0.0.1");
+		},
+	);
+	it("always selects installed desktop validation for a supported GUI host", () => {
+		expect(resolveLaunchPolicy(plain, mac)).toEqual({ mode: "desktop" });
+		expect(resolveLaunchPolicy({ ...plain, desktop: true }, mac)).toEqual({ mode: "desktop" });
 	});
-	it("defaults desktop-capable global GUI installs to desktop without repairing or falling back", () => {
-		expect(resolveLaunchPolicy(plain, { ...mac, desktopDefault: true })).toEqual({
-			mode: "desktop",
-			openBrowser: false,
-		});
+	it("never treats runtime tuning flags as launch authority", () => {
+		expect(() => resolveLaunchPolicy({ runtimeFlags: true }, { ...mac, internalRuntimeAllowed: true })).toThrow(
+			"require an explicitly authorized",
+		);
 	});
-	it("opens the native app for an explicit desktop launch even in a browser-only release", () => {
-		expect(resolveLaunchPolicy({ ...plain, desktop: true }, mac)).toEqual({ mode: "desktop", openBrowser: false });
-	});
-	it("retains explicit browser and runtime flag paths", () => {
-		const desktopMac = { ...mac, desktopDefault: true };
-		expect(resolveLaunchPolicy({ ...plain, browser: true }, desktopMac)).toEqual({
-			mode: "runtime",
-			openBrowser: true,
-		});
-		expect(resolveLaunchPolicy({ ...plain, runtimeFlags: true }, desktopMac)).toEqual({
-			mode: "runtime",
-			openBrowser: true,
-		});
-		expect(resolveLaunchPolicy({ ...plain, noOpen: true }, desktopMac)).toEqual({
-			mode: "runtime",
-			openBrowser: false,
-		});
-	});
-	it("defaults to a headless runtime and explains explicit desktop requests", () => {
-		const headless = { ...mac, graphicalSession: false, desktopDefault: true };
-		expect(resolveLaunchPolicy(plain, headless)).toEqual({ mode: "runtime", openBrowser: false });
-		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, headless)).toThrow("graphical session");
+	it("rejects a headless ordinary launch instead of creating a browser runtime", () => {
+		expect(() => resolveLaunchPolicy(plain, { ...mac, graphicalSession: false })).toThrow("local graphical session");
 	});
 	it.each([
 		{ platform: "linux" },
@@ -50,31 +47,31 @@ describe("CLI launch policy", () => {
 		{ arch: "ia32" },
 		{ osRelease: "21.6.0" },
 		{ osRelease: "unknown" },
-	])("retains browser/runtime on unsupported hosts %j", (override) => {
-		const host = { ...mac, desktopDefault: true, ...override };
+	])("rejects unsupported product hosts %j", (override) => {
+		const host = { ...mac, ...override };
 		expect(supportsDesktopHost(host)).toBe(false);
-		expect(resolveLaunchPolicy(plain, host).mode).toBe("runtime");
-		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, host)).toThrow("macOS 13");
+		expect(() => resolveLaunchPolicy(plain, host)).toThrow("macOS 13+");
 	});
-	it.each(["x64", "arm64"])("supports explicit and eligible default Windows launches on %s", (arch) => {
-		const host = { ...mac, platform: "win32", arch, osRelease: "10.0.26100", desktopDefault: true };
-		expect(supportsDesktopHost(host)).toBe(true);
-		expect(resolveLaunchPolicy(plain, host).mode).toBe("desktop");
-		expect(resolveLaunchPolicy({ ...plain, desktop: true }, host).mode).toBe("desktop");
-		expect(resolveLaunchPolicy({ ...plain, browser: true }, host).mode).toBe("runtime");
+	it.each(["x64", "arm64"])("supports Windows desktop on %s", (arch) => {
+		expect(resolveLaunchPolicy(plain, { ...mac, platform: "win32", arch, osRelease: "10.0.26100" }).mode).toBe(
+			"desktop",
+		);
 	});
-	it.each(["darwin", "linux", "win32"])("never recurses from a desktop runtime helper on %s", (platform) => {
-		const helper = { ...mac, platform, desktopHelper: true, desktopDefault: true };
-		expect(resolveLaunchPolicy(plain, helper)).toEqual({
-			mode: "runtime",
-			openBrowser: false,
-		});
-		expect(() => resolveLaunchPolicy({ ...plain, desktop: true }, helper)).toThrow("helper");
+	it("requires both explicit internal intent and a development/lab allowance", () => {
+		expect(() => resolveLaunchPolicy({ ...plain, internalRuntime: true }, mac)).toThrow("restricted");
+		expect(
+			resolveLaunchPolicy(
+				{ runtimeFlags: true, internalRuntime: true },
+				{ ...mac, platform: "linux", graphicalSession: false, internalRuntimeAllowed: true },
+			),
+		).toEqual({ mode: "runtime" });
 	});
-	it("rejects explicit desktop conflicts", () => {
-		expect(() => resolveLaunchPolicy({ ...plain, desktop: true, runtimeFlags: true }, mac)).toThrow(
+	it("requires the explicit internal flag for desktop helpers and never recurses", () => {
+		const helper = { ...mac, desktopHelper: true };
+		expect(() => resolveLaunchPolicy(plain, helper)).toThrow("requires --internal-runtime");
+		expect(resolveLaunchPolicy({ ...plain, internalRuntime: true }, helper)).toEqual({ mode: "runtime" });
+		expect(() => resolveLaunchPolicy({ ...plain, desktop: true, internalRuntime: true }, helper)).toThrow(
 			"cannot be combined",
 		);
-		expect(() => resolveLaunchPolicy({ ...plain, desktop: true, browser: true }, mac)).toThrow("cannot be combined");
 	});
 });

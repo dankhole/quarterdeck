@@ -25,9 +25,7 @@ jobs:
       tag: ${{ steps.resolve_tag.outputs.tag }}
       sha: ${{ steps.resolve_tag.outputs.sha }}
       desktop_public: ${{ steps.desktop_state.outputs.public }}
-      desktop_enabled: ${{ steps.desktop_capability.outputs.desktop_mode != 'none' }}
       desktop_mode: ${{ steps.desktop_capability.outputs.desktop_mode }}
-      windows_enabled: ${{ steps.desktop_capability.outputs.windows_enabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -69,15 +67,14 @@ jobs:
           import { execFileSync } from 'node:child_process';
           import { appendFileSync } from 'node:fs';
           const metadata = JSON.parse(execFileSync('git', ['show', `${process.env.SOURCE_SHA}:package.json`], { encoding: 'utf8' }));
-          const capability = metadata.quarterdeck?.desktopRelease ?? 'browser-only';
-          if (!['browser-only', 'adhoc-v1', 'signed-v1'].includes(capability)) throw new Error('Unknown desktop release capability.');
+          const capability = metadata.quarterdeck?.desktopRelease;
+          if (!['adhoc-v1', 'signed-v1'].includes(capability)) throw new Error('Desktop-only releases require an explicit adhoc-v1 or signed-v1 capability.');
           if (capability === 'signed-v1' && process.env.DESKTOP_RELEASES !== '1') {
             throw new Error('Desktop-default npm packages require the enabled signed desktop publication lane.');
           }
-          const desktopMode = capability === 'adhoc-v1' ? 'ad-hoc' : process.env.DESKTOP_RELEASES === '1' ? 'signed' : 'none';
-          const windowsCapability = metadata.quarterdeck?.windowsDesktopRelease ?? 'browser-only';
-          if (!['browser-only','unsigned-v1'].includes(windowsCapability)) throw new Error('Unknown Windows desktop release capability.');
-          if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `windows_enabled=${windowsCapability === 'unsigned-v1'}\n`);
+          const desktopMode = capability === 'adhoc-v1' ? 'ad-hoc' : 'signed';
+          const windowsCapability = metadata.quarterdeck?.windowsDesktopRelease;
+          if (windowsCapability !== 'unsigned-v1') throw new Error('Desktop-only releases require the explicit unsigned-v1 Windows capability.');
           if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `desktop_mode=${desktopMode}\n`);
           NODE
       - name: Inspect immutable public release before rebuilding
@@ -121,7 +118,7 @@ jobs:
 
   desktop-windows:
     needs: [resolve, test]
-    if: ${{ needs.resolve.outputs.windows_enabled == 'true' && needs.resolve.outputs.desktop_public != 'true' }}
+    if: ${{ needs.resolve.outputs.desktop_public != 'true' }}
     uses: ./.github/workflows/desktop-windows-release.yml
     with:
       source_sha: ${{ needs.resolve.outputs.sha }}
@@ -129,7 +126,7 @@ jobs:
   desktop-assets:
     name: Publish release and verify expected public desktop assets
     needs: [resolve, test, desktop, desktop-adhoc, desktop-windows]
-    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (needs.desktop-adhoc.result == 'success' || needs.desktop-adhoc.result == 'skipped') && (needs.desktop-windows.result == 'success' || needs.desktop-windows.result == 'skipped') && (needs.resolve.outputs.windows_enabled != 'true' || needs.resolve.outputs.desktop_public == 'true' || needs.desktop-windows.result == 'success') && (needs.resolve.outputs.desktop_mode == 'none' || needs.resolve.outputs.desktop_public == 'true' || needs.desktop.result == 'success' || needs.desktop-adhoc.result == 'success') }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.test.result == 'success' && (needs.resolve.outputs.desktop_public == 'true' || (needs.desktop-windows.result == 'success' && ((needs.resolve.outputs.desktop_mode == 'signed' && needs.desktop.result == 'success') || (needs.resolve.outputs.desktop_mode == 'ad-hoc' && needs.desktop-adhoc.result == 'success')))) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -155,31 +152,28 @@ jobs:
           path: desktop-release-assets
           merge-multiple: true
       - uses: actions/download-artifact@v8
-        if: ${{ needs.resolve.outputs.windows_enabled == 'true' && needs.resolve.outputs.desktop_public != 'true' }}
+        if: ${{ needs.resolve.outputs.desktop_public != 'true' }}
         with:
           pattern: desktop-windows-*
           path: desktop-release-assets
           merge-multiple: true
-      - name: Publish generated notes and optional verified assets, or reuse the public release
+      - name: Publish generated notes and required desktop assets, or reuse the public release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
           DESKTOP_MODE: ${{ needs.resolve.outputs.desktop_mode }}
-          WINDOWS_DESKTOP: ${{ needs.resolve.outputs.windows_enabled }}
         run: |
           version=$(node -p "require('./package.json').version")
           desktop_version=$(node -p "require('./desktop/package.json').version")
           [[ "$TAG" == "v$version" && "$version" == "$desktop_version" ]] || { echo "Product tag/version mismatch"; exit 1; }
           desktop_args=()
           case "$DESKTOP_MODE" in
-            ad-hoc) desktop_args+=(--desktop --distribution ad-hoc) ;;
-            signed) desktop_args+=(--desktop --distribution signed-notarized) ;;
-            none) ;;
+            ad-hoc) desktop_args+=(--distribution ad-hoc) ;;
+            signed) desktop_args+=(--distribution signed-notarized) ;;
             *) echo "Unknown desktop publication mode"; exit 1 ;;
           esac
-          if [[ "$WINDOWS_DESKTOP" == true ]]; then desktop_args+=(--windows); fi
-          node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification "${desktop_args[@]}"
+          node .github/scripts/desktop-publication.mjs publish --repository "$GITHUB_REPOSITORY" --version "$version" --sha "$SOURCE_SHA" --dir desktop-release-assets --public-dir desktop-public-verification --desktop --windows "${desktop_args[@]}"
 
   publish:
     name: Publish npm after GitHub release verification

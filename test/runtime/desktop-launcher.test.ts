@@ -100,7 +100,7 @@ describe("optional desktop launch", () => {
 	});
 	it("rejects unsupported hosts before filesystem, download or launch effects", async () => {
 		Object.defineProperty(process, "platform", { value: "linux" });
-		await expect(launchDesktop("0.12.8")).rejects.toThrow("--browser");
+		await expect(launchDesktop("0.12.8")).rejects.toThrow("desktop app on macOS or Windows");
 		expect(resolveCanonicalRuntimeStateHome).not.toHaveBeenCalled();
 		expect(validateDesktopInstallation).not.toHaveBeenCalled();
 		expect(execFile).not.toHaveBeenCalled();

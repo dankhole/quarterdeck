@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { RuntimeBrowserHostIntegrationEventRequest } from "../../src/core/api/host-integrations.js";
 import { type FetchTransport, proxyRuntimeRequest } from "../src/protocol-proxy.js";
 import { RuntimeSelection } from "../src/runtime-selection.js";
 import { DESKTOP_TOKEN_HEADER } from "../src/security-policy.js";
@@ -89,6 +90,80 @@ describe("stable origin HTTP proxy", () => {
 		expect(calls).toBe(0);
 		expect((await proxyRuntimeRequest(new Request("app://quarterdeck/"), selection, transport)).status).toBe(502);
 		expect(calls).toBe(1);
+	});
+
+	it("forwards synthetic lab host events with pinned authentication and no native side effects", async () => {
+		const body = JSON.stringify({
+			kind: "clipboard_write",
+			characterCount: 9,
+		} satisfies RuntimeBrowserHostIntegrationEventRequest);
+		const transport = vi.fn<FetchTransport>(async (target, init) => {
+			expect(target).toBe("http://127.0.0.1:12345/api/agent-lab/host-events");
+			expect(init.method).toBe("POST");
+			const headers = new Headers(init.headers);
+			expect(headers.get(DESKTOP_TOKEN_HEADER)).toBe(TOKEN);
+			expect(headers.get("Origin")).toBe("app://quarterdeck");
+			expect(headers.has("authorization")).toBe(false);
+			expect(headers.has("cookie")).toBe(false);
+			expect(await new Response(init.body).text()).toBe(body);
+			return new Response('{"event":{"sequence":1}}', {
+				status: 201,
+				headers: { "Content-Type": "application/json" },
+			});
+		});
+		const request = Object.assign(
+			new Request("app://quarterdeck/api/agent-lab/host-events", {
+				method: "POST",
+				body,
+				headers: {
+					"Content-Type": "application/json",
+					Origin: "https://forged.test",
+					Authorization: "forged",
+					Cookie: "forged",
+					[DESKTOP_TOKEN_HEADER]: "forged",
+				},
+			}),
+			{ initiatorOrigin: "app://quarterdeck" },
+		);
+		const response = await proxyRuntimeRequest(request, selected("http://127.0.0.1:12345"), transport, {
+			syntheticLaunch: true,
+		});
+		expect(response.status).toBe(201);
+		expect(await response.json()).toEqual({ event: { sequence: 1 } });
+		expect(transport).toHaveBeenCalledOnce();
+	});
+
+	it("never forwards ordinary-launch or expanded lab privileges, even with renderer-forged credentials", async () => {
+		const transport = vi.fn<FetchTransport>();
+		const selection = selected("http://127.0.0.1:12345");
+		const request = (path = "/api/agent-lab/host-events", method = "POST") =>
+			new Request(`app://quarterdeck${path}`, { method, headers: { [DESKTOP_TOKEN_HEADER]: TOKEN } });
+		expect((await proxyRuntimeRequest(request(), selection, transport)).status).toBe(403);
+		for (const method of ["GET", "HEAD", "DELETE"])
+			expect(
+				(await proxyRuntimeRequest(request(undefined, method), selection, transport, { syntheticLaunch: true }))
+					.status,
+			).toBe(403);
+		for (const path of [
+			"/api/agent-lab/host-events/flush",
+			"/api/agent-lab/host-events/reset",
+			"/api/agent-lab/host-events/",
+			"/api/agent-lab/%68ost-events",
+			"/api/diagnostics",
+			"/api/trpc/management.shutdown",
+		]) {
+			expect(
+				(await proxyRuntimeRequest(request(path), selection, transport, { syntheticLaunch: true })).status,
+			).toBe(403);
+		}
+		const crossOrigin = Object.assign(request(), { initiatorOrigin: "https://untrusted.test" });
+		expect((await proxyRuntimeRequest(crossOrigin, selection, transport, { syntheticLaunch: true })).status).toBe(
+			403,
+		);
+		expect(
+			(await proxyRuntimeRequest(request(), new RuntimeSelection(), transport, { syntheticLaunch: true })).status,
+		).toBe(503);
+		expect(transport).not.toHaveBeenCalled();
 	});
 
 	it("does not buffer a streaming response and cancels it when the owner generation changes", async () => {

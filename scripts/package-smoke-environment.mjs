@@ -15,8 +15,6 @@ export function createPackageSmokeEnvironment(base, smokeRoot, cacheDirectory) {
 		HOME: stateRoot,
 		USERPROFILE: stateRoot,
 		QUARTERDECK_STATE_HOME: join(stateRoot, ".quarterdeck"),
-		// This lane validates the browser/native-PTY package, even for desktop-capable releases.
-		QUARTERDECK_INSTALL_MODE: "browser",
 		npm_config_cache: cacheDirectory ?? join(smokeRoot, "npm-cache"),
 		npm_config_userconfig: join(smokeRoot, "user.npmrc"),
 		npm_config_globalconfig: join(smokeRoot, "global.npmrc"),
