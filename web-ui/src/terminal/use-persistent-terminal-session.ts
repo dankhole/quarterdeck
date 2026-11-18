@@ -96,6 +96,8 @@ export function usePersistentTerminalSession({
 	const shellAppearanceRef = useRef({ cursorColor, terminalBackgroundColor });
 	shellAppearanceRef.current = { cursorColor, terminalBackgroundColor };
 
+	// The attachment controller reconnects on native PTY identity changes.
+	// Replacing the viewer here races initial shell startup and replays autofocus.
 	useEffect(() => {
 		if (!isDedicatedTerminalTaskId(taskId)) {
 			return;
@@ -146,13 +148,13 @@ export function usePersistentTerminalSession({
 			// process and output; a fresh viewer restores them on reattachment.
 			disposeDedicatedTerminal(projectId, taskId);
 		};
-	}, [enabled, isVisible, projectId, sessionStartedAt, taskId]);
+	}, [enabled, isVisible, projectId, taskId]);
 
 	useEffect(() => {
 		if (isDedicatedTerminalTaskId(taskId)) {
 			terminalRef.current?.show({ cursorColor, terminalBackgroundColor }, { autoFocus, isVisible });
 		}
-	}, [autoFocus, cursorColor, enabled, isVisible, projectId, sessionStartedAt, taskId, terminalBackgroundColor]);
+	}, [autoFocus, cursorColor, enabled, isVisible, projectId, taskId, terminalBackgroundColor]);
 
 	useEffect(() => {
 		if (isDedicatedTerminalTaskId(taskId)) {

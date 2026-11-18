@@ -470,21 +470,31 @@ describe("usePersistentTerminalSession", () => {
 		);
 	});
 
-	it("replaces a restarted shell viewer for a fresh restore without a late reset", async () => {
-		isDedicatedTerminalTaskIdMock.mockReturnValue(true);
-		const terminal = createTerminalSlotMock();
-		ensureDedicatedTerminalMock.mockReturnValue(terminal);
-		await act(async () => {
-			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={100} />);
-		});
-		await act(async () => {
-			root.render(<HookHarness taskId="__home_terminal__" projectId="project-1" sessionStartedAt={200} />);
-		});
-		expect(disposeDedicatedTerminalMock).toHaveBeenCalledExactlyOnceWith("project-1", "__home_terminal__");
-		expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(2);
-		expect(terminal.reset).not.toHaveBeenCalled();
-		expect(terminal.stop).not.toHaveBeenCalled();
-	});
+	it.each(["__home_terminal__", "__detail_terminal__:task-a"])(
+		"keeps the shell viewer stable through startup and native replacement (%s)",
+		async (taskId) => {
+			isDedicatedTerminalTaskIdMock.mockReturnValue(true);
+			const terminal = createTerminalSlotMock();
+			ensureDedicatedTerminalMock.mockReturnValue(terminal);
+			await act(async () => {
+				root.render(<HookHarness taskId={taskId} projectId="project-1" sessionStartedAt={null} />);
+			});
+			await act(async () => terminal.subscribe.mock.calls[0]?.[0].onConnectionReady?.(taskId));
+			for (const sessionStartedAt of [100, null, 200]) {
+				await act(async () => {
+					root.render(<HookHarness taskId={taskId} projectId="project-1" sessionStartedAt={sessionStartedAt} />);
+				});
+				expect(container.querySelector("output")?.textContent).toBe("ready");
+			}
+			// Transport replacement/restore belongs to the attachment controller,
+			// not to a second React-driven viewer teardown and autofocus.
+			expect(disposeDedicatedTerminalMock).not.toHaveBeenCalled();
+			expect(ensureDedicatedTerminalMock).toHaveBeenCalledTimes(1);
+			expect(terminal.show).toHaveBeenCalledTimes(1);
+			expect(terminal.reset).not.toHaveBeenCalled();
+			expect(terminal.stop).not.toHaveBeenCalled();
+		},
+	);
 
 	it("balances dedicated viewer ownership through StrictMode and repeated repository navigation", async () => {
 		isDedicatedTerminalTaskIdMock.mockReturnValue(true);

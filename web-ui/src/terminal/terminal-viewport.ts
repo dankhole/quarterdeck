@@ -8,6 +8,7 @@ import { SlotDomHost } from "@/terminal/slot-dom-host";
 import { SlotRenderer } from "@/terminal/slot-renderer";
 import { SlotResizeManager } from "@/terminal/slot-resize-manager";
 import { SlotWriteQueue } from "@/terminal/slot-write-queue";
+import { TerminalAutofocus } from "@/terminal/terminal-autofocus";
 import { TerminalBrowserInput } from "@/terminal/terminal-browser-input";
 import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
 import type { TerminalImagePasteWriter } from "@/terminal/terminal-input";
@@ -50,7 +51,7 @@ export class TerminalViewport {
 	private readonly unicode11Addon = new Unicode11Addon();
 	private readonly writeQueue: SlotWriteQueue;
 	private readonly wheelTransport: TerminalWheelTransport;
-	private pendingAutoFocus = false;
+	private readonly autoFocus = new TerminalAutofocus(this.domHost.hostElement, () => this.terminal.focus());
 	private revealFrame: {
 		id: number;
 		resolve: (completed: boolean) => void;
@@ -171,7 +172,7 @@ export class TerminalViewport {
 		return !this.callbacks.isDisposed() && this.revealSequence === sequence && this.visibleContainer !== null;
 	}
 
-	async revealAfterLayout(options: { autoFocus?: boolean } = {}): Promise<boolean> {
+	async revealAfterLayout(): Promise<boolean> {
 		this.cancelPendingReveal();
 		const sequence = this.revealSequence;
 		if (this.callbacks.isDisposed()) {
@@ -196,9 +197,7 @@ export class TerminalViewport {
 
 		this.resizer.pendingScrollToBottom = false;
 		this.domHost.reveal();
-		if (options.autoFocus) {
-			this.terminal.focus();
-		}
+		this.autoFocus.focusAfterReveal();
 		return true;
 	}
 
@@ -262,8 +261,7 @@ export class TerminalViewport {
 		}
 		this.terminal.scrollToBottom();
 		this.resizer.pendingScrollToBottom = true;
-		const presentationSettled = await this.revealAfterLayout({ autoFocus: this.pendingAutoFocus });
-		this.pendingAutoFocus = false;
+		const presentationSettled = await this.revealAfterLayout();
 		return options.hasActiveIoSocket && presentationSettled;
 	}
 
@@ -292,6 +290,7 @@ export class TerminalViewport {
 		}
 		this.updateAppearance(appearance);
 		this.terminal.refresh(0, this.terminal.rows - 1);
+		this.autoFocus.setVisible(options.isVisible !== false, options.autoFocus === true);
 		this.domHost.markVisible();
 		if (this.stageContainer) {
 			this.resizer.observe(this.stageContainer);
@@ -305,13 +304,9 @@ export class TerminalViewport {
 				this.terminal.scrollToBottom();
 				this.resizer.pendingScrollToBottom = true;
 			}
-			if (options.autoFocus) {
-				this.pendingAutoFocus = true;
-			}
 		}
 		if (options.restoreCompleted && options.isVisible !== false) {
-			void this.revealAfterLayout({ autoFocus: this.pendingAutoFocus });
-			this.pendingAutoFocus = false;
+			void this.revealAfterLayout();
 		}
 	}
 
@@ -322,7 +317,7 @@ export class TerminalViewport {
 		this.cancelPendingReveal();
 		this.resizer.disconnect();
 		this.renderer.clearDprListener();
-		this.pendingAutoFocus = false;
+		this.autoFocus.setVisible(false, false);
 		const taskId = this.callbacks.getConnectedTaskId();
 		if (taskId) {
 			this.callbacks.clearGeometry(taskId);
@@ -335,6 +330,7 @@ export class TerminalViewport {
 			return;
 		}
 		this.cancelPendingReveal();
+		this.autoFocus.setVisible(false, false);
 		this.domHost.park();
 	}
 
@@ -387,6 +383,7 @@ export class TerminalViewport {
 	}
 
 	focus(): void {
+		this.autoFocus.cancel();
 		this.terminal.focus();
 	}
 
@@ -434,6 +431,7 @@ export class TerminalViewport {
 	}
 
 	dispose(): void {
+		this.autoFocus.setVisible(false, false);
 		this.wheelTransport.dispose();
 		this.cancelPendingReveal();
 		this.resizer.disconnect();
