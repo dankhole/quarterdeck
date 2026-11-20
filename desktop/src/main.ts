@@ -22,7 +22,7 @@ import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown
 import {
 	DesktopInstallationError,
 	getDesktopAdmissionDescriptor,
-	validateDesktopInstallation,
+	validateDesktopInstallationForLaunch,
 } from "../../src/desktop-install/index.js";
 import { desktopApplicationBundleId } from "../../src/desktop-install/receipt.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
@@ -179,7 +179,7 @@ async function launchDesktop(
 	const checkInstallationForRuntimeWork = async (): Promise<boolean> => {
 		if (!installation) return true;
 		try {
-			await validateDesktopInstallation({ appPath: installation.appPath, version: app.getVersion() });
+			await validateDesktopInstallationForLaunch({ appPath: installation.appPath, version: app.getVersion() });
 			return true;
 		} catch (error: unknown) {
 			await dialogs.message({

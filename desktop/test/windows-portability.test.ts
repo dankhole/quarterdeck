@@ -58,6 +58,9 @@ describe("Windows desktop portability", () => {
 		expect(desktopAppRoot("C:\\Program Files\\Quarterdeck\\resources\\app.asar", "win32")).toBe(
 			"C:\\Program Files\\Quarterdeck",
 		);
+		expect(desktopAppRoot("C:\\Program Files\\Quarterdeck\\host\\resources\\app.asar", "win32")).toBe(
+			"C:\\Program Files\\Quarterdeck",
+		);
 		expect(desktopAppRoot("/Applications/Quarterdeck.app/Contents/Resources/app.asar", "darwin")).toBe(
 			"/Applications/Quarterdeck.app",
 		);

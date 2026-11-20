@@ -27,7 +27,7 @@ export async function resolveDesktopAppExecutable(
 		const executablePath = join(canonicalAppPath, "Quarterdeck.exe");
 		if (
 			!(await lstat(executablePath)).isFile() ||
-			!(await lstat(join(canonicalAppPath, "resources/app.asar"))).isFile()
+			!(await lstat(join(canonicalAppPath, "host/resources/app.asar"))).isFile()
 		)
 			throw new Error("Desktop Agent Lab requires a packaged Windows application.");
 		return { appPath: canonicalAppPath, executablePath };

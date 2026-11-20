@@ -75,10 +75,14 @@ export async function verifyRuntime(runtimePath) {
 		if (error.code === "ENOENT") return null;
 		throw error;
 	});
+	const canonicalWindowsRuntime = windowsHost ? (await realpath(runtimePath)).toLowerCase() : null;
 	if (
-		windowsHost &&
-		(await realpath(runtimePath)).toLowerCase() ===
-			join(userInfo().homedir, "AppData/Local/Programs/Quarterdeck/resources/runtime").toLowerCase()
+		canonicalWindowsRuntime &&
+		["host/resources/runtime", "resources/runtime"].some(
+			(relative) =>
+				canonicalWindowsRuntime ===
+				join(userInfo().homedir, "AppData/Local/Programs/Quarterdeck", relative).toLowerCase(),
+		)
 	)
 		throw new Error("Verify a separate packaging candidate; installed Windows hosts require native admission.");
 	if (wrappedNode) {
@@ -120,7 +124,7 @@ export async function verifyApp(appPath) {
 	const windows = process.platform === "win32";
 	if (!windows && !appPath.endsWith(".app")) throw new Error("Pass the packaged .app path.");
 	if (!windows) verifyAppSignature(appPath);
-	const resources = windows ? join(appPath, "resources") : join(appPath, "Contents", "Resources");
+	const resources = windows ? join(appPath, "host", "resources") : join(appPath, "Contents", "Resources");
 	if (!(await lstat(join(resources, "app.asar"))).isFile())
 		throw new Error("Desktop shell must be packaged in app.asar.");
 	const runtimePath = join(resources, "runtime");
@@ -131,10 +135,10 @@ export async function verifyApp(appPath) {
 			throw new Error("Invalid Windows desktop distribution.");
 		for (const binary of [
 			"Quarterdeck.exe",
-			"QuarterdeckHost.exe",
-			"resources/runtime/bin/node.exe",
-			"resources/runtime/bin/nodeHost.exe",
-			"resources/runtime/installation-admission.exe",
+			"host/Quarterdeck.exe",
+			"host/resources/runtime/bin/node.exe",
+			"host/resources/runtime/bin/nodeHost.exe",
+			"host/resources/runtime/installation-admission.exe",
 		]) {
 			const path = join(appPath, binary);
 			const info = await lstat(path);
@@ -164,7 +168,7 @@ export async function verifyApp(appPath) {
 		).stdout.trim();
 		if (appVersion !== manifest.version) throw new Error("Desktop shell and runtime product versions differ.");
 	}
-	const wire = await getCurrentFuseWire(windows ? join(appPath, "QuarterdeckHost.exe") : appPath);
+	const wire = await getCurrentFuseWire(windows ? join(appPath, "host", "Quarterdeck.exe") : appPath);
 	for (const [option, enabled] of [
 		[FuseV1Options.RunAsNode, false],
 		[FuseV1Options.EnableCookieEncryption, true],
@@ -213,7 +217,7 @@ export async function verifyArtifactManifest(manifestPath) {
 		}
 	}
 	const windows = bundleManifest.platform === "win32";
-	const resources = windows ? join(appPath, "resources") : join(appPath, "Contents", "Resources");
+	const resources = windows ? join(appPath, "host", "resources") : join(appPath, "Contents", "Resources");
 	for (const required of desktopResourcePathsForPlatform(bundleManifest.platform)) {
 		if (!artifactManifest.checksums?.[required]) throw new Error(`Artifact manifest lacks checksum: ${required}.`);
 	}
@@ -225,12 +229,12 @@ export async function verifyArtifactManifest(manifestPath) {
 		throw new Error("Artifact manifest lacks native admission provenance.");
 	for (const [field, name] of [
 		["bootstrapSha256", windows ? "Quarterdeck.exe" : "Contents/MacOS/Quarterdeck"],
-		["hostSha256", windows ? "QuarterdeckHost.exe" : "Contents/MacOS/QuarterdeckHost"],
+		["hostSha256", windows ? "host/Quarterdeck.exe" : "Contents/MacOS/QuarterdeckHost"],
 	]) {
 		if (artifactManifest.nativeAdmission[field] !== (await sha256File(join(appPath, name))))
 			throw new Error(`Native admission checksum mismatch: ${name}.`);
 	}
-	const wire = await getCurrentFuseWire(windows ? join(appPath, "QuarterdeckHost.exe") : appPath);
+	const wire = await getCurrentFuseWire(windows ? join(appPath, "host", "Quarterdeck.exe") : appPath);
 	for (const [name, index] of Object.entries(FuseV1Options).filter(([, value]) => typeof value === "number")) {
 		if (artifactManifest.fuses?.[name] !== (wire[index] === FuseState.ENABLE)) {
 			throw new Error(`Artifact security fuse record differs from the packaged app: ${name}.`);

@@ -6,6 +6,7 @@ import type { DesktopAppIdentity } from "./app-identity.js";
 import { readDesktopBundleIdentity } from "./bundle-identity.js";
 import { DesktopInstallationError } from "./errors.js";
 import { desktopAppTreeSha256, desktopFileSha256, desktopPhysicalFileSystem, readDesktopJson } from "./files.js";
+import { desktopResourcesPath } from "./layout.js";
 import type { DesktopReleaseManifest } from "./metadata.js";
 import { desktopApplicationBundleId } from "./receipt.js";
 import type { DesktopInstallationArchitecture } from "./types.js";
@@ -16,10 +17,14 @@ export async function inspectWindowsDesktopApp(
 	version: string,
 	arch: DesktopInstallationArchitecture,
 	release?: DesktopReleaseManifest,
-): Promise<DesktopAppIdentity> {
+): Promise<DesktopAppIdentity & { launcherSha256: string }> {
 	const canonical = await desktopPhysicalFileSystem.realpath(appPath);
 	const tree = await desktopAppTreeSha256(canonical);
-	const resources = join(canonical, "resources");
+	const resources = desktopResourcesPath(canonical, "win32");
+	const host =
+		resources === join(canonical, "resources")
+			? join(canonical, "QuarterdeckHost.exe")
+			: join(canonical, "host", "Quarterdeck.exe");
 	const bundle = await readDesktopBundleIdentity(resources, version, arch, "win32");
 	if (
 		!["local", "windows-unsigned"].includes(bundle.distributionMode ?? "local") ||
@@ -63,16 +68,15 @@ export async function inspectWindowsDesktopApp(
 				"Windows resource checksums differ from the release manifest.",
 			);
 	}
-	for (const binary of [
-		"Quarterdeck.exe",
-		"QuarterdeckHost.exe",
-		"resources/runtime/bin/node.exe",
-		"resources/runtime/bin/nodeHost.exe",
-		"resources/runtime/installation-admission.exe",
-		`resources/runtime/node_modules/node-pty/prebuilds/win32-${arch}/conpty.node`,
-		`resources/runtime/node_modules/node-pty/prebuilds/win32-${arch}/conpty_console_list.node`,
+	for (const path of [
+		join(canonical, "Quarterdeck.exe"),
+		host,
+		join(resources, "runtime/bin/node.exe"),
+		join(resources, "runtime/bin/nodeHost.exe"),
+		join(resources, "runtime/installation-admission.exe"),
+		join(resources, `runtime/node_modules/node-pty/prebuilds/win32-${arch}/conpty.node`),
+		join(resources, `runtime/node_modules/node-pty/prebuilds/win32-${arch}/conpty_console_list.node`),
 	]) {
-		const path = join(canonical, binary);
 		const info = await desktopPhysicalFileSystem.lstat(path);
 		if (!info.isFile() || info.isSymbolicLink() || (await windowsPeArchitecture(path)) !== arch)
 			throw new DesktopInstallationError(
@@ -84,7 +88,7 @@ export async function inspectWindowsDesktopApp(
 	if (
 		release &&
 		(bootstrap !== release.nativeAdmission.bootstrapSha256 ||
-			(await desktopFileSha256(join(canonical, "QuarterdeckHost.exe"))) !== release.nativeAdmission.hostSha256)
+			(await desktopFileSha256(host)) !== release.nativeAdmission.hostSha256)
 	)
 		throw new DesktopInstallationError(
 			"invalid_artifact",
@@ -103,5 +107,6 @@ export async function inspectWindowsDesktopApp(
 		bundle,
 		appAsarSha256: await desktopFileSha256(join(resources, "app.asar")),
 		appTreeSha256: tree,
+		launcherSha256: bootstrap,
 	};
 }

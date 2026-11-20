@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { getRuntimeHomePath } from "./core/runtime-state-home.js";
-import { resolveDesktopInstallationOwner, validateDesktopInstallation } from "./desktop-install/index.js";
+import { resolveDesktopInstallationOwner, validateDesktopInstallationForLaunch } from "./desktop-install/index.js";
 import { resolveCanonicalRuntimeStateHome } from "./server/runtime-ownership.js";
 import { hasGitRepository } from "./server/runtime-startup-paths.js";
 import {
@@ -29,7 +29,7 @@ export async function launchDesktop(version: string): Promise<void> {
 	const cwd = await realpath(process.cwd());
 	const projectPath = !isUnderWorktreesHome(cwd) && (await hasGitRepository(cwd)) ? cwd : undefined;
 	const owner = await resolveDesktopInstallationOwner();
-	const installation = await validateDesktopInstallation({ version, owner });
+	const installation = await validateDesktopInstallationForLaunch({ version, owner });
 	const request = serializeDesktopLaunchRequest({
 		schemaVersion: DESKTOP_LAUNCH_PROTOCOL_VERSION,
 		version: installation.version,

@@ -1,7 +1,11 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 export function desktopResourcesPath(appPath: string, platform: NodeJS.Platform): string {
-	return join(appPath, platform === "win32" ? "resources" : "Contents/Resources");
+	if (platform === "win32") {
+		return join(appPath, existsSync(join(appPath, "host")) ? "host/resources" : "resources");
+	}
+	return join(appPath, "Contents/Resources");
 }
 export function desktopBootstrapPath(appPath: string, platform: NodeJS.Platform): string {
 	return join(

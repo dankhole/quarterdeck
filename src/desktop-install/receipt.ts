@@ -66,6 +66,8 @@ export const managedDesktopInstallationReceiptSchema = z
 		buildId: z.uuid(),
 		appAsarSha256: desktopSha256Schema,
 		appTreeSha256: desktopSha256Schema,
+		windowsAppFingerprint: desktopSha256Schema.optional(),
+		windowsLauncherSha256: desktopSha256Schema.optional(),
 		desktopLaunchProtocolVersion: z.literal(desktopLaunchProtocolVersion),
 		updatesEnabled: z.literal(false),
 		owner: desktopInstallationOwnerSchema,

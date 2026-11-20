@@ -24,6 +24,7 @@ import type {
 } from "./types.js";
 import { inspectWindowsDesktopApp } from "./windows-app-identity.js";
 import { extractWindowsDesktopArchive } from "./windows-archive.js";
+import { windowsDesktopTreeFingerprint } from "./windows-tree-fingerprint.js";
 
 export async function prepareWindowsDesktopInstallation(
 	stage: string,
@@ -83,12 +84,16 @@ export async function prepareWindowsDesktopInstallation(
 		);
 	const stagedApp = join(stage, "Quarterdeck.app");
 	await copyDesktopTreePrivate(source.appPath, stagedApp);
+	const fingerprint = await windowsDesktopTreeFingerprint(stagedApp);
 	const copy = await inspectWindowsDesktopApp(stagedApp, options.version, arch, release);
 	if (source.appTreeSha256 !== copy.appTreeSha256)
 		throw new DesktopInstallationError(
 			"invalid_artifact",
 			"The Windows source app changed or its copy is incomplete.",
 		);
+	// Record a fingerprint only when it describes the same staged files we fully verified.
+	const windowsAppFingerprint =
+		fingerprint && (await windowsDesktopTreeFingerprint(stagedApp)) === fingerprint ? fingerprint : undefined;
 	const receipt: ManagedDesktopInstallationReceipt = {
 		schemaVersion: 2,
 		managedBy: "quarterdeck-npm",
@@ -102,6 +107,8 @@ export async function prepareWindowsDesktopInstallation(
 		buildId: copy.bundle.buildId,
 		appAsarSha256: copy.appAsarSha256,
 		appTreeSha256: copy.appTreeSha256,
+		windowsAppFingerprint,
+		windowsLauncherSha256: windowsAppFingerprint ? copy.launcherSha256 : undefined,
 		desktopLaunchProtocolVersion,
 		updatesEnabled: false,
 		owner,

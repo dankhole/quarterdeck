@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFile, lstat, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -96,20 +96,22 @@ export async function buildWindowsAdmission(output, { test = false, gui = false,
 export async function installWindowsNativeAdmission(appPath) {
 	const bootstrap = join(desktopRoot, ".cache", "native", process.arch, "admission.exe");
 	await buildWindowsAdmission(bootstrap, { gui: true });
-	for (const [entry, host] of [
-		["Quarterdeck.exe", "QuarterdeckHost.exe"],
-		["resources/runtime/bin/node.exe", "resources/runtime/bin/nodeHost.exe"],
-	]) {
-		const original = join(appPath, entry);
-		if (!(await lstat(original)).isFile()) throw new Error("Missing Windows desktop host executable.");
-		await rename(original, join(appPath, host));
-		await copyFile(bootstrap, original);
-	}
-	await copyFile(bootstrap, join(appPath, "resources", "runtime", "installation-admission.exe"));
-	const bundle = JSON.parse(await readFile(join(appPath, "resources/runtime/bundle-manifest.json"), "utf8"));
+	const entries = await readdir(appPath);
+	const hostDirectory = join(appPath, "host");
+	await mkdir(hostDirectory);
+	// Electron's WinRT setup recognizes a same-named launcher one directory up.
+	for (const entry of entries) await rename(join(appPath, entry), join(hostDirectory, entry));
+	await copyFile(bootstrap, join(appPath, "Quarterdeck.exe"));
+	const resources = join(hostDirectory, "resources");
+	const runtime = join(resources, "runtime");
+	const node = join(runtime, "bin", "node.exe");
+	await rename(node, join(runtime, "bin", "nodeHost.exe"));
+	await copyFile(bootstrap, node);
+	await copyFile(bootstrap, join(runtime, "installation-admission.exe"));
+	const bundle = JSON.parse(await readFile(join(runtime, "bundle-manifest.json"), "utf8"));
 	const metadata = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
 	await writeFile(
-		join(appPath, "resources/desktop-shell.json"),
+		join(resources, "desktop-shell.json"),
 		JSON.stringify({
 			name: metadata.name,
 			bundleId: metadata.quarterdeckDesktop.bundleId,

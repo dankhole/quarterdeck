@@ -47,6 +47,7 @@ import type {
 	EnsureDesktopInstallationOptions,
 } from "./types.js";
 import { updateWindowsDesktopShortcut } from "./windows-shortcut.js";
+import { windowsDesktopTreeFingerprint } from "./windows-tree-fingerprint.js";
 
 export type { DesktopInstallationOwner } from "../shared/desktop-installation-contract.js";
 export { getDesktopAdmissionDescriptor, validateDesktopNativeAdmission } from "./admission.js";
@@ -54,6 +55,8 @@ export { DesktopInstallationError } from "./errors.js";
 export type { ResolveDesktopInstallationOwnerOptions } from "./owner.js";
 export { resolveDesktopInstallationOwner } from "./owner.js";
 export type { DesktopInstallation, DesktopInstallationProgress, EnsureDesktopInstallationOptions } from "./types.js";
+
+type DesktopValidationOptions = { owner?: DesktopInstallationOwner; version?: string; appPath?: string };
 
 const journalSchema = z.strictObject({
 	schemaVersion: z.literal(1),
@@ -317,7 +320,8 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 		await cleanup(journal);
 	}
 	async function validate(
-		options: { owner?: DesktopInstallationOwner; version?: string; appPath?: string } = {},
+		options: DesktopValidationOptions = {},
+		purpose: "full" | "launch" = "full",
 	): Promise<DesktopInstallation> {
 		if (await desktopPathExists(journalPath))
 			throw new DesktopInstallationError(
@@ -352,25 +356,33 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 				"installation_changed",
 				"The managed app was replaced by a symbolic link or non-directory.",
 			);
-		const identity = await inspectDesktopApp(appPath, receipt.version, receipt.arch, dependencies);
-		if (
-			identity.appTreeSha256 !== receipt.appTreeSha256 ||
-			identity.appAsarSha256 !== receipt.appAsarSha256 ||
-			identity.bundle.buildId !== receipt.buildId ||
-			desktopBundleDistributionMode(identity.bundle) !== desktopReceiptDistributionMode(receipt) ||
-			!desktopBuildsMatch(receipt.owner, identity.bundle, receipt.source)
-		)
-			throw new DesktopInstallationError(
-				"installation_changed",
-				"The app and recorded npm build no longer form a verified pair. Quit Quarterdeck and repair the npm installation.",
-			);
+		const unchanged =
+			purpose === "launch" &&
+			dependencies.platform === "win32" &&
+			receipt.windowsAppFingerprint !== undefined &&
+			receipt.windowsLauncherSha256 !== undefined &&
+			(await windowsDesktopTreeFingerprint(appPath)) === receipt.windowsAppFingerprint &&
+			(await desktopFileSha256(join(appPath, "Quarterdeck.exe"))) === receipt.windowsLauncherSha256;
+		if (!unchanged) {
+			const identity = await inspectDesktopApp(appPath, receipt.version, receipt.arch, dependencies);
+			if (
+				identity.appTreeSha256 !== receipt.appTreeSha256 ||
+				identity.appAsarSha256 !== receipt.appAsarSha256 ||
+				identity.bundle.buildId !== receipt.buildId ||
+				desktopBundleDistributionMode(identity.bundle) !== desktopReceiptDistributionMode(receipt) ||
+				!desktopBuildsMatch(receipt.owner, identity.bundle, receipt.source)
+			)
+				throw new DesktopInstallationError(
+					"installation_changed",
+					"The app and recorded npm build no longer form a verified pair. Quit Quarterdeck and repair the npm installation.",
+				);
+		}
 		if (receipt.release) {
 			const mode = desktopReceiptDistributionMode(receipt);
 			const expectedDistribution = await resolveDesktopReleaseDistribution(receipt.owner, dependencies.platform);
 			if (
 				(mode === "windows-unsigned" ? "windows-unsigned" : mode === "ad-hoc" ? "ad-hoc" : "signed-notarized") !==
-					expectedDistribution ||
-				desktopBundleDistributionMode(identity.bundle) !== mode
+				expectedDistribution
 			)
 				throw new DesktopInstallationError(
 					"installation_changed",
@@ -707,7 +719,8 @@ export function createDesktopInstallationService(dependencies: DesktopInstallati
 	}
 	return {
 		ensureDesktopInstallation: ensure,
-		validateDesktopInstallation: validate,
+		validateDesktopInstallation: (options?: DesktopValidationOptions) => validate(options),
+		validateDesktopInstallationForLaunch: (options?: DesktopValidationOptions) => validate(options, "launch"),
 		getDesktopInstallationStatus: status,
 		uninstallDesktopInstallation: uninstall,
 	};
@@ -748,10 +761,11 @@ function productionService() {
 export function ensureDesktopInstallation(options: EnsureDesktopInstallationOptions) {
 	return productionService().ensureDesktopInstallation(options);
 }
-export function validateDesktopInstallation(
-	options: { owner?: DesktopInstallationOwner; version?: string; appPath?: string } = {},
-) {
+export function validateDesktopInstallation(options: DesktopValidationOptions = {}) {
 	return productionService().validateDesktopInstallation(options);
+}
+export function validateDesktopInstallationForLaunch(options: DesktopValidationOptions = {}) {
+	return productionService().validateDesktopInstallationForLaunch(options);
 }
 export function getDesktopInstallationStatus(options: { owner?: DesktopInstallationOwner } = {}) {
 	return productionService().getDesktopInstallationStatus(options);

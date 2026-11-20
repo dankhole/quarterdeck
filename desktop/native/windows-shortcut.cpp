@@ -8,9 +8,19 @@
 
 using Microsoft::WRL::ComPtr;
 static const wchar_t *app_id = L"io.github.dankhole.quarterdeck";
+static const wchar_t *toast_activator_id = L"{9F9BE395-DF1B-4B4D-9D69-34C87D55AF80}";
 static const DWORD fixed_target_flags = SLDF_FORCE_NO_LINKTRACK | SLDF_DISABLE_LINK_PATH_TRACKING;
 
 static int shortcut_operation(const wchar_t *target, const wchar_t *path, int operation) {
+    const std::wstring bootstrap(target);
+    const auto separator = bootstrap.find_last_of(L"\\/");
+    if (separator == std::wstring::npos) return 73;
+    const std::wstring app_directory = bootstrap.substr(0, separator);
+    const std::wstring host_directory = app_directory + L"\\host";
+    const std::wstring legacy_host = app_directory + L"\\QuarterdeckHost.exe";
+    const std::wstring nested_host = host_directory + L"\\Quarterdeck.exe";
+    GUID desired_activator;
+    if (FAILED(CLSIDFromString(toast_activator_id, &desired_activator))) return 73;
     ComPtr<IShellLinkW> link;
     if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link)))) return 73;
     ComPtr<IPersistFile> persisted;
@@ -23,15 +33,10 @@ static int shortcut_operation(const wchar_t *target, const wchar_t *path, int op
         PROPVARIANT identity;
         PropVariantInit(&identity);
         // Recover only our exact retargeted entry, with the same app ID and no arguments.
-        std::wstring host;
-        const std::wstring bootstrap(target);
-        const auto separator = bootstrap.find_last_of(L"\\/");
-        if (separator != std::wstring::npos &&
-            !_wcsicmp(bootstrap.c_str() + separator + 1, L"Quarterdeck.exe"))
-            host = bootstrap.substr(0, separator + 1) + L"QuarterdeckHost.exe";
         bool owned = SUCCEEDED(persisted->Load(path, STGM_READ)) &&
             SUCCEEDED(link->GetPath(current, 32768, nullptr, SLGP_RAWPATH)) &&
-            (!_wcsicmp(current, target) || (!host.empty() && !_wcsicmp(current, host.c_str()))) &&
+            (!_wcsicmp(current, target) || (!_wcsicmp(bootstrap.c_str() + separator + 1, L"Quarterdeck.exe") &&
+                (!_wcsicmp(current, legacy_host.c_str()) || !_wcsicmp(current, nested_host.c_str())))) &&
             SUCCEEDED(link->GetArguments(arguments, 32768)) && !arguments[0] &&
             SUCCEEDED(properties->GetValue(PKEY_AppUserModel_ID, &identity)) && identity.vt == VT_LPWSTR &&
             identity.pwszVal && !wcscmp(identity.pwszVal, app_id);
@@ -41,8 +46,18 @@ static int shortcut_operation(const wchar_t *target, const wchar_t *path, int op
         if (operation == 2) {
             ComPtr<IShellLinkDataList> data;
             DWORD flags = 0;
-            return !_wcsicmp(current, target) && SUCCEEDED(link.As(&data)) && SUCCEEDED(data->GetFlags(&flags)) &&
-                (flags & fixed_target_flags) == fixed_target_flags ? 0 : 73;
+            wchar_t working_directory[32768];
+            PROPVARIANT activator;
+            PropVariantInit(&activator);
+            const bool valid = !_wcsicmp(current, target) &&
+                SUCCEEDED(link->GetWorkingDirectory(working_directory, 32768)) &&
+                !_wcsicmp(working_directory, host_directory.c_str()) &&
+                SUCCEEDED(properties->GetValue(PKEY_AppUserModel_ToastActivatorCLSID, &activator)) &&
+                activator.vt == VT_CLSID && activator.puuid && IsEqualGUID(*activator.puuid, desired_activator) &&
+                SUCCEEDED(link.As(&data)) && SUCCEEDED(data->GetFlags(&flags)) &&
+                (flags & fixed_target_flags) == fixed_target_flags;
+            PropVariantClear(&activator);
+            return valid ? 0 : 73;
         }
     } else {
         if (GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PATH_NOT_FOUND) return 73;
@@ -62,7 +77,14 @@ static int shortcut_operation(const wchar_t *target, const wchar_t *path, int op
     HRESULT result = InitPropVariantFromString(app_id, &identity);
     if (SUCCEEDED(result)) result = properties->SetValue(PKEY_AppUserModel_ID, identity);
     PropVariantClear(&identity);
+    // Match Electron's WinRT shortcut check so it preserves the installer-owned link.
+    PROPVARIANT activator;
+    PropVariantInit(&activator);
+    if (SUCCEEDED(result)) result = InitPropVariantFromCLSID(desired_activator, &activator);
+    if (SUCCEEDED(result)) result = properties->SetValue(PKEY_AppUserModel_ToastActivatorCLSID, activator);
+    PropVariantClear(&activator);
     if (FAILED(result) || FAILED(properties->Commit()) || FAILED(link->SetPath(target)) ||
+        FAILED(link->SetWorkingDirectory(host_directory.c_str())) ||
         FAILED(link->SetArguments(L"")) || FAILED(link->SetDescription(L"Quarterdeck coding agents")) ||
         FAILED(link->SetIconLocation(target, 0))) return 73;
     // The canonical install path stays fixed across replacements. Do not let

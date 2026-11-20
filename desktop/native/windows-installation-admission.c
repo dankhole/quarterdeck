@@ -269,6 +269,9 @@ static int launch_admitted(const wchar_t *lock, const wchar_t *host, const wchar
 }
 
 int wmain(int argc, wchar_t **argv) {
+#ifdef QUARTERDECK_ADMISSION_LAB_PROFILE
+    if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-check-shortcut")) return quarterdeck_shortcut(2);
+#endif
 #if defined(QUARTERDECK_ADMISSION_TEST) || defined(QUARTERDECK_ADMISSION_LAB_PROFILE)
     if(argc==4 && !wcscmp(argv[1],L"--quarterdeck-test-job-member")) {
         GUID identifier; wchar_t canonical[40], name[96], *end=NULL;
@@ -325,9 +328,9 @@ int wmain(int argc, wchar_t **argv) {
     if (written < 0 || !length || length >= PATH_CAPACITY || _wcsnicmp(executable, app, wcslen(app)))
         return refuse("open the npm-managed Quarterdeck app or repair desktop installation.");
     const wchar_t *relative = executable + wcslen(app);
-    if (!wcscmp(relative, L"Quarterdeck.exe")) written = swprintf_s(host, PATH_CAPACITY, L"%lsQuarterdeckHost.exe", app);
-    else if (!wcscmp(relative, L"resources\\runtime\\bin\\node.exe"))
-        written = swprintf_s(host, PATH_CAPACITY, L"%lsresources\\runtime\\bin\\nodeHost.exe", app);
+    if (!wcscmp(relative, L"Quarterdeck.exe")) written = swprintf_s(host, PATH_CAPACITY, L"%lshost\\Quarterdeck.exe", app);
+    else if (!wcscmp(relative, L"host\\resources\\runtime\\bin\\node.exe"))
+        written = swprintf_s(host, PATH_CAPACITY, L"%lshost\\resources\\runtime\\bin\\nodeHost.exe", app);
     else return refuse("unrecognized native desktop entrypoint.");
     if (written < 0) return refuse("desktop host path is too long.");
     argv[0] = host;

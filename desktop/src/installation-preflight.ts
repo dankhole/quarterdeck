@@ -2,7 +2,7 @@ import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
 import {
 	type DesktopInstallation,
 	DesktopInstallationError,
-	validateDesktopInstallation,
+	validateDesktopInstallationForLaunch,
 	validateDesktopNativeAdmission,
 } from "../../src/desktop-install/index.js";
 
@@ -22,7 +22,7 @@ interface DesktopInstallationPreflightInput {
 
 interface DesktopInstallationPreflightServices {
 	validateAdmission: typeof validateDesktopNativeAdmission;
-	validateInstallation: typeof validateDesktopInstallation;
+	validateInstallation: typeof validateDesktopInstallationForLaunch;
 }
 
 /** Dock startup resolves its recorded package owner directly, before reading or starting the bundled runtime. */
@@ -30,7 +30,7 @@ export async function preflightDesktopInstallation(
 	input: DesktopInstallationPreflightInput,
 	services: DesktopInstallationPreflightServices = {
 		validateAdmission: validateDesktopNativeAdmission,
-		validateInstallation: validateDesktopInstallation,
+		validateInstallation: validateDesktopInstallationForLaunch,
 	},
 ): Promise<DesktopInstallationPreflight> {
 	const admission = await services.validateAdmission({ appPath: input.appPath, synthetic: input.synthetic });

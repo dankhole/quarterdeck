@@ -1,7 +1,10 @@
 import { execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveDesktopInstallationOwner, validateDesktopInstallation } from "../../src/desktop-install/index.js";
+import {
+	resolveDesktopInstallationOwner,
+	validateDesktopInstallationForLaunch,
+} from "../../src/desktop-install/index.js";
 import { launchDesktop } from "../../src/desktop-launcher.js";
 import { resolveCanonicalRuntimeStateHome } from "../../src/server/runtime-ownership.js";
 import { hasGitRepository } from "../../src/server/runtime-startup-paths.js";
@@ -12,7 +15,7 @@ vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 vi.mock("node:fs/promises", () => ({ realpath: vi.fn() }));
 vi.mock("../../src/desktop-install/index.js", () => ({
 	resolveDesktopInstallationOwner: vi.fn(),
-	validateDesktopInstallation: vi.fn(),
+	validateDesktopInstallationForLaunch: vi.fn(),
 }));
 vi.mock("../../src/server/runtime-ownership.js", () => ({ resolveCanonicalRuntimeStateHome: vi.fn() }));
 vi.mock("../../src/server/runtime-startup-paths.js", () => ({ hasGitRepository: vi.fn() }));
@@ -55,7 +58,7 @@ beforeEach(() => {
 	vi.mocked(hasGitRepository).mockResolvedValue(true);
 	vi.mocked(isUnderWorktreesHome).mockReturnValue(false);
 	vi.mocked(resolveDesktopInstallationOwner).mockResolvedValue(installation.owner);
-	vi.mocked(validateDesktopInstallation).mockResolvedValue(installation);
+	vi.mocked(validateDesktopInstallationForLaunch).mockResolvedValue(installation);
 	vi.mocked(execFile).mockImplementation((_file, _args, _options, callback) => {
 		if (typeof callback === "function") callback(null, "", "");
 		return {} as ReturnType<typeof execFile>;
@@ -71,7 +74,10 @@ afterEach(() => {
 describe("optional desktop launch", () => {
 	it("passes the validated permanent app and canonical project/state as data through LaunchServices", async () => {
 		await launchDesktop("0.12.8");
-		expect(validateDesktopInstallation).toHaveBeenCalledWith({ version: "0.12.8", owner: installation.owner });
+		expect(validateDesktopInstallationForLaunch).toHaveBeenCalledWith({
+			version: "0.12.8",
+			owner: installation.owner,
+		});
 		const call = vi.mocked(execFile).mock.calls[0];
 		expect(call?.[0]).toBe("/usr/bin/open");
 		const args = call?.[1];
@@ -102,16 +108,16 @@ describe("optional desktop launch", () => {
 		Object.defineProperty(process, "platform", { value: "linux" });
 		await expect(launchDesktop("0.12.8")).rejects.toThrow("desktop app on macOS or Windows");
 		expect(resolveCanonicalRuntimeStateHome).not.toHaveBeenCalled();
-		expect(validateDesktopInstallation).not.toHaveBeenCalled();
+		expect(validateDesktopInstallationForLaunch).not.toHaveBeenCalled();
 		expect(execFile).not.toHaveBeenCalled();
 	});
 	it("does not recurse from a desktop helper", async () => {
 		vi.stubEnv("QUARTERDECK_DESKTOP_CHILD", "1");
 		await expect(launchDesktop("0.12.8")).rejects.toThrow("helper");
-		expect(validateDesktopInstallation).not.toHaveBeenCalled();
+		expect(validateDesktopInstallationForLaunch).not.toHaveBeenCalled();
 	});
 	it("does not launch after failed installation or validation", async () => {
-		vi.mocked(validateDesktopInstallation).mockRejectedValue(new Error("Release unavailable"));
+		vi.mocked(validateDesktopInstallationForLaunch).mockRejectedValue(new Error("Release unavailable"));
 		await expect(launchDesktop("0.12.8")).rejects.toThrow("Release unavailable");
 		expect(execFile).not.toHaveBeenCalled();
 	});

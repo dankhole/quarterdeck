@@ -1,5 +1,6 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { buildWindowsAdmission } from "../../desktop/scripts/windows-native-admission.mjs";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
 import { copyDesktopTreePrivate } from "../../src/desktop-install/files.js";
@@ -11,6 +12,8 @@ import { updateWindowsDesktopShortcut } from "../../src/desktop-install/windows-
 import { desktopBuildIdentitySchema } from "../../src/shared/desktop-installation-contract.js";
 import type { DesktopLabFixture } from "./desktop-fixture";
 import { writeJsonAtomic } from "./paths";
+
+const execute = promisify(execFile);
 
 export interface WindowsDesktopLabInstallation {
 	service: ReturnType<typeof createDesktopInstallationService>;
@@ -36,12 +39,12 @@ export async function prepareWindowsDesktopLabApp(source: string, tempRoot: stri
 	await buildWindowsAdmission(bootstrap, { gui: true, labProfileRoot: profile });
 	for (const entry of [
 		"Quarterdeck.exe",
-		"resources/runtime/bin/node.exe",
-		"resources/runtime/installation-admission.exe",
+		"host/resources/runtime/bin/node.exe",
+		"host/resources/runtime/installation-admission.exe",
 	])
 		await copyFile(bootstrap, join(sourceApp, entry));
 	const identity = desktopBuildIdentitySchema.parse(
-		JSON.parse(await readFile(join(sourceApp, "resources/runtime/dist/build-manifest.json"), "utf8")),
+		JSON.parse(await readFile(join(sourceApp, "host/resources/runtime/dist/build-manifest.json"), "utf8")),
 	);
 	const prefix = join(tempRoot, "npm-prefix"),
 		packageSlot = desktopGlobalPackageSlot(prefix);
@@ -80,6 +83,10 @@ export async function prepareWindowsDesktopLabApp(source: string, tempRoot: stri
 export async function assertWindowsDesktopInUse(fixture: DesktopLabFixture): Promise<void> {
 	const installation = fixture.windowsInstallation;
 	if (!installation) throw new Error("Missing isolated Windows installation.");
+	await execute(fixture.manifest.executablePath, ["--quarterdeck-test-check-shortcut"], {
+		windowsHide: true,
+		timeout: 5_000,
+	});
 	try {
 		const release = await acquireWindowsDesktopMutation(
 			desktopBootstrapPath(installation.sourceApp, "win32"),
@@ -118,3 +125,5 @@ export async function finishWindowsDesktopLifecycle(fixture: DesktopLabFixture):
 		remainingPids: fixture.manifest.remainingPids,
 	});
 }
+
+import { execFile } from "node:child_process";

@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { desktopResourcePathsForPlatform } from "../../desktop/scripts/desktop-resource-paths.mjs";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
+import * as appIdentity from "../../src/desktop-install/app-identity.js";
 import { desktopFileSha256 } from "../../src/desktop-install/files.js";
 import { createDesktopInstallationService } from "../../src/desktop-install/index.js";
 import { desktopGlobalPackageSlot } from "../../src/desktop-install/layout.js";
@@ -17,11 +18,12 @@ import { zipFixture } from "../utilities/zip-fixture.js";
 
 const execute = promisify(execFile);
 let root: string, native: string;
-async function fixture(name: string, existingRoot?: string) {
+async function fixture(name: string, existingRoot?: string, legacy = false) {
 	const directory = existingRoot ?? join(root, name);
 	await ensurePrivateDirectory(directory);
 	const source = join(directory, `source-${randomUUID()}`);
-	const resources = join(source, "resources");
+	const host = legacy ? source : join(source, "host");
+	const resources = join(host, "resources");
 	const identity = {
 		schemaVersion: 1 as const,
 		version: "0.12.16",
@@ -77,14 +79,13 @@ async function fixture(name: string, existingRoot?: string) {
 		else await writeFile(target, path in json ? JSON.stringify(json[path]) : `synthetic-${identity.buildId}-${path}`);
 	}
 	for (const path of [
-		"Quarterdeck.exe",
-		"QuarterdeckHost.exe",
-		`resources/runtime/node_modules/node-pty/prebuilds/win32-${process.arch}/conpty.node`,
-		`resources/runtime/node_modules/node-pty/prebuilds/win32-${process.arch}/conpty_console_list.node`,
+		join(source, "Quarterdeck.exe"),
+		join(host, legacy ? "QuarterdeckHost.exe" : "Quarterdeck.exe"),
+		join(resources, `runtime/node_modules/node-pty/prebuilds/win32-${process.arch}/conpty.node`),
+		join(resources, `runtime/node_modules/node-pty/prebuilds/win32-${process.arch}/conpty_console_list.node`),
 	]) {
-		const target = join(source, path);
-		await mkdir(dirname(target), { recursive: true });
-		await copyFile(native, target);
+		await mkdir(dirname(path), { recursive: true });
+		await copyFile(native, path);
 	}
 	const prefix = join(directory, "prefix"),
 		packageSlot = desktopGlobalPackageSlot(prefix);
@@ -110,7 +111,15 @@ async function fixture(name: string, existingRoot?: string) {
 			throw new Error("Local installation must not download.");
 		},
 	};
-	return { directory, source, identity, owner, dependencies, service: createDesktopInstallationService(dependencies) };
+	return {
+		directory,
+		source,
+		resources,
+		identity,
+		owner,
+		dependencies,
+		service: createDesktopInstallationService(dependencies),
+	};
 }
 
 describe.skipIf(process.platform !== "win32")("Windows desktop installation transactions", () => {
@@ -131,8 +140,8 @@ describe.skipIf(process.platform !== "win32")("Windows desktop installation tran
 	it.each([false, true])(
 		"verifies Windows release ZIP and resource provenance (corrupted=%s)",
 		async (corrupted) => {
-			const f = await fixture(`release-${corrupted}`),
-				resources = join(f.source, "resources");
+			const f = await fixture(`release-${corrupted}`);
+			const { resources } = f;
 			for (const path of [
 				"runtime/bundle-manifest.json",
 				"runtime/release-policy.json",
@@ -234,8 +243,47 @@ describe.skipIf(process.platform !== "win32")("Windows desktop installation tran
 		expect(await readFile(userState, "utf8")).toBe("preserve");
 		expect((await f.service.getDesktopInstallationStatus()).state).toBe("missing");
 	}, 30000);
+	it("reuses the verified Windows tree for launch and rehashes changed installations", async () => {
+		const f = await fixture("launch-fingerprint");
+		const installed = await f.service.ensureDesktopInstallation({ version: f.identity.version, from: f.source });
+		const inspect = vi.spyOn(appIdentity, "inspectDesktopApp");
+		try {
+			// Windows shortcut publication can touch the launcher's metadata.
+			const launcher = join(installed.appPath, "Quarterdeck.exe");
+			const launcherInfo = await stat(launcher);
+			await utimes(launcher, launcherInfo.atime, Date.now() / 1000);
+			expect((await f.service.validateDesktopInstallationForLaunch()).installId).toBe(installed.installId);
+			expect(inspect).not.toHaveBeenCalled();
+
+			expect((await f.service.validateDesktopInstallation()).installId).toBe(installed.installId);
+			expect(inspect).toHaveBeenCalledOnce();
+			inspect.mockClear();
+
+			const launcherBytes = await readFile(launcher);
+			const alteredLauncher = Buffer.from(launcherBytes);
+			alteredLauncher[alteredLauncher.length - 1] ^= 1;
+			await writeFile(launcher, alteredLauncher);
+			await expect(f.service.validateDesktopInstallationForLaunch()).rejects.toMatchObject({
+				code: "invalid_artifact",
+			});
+			expect(inspect).toHaveBeenCalledOnce();
+			await writeFile(launcher, launcherBytes);
+			inspect.mockClear();
+
+			const file = join(installed.appPath, "host/resources/runtime/dist/cli.js");
+			const { atime, mtime, size } = await stat(file);
+			await writeFile(file, Buffer.alloc(size, 0x78));
+			await utimes(file, atime, mtime);
+			await expect(f.service.validateDesktopInstallationForLaunch()).rejects.toMatchObject({
+				code: "installation_changed",
+			});
+			expect(inspect).toHaveBeenCalledOnce();
+		} finally {
+			inspect.mockRestore();
+		}
+	}, 30000);
 	it("rolls back a failed promotion and retains the previous exact pair", async () => {
-		const first = await fixture("rollback");
+		const first = await fixture("rollback", undefined, true);
 		const installed = await first.service.ensureDesktopInstallation({
 			version: first.identity.version,
 			from: first.source,

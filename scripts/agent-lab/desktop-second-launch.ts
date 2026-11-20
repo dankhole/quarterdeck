@@ -79,7 +79,7 @@ function hasExecutable(process: DesktopLabProcess, executable: string): boolean 
 function isRuntimeEntry(process: DesktopLabProcess, appPath: string): boolean {
 	return (
 		process.command.includes(`${appPath}/Contents/Resources/runtime/`) ||
-		hasExecutable(process, join(appPath, "resources/runtime/bin/nodeHost.exe"))
+		hasExecutable(process, join(appPath, "host/resources/runtime/bin/nodeHost.exe"))
 	);
 }
 
@@ -160,7 +160,7 @@ export async function proveDesktopSecondLaunch(
 		!hasExecutable(
 			app,
 			fixture.manifest.executablePath.endsWith("\\Quarterdeck.exe")
-				? join(fixture.manifest.appPath, "QuarterdeckHost.exe")
+				? join(fixture.manifest.appPath, "host", "Quarterdeck.exe")
 				: fixture.manifest.executablePath,
 		) ||
 		!isRuntimeEntry(helper, fixture.manifest.appPath) ||

@@ -13,12 +13,12 @@ export async function recordPackagedApp(outputPath, arch) {
 	const appPath = windows ? outputPath : join(outputPath, "Quarterdeck.app");
 	const manifest = await verifyApp(appPath);
 	if (manifest.arch !== arch) throw new Error("Packaged app architecture differs from Forge target.");
-	const resources = windows ? join(appPath, "resources") : join(appPath, "Contents", "Resources");
+	const resources = windows ? join(appPath, "host", "resources") : join(appPath, "Contents", "Resources");
 	const files = desktopResourcePathsForPlatform(manifest.platform);
 	const checksums = Object.fromEntries(
 		await Promise.all(files.map(async (file) => [file, await sha256File(join(resources, file))])),
 	);
-	const wire = await getCurrentFuseWire(windows ? join(appPath, "QuarterdeckHost.exe") : appPath);
+	const wire = await getCurrentFuseWire(windows ? join(appPath, "host", "Quarterdeck.exe") : appPath);
 	const fuses = Object.fromEntries(
 		Object.entries(FuseV1Options)
 			.filter(([, value]) => typeof value === "number")
@@ -41,7 +41,7 @@ export async function recordPackagedApp(outputPath, arch) {
 			schemaVersion: 1,
 			bootstrapSha256: await sha256File(join(appPath, windows ? "Quarterdeck.exe" : "Contents/MacOS/Quarterdeck")),
 			hostSha256: await sha256File(
-				join(appPath, windows ? "QuarterdeckHost.exe" : "Contents/MacOS/QuarterdeckHost"),
+				join(appPath, windows ? "host/Quarterdeck.exe" : "Contents/MacOS/QuarterdeckHost"),
 			),
 		},
 		artifacts: [],

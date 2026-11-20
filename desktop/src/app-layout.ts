@@ -7,7 +7,10 @@ export function desktopAppRoot(appAsarPath: string, platform: NodeJS.Platform = 
 	const resources = paths.dirname(appAsarPath);
 	if (paths.basename(appAsarPath) !== "app.asar" || !paths.isAbsolute(appAsarPath))
 		throw new Error("Npm desktop launching requires a packaged Quarterdeck app.");
-	if (platform === "win32" && paths.basename(resources).toLowerCase() === "resources") return paths.dirname(resources);
+	if (platform === "win32" && paths.basename(resources).toLowerCase() === "resources") {
+		const host = paths.dirname(resources);
+		return paths.basename(host).toLowerCase() === "host" ? paths.dirname(host) : host;
+	}
 	if (
 		platform === "darwin" &&
 		paths.basename(resources) === "Resources" &&
