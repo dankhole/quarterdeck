@@ -4,6 +4,8 @@ The desktop app builds its runtime environment once at startup and again only af
 
 Windows uses the inherited process environment, with bundled Node first and saved executable folders before inherited PATH entries. PATH uses semicolon separators and case-insensitive folder deduplication; absolute drive and UNC paths are accepted. Windows does not run Unix login-shell import, so that control is hidden. Saved executable folders and guarded refresh remain available. The discovery and Keychain sections below describe macOS behavior.
 
+On Windows, the bundled `node.exe` on PATH is the Node interpreter used by npm shims, agent subprocesses, and manual shells. The root `Quarterdeck.exe` holds native admission for the Electron and runtime process tree. An older package that placed its admission launcher on PATH could detect an installed agent but exit immediately when starting its interactive session.
+
 ## PATH construction
 
 With login-shell import enabled, PATH uses Quarterdeck's bundled Node directory first, saved executable folders second, and the captured shell PATH next, followed by standard fallback folders. The app does not import shell aliases or functions; agent commands must resolve to executables.

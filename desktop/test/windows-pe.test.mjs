@@ -44,7 +44,8 @@ describe("Windows desktop artifact admission", () => {
 		const windows = desktopResourcePathsForPlatform("win32");
 		const mac = desktopResourcePathsForPlatform("darwin");
 		expect(windows).toContain("runtime/installation-admission.exe");
-		expect(windows).toContain("runtime/bin/nodeHost.exe");
+		expect(windows).toContain("runtime/bin/node.exe");
+		expect(windows).not.toContain("runtime/bin/nodeHost.exe");
 		expect(windows).not.toContain("runtime/bin/node");
 		expect(mac).toContain("runtime/bin/node");
 		expect(windows).toContain("runtime/dist/hooks.js");

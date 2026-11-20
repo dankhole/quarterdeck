@@ -37,11 +37,7 @@ export async function prepareWindowsDesktopLabApp(source: string, tempRoot: stri
 	await mkdir(join(profile, "StartMenu"));
 	const bootstrap = join(tempRoot, "native-build/admission.exe");
 	await buildWindowsAdmission(bootstrap, { gui: true, labProfileRoot: profile });
-	for (const entry of [
-		"Quarterdeck.exe",
-		"host/resources/runtime/bin/node.exe",
-		"host/resources/runtime/installation-admission.exe",
-	])
+	for (const entry of ["Quarterdeck.exe", "host/resources/runtime/installation-admission.exe"])
 		await copyFile(bootstrap, join(sourceApp, entry));
 	const identity = desktopBuildIdentitySchema.parse(
 		JSON.parse(await readFile(join(sourceApp, "host/resources/runtime/dist/build-manifest.json"), "utf8")),

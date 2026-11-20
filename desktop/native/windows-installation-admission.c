@@ -329,8 +329,6 @@ int wmain(int argc, wchar_t **argv) {
         return refuse("open the npm-managed Quarterdeck app or repair desktop installation.");
     const wchar_t *relative = executable + wcslen(app);
     if (!wcscmp(relative, L"Quarterdeck.exe")) written = swprintf_s(host, PATH_CAPACITY, L"%lshost\\Quarterdeck.exe", app);
-    else if (!wcscmp(relative, L"host\\resources\\runtime\\bin\\node.exe"))
-        written = swprintf_s(host, PATH_CAPACITY, L"%lshost\\resources\\runtime\\bin\\nodeHost.exe", app);
     else return refuse("unrecognized native desktop entrypoint.");
     if (written < 0) return refuse("desktop host path is too long.");
     argv[0] = host;

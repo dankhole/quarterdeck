@@ -27,7 +27,7 @@ const token = 'quarterdeck-bundled-pty-ok';
 let output = '';
 const windows = process.platform === 'win32';
 const shell = windows ? require('node:path').join(process.env.SystemRoot || 'C:\\\\Windows', 'System32', 'cmd.exe') : '/bin/sh';
-const terminal = pty.spawn(shell, windows ? ['/d', '/s', '/c', 'echo ' + token] : ['-c', 'printf ' + token], {
+const terminal = pty.spawn(shell, windows ? ['/d', '/s', '/c', 'node --version'] : ['-c', 'printf ' + token], {
   name: 'xterm-256color', cols: 80, rows: 24, cwd: process.cwd(),
   env: windows ? process.env : { PATH: '/usr/bin:/bin' }
 });
@@ -37,7 +37,7 @@ terminal.onExit(({exitCode}) => {
   clearTimeout(timer);
   // ConPTY's output worker needs disposal even after the shell exits.
   if (windows) terminal.destroy();
-  if (exitCode !== 0 || !output.includes(token)) process.exit(1);
+  if (exitCode !== 0 || !output.includes(windows ? process.version : token)) process.exit(1);
   console.log(token);
 });
 `;
@@ -54,15 +54,7 @@ export async function verifyRuntime(runtimePath) {
 	validateReleasePolicy(JSON.parse(await readFile(join(runtimePath, "release-policy.json"), "utf8")), manifest);
 	await validateRuntimeDependencyLinks(runtimePath);
 	const windows = process.platform === "win32";
-	const windowsHost =
-		windows &&
-		(await lstat(join(runtimePath, "bin", "nodeHost.exe")).catch((error) => {
-			if (error.code === "ENOENT") return null;
-			throw error;
-		}));
-	// Fixed verification probes run against a noncanonical candidate's real Node.
-	// Installed launches still enter through the native admission executable.
-	const nodeBin = join(runtimePath, "bin", windows ? (windowsHost ? "nodeHost.exe" : "node.exe") : "node");
+	const nodeBin = join(runtimePath, "bin", windows ? "node.exe" : "node");
 	if (!(await lstat(nodeBin)).isFile()) throw new Error("Bundled Node must be a real executable file.");
 	const env = { ...process.env, ...(process.platform === "darwin" ? { PATH: "/usr/bin:/bin" } : {}) };
 	delete env.NODE_PATH;
@@ -75,7 +67,7 @@ export async function verifyRuntime(runtimePath) {
 		if (error.code === "ENOENT") return null;
 		throw error;
 	});
-	const canonicalWindowsRuntime = windowsHost ? (await realpath(runtimePath)).toLowerCase() : null;
+	const canonicalWindowsRuntime = windows ? (await realpath(runtimePath)).toLowerCase() : null;
 	if (
 		canonicalWindowsRuntime &&
 		["host/resources/runtime", "resources/runtime"].some(
@@ -85,6 +77,11 @@ export async function verifyRuntime(runtimePath) {
 		)
 	)
 		throw new Error("Verify a separate packaging candidate; installed Windows hosts require native admission.");
+	if (windows) {
+		// Exercise the same bare Node resolution used by npm agent shims.
+		for (const key of Object.keys(env)) if (key.toUpperCase() === "PATH") delete env[key];
+		env.PATH = dirname(nodeBin);
+	}
 	if (wrappedNode) {
 		if (!wrappedNode.isFile()) throw new Error("Bundled Node host must be a real executable file.");
 		env.QUARTERDECK_DESKTOP_LAB_CONFIG = join(runtimePath, "packaging-verification-only.json");
@@ -137,7 +134,6 @@ export async function verifyApp(appPath) {
 			"Quarterdeck.exe",
 			"host/Quarterdeck.exe",
 			"host/resources/runtime/bin/node.exe",
-			"host/resources/runtime/bin/nodeHost.exe",
 			"host/resources/runtime/installation-admission.exe",
 		]) {
 			const path = join(appPath, binary);
@@ -148,9 +144,9 @@ export async function verifyApp(appPath) {
 		const bootstrap = await sha256File(join(runtimePath, "installation-admission.exe"));
 		if (
 			(await sha256File(join(appPath, "Quarterdeck.exe"))) !== bootstrap ||
-			(await sha256File(join(runtimePath, "bin", "node.exe"))) !== bootstrap
+			(await sha256File(join(runtimePath, "bin", "node.exe"))) === bootstrap
 		)
-			throw new Error("Windows admission entrypoints differ from their installer helper.");
+			throw new Error("Windows launcher must match admission and bundled Node must be a separate executable.");
 		const shell = JSON.parse(extractFile(join(resources, "app.asar"), "package.json").toString("utf8"));
 		if (shell.name !== "quarterdeck-desktop" || shell.version !== manifest.version)
 			throw new Error("Windows shell and runtime product identities differ.");

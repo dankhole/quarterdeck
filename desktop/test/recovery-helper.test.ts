@@ -36,7 +36,7 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 				? ["ignore", "ignore", "ignore", "ignore", overrides.installationAdmission.fd]
 				: ["ignore", "ignore", "ignore"],
 			shell: false,
-			detached: false,
+			detached: process.platform === "win32" && Boolean(overrides.installationAdmission),
 			env: { QUARTERDECK_STATE_HOME: "/synthetic/state", PROVIDER_SETTING: "retained" },
 		});
 		if (overrides.installationAdmission) {

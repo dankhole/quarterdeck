@@ -23,10 +23,8 @@ export function desktopResourcePathsForPlatform(platform) {
 	if (platform === "darwin") return DESKTOP_RESOURCE_PATHS;
 	if (platform !== "win32") throw new Error("Unsupported desktop resource platform.");
 	return [
-		...DESKTOP_RESOURCE_PATHS.map((path) =>
-			["runtime/bin/node", "runtime/bin/nodeHost", "runtime/installation-admission"].includes(path)
-				? `${path}.exe`
-				: path,
+		...DESKTOP_RESOURCE_PATHS.filter((path) => path !== "runtime/bin/nodeHost").map((path) =>
+			["runtime/bin/node", "runtime/installation-admission"].includes(path) ? `${path}.exe` : path,
 		),
 		"desktop-shell.json",
 	];

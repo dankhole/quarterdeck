@@ -79,7 +79,7 @@ function hasExecutable(process: DesktopLabProcess, executable: string): boolean 
 function isRuntimeEntry(process: DesktopLabProcess, appPath: string): boolean {
 	return (
 		process.command.includes(`${appPath}/Contents/Resources/runtime/`) ||
-		hasExecutable(process, join(appPath, "host/resources/runtime/bin/nodeHost.exe"))
+		hasExecutable(process, join(appPath, "host/resources/runtime/bin/node.exe"))
 	);
 }
 

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -78,6 +78,9 @@ async function fixture(name: string, existingRoot?: string, legacy = false) {
 		if (path.endsWith(".exe")) await copyFile(native, target);
 		else await writeFile(target, path in json ? JSON.stringify(json[path]) : `synthetic-${identity.buildId}-${path}`);
 	}
+	const bundledNode = join(resources, legacy ? "runtime/bin/nodeHost.exe" : "runtime/bin/node.exe");
+	if (legacy) await copyFile(native, bundledNode);
+	await appendFile(bundledNode, "synthetic Node");
 	for (const path of [
 		join(source, "Quarterdeck.exe"),
 		join(host, legacy ? "QuarterdeckHost.exe" : "Quarterdeck.exe"),

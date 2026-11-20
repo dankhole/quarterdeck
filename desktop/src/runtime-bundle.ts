@@ -5,7 +5,6 @@ import { DESKTOP_LAUNCH_PROTOCOL_VERSION } from "../../src/shared/desktop-launch
 export interface RuntimeBundle {
 	root: string;
 	nodePath: string;
-	windowsNodeHostPath?: string;
 	cliPath: string;
 	version: string;
 	buildId: string;
@@ -18,7 +17,6 @@ export function readRuntimeBundle(
 	expectedVersion: string,
 	architecture: string,
 	platform: NodeJS.Platform = process.platform,
-	hasNativeAdmission = false,
 ): RuntimeBundle {
 	if (platform !== "darwin" && platform !== "win32") throw new Error("Unsupported desktop runtime platform.");
 	const canonicalRoot = realpathSync(root);
@@ -41,19 +39,12 @@ export function readRuntimeBundle(
 		throw new Error("Runtime bundle identity does not match the desktop application.");
 	}
 	const nodePath = join(canonicalRoot, "bin", platform === "win32" ? "node.exe" : "node");
-	const windowsNodeHostPath =
-		platform === "win32" && hasNativeAdmission ? join(canonicalRoot, "bin", "nodeHost.exe") : undefined;
 	const cliPath = join(canonicalRoot, "dist", "cli.js");
-	if (
-		!statSync(nodePath).isFile() ||
-		!statSync(cliPath).isFile() ||
-		(windowsNodeHostPath && !statSync(windowsNodeHostPath).isFile())
-	)
+	if (!statSync(nodePath).isFile() || !statSync(cliPath).isFile())
 		throw new Error("The bundled runtime is incomplete.");
 	return {
 		root: canonicalRoot,
 		nodePath,
-		windowsNodeHostPath,
 		cliPath,
 		version: expectedVersion,
 		buildId: record.buildId,

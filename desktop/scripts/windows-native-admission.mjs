@@ -104,9 +104,8 @@ export async function installWindowsNativeAdmission(appPath) {
 	await copyFile(bootstrap, join(appPath, "Quarterdeck.exe"));
 	const resources = join(hostDirectory, "resources");
 	const runtime = join(resources, "runtime");
-	const node = join(runtime, "bin", "node.exe");
-	await rename(node, join(runtime, "bin", "nodeHost.exe"));
-	await copyFile(bootstrap, node);
+	// Provider shims and shells invoke the real Node on PATH. The desktop
+	// bootstrap already holds admission for Electron and its runtime child.
 	await copyFile(bootstrap, join(runtime, "installation-admission.exe"));
 	const bundle = JSON.parse(await readFile(join(runtime, "bundle-manifest.json"), "utf8"));
 	const metadata = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));

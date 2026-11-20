@@ -58,7 +58,13 @@ export async function inspectWindowsDesktopApp(
 			"invalid_artifact",
 			"The Windows shell and bundled runtime identities differ.",
 		);
-	for (const resource of desktopResourcePathsForPlatform("win32")) {
+	const node = join(resources, "runtime/bin/node.exe");
+	const bootstrap = await desktopFileSha256(join(resources, "runtime/installation-admission.exe"));
+	// Older receipts still need to verify for upgrade, rollback, and uninstall.
+	const legacyNodeHost = "runtime/bin/nodeHost.exe";
+	const wrappedNode = (await desktopFileSha256(node)) === bootstrap;
+	const resourcePaths = [...desktopResourcePathsForPlatform("win32"), ...(wrappedNode ? [legacyNodeHost] : [])];
+	for (const resource of resourcePaths) {
 		const info = await desktopPhysicalFileSystem.lstat(join(resources, resource));
 		if (!info.isFile() || info.isSymbolicLink())
 			throw new DesktopInstallationError("invalid_artifact", "A Windows app resource is not a regular file.");
@@ -71,8 +77,8 @@ export async function inspectWindowsDesktopApp(
 	for (const path of [
 		join(canonical, "Quarterdeck.exe"),
 		host,
-		join(resources, "runtime/bin/node.exe"),
-		join(resources, "runtime/bin/nodeHost.exe"),
+		node,
+		...(wrappedNode ? [join(resources, legacyNodeHost)] : []),
 		join(resources, "runtime/installation-admission.exe"),
 		join(resources, `runtime/node_modules/node-pty/prebuilds/win32-${arch}/conpty.node`),
 		join(resources, `runtime/node_modules/node-pty/prebuilds/win32-${arch}/conpty_console_list.node`),
@@ -84,7 +90,6 @@ export async function inspectWindowsDesktopApp(
 				"Windows app binaries do not match the requested architecture.",
 			);
 	}
-	const bootstrap = await desktopFileSha256(join(resources, "runtime/installation-admission.exe"));
 	if (
 		release &&
 		(bootstrap !== release.nativeAdmission.bootstrapSha256 ||
@@ -96,7 +101,7 @@ export async function inspectWindowsDesktopApp(
 		);
 	if (
 		(await desktopFileSha256(join(canonical, "Quarterdeck.exe"))) !== bootstrap ||
-		(await desktopFileSha256(join(resources, "runtime/bin/node.exe"))) !== bootstrap
+		(wrappedNode && (await desktopFileSha256(join(resources, legacyNodeHost))) === bootstrap)
 	)
 		throw new DesktopInstallationError(
 			"invalid_artifact",

@@ -1145,7 +1145,7 @@ async function launchDesktop(
 			const resourceRoot = app.isPackaged
 				? join(process.resourcesPath, "runtime")
 				: resolve(import.meta.dirname, "..", ".stage", process.arch, "runtime");
-			bundle = readRuntimeBundle(resourceRoot, app.getVersion(), process.arch, process.platform, admission !== null);
+			bundle = readRuntimeBundle(resourceRoot, app.getVersion(), process.arch, process.platform);
 			record({ kind: "startup", phase: "bundle_validated" });
 			const environmentForHelper = await resolveEnvironment();
 			if (stopping || shutdownConfirmed || environmentCleanupUnconfirmed) return;
