@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import { UiPreferencesStore } from "../config/ui-preferences-store.js";
+import type { RuntimePiModelsResponse } from "../core/api/pi-models.js";
 import type { RuntimeUiPreferencesPatch } from "../core/api/ui-preferences.js";
 
 // Coordinates the runtime-side TRPC handlers used by the browser.
@@ -68,7 +70,7 @@ type RuntimeApi = RuntimeTrpcContext["runtimeApi"];
 class RuntimeApiImpl implements RuntimeApi {
 	private readonly uiPreferences = new UiPreferencesStore();
 	private readonly codexModelCatalog = new AgentModelCatalogCache("codex", loadCodexModelCatalog);
-	private readonly piModelCatalog = new AgentModelCatalogCache("pi", loadPiModelCatalog);
+	private readonly pendingPiModels = new Map<string, Promise<RuntimePiModelsResponse>>();
 
 	constructor(private readonly deps: CreateRuntimeApiDependencies) {}
 
@@ -95,10 +97,17 @@ class RuntimeApiImpl implements RuntimeApi {
 	}
 
 	async piModels(projectScope: RuntimeTrpcProjectScope) {
-		return this.piModelCatalog.get(
-			() => this.deps.config.loadScopedRuntimeConfig(projectScope),
-			projectScope.projectPath,
-		);
+		const cwd = resolve(projectScope.projectPath);
+		const pending = this.pendingPiModels.get(cwd);
+		if (pending) return pending;
+
+		// Reopenings must see saved Pi changes. Share only work that is still in flight.
+		const request = this.deps.config
+			.loadScopedRuntimeConfig(projectScope)
+			.then((config) => loadPiModelCatalog(config, cwd))
+			.finally(() => this.pendingPiModels.delete(cwd));
+		this.pendingPiModels.set(cwd, request);
+		return request;
 	}
 
 	async loadConfig(projectScope: RuntimeTrpcProjectScope | null) {

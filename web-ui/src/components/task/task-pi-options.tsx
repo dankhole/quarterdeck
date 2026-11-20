@@ -2,7 +2,7 @@ import { PI_THINKING_LEVELS, runtimePiOptionsSchema } from "@runtime-contract";
 import { type ReactElement, useCallback, useState } from "react";
 
 import { TaskOptionSelector } from "@/components/task/task-option-selector";
-import { fetchPiModels, getCachedPiModels } from "@/runtime/pi-model-query";
+import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { RuntimePiOptions } from "@/runtime/types";
 import { useTrpcQuery } from "@/runtime/use-trpc-query";
 
@@ -16,11 +16,14 @@ interface TaskPiOptionsProps {
 export function TaskPiOptions({ projectId, value, onValueChange, portalContainer }: TaskPiOptionsProps): ReactElement {
 	const [localPortalContainer, setLocalPortalContainer] = useState<HTMLDivElement | null>(null);
 	const queryFn = useCallback(
-		async () => ({ projectId, catalog: projectId === null ? null : await fetchPiModels(projectId) }),
+		async () => ({
+			projectId,
+			catalog: projectId === null ? null : await getRuntimeTrpcClient(projectId).runtime.piModels.query(),
+		}),
 		[projectId],
 	);
-	const { data, isLoading, isError } = useTrpcQuery({ enabled: projectId !== null, queryFn });
-	const catalog = (data?.projectId === projectId ? data?.catalog : null) ?? getCachedPiModels(projectId);
+	const { data, isError } = useTrpcQuery({ enabled: projectId !== null, queryFn });
+	const catalog = data?.projectId === projectId ? data.catalog : null;
 	const models = catalog?.models ?? [];
 	const resolvedPortalContainer = portalContainer ?? localPortalContainer;
 	return (
@@ -64,8 +67,10 @@ export function TaskPiOptions({ projectId, value, onValueChange, portalContainer
 					portalContainer={resolvedPortalContainer}
 				/>
 			</div>
-			{isLoading && !catalog ? <p className="text-[11px] text-text-secondary">Loading Pi models…</p> : null}
-			{isError || (!isLoading && models.length === 0) ? (
+			{projectId !== null && !catalog && !isError ? (
+				<p className="text-[11px] text-text-secondary">Loading Pi models…</p>
+			) : null}
+			{isError || catalog?.models.length === 0 ? (
 				<p role="status" className="text-[11px] text-text-secondary">
 					Model choices are unavailable. You can still start with Pi default.
 				</p>

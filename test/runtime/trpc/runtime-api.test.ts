@@ -1318,14 +1318,26 @@ describe("createRuntimeApi Codex model catalog", () => {
 });
 
 describe("createRuntimeApi Pi model catalog", () => {
-	it("loads metadata with the originating project's scope and caches it per project", async () => {
-		modelCatalogMocks.loadPi.mockReset().mockResolvedValue({ models: [{ provider: "alpha", id: "chosen" }] });
+	it("shares only overlapping requests and rereads the originating project's catalog", async () => {
+		const before = { models: [{ provider: "openai-codex", id: "gpt-6.1-sol" }] };
+		const after = { models: [{ provider: "litellm", id: "gpt-6.2-sol" }] };
+		const other = { models: [{ provider: "alpha", id: "other" }] };
+		modelCatalogMocks.loadPi
+			.mockReset()
+			.mockResolvedValueOnce(before)
+			.mockResolvedValueOnce(other)
+			.mockResolvedValueOnce(after);
 		const deps = createDeps();
 		const api = createRuntimeApi(deps);
-		await api.piModels(defaultScope);
-		await api.piModels(defaultScope);
-		await api.piModels({ projectId: "other", projectPath: "/tmp/other" });
-		expect(modelCatalogMocks.loadPi).toHaveBeenCalledTimes(2);
+		await expect(
+			Promise.all([
+				api.piModels(defaultScope),
+				api.piModels(defaultScope),
+				api.piModels({ projectId: "other", projectPath: "/tmp/other" }),
+			]),
+		).resolves.toEqual([before, before, other]);
+		await expect(api.piModels(defaultScope)).resolves.toEqual(after);
+		expect(modelCatalogMocks.loadPi).toHaveBeenCalledTimes(3);
 		expect(modelCatalogMocks.loadPi).toHaveBeenNthCalledWith(
 			1,
 			deps.config.getActiveRuntimeConfig(),
@@ -1336,5 +1348,18 @@ describe("createRuntimeApi Pi model catalog", () => {
 			deps.config.getActiveRuntimeConfig(),
 			resolve("/tmp/other"),
 		);
+	});
+
+	it("does not reuse the old catalog on failure and retries on the next request", async () => {
+		const catalog = { models: [{ provider: "alpha", id: "chosen" }] };
+		modelCatalogMocks.loadPi
+			.mockReset()
+			.mockResolvedValueOnce(catalog)
+			.mockRejectedValueOnce(new Error("Pi unavailable"))
+			.mockResolvedValueOnce({ models: [] });
+		const api = createRuntimeApi(createDeps());
+		await expect(api.piModels(defaultScope)).resolves.toEqual(catalog);
+		await expect(api.piModels(defaultScope)).rejects.toThrow("Pi unavailable");
+		await expect(api.piModels(defaultScope)).resolves.toEqual({ models: [] });
 	});
 });

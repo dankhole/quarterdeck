@@ -142,13 +142,21 @@ describe("TaskPiOptions", () => {
 		await choose("beta/shared-model");
 		expect(onChange).toHaveBeenLastCalledWith({ model: models[1] });
 	});
-	it("reuses discovery after reopening the picker", async () => {
+	it("shows newly saved models instead of old choices after reopening", async () => {
 		const onChange = vi.fn();
 		await act(async () => root.render(<Harness onChange={onChange} />));
+		await openMenu("Starting model");
+		expect(document.body.textContent).toContain("beta/shared-model");
 		await act(async () => root.render(null));
+
+		const updated = { provider: "litellm", id: "gpt-6.2-sol" };
+		query.mockResolvedValue({ models: [updated] });
 		await act(async () => root.render(<Harness onChange={onChange} />));
-		expect(query).toHaveBeenCalledOnce();
-		expect(document.body.textContent).not.toContain("Loading Pi models");
+		expect(query).toHaveBeenCalledTimes(2);
+		await openMenu("Starting model");
+		expect(document.body.textContent).not.toContain("beta/shared-model");
+		await choose("litellm/gpt-6.2-sol");
+		expect(onChange).toHaveBeenLastCalledWith({ model: updated });
 	});
 	it("preserves independent model and thinking choices", async () => {
 		const onChange = vi.fn();
