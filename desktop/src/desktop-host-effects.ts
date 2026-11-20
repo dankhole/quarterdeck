@@ -9,6 +9,7 @@ import {
 	desktopHostEffectResultSchema,
 } from "../../src/core/api/desktop-runtime-protocol.js";
 import { resolveMacOpenProjectArguments } from "../../src/core/api/mac-open-project.js";
+import { openProjectOnHost } from "../../src/server/open-project.js";
 
 export interface DesktopHostEffectIdentity {
 	sender: object;
@@ -46,6 +47,8 @@ export interface DesktopHostEffectDispatcherOptions {
 	services?: DesktopHostEffectServices;
 	deadlineMs?: number;
 	maxPending?: number;
+	platform?: NodeJS.Platform;
+	openWindowsProject?: typeof openProjectOnHost;
 }
 
 /** Private helper requests only. No renderer may supply this sender identity. */
@@ -157,10 +160,22 @@ export class DesktopHostEffectDispatcher {
 			await this.services.openExternalUrl(action.url);
 			return { status: "opened" };
 		}
-		if (action.method === "open-path") {
+		const windows = (this.options.platform ?? process.platform) === "win32";
+		if (action.method === "open-path" || (windows && action.targetId === "finder")) {
 			return (await this.services.openPath(action.path))
 				? { status: "failed", reason: "launch_failed" }
 				: { status: "opened" };
+		}
+		if (windows) {
+			const result = await (this.options.openWindowsProject ?? openProjectOnHost)(action.targetId, action.path, {
+				platform: "win32",
+			});
+			return result.kind === "opened"
+				? { status: "opened" }
+				: {
+						status: "failed",
+						reason: result.kind === "unavailable" ? "unavailable" : "launch_failed",
+					};
 		}
 		for (const args of resolveMacOpenProjectArguments(action.targetId, action.path)) {
 			if (!admitted()) return { status: "failed", reason: "denied" };

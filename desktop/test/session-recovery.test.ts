@@ -80,7 +80,7 @@ describe("explicit desktop prior-session recovery", () => {
 		expect(surface).toContain('href="app://quarterdeck/__desktop/recover">Recover sessions…');
 		expect(surface).toContain('href="app://quarterdeck/__desktop/retry"');
 		expect(surface).toContain("background commands");
-		expect(surface).toContain("restart the Mac");
+		expect(surface).toContain("restart your computer");
 		for (const kind of ["starting", "runtime_failed", "renderer_failed", "shutdown_failed"] as const) {
 			expect(await startupSurface(kind, "recovery_custody_unconfirmed").text()).not.toContain("/__desktop/recover");
 		}

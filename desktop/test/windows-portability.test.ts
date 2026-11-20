@@ -82,6 +82,12 @@ describe("Windows desktop portability", () => {
 			}),
 		);
 		expect(readRuntimeBundle(root, "0.12.16", "x64", "win32").nodePath).toBe(join(root, "bin", "node.exe"));
+		expect(readRuntimeBundle(root, "0.12.16", "x64", "win32").windowsNodeHostPath).toBeUndefined();
+		expect(() => readRuntimeBundle(root, "0.12.16", "x64", "win32", true)).toThrow();
+		await writeFile(join(root, "bin", "nodeHost.exe"), "synthetic");
+		expect(readRuntimeBundle(root, "0.12.16", "x64", "win32", true).windowsNodeHostPath).toBe(
+			join(root, "bin", "nodeHost.exe"),
+		);
 		expect(() => readRuntimeBundle(root, "0.12.16", "x64", "darwin")).toThrow("identity");
 		await rm(join(root, "bin", "node.exe"));
 		expect(() => readRuntimeBundle(root, "0.12.16", "x64", "win32")).toThrow();

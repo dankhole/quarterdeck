@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { QUARTERDECK_DESKTOP_BRIDGE_VERSION } from "../../shared/desktop-bridge-contract.js";
+import { desktopAbsolutePathSchema } from "../../shared/desktop-path-contract.js";
 import { desktopDiagnosticsPayloadSchema } from "./desktop-diagnostics.js";
 import { runtimeOpenTargetIdSchema } from "./host-integrations.js";
 import { type RuntimeShutdownOutcome, runtimeShutdownOutcomeSchema } from "./runtime-shutdown.js";
@@ -139,11 +140,6 @@ export const desktopControlResultMessageSchema = z
 	.strict();
 export type DesktopControlResultMessage = z.infer<typeof desktopControlResultMessageSchema>;
 
-const desktopHostPathSchema = z
-	.string()
-	.min(1)
-	.max(4096)
-	.refine((value) => value.startsWith("/") && !value.includes("\0"));
 export const desktopHostExternalUrlSchema = z
 	.string()
 	.min(1)
@@ -164,16 +160,20 @@ export const desktopHostExternalUrlSchema = z
 
 export const desktopHostEffectActionSchema = z.discriminatedUnion("method", [
 	z.object({ method: z.literal("pick-directory") }).strict(),
-	z.object({ method: z.literal("open-path"), path: desktopHostPathSchema }).strict(),
+	z.object({ method: z.literal("open-path"), path: desktopAbsolutePathSchema }).strict(),
 	z.object({ method: z.literal("open-external-url"), url: desktopHostExternalUrlSchema }).strict(),
 	z
-		.object({ method: z.literal("open-project"), targetId: runtimeOpenTargetIdSchema, path: desktopHostPathSchema })
+		.object({
+			method: z.literal("open-project"),
+			targetId: runtimeOpenTargetIdSchema,
+			path: desktopAbsolutePathSchema,
+		})
 		.strict(),
 ]);
 export type DesktopHostEffectAction = z.infer<typeof desktopHostEffectActionSchema>;
 
 export const desktopHostEffectResultSchema = z.discriminatedUnion("status", [
-	z.object({ status: z.literal("selected"), path: desktopHostPathSchema }).strict(),
+	z.object({ status: z.literal("selected"), path: desktopAbsolutePathSchema }).strict(),
 	z.object({ status: z.literal("cancelled") }).strict(),
 	z.object({ status: z.literal("opened") }).strict(),
 	z

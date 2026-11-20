@@ -17,7 +17,7 @@ const { chmod, lstat, readdir, readFile, readlink, realpath } = desktopPhysicalF
 
 export async function desktopFileSha256(path: string): Promise<string> {
 	const hash = createHash("sha256");
-	for await (const chunk of createReadStream(path)) hash.update(chunk);
+	for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 })) hash.update(chunk);
 	return hash.digest("hex");
 }
 
@@ -48,6 +48,26 @@ export async function desktopAppTreeSha256(appPath: string): Promise<string> {
 	const hash = createHash("sha256");
 	let entries = 0;
 	let bytes = 0;
+	const pendingFiles: Promise<string>[] = [];
+	const batchSize = process.platform === "win32" ? 8 : 1;
+
+	async function flushFiles(): Promise<void> {
+		const results = await Promise.allSettled(pendingFiles.splice(0));
+		for (const result of results) {
+			if (result.status === "rejected") throw result.reason;
+			hash.update(result.value);
+		}
+	}
+
+	async function hashFile(path: string, name: string, metadata: nodeFs.Stats): Promise<string> {
+		const digest = await desktopFileSha256(path);
+		const after = await lstat(path);
+		if (after.size !== metadata.size || after.mtimeMs !== metadata.mtimeMs || after.ino !== metadata.ino) {
+			throw new DesktopInstallationError("invalid_artifact", "The app changed while it was being verified.");
+		}
+		return JSON.stringify(["file", name, (metadata.mode & 0o111) !== 0, metadata.size, digest]);
+	}
+
 	async function visit(directory: string): Promise<void> {
 		const children = (await readdir(directory, { withFileTypes: true })).sort((left, right) =>
 			left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
@@ -59,6 +79,7 @@ export async function desktopAppTreeSha256(appPath: string): Promise<string> {
 			const name = relative(root, path);
 			const metadata = await lstat(path);
 			if (metadata.isSymbolicLink()) {
+				await flushFiles();
 				if (!contained(root, await realpath(path))) {
 					throw new DesktopInstallationError(
 						"invalid_artifact",
@@ -67,31 +88,29 @@ export async function desktopAppTreeSha256(appPath: string): Promise<string> {
 				}
 				hash.update(JSON.stringify(["link", name, await readlink(path)]));
 			} else if (metadata.isDirectory()) {
+				await flushFiles();
 				hash.update(JSON.stringify(["directory", name]));
 				await visit(path);
 			} else if (metadata.isFile()) {
 				bytes += metadata.size;
 				if (bytes > 3 * 1024 * 1024 * 1024)
 					throw new DesktopInstallationError("invalid_artifact", "The expanded app is too large.");
-				hash.update(
-					JSON.stringify([
-						"file",
-						name,
-						(metadata.mode & 0o111) !== 0,
-						metadata.size,
-						await desktopFileSha256(path),
-					]),
-				);
-				const after = await lstat(path);
-				if (after.size !== metadata.size || after.mtimeMs !== metadata.mtimeMs || after.ino !== metadata.ino) {
-					throw new DesktopInstallationError("invalid_artifact", "The app changed while it was being verified.");
-				}
+				const result = hashFile(path, name, metadata);
+				// Traversal can reach another entry before this read settles.
+				void result.catch(() => undefined);
+				pendingFiles.push(result);
+				if (pendingFiles.length === batchSize) await flushFiles();
 			} else {
 				throw new DesktopInstallationError("invalid_artifact", "The app contains a special filesystem entry.");
 			}
 		}
 	}
-	await visit(root);
+	try {
+		await visit(root);
+		await flushFiles();
+	} finally {
+		await Promise.allSettled(pendingFiles);
+	}
 	return hash.digest("hex");
 }
 

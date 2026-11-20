@@ -1,4 +1,5 @@
 import type { DesktopHostEffectAction, DesktopHostEffectResult } from "../core/api/desktop-runtime-protocol.js";
+import { desktopAbsolutePathSchema } from "../shared/desktop-path-contract.js";
 import type { CreateRuntimeHostIntegrationsOptions } from "./runtime-host-integrations.js";
 
 export type DesktopHostEffectRequest = (
@@ -30,7 +31,7 @@ export function createDesktopRuntimeHostEffects(
 			throw failure(result);
 		},
 		openTarget: async (target) => {
-			const action: DesktopHostEffectAction = target.startsWith("/")
+			const action: DesktopHostEffectAction = desktopAbsolutePathSchema.safeParse(target).success
 				? { method: "open-path", path: target }
 				: { method: "open-external-url", url: target };
 			const result = await request(action, runtimeGeneration);

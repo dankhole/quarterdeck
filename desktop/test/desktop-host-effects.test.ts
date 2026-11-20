@@ -10,7 +10,7 @@ vi.mock("electron", () => ({
 }));
 afterEach(() => vi.useRealTimers());
 
-function fixture() {
+function fixture(platform: NodeJS.Platform = "darwin") {
 	const sender = {};
 	const identity: DesktopHostEffectIdentity = {
 		sender,
@@ -33,7 +33,10 @@ function fixture() {
 		openPath: vi.fn(async () => ""),
 		openProject: vi.fn(async () => true),
 	};
+	const openWindowsProject = vi.fn(async () => ({ kind: "opened" as const }));
 	const dispatcher = new DesktopHostEffectDispatcher({
+		platform,
+		openWindowsProject,
 		getIdentity: () => identity,
 		getParentWindow: () => parent as unknown as BrowserWindow,
 		services,
@@ -49,10 +52,25 @@ function fixture() {
 		sequence,
 		action,
 	});
-	return { identity, parent, services, sender, dispatcher, message };
+	return { identity, parent, services, sender, dispatcher, message, openWindowsProject };
 }
 
 describe("native host effects on the private parent channel", () => {
+	it("routes a Windows editor request to the Windows host launcher", async () => {
+		const f = fixture("win32");
+		const path = "C:\\Users\\Synthetic\\Project Ω";
+		const request = f.message(1, { method: "open-project", targetId: "vscode", path });
+		expect((await f.dispatcher.handleMessage(request, f.sender))?.result).toEqual({ status: "opened" });
+		expect(f.openWindowsProject).toHaveBeenCalledWith("vscode", path, { platform: "win32" });
+	});
+	it("opens Windows project folders through the native file manager", async () => {
+		const f = fixture("win32");
+		const path = "C:\\Users\\Synthetic\\Project Ω";
+		const request = f.message(1, { method: "open-project", targetId: "finder", path });
+		expect((await f.dispatcher.handleMessage(request, f.sender))?.result).toEqual({ status: "opened" });
+		expect(f.services.openPath).toHaveBeenCalledWith(path);
+		expect(f.services.openProject).not.toHaveBeenCalled();
+	});
 	it("parents and focuses the folder picker and returns cancellation without a path", async () => {
 		const f = fixture();
 		expect((await f.dispatcher.handleMessage(f.message(), f.sender))?.result).toEqual({ status: "cancelled" });
@@ -61,6 +79,17 @@ describe("native host effects on the private parent channel", () => {
 		expect(f.parent.show).toHaveBeenCalledOnce();
 		expect(f.parent.focus).toHaveBeenCalledTimes(2);
 	});
+	it.each(["C:\\Users\\Synthetic\\Project Ω", "\\\\server\\share\\Project Ω"])(
+		"returns a Windows folder selection to the helper unchanged: %s",
+		async (path) => {
+			const f = fixture();
+			f.services.showDirectoryDialog.mockResolvedValue({ canceled: false, filePaths: [path] });
+			expect((await f.dispatcher.handleMessage(f.message(), f.sender))?.result).toEqual({
+				status: "selected",
+				path,
+			});
+		},
+	);
 	it.each(["attached", "synthetic", "stopping", "wrong-sender", "wrong-generation", "wrong-startup"])(
 		"denies %s before any native effect",
 		async (condition) => {

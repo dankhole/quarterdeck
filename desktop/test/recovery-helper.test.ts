@@ -8,6 +8,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopRecoveryHelper, type DesktopRecoveryHelperOptions } from "../src/recovery-helper.js";
 
 const children: ChildProcess[] = [];
+const bundleRoot = join(tmpdir(), "synthetic-runtime");
+const nodePath = join(bundleRoot, "bin", "node");
+const cliPath = join(bundleRoot, "dist", "cli.js");
 afterEach(async () => {
 	vi.useRealTimers();
 	await Promise.all(
@@ -25,10 +28,10 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 		expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(
 			overrides.launch?.synthetic ? overrides.launch.labConfigPath : undefined,
 		);
-		expect(executable).toBe("/synthetic/bin/node");
-		expect(args).toEqual(["/synthetic/dist/cli.js", "recover", "--confirm-stopped"]);
+		expect(executable).toBe(nodePath);
+		expect(args).toEqual([cliPath, "recover", "--confirm-stopped"]);
 		expect(options).toMatchObject({
-			cwd: "/synthetic",
+			cwd: bundleRoot,
 			stdio: overrides.installationAdmission
 				? ["ignore", "ignore", "ignore", "ignore", overrides.installationAdmission.fd]
 				: ["ignore", "ignore", "ignore"],
@@ -66,9 +69,9 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 	});
 	const options: DesktopRecoveryHelperOptions = {
 		bundle: {
-			root: "/synthetic",
-			nodePath: "/synthetic/bin/node",
-			cliPath: "/synthetic/dist/cli.js",
+			root: bundleRoot,
+			nodePath,
+			cliPath,
 			version: "0.12.8",
 			buildId: "synthetic",
 			sourceSha: "a".repeat(40),
@@ -164,7 +167,7 @@ describe("trusted desktop recovery helper", () => {
 		await vi.advanceTimersByTimeAsync(200);
 		expect(await result).toBe("timed_out");
 		expect(fixture.owner.isRunning()).toBe(false);
-		expect(children[0]?.signalCode).toBe("SIGKILL");
+		expect(children[0]?.signalCode).toBe(process.platform === "win32" ? "SIGTERM" : "SIGKILL");
 		expect(fixture.spawnChild).toHaveBeenCalledOnce();
 	});
 

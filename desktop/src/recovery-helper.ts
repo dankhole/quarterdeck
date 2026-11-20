@@ -42,24 +42,29 @@ export class DesktopRecoveryHelper {
 			if (launch.synthetic && launch.labConfigPath)
 				environment.QUARTERDECK_DESKTOP_LAB_CONFIG = launch.labConfigPath;
 			delete environment.QUARTERDECK_AGENT_LAB;
-			child = (this.options.spawnChild ?? spawn)(bundle.nodePath, [bundle.cliPath, "recover", "--confirm-stopped"], {
-				cwd: bundle.root,
-				env: {
-					...environment,
-					QUARTERDECK_STATE_HOME: launch.stateHome,
-					...(this.options.installationAdmission
-						? {
-								QUARTERDECK_INSTALLATION_LOCK_FD: "4",
-								QUARTERDECK_INSTALLATION_LOCK_PATH: this.options.installationAdmission.path,
-							}
-						: {}),
+			const windowsNodeHost = this.options.installationAdmission ? bundle.windowsNodeHostPath : undefined;
+			child = (this.options.spawnChild ?? spawn)(
+				windowsNodeHost ?? bundle.nodePath,
+				[bundle.cliPath, "recover", "--confirm-stopped"],
+				{
+					cwd: bundle.root,
+					env: {
+						...environment,
+						QUARTERDECK_STATE_HOME: launch.stateHome,
+						...(this.options.installationAdmission
+							? {
+									QUARTERDECK_INSTALLATION_LOCK_FD: "4",
+									QUARTERDECK_INSTALLATION_LOCK_PATH: this.options.installationAdmission.path,
+								}
+							: {}),
+					},
+					stdio: this.options.installationAdmission
+						? ["ignore", "ignore", "ignore", "ignore", this.options.installationAdmission.fd]
+						: ["ignore", "ignore", "ignore"],
+					shell: false,
+					detached: Boolean(windowsNodeHost),
 				},
-				stdio: this.options.installationAdmission
-					? ["ignore", "ignore", "ignore", "ignore", this.options.installationAdmission.fd]
-					: ["ignore", "ignore", "ignore"],
-				shell: false,
-				detached: false,
-			});
+			);
 		} catch {
 			return "failed";
 		}

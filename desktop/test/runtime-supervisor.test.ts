@@ -14,6 +14,9 @@ import {
 } from "../src/runtime-supervisor.js";
 
 const children: ChildProcess[] = [];
+const bundleRoot = join(tmpdir(), "synthetic-runtime");
+const nodePath = join(bundleRoot, "bin", "node");
+const cliPath = join(bundleRoot, "dist", "cli.js");
 afterEach(async () => {
 	await Promise.all(
 		children.splice(0).map(async (child) => {
@@ -42,9 +45,9 @@ function supervisor(
 	});
 	const owner = new RuntimeSupervisor({
 		bundle: {
-			root: "/synthetic",
-			nodePath: "/synthetic/bin/node",
-			cliPath: "/synthetic/dist/cli.js",
+			root: bundleRoot,
+			nodePath,
+			cliPath,
 			version: "0.12.8",
 			buildId: "synthetic",
 			sourceSha: "a".repeat(40),
@@ -71,10 +74,10 @@ function supervisor(
 		shutdownDeadlineMs: mode === "shutdown-timeout" ? 20 : 1000,
 		spawnChild: (executable, args, options) => {
 			expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(labConfigPath);
-			expect(executable).toBe("/synthetic/bin/node");
+			expect(executable).toBe(nodePath);
 			if (args[1] === "recover") {
 				expect(mode).toBe("maintenance");
-				expect(args).toEqual(["/synthetic/dist/cli.js", "recover", "--confirm-stopped"]);
+				expect(args).toEqual([cliPath, "recover", "--confirm-stopped"]);
 				expect(options.env?.QUARTERDECK_DESKTOP_CHILD).toBeUndefined();
 				const child = spawn(
 					process.execPath,

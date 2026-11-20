@@ -19,7 +19,11 @@ import originalFs from "original-fs";
 import type { DesktopDiagnosticEvent, DesktopDiagnosticState } from "../../src/core/api/desktop-diagnostics.js";
 import type { DesktopStartupFailureMessage } from "../../src/core/api/desktop-runtime-protocol.js";
 import type { RuntimeShutdownOutcome } from "../../src/core/api/runtime-shutdown.js";
-import { DesktopInstallationError, validateDesktopInstallation } from "../../src/desktop-install/index.js";
+import {
+	DesktopInstallationError,
+	getDesktopAdmissionDescriptor,
+	validateDesktopInstallation,
+} from "../../src/desktop-install/index.js";
 import { desktopApplicationBundleId } from "../../src/desktop-install/receipt.js";
 import { type DesktopLaunchAppIdentity, readDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { desktopAppRoot } from "./app-layout.js";
@@ -36,6 +40,7 @@ import { installEditorDraftSave } from "./editor-draft-save.js";
 import { DesktopEnvironmentController, type DesktopEnvironmentRefreshResult } from "./environment-controller.js";
 import { installDesktopEnvironmentIpc } from "./environment-ipc.js";
 import { type DesktopInstallationPreflight, preflightDesktopInstallation } from "./installation-preflight.js";
+import { showInstallationProgress } from "./installation-progress.js";
 import { type DesktopLaunchConfig, readDesktopLaunchConfig, validateDesktopLaunchRequest } from "./launch-config.js";
 import type { DesktopLaunchEnvironmentResult } from "./launch-environment.js";
 import { desktopMenuTemplate } from "./native-menus.js";
@@ -87,6 +92,7 @@ async function launchDesktop(
 	launch: DesktopLaunchConfig,
 	appIdentity: DesktopLaunchAppIdentity | null,
 	{ installation, admission }: DesktopInstallationPreflight,
+	closeInstallationProgress: () => void,
 ): Promise<void> {
 	if (process.platform === "win32") app.setAppUserModelId(desktopApplicationBundleId);
 	const showWindow = launch.lab?.showWindow ?? true;
@@ -451,7 +457,7 @@ async function launchDesktop(
 			/* Lab evidence never controls runtime ownership. */
 		}
 	};
-	const startRuntime = async (): Promise<void> => {
+	const startRuntime = async (installationAlreadyVerified = false): Promise<void> => {
 		if (
 			starting ||
 			stopping ||
@@ -470,7 +476,7 @@ async function launchDesktop(
 		rebuildMenu();
 		let reply = null;
 		try {
-			if (!(await checkInstallationForRuntimeWork())) return;
+			if (!installationAlreadyVerified && !(await checkInstallationForRuntimeWork())) return;
 			if (renderer && isProductPage(renderer.contents.getURL()) && loadedGeneration !== null) {
 				reply = (await commands?.requestPreflight("reload", true)) ?? null;
 				if (reply?.decision !== "ready" || !commands?.isSealValid(reply)) return;
@@ -939,6 +945,7 @@ async function launchDesktop(
 		}
 	};
 	createWindow();
+	closeInstallationProgress();
 	coordinator = new DesktopQuitCoordinator({
 		needsFrontendPreflight: () => loadedGeneration !== null,
 		cleanupState: () =>
@@ -1138,7 +1145,7 @@ async function launchDesktop(
 			const resourceRoot = app.isPackaged
 				? join(process.resourcesPath, "runtime")
 				: resolve(import.meta.dirname, "..", ".stage", process.arch, "runtime");
-			bundle = readRuntimeBundle(resourceRoot, app.getVersion(), process.arch);
+			bundle = readRuntimeBundle(resourceRoot, app.getVersion(), process.arch, process.platform, admission !== null);
 			record({ kind: "startup", phase: "bundle_validated" });
 			const environmentForHelper = await resolveEnvironment();
 			if (stopping || shutdownConfirmed || environmentCleanupUnconfirmed) return;
@@ -1152,7 +1159,9 @@ async function launchDesktop(
 			await showSurface("startup_failed");
 			return;
 		}
-		await startRuntime();
+		// This launch already verified the pair under native shared admission.
+		// Explicit retries and restarts still check it again.
+		await startRuntime(true);
 		if (getEnvironment()?.source === "fallback" && !stopping && !shutdownConfirmed && !launch.synthetic)
 			void environmentController.open();
 	} catch {
@@ -1167,15 +1176,8 @@ async function launchDesktop(
 	}
 }
 
-// Top-level await holds Electron's ready event while canonical profile preparation completes.
-// launchDesktop itself reaches app.whenReady without awaiting any further pre-ready operation.
-const launchPreparation = await (async () => {
-	const request = readDesktopLaunchRequest(process.argv);
-	const launch = await readDesktopLaunchConfig(
-		process.env.QUARTERDECK_DESKTOP_LAB_CONFIG,
-		app.getPath("userData"),
-		request,
-	);
+async function prepareDesktopInstallation(launch: DesktopLaunchConfig) {
+	const request = launch.request;
 	const installation = app.isPackaged
 		? await preflightDesktopInstallation({
 				appPath: desktopAppRoot(app.getAppPath()),
@@ -1203,8 +1205,10 @@ const launchPreparation = await (async () => {
 		);
 		if (refusal) throw new Error(refusal);
 	}
-	return { launch, appIdentity, installation };
-})().catch((error: unknown) => {
+	return { appIdentity, installation };
+}
+
+function refuseDesktopLaunch(error: unknown): void {
 	dialog.showErrorBox(
 		"Desktop launch refused",
 		error instanceof DesktopInstallationError ||
@@ -1212,16 +1216,39 @@ const launchPreparation = await (async () => {
 				(error.message.startsWith("The running Quarterdeck app") ||
 					error.message.startsWith("A different Quarterdeck app")))
 			? error.message
-			: "Quarterdeck desktop could not validate its launch configuration. Run quarterdeck --desktop again, or reopen the app from Finder.",
+			: `Quarterdeck desktop could not validate its launch configuration. Run quarterdeck --desktop again, or reopen the app from ${process.platform === "win32" ? "the Start menu" : "Finder"}.`,
 	);
 	console.error("Quarterdeck desktop could not initialize its launch configuration.");
 	app.exit(1);
+}
+
+// Hold Electron's ready event only until the canonical profile is known.
+const launchConfig = await (async () => {
+	const request = readDesktopLaunchRequest(process.argv);
+	return readDesktopLaunchConfig(process.env.QUARTERDECK_DESKTOP_LAB_CONFIG, app.getPath("userData"), request);
+})().catch((error: unknown) => {
+	refuseDesktopLaunch(error);
 	return null;
 });
-if (launchPreparation)
-	void launchDesktop(launchPreparation.launch, launchPreparation.appIdentity, launchPreparation.installation).catch(
-		() => {
-			console.error("Quarterdeck desktop could not initialize.");
-			app.exit(1);
-		},
-	);
+if (launchConfig) {
+	app.setPath("userData", launchConfig.userDataPath);
+	app.setPath("sessionData", launchConfig.userDataPath);
+	const closeProgress =
+		process.platform === "win32" && app.isPackaged && !launchConfig.synthetic && getDesktopAdmissionDescriptor()
+			? showInstallationProgress()
+			: () => {};
+	const prepare = async () => {
+		try {
+			const { appIdentity, installation } = await prepareDesktopInstallation(launchConfig);
+			void launchDesktop(launchConfig, appIdentity, installation, closeProgress).catch((error: unknown) => {
+				closeProgress();
+				refuseDesktopLaunch(error);
+			});
+		} catch (error) {
+			closeProgress();
+			refuseDesktopLaunch(error);
+		}
+	};
+	if (process.platform === "win32") void prepare();
+	else await prepare();
+}

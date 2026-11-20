@@ -70,7 +70,7 @@ export async function recoverDesktopSessions(options: DesktopSessionRecoveryOpti
 		cancelId: 0,
 		message: RECOVERY_CONFIRMATION_MESSAGE,
 		detail:
-			"Older runs cannot account for detached commands. Confirm you stopped any remaining agents or background commands before resuming. Saved projects and session history are retained. If you cannot confirm cleanup, cancel and restart the Mac before reopening Quarterdeck.",
+			"Older runs cannot account for detached commands. Confirm you stopped any remaining agents or background commands before resuming. Saved projects and session history are retained. If you cannot confirm cleanup, cancel and restart your computer before reopening Quarterdeck.",
 	});
 	if (choice !== 1 || !options.isAllowed()) return;
 	let result: DesktopRecoveryHelperResult;
@@ -91,7 +91,7 @@ export async function recoverDesktopSessions(options: DesktopSessionRecoveryOpti
 		message: "Session recovery remains blocked",
 		detail:
 			result === "timed_out"
-				? "The recovery check did not finish in time. Quarterdeck has not resumed sessions. Run quarterdeck recover for the specific check result. Use Help → Export Diagnostics before retrying, or restart the Mac."
-				: "A runtime or saved process may still be live, or saved recovery evidence could not be verified. Quarterdeck has not resumed sessions. Stop the prior owner and remaining commands, or restart the Mac. Run quarterdeck recover for the specific check result. Use Help → Export Diagnostics if recovery stays blocked.",
+				? "The recovery check did not finish in time. Quarterdeck has not resumed sessions. Run quarterdeck recover for the specific check result. Use Help → Export Diagnostics before retrying, or restart your computer."
+				: "A runtime or saved process may still be live, or saved recovery evidence could not be verified. Quarterdeck has not resumed sessions. Stop the prior owner and remaining commands, or restart your computer. Run quarterdeck recover for the specific check result. Use Help → Export Diagnostics if recovery stays blocked.",
 	});
 }

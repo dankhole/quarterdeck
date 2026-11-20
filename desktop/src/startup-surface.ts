@@ -39,13 +39,13 @@ const FAILURE_COPY: Record<DesktopStartupFailureMessage["code"], string> = {
 	incompatible_runtime:
 		"An existing runtime uses an incompatible version. Quit that Quarterdeck CLI or app, then reopen this version. Workspace state will remain available.",
 	recovery_custody_unconfirmed:
-		"A prior runtime stopped without confirming cleanup. Check that its agents and background commands have stopped, then choose Recover sessions. If you cannot confirm they stopped, restart the Mac before reopening Quarterdeck. Saved projects and session history are retained.",
+		"A prior runtime stopped without confirming cleanup. Check that its agents and background commands have stopped, then choose Recover sessions. If you cannot confirm they stopped, restart your computer before reopening Quarterdeck. Saved projects and session history are retained.",
 	recovery_evidence_unverifiable:
-		"Prior session cleanup cannot be verified from its saved process identities. Quarterdeck will keep recovery blocked. Restart the Mac, then reopen Quarterdeck; if this persists, use diagnostics before retrying.",
+		"Prior session cleanup cannot be verified from its saved process identities. Quarterdeck will keep recovery blocked. Restart your computer, then reopen Quarterdeck; if this persists, use diagnostics before retrying.",
 	prior_processes_live:
-		"Processes from a prior runtime are still running. Quarterdeck will not launch overlapping sessions. Quit the prior owner cleanly, or restart the Mac before reopening.",
+		"Processes from a prior runtime are still running. Quarterdeck will not launch overlapping sessions. Quit the prior owner cleanly, or restart your computer before reopening.",
 	identity_unavailable:
-		"Quarterdeck could not verify this Mac's runtime ownership identity. Recovery remains blocked. Restart the Mac and reopen Quarterdeck; use diagnostics if identity verification still fails.",
+		"Quarterdeck could not verify this computer's runtime ownership identity. Recovery remains blocked. Restart your computer and reopen Quarterdeck; use diagnostics if identity verification still fails.",
 };
 
 export function startupSurface(

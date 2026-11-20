@@ -69,11 +69,17 @@ export async function proveWindowsChromiumCustody(driver: DesktopLabDriver): Pro
 		}
 	}
 	if (!job) throw new Error("The original native launch job could not be identified.");
+	const helper = owned.find((row) => row.pid === fixture.manifest.helperPid);
+	if (!helper || helper.parentPid !== main.pid || !(await member(job, helper.pid)))
+		throw new Error("The console-free runtime helper must be a direct child inside the native app job.");
+	if (snapshot.some((row) => row.parentPid === helper.pid && /(?:^|[\\/])conhost\.exe(?:["\s]|$)/iu.test(row.command)))
+		throw new Error("The desktop runtime helper opened an independent Windows console.");
 	for (const child of chromium)
 		if (!(await member(job, child.pid)))
 			throw new Error("A Chromium or crashpad process escaped native installation custody.");
 	await writeJsonAtomic(join(fixture.manifest.artifactDir, "windows-chromium-custody.json"), {
 		job,
+		consoleFreeRuntimeHelper: helper.pid,
 		uploadToServer: false,
 		sandboxUnchanged: true,
 		processes: chromium.map((row) => ({ pid: row.pid, startedAt: row.startedAt, member: true })),

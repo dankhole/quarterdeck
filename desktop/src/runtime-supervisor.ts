@@ -123,7 +123,8 @@ export class RuntimeSupervisor {
 		if (launch.synthetic && launch.labConfigPath) environment.QUARTERDECK_DESKTOP_LAB_CONFIG = launch.labConfigPath;
 		delete environment.QUARTERDECK_AGENT_LAB;
 		if (launch.synthetic) environment.QUARTERDECK_AGENT_LAB = "1";
-		const child = (this.options.spawnChild ?? spawn)(bundle.nodePath, argumentsForRuntime, {
+		const windowsNodeHost = this.options.installationAdmission ? bundle.windowsNodeHostPath : undefined;
+		const child = (this.options.spawnChild ?? spawn)(windowsNodeHost ?? bundle.nodePath, argumentsForRuntime, {
 			cwd: launch.projectPath,
 			env: {
 				...environment,
@@ -140,7 +141,9 @@ export class RuntimeSupervisor {
 			stdio: this.options.installationAdmission
 				? ["pipe", "ignore", "ignore", "ipc", this.options.installationAdmission.fd]
 				: ["pipe", "ignore", "ignore", "ipc"],
-			detached: false,
+			// The admitted Windows app's native job already owns this child. A
+			// detached Node spawn prevents a console and preserves IPC shutdown on main-process loss.
+			detached: Boolean(windowsNodeHost),
 		});
 		let resolveExit: (code: number | null) => void = () => undefined;
 		const current: ChildGeneration = {

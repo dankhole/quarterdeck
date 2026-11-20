@@ -101,7 +101,11 @@ If previews work but task tones remain silent, check the event and focus suppres
 
 Electron main owns the window, native presentation, update guidance, and private IPC to a separate real Node helper. The helper owns PTYs, provider hooks, and existing runtime services. Its dependencies are built for bundled Node, separately from Electron's ABI. Runtime code, paired web assets, Node, and native modules live outside ASAR.
 
+On Windows, the admitted desktop starts the verified Node host directly without a console. The helper inherits the installation lock and stays in the native app job, with private IPC governing runtime shutdown. The bundled Node wrapper remains the PATH entrypoint for terminal commands. Launching the desktop helper through that wrapper can create a separate console whose close event shuts down the runtime.
+
 Installed app identity checks use the physical filesystem for both file metadata and content hashes. Electron's ordinary filesystem presents `app.asar` as a virtual directory, so using it for a regular-file check rejects valid packages even when CLI verification succeeds. Keep these checks on the shared physical filesystem boundary; do not toggle process-wide ASAR behavior or accept directories and symbolic links as required resource files.
+
+Windows packaging omits the Claude Agent SDK's optional fallback executable. Quarterdeck resolves the installed Claude executable before using the SDK and supplies that path explicitly. Keeping the unused executable out of the bundle saves hundreds of megabytes of startup verification reads.
 
 CLI and desktop enter through `startAdmittedRuntime` and `runtime-bootstrap`. Admission precedes cleanup, recovery, project registration, backups, and writable runtime construction. One runtime owns each canonical `QUARTERDECK_STATE_HOME` (default `~/.quarterdeck`). Claims record stable machine identity, PID and process birth, generation, and process custody protocol. Immutable hard-linked successors elect a replacement only after proven death or explicit release. Sleep, stale timestamps, and unavailable process inspection never authorize takeover. State homes require a local filesystem supporting hard links.
 
