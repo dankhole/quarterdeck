@@ -82,6 +82,7 @@ function SettingsDialogSession({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [selectedCategory, setSelectedCategory] = useState<SettingsCategoryId>(initialSection ?? "agents");
 	const pageRef = useRef<HTMLDivElement | null>(null);
+	const openerRef = useRef<HTMLElement | null>(null);
 	const groups = getSettingsNavigationGroups(projectName);
 	const category = getSettingsCategory(selectedCategory);
 	const destinationError = !projectId
@@ -200,6 +201,19 @@ function SettingsDialogSession({
 		<Dialog
 			open
 			onOpenChange={(next) => !isSaving && onOpenChange(next)}
+			onOpenAutoFocus={() => {
+				const active = document.activeElement;
+				openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+			}}
+			onCloseAutoFocus={(event) => {
+				// Settings opens by shortcut or native command without a Radix trigger.
+				// Do not steal focus if navigation or another overlay has already claimed it.
+				const opener = openerRef.current;
+				if (opener?.isConnected && document.activeElement === document.body) {
+					event.preventDefault();
+					opener.focus({ preventScroll: true });
+				}
+			}}
 			contentStyle={{ maxWidth: "1060px", height: "min(760px, 90dvh)", maxHeight: "90dvh" }}
 		>
 			<DialogHeader title="Settings" icon={<Settings size={16} />} />

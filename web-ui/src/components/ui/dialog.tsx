@@ -26,6 +26,7 @@ export function Dialog({
 	contentAriaLabel,
 	contentStyle,
 	onOpenAutoFocus,
+	onCloseAutoFocus,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -35,6 +36,7 @@ export function Dialog({
 	contentAriaLabel?: string;
 	contentStyle?: CSSProperties;
 	onOpenAutoFocus?: ComponentPropsWithoutRef<typeof RadixDialog.Content>["onOpenAutoFocus"];
+	onCloseAutoFocus?: ComponentPropsWithoutRef<typeof RadixDialog.Content>["onCloseAutoFocus"];
 }): React.ReactElement {
 	return (
 		<RadixDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -47,6 +49,7 @@ export function Dialog({
 					aria-describedby={contentAriaDescribedBy}
 					aria-label={contentAriaLabel}
 					onOpenAutoFocus={onOpenAutoFocus}
+					onCloseAutoFocus={onCloseAutoFocus}
 					className={cn(
 						"fixed inset-0 z-50 m-auto flex flex-col rounded-lg border border-border-bright bg-surface-1 shadow-2xl focus:outline-none",
 						contentClassName,

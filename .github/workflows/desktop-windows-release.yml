@@ -53,6 +53,7 @@ jobs:
     env:
       SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
       TARGET_ARCH: ${{ matrix.arch }}
+      NoDefaultCurrentDirectoryInExePath: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -78,6 +79,14 @@ jobs:
         run: |
           npm --prefix desktop run package -- --arch=$env:TARGET_ARCH
           npm run --silent agent:desktop -- smoke --app "$PWD/desktop/out/Quarterdeck-win32-$env:TARGET_ARCH" --json
+      - name: Upload Windows lab evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-windows-release-lab-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: test-results/agent-lab/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Build public Windows ZIP
         env:
           QUARTERDECK_DESKTOP_DISTRIBUTION: windows-unsigned

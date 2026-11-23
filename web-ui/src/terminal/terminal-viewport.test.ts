@@ -111,6 +111,23 @@ describe("TerminalViewport copy keys", () => {
 		expect(copyText).not.toHaveBeenCalled();
 	});
 
+	it("copies a Windows Pi terminal selection on Ctrl+C without sending interrupt bytes", () => {
+		platform.isMac = false;
+		agentId = "pi";
+		const hasSelection = vi.spyOn(terminal, "hasSelection").mockReturnValue(true);
+		vi.spyOn(terminal, "getSelection").mockReturnValue("selected Pi text");
+		const selected = copyKey({ metaKey: false, ctrlKey: true });
+		expect(handleKey(selected)).toBe(false);
+		expect(selected.defaultPrevented).toBe(true);
+		expect(copyText).toHaveBeenCalledExactlyOnceWith("selected Pi text");
+		expect(sendIoData).not.toHaveBeenCalled();
+
+		hasSelection.mockReturnValue(false);
+		const unselected = copyKey({ metaKey: false, ctrlKey: true });
+		expect(handleKey(unselected)).toBe(true);
+		expect(unselected.defaultPrevented).toBe(false);
+	});
+
 	it("preserves Ctrl+Shift+C terminal copy on other platforms", () => {
 		platform.isMac = false;
 		vi.spyOn(terminal, "hasSelection").mockReturnValue(true);

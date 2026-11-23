@@ -1,6 +1,6 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { userInfo } from "node:os";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { extractFile } from "@electron/asar";
@@ -19,6 +19,7 @@ import {
 	verifyDeveloperIdIdentity,
 	verifySignedAppEntitlements,
 } from "./signing-entitlements.mjs";
+import { withExtractedWindowsArchive } from "./verify-windows-archive.mjs";
 import { windowsPeArchitecture } from "./windows-pe.mjs";
 
 const nativeSmoke = `
@@ -38,6 +39,67 @@ terminal.onExit(({exitCode}) => {
   // ConPTY's output worker needs disposal even after the shell exits.
   if (windows) terminal.destroy();
   if (exitCode !== 0 || !output.includes(windows ? process.version : token)) process.exit(1);
+  console.log(token);
+});
+`;
+
+// Exercise the Windows console boundary, not only xterm's parser. Fullscreen
+// TUIs need the mode changes to reach the terminal and the encoded input to
+// arrive unmodified at the child. Keep the child fixed and provider-free.
+const windowsTerminalInputSmoke = String.raw`
+const { spawn } = require('node-pty');
+const enter = '\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1006h\x1b[?2004h';
+const leave = '\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1000l\x1b[?1049l';
+const input = '\x1b[<64;10;10M\x1b[<0;7;8M\x1b[<0;7;8m\x1b[200~first café 日本\rsecond line\x1b[201~';
+const expectedHex = Buffer.from(input, 'utf8').toString('hex');
+const ready = 'quarterdeck-windows-terminal-input-ready';
+const token = 'quarterdeck-windows-terminal-input-ok';
+const child = [
+  'process.stdin.setRawMode(true);',
+  'let received = "";',
+  'process.stdin.on("data", (data) => {',
+  '  received += data.toString("hex");',
+  '  if (!' + JSON.stringify(expectedHex) + '.startsWith(received)) process.exit(2);',
+  '  if (received === ' + JSON.stringify(expectedHex) + ') {',
+  '    process.stdout.write(' + JSON.stringify(leave + token) + ', () => process.exit(0));',
+  '  }',
+  '});',
+  'process.stdout.write(' + JSON.stringify(enter + ready) + ');',
+].join('\n');
+const terminal = spawn(process.execPath, ['-e', child], {
+  name: 'xterm-256color', cols: 120, rows: 24, cwd: process.cwd(), env: process.env
+});
+let output = '';
+let sent = false;
+function fail(reason) {
+  console.error('Windows terminal input smoke: ' + reason);
+  terminal.destroy();
+  process.exit(1);
+}
+function modesIn(text) {
+  const modes = new Map();
+  for (const [, params, state] of text.matchAll(/\x1b\[\?([0-9;]+)([hl])/g)) {
+    for (const mode of params.split(';')) modes.set(mode, state);
+  }
+  return modes;
+}
+function sawModes(sequence, text) {
+  const actual = modesIn(text);
+  return [...modesIn(sequence)].every(([mode, state]) => actual.get(mode) === state);
+}
+const timer = setTimeout(() => fail('timed out waiting for console mode or input receipt'), 5000);
+terminal.onData((data) => {
+  output += data;
+  if (sent || !output.includes(ready)) return;
+  if (!sawModes(enter, output.slice(0, output.indexOf(ready)))) fail('missing fullscreen, mouse or paste modes');
+  sent = true;
+  terminal.write(input);
+});
+terminal.onExit(({exitCode}) => {
+  clearTimeout(timer);
+  if (exitCode !== 0 || !sent || !output.includes(token)) fail('mouse or Unicode paste bytes did not round-trip');
+  if (!sawModes(leave, output.slice(output.indexOf(ready), output.indexOf(token)))) fail('missing mode reset');
+  terminal.destroy();
   console.log(token);
 });
 `;
@@ -113,6 +175,14 @@ export async function verifyRuntime(runtimePath) {
 	}
 	const ptyOutput = run(nodeBin, ["-e", nativeSmoke], options).stdout.trim();
 	if (ptyOutput !== "quarterdeck-bundled-pty-ok") throw new Error("Bundled native PTY did not pass its smoke check.");
+	if (windows) {
+		const inputOutput = run(nodeBin, ["-e", windowsTerminalInputSmoke], {
+			...options,
+			stdio: ["ignore", "pipe", "inherit"],
+		}).stdout.trim();
+		if (inputOutput !== "quarterdeck-windows-terminal-input-ok")
+			throw new Error("Bundled Windows PTY did not pass its terminal input smoke check.");
+	}
 	return manifest;
 }
 
@@ -201,19 +271,10 @@ async function containedArtifactPath(directory, path) {
 	return canonical;
 }
 
-export async function verifyArtifactManifest(manifestPath) {
-	const artifactManifest = JSON.parse(await readFile(manifestPath, "utf8"));
-	const outputRoot = dirname(manifestPath);
-	const appPath = await containedArtifactPath(outputRoot, artifactManifest.appPath);
-	const bundleManifest = await verifyApp(appPath);
-	for (const key of Object.keys(bundleManifest)) {
-		if (JSON.stringify(artifactManifest[key]) !== JSON.stringify(bundleManifest[key])) {
-			throw new Error(`Artifact provenance differs from its packaged runtime: ${key}.`);
-		}
-	}
-	const windows = bundleManifest.platform === "win32";
+async function verifyManifestAppFiles(appPath, artifactManifest, platform) {
+	const windows = platform === "win32";
 	const resources = windows ? join(appPath, "host", "resources") : join(appPath, "Contents", "Resources");
-	for (const required of desktopResourcePathsForPlatform(bundleManifest.platform)) {
+	for (const required of desktopResourcePathsForPlatform(platform)) {
 		if (!artifactManifest.checksums?.[required]) throw new Error(`Artifact manifest lacks checksum: ${required}.`);
 	}
 	for (const [file, expected] of Object.entries(artifactManifest.checksums)) {
@@ -235,12 +296,35 @@ export async function verifyArtifactManifest(manifestPath) {
 			throw new Error(`Artifact security fuse record differs from the packaged app: ${name}.`);
 		}
 	}
+}
+
+export async function verifyArtifactManifest(manifestPath) {
+	const artifactManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+	const outputRoot = dirname(manifestPath);
+	const appPath = await containedArtifactPath(outputRoot, artifactManifest.appPath);
+	const bundleManifest = await verifyApp(appPath);
+	for (const key of Object.keys(bundleManifest)) {
+		if (JSON.stringify(artifactManifest[key]) !== JSON.stringify(bundleManifest[key])) {
+			throw new Error(`Artifact provenance differs from its packaged runtime: ${key}.`);
+		}
+	}
+	const windows = bundleManifest.platform === "win32";
 	if (!Array.isArray(artifactManifest.artifacts)) throw new Error("Artifact manifest lacks distributable records.");
+	if (!windows) await verifyManifestAppFiles(appPath, artifactManifest, bundleManifest.platform);
+	if (windows && artifactManifest.artifacts.length !== 1)
+		throw new Error("Windows artifact verification requires one Forge ZIP. Run make first (or use --app).");
 	for (const artifact of artifactManifest.artifacts) {
 		const path = await containedArtifactPath(outputRoot, artifact.path);
 		const info = await lstat(path);
 		if (!info.isFile() || info.size !== artifact.bytes || (await sha256File(path)) !== artifact.sha256) {
 			throw new Error(`Distributable size or checksum mismatch: ${artifact.path}.`);
+		}
+		if (windows) {
+			if (extname(artifact.path) !== ".zip") throw new Error("Expected a Windows Forge ZIP.");
+			// Check recorded hashes on the extracted bytes once; run native smoke only on the loose app.
+			await withExtractedWindowsArchive(path, (extracted) =>
+				verifyManifestAppFiles(extracted, artifactManifest, bundleManifest.platform),
+			);
 		}
 	}
 	return artifactManifest;
@@ -258,6 +342,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 		: values.app
 			? await verifyApp(resolve(values.app))
 			: await verifyRuntime(resolve(values.runtime));
+	if (values.manifest && manifest.platform === "win32") {
+		console.log("Verified Forge ZIP extraction with Quarterdeck's Windows installer decoder and manifest checksums.");
+	}
 	console.log(
 		`Verified ${manifest.version} ${manifest.arch}: real bundled Node, matching browser/runtime build, and native PTY without system Node.`,
 	);

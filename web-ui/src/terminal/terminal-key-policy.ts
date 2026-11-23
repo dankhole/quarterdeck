@@ -32,13 +32,12 @@ export function resolveTerminalKey(event: KeyboardEvent, context: TerminalKeyCon
 	if (data !== undefined) {
 		return event.type === "keydown" ? { kind: "send", data } : { kind: "consume" };
 	}
-	const copy =
-		event.type === "keydown" &&
-		!event.altKey &&
-		event.key.toLowerCase() === "c" &&
-		(context.isMac
-			? event.metaKey && !event.ctrlKey && !event.shiftKey
-			: event.ctrlKey && event.shiftKey && !event.metaKey);
+	if (event.type !== "keydown" || event.altKey || event.key.toLowerCase() !== "c") return { kind: "pass" };
+	// Windows Ctrl+C copies a local selection, but otherwise remains an interrupt.
+	// A provider-owned selection does not qualify and must not change those bytes.
+	const copy = context.isMac
+		? event.metaKey && !event.ctrlKey && !event.shiftKey
+		: event.ctrlKey && !event.metaKey && (event.shiftKey || context.hasSelection);
 	if (!copy) return { kind: "pass" };
 	if (context.hasSelection) return { kind: "copy" };
 	if (context.agentId === "codex" && context.alternateScreen && context.mouseTracking) {

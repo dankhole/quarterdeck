@@ -14,7 +14,7 @@ import {
 import type { DesktopAgentMode, DesktopLabConfig, DesktopLabManifest } from "./desktop-types";
 import { prepareWindowsDesktopLabApp, type WindowsDesktopLabInstallation } from "./desktop-windows-fixture";
 import { buildAgentLabEnvironment } from "./environment";
-import { prepareAgentLabFixture } from "./fixture";
+import { prepareAgentLabFixture, requireInstalledWindowsFakeAgentNode } from "./fixture";
 import { createAgentLabLaunchConfig } from "./launch-config";
 import { AGENT_LAB_REPO_ROOT, writeJsonAtomic } from "./paths";
 import { toPublicAgentConfig } from "./public-agent-config";
@@ -95,6 +95,12 @@ export async function prepareDesktopLabFixture(options: {
 			const prepared = await prepareWindowsDesktopLabApp(app.appPath, tempRoot, launch.artifactDir);
 			app = { appPath: prepared.appPath, executablePath: prepared.executablePath };
 			windowsInstallation = prepared.installation;
+			if (launch.agent.mode === "fake") {
+				await requireInstalledWindowsFakeAgentNode(
+					fixture.fakeBinPath,
+					join(app.appPath, "host/resources/runtime/bin/node.exe"),
+				);
+			}
 		}
 		const userDataPath = join(tempRoot, "electron-user-data");
 		const controlPath = join(tempRoot, "desktop-control");

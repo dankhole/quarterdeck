@@ -29,6 +29,8 @@ jobs:
             arch: arm64
     env:
       TARGET_ARCH: ${{ matrix.arch }}
+      # Exercise native build/launch without implicit cmd.exe cwd lookup.
+      NoDefaultCurrentDirectoryInExePath: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -50,15 +52,27 @@ jobs:
       - name: Check Windows desktop boundaries
         run: |
           npm --prefix desktop run typecheck
+          node --test scripts/agent-lab/windows-native-paste-probe.test.mjs
           npm --prefix desktop test -- test/windows-portability.test.ts test/windows-pe.test.mjs test/maker-windows-zip.test.mjs test/desktop-target.test.mjs test/native-runtime.test.mjs test/desktop-launch-identity.test.ts test/native-menus.test.ts test/desktop-window.test.ts test/environment-preferences.test.ts
-          npm --prefix desktop test -- test/npm-update-runner.test.ts test/environment-controller.test.ts test/release-policy.test.mjs test/launch-config.test.ts
+          npm --prefix desktop test -- test/npm-update-runner.test.ts test/environment-controller.test.ts test/release-policy.test.mjs test/launch-config.test.ts test/recovery-helper.test.ts test/runtime-supervisor.test.ts test/session-recovery.test.ts test/desktop-host-effects.test.ts
           npm test -- test/integration/windows-desktop-admission.integration.test.ts test/integration/windows-desktop-installation.integration.test.ts test/runtime/desktop-install/windows-archive.test.ts
       - name: Build and verify Windows desktop candidate
         run: |
           npm run build
           npm --prefix desktop run make -- --arch=$env:TARGET_ARCH
           npm --prefix desktop run verify -- --manifest "out/artifact-manifest-win32-$env:TARGET_ARCH.json"
-          npm run --silent agent:desktop -- smoke --app "$PWD/desktop/out/Quarterdeck-win32-$env:TARGET_ARCH" --json
+      - name: Exercise the installed Windows candidate and terminal focus with a fake provider
+        run: npm run --silent agent:desktop -- smoke --app "$PWD/desktop/out/Quarterdeck-win32-$env:TARGET_ARCH" --json
+      - name: Check Windows startup recovery after unclean shutdown
+        run: npm run --silent agent:desktop -- smoke --app "$PWD/desktop/out/Quarterdeck-win32-$env:TARGET_ARCH" --session-recovery --no-agent --json
+      - name: Upload Windows lab evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-windows-lab-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: test-results/agent-lab/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload local Windows candidate
         uses: actions/upload-artifact@v7
         with:
@@ -66,9 +80,9 @@ jobs:
           path: |
             desktop/out/make/**/*.zip
             desktop/out/artifact-manifest-win32-${{ matrix.arch }}.json
-            test-results/agent-lab/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
   package:
     name: Unsigned desktop (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}

@@ -55,58 +55,96 @@ async function runGit(projectPath: string, args: string[]): Promise<void> {
 	});
 }
 
-async function writeFakeAgentLaunchers(fakeBinPath: string, provider: "claude" | "codex" | "pi"): Promise<void> {
+type FakeAgentProvider = "claude" | "codex" | "pi";
+const WINDOWS_NODE_PATH_GUARD = "assert-bundled-node.cjs";
+const FAKE_AGENT_FEATURES = "hooks                                stable             true";
+
+async function writeFakeAgentLaunchers(fakeBinPath: string, provider: FakeAgentProvider): Promise<void> {
 	// Availability must not depend on cold TSX compilation of the synthetic TUI.
 	// Keep these replies generated from the same version contract as that TUI.
 	const version = getFakeAgentVersionOutput(provider);
-	const features = "hooks                                stable             true";
 	const shellLauncherPath = join(fakeBinPath, provider);
-	const windowsLauncherPath = join(fakeBinPath, `${provider}.cmd`);
-	const windowsPowerShellLauncherPath = join(fakeBinPath, `${provider}.ps1`);
 	await writeFile(
 		shellLauncherPath,
 		[
 			"#!/bin/sh",
 			`if [ "$#" -eq 1 ] && { [ "$1" = "--version" ] || [ "$1" = "version" ]; }; then printf '%s\\n' '${version}'; exit 0; fi`,
-			`if [ "$#" -eq 2 ] && [ "$1" = "features" ] && [ "$2" = "list" ]; then printf '%s\\n' '${features}'; exit 0; fi`,
+			`if [ "$#" -eq 2 ] && [ "$1" = "features" ] && [ "$2" = "list" ]; then printf '%s\\n' '${FAKE_AGENT_FEATURES}'; exit 0; fi`,
 			`QUARTERDECK_AGENT_LAB_PROVIDER=${provider} exec "$QUARTERDECK_AGENT_LAB_NODE" "$QUARTERDECK_AGENT_LAB_TSX_CLI" "$QUARTERDECK_AGENT_LAB_FAKE_AGENT" "$@"`,
 			"",
 		].join("\n"),
 		"utf8",
 	);
 	await chmod(shellLauncherPath, 0o755);
+	await writeWindowsFakeAgentLaunchers(fakeBinPath, provider);
+}
+
+async function writeWindowsFakeAgentLaunchers(
+	fakeBinPath: string,
+	provider: FakeAgentProvider,
+	requireBundledNode = false,
+): Promise<void> {
+	const version = getFakeAgentVersionOutput(provider);
+	const cmdNode = requireBundledNode
+		? `node --require "%~dp0${WINDOWS_NODE_PATH_GUARD}"`
+		: '"%QUARTERDECK_AGENT_LAB_NODE%"';
+	// The Windows resolver selects this sibling for Codex's quoted TOML arguments.
+	const powerShellNode = requireBundledNode
+		? `node --require "$PSScriptRoot/${WINDOWS_NODE_PATH_GUARD}"`
+		: "$env:QUARTERDECK_AGENT_LAB_NODE";
 	await writeFile(
-		windowsLauncherPath,
+		join(fakeBinPath, `${provider}.cmd`),
 		[
 			"@echo off",
 			'if "%~2"=="" if "%~1"=="--version" goto probe_version',
 			'if "%~2"=="" if "%~1"=="version" goto probe_version',
 			'if "%~3"=="" if "%~1"=="features" if "%~2"=="list" goto probe_features',
 			`set "QUARTERDECK_AGENT_LAB_PROVIDER=${provider}"`,
-			'"%QUARTERDECK_AGENT_LAB_NODE%" "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_AGENT%" %*',
+			`${cmdNode} "%QUARTERDECK_AGENT_LAB_TSX_CLI%" "%QUARTERDECK_AGENT_LAB_FAKE_AGENT%" %*`,
 			"exit /b %errorlevel%",
 			":probe_version",
 			`echo ${version}`,
 			"exit /b 0",
 			":probe_features",
-			`echo ${features}`,
+			`echo ${FAKE_AGENT_FEATURES}`,
 			"exit /b 0",
 			"",
 		].join("\r\n"),
 		"utf8",
 	);
 	await writeFile(
-		windowsPowerShellLauncherPath,
+		join(fakeBinPath, `${provider}.ps1`),
 		[
 			`if ($args.Count -eq 1 -and ($args[0] -ceq '--version' -or $args[0] -ceq 'version')) { Write-Output '${version}'; exit 0 }`,
-			`if ($args.Count -eq 2 -and $args[0] -ceq 'features' -and $args[1] -ceq 'list') { Write-Output '${features}'; exit 0 }`,
+			`if ($args.Count -eq 2 -and $args[0] -ceq 'features' -and $args[1] -ceq 'list') { Write-Output '${FAKE_AGENT_FEATURES}'; exit 0 }`,
+			...(requireBundledNode ? ["$ErrorActionPreference = 'Stop'"] : []),
 			`$env:QUARTERDECK_AGENT_LAB_PROVIDER = '${provider}'`,
-			"& $env:QUARTERDECK_AGENT_LAB_NODE $env:QUARTERDECK_AGENT_LAB_TSX_CLI $env:QUARTERDECK_AGENT_LAB_FAKE_AGENT @args",
+			`& ${powerShellNode} $env:QUARTERDECK_AGENT_LAB_TSX_CLI $env:QUARTERDECK_AGENT_LAB_FAKE_AGENT @args`,
 			"exit $LASTEXITCODE",
 			"",
 		].join("\r\n"),
 		"utf8",
 	);
+}
+
+/** Only the installed Windows desktop lab opts in; source fixtures use the runner's Node. */
+export async function requireInstalledWindowsFakeAgentNode(fakeBinPath: string, expectedNode: string): Promise<void> {
+	await Promise.all([
+		writeFile(
+			join(fakeBinPath, WINDOWS_NODE_PATH_GUARD),
+			[
+				'const canonicalPath = require("node:fs").realpathSync.native;',
+				`const expected = ${JSON.stringify(expectedNode)};`,
+				"if (canonicalPath(process.execPath).toLowerCase() !== canonicalPath(expected).toLowerCase()) {",
+				'  throw new Error("Windows desktop fake agent did not resolve the installed bundled node.exe from PATH.");',
+				"}",
+				"",
+			].join("\n"),
+			"utf8",
+		),
+		writeWindowsFakeAgentLaunchers(fakeBinPath, "codex", true),
+		writeWindowsFakeAgentLaunchers(fakeBinPath, "pi", true),
+	]);
 }
 
 async function writeBlockedAgentLaunchers(fakeBinPath: string, provider: "claude" | "codex" | "pi"): Promise<void> {

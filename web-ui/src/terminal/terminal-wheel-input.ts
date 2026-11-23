@@ -32,10 +32,18 @@ export class TerminalWheelInput {
 		if (this.sessionKey !== sessionKey || this.agentId !== agentId) this.accumulator.reset();
 		this.sessionKey = sessionKey;
 		this.agentId = agentId;
+		const alternateScreen = terminal.buffer.active.type === "alternate";
+		const tracksWheel = ["vt200", "drag", "any"].includes(terminal.modes.mouseTrackingMode);
+		if (agentId === "pi" && alternateScreen && !tracksWheel) {
+			// xterm's alternate-screen wheel fallback emits Up/Down, which edits Pi's prompt.
+			// Leave scrollback and actual keyboard navigation alone; don't invent mouse mode.
+			this.accumulator.reset();
+			return false;
+		}
 		if (
 			(agentId !== "codex" && agentId !== "pi") ||
-			terminal.buffer.active.type !== "alternate" ||
-			!["vt200", "drag", "any"].includes(terminal.modes.mouseTrackingMode) ||
+			!alternateScreen ||
+			!tracksWheel ||
 			event.defaultPrevented ||
 			event.ctrlKey ||
 			event.altKey ||

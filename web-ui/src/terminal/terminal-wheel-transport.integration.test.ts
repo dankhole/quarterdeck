@@ -1,8 +1,11 @@
 import { Terminal } from "@xterm/xterm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { browserHostIntegrations } from "@/runtime/browser-host-integrations";
 import type { RuntimeAgentId } from "@/runtime/types";
 import { SlotRenderer } from "@/terminal/slot-renderer";
 import { TerminalViewport } from "@/terminal/terminal-viewport";
+
+vi.mock("@/utils/platform", () => ({ isMacPlatform: false }));
 
 /** Real xterm public DOM path, parser, encoder and onData/onBinary viewport wiring. */
 describe("TerminalViewport input transport", () => {
@@ -108,6 +111,41 @@ describe("TerminalViewport input transport", () => {
 			]);
 		},
 	);
+
+	it("copies the selected cells with Windows Ctrl+C but sends exactly one interrupt with no selection", async () => {
+		const copy = vi.spyOn(browserHostIntegrations, "writeClipboardText").mockResolvedValue(undefined);
+		await write("\x1b[Hselected text");
+		terminal.select(0, 0, "selected text".length);
+		const ctrlC = () =>
+			terminal.textarea!.dispatchEvent(
+				new KeyboardEvent("keydown", {
+					bubbles: true,
+					cancelable: true,
+					key: "c",
+					code: "KeyC",
+					keyCode: 67,
+					ctrlKey: true,
+				}),
+			);
+		ctrlC();
+		expect(copy).toHaveBeenCalledExactlyOnceWith("selected text");
+		expect(send).not.toHaveBeenCalled();
+
+		terminal.clearSelection();
+		ctrlC();
+		expect(send.mock.calls).toEqual([["\x03"]]);
+	});
+
+	it("does not turn Pi wheel input into prompt-history keys when alternate-screen mouse tracking is off", async () => {
+		await write("\x1b[?1002l");
+		wheel();
+		wheel({ deltaY: -60 });
+		expect(send).not.toHaveBeenCalled();
+
+		await write("\x1b[?1002h");
+		wheel();
+		expect(send.mock.calls).toEqual([["\x1b[<65;13;16M".repeat(6)]]);
+	});
 
 	it("bounds an exceptional wheel to one 100-report frame without a later backlog", () => {
 		wheel({ deltaY: 1e9 });

@@ -555,7 +555,9 @@ test("shared CI has no standalone browser lane and desktop CI retains native pac
 		assert.ok(shared.includes(required), required);
 	for (const required of ["macos-15", "macos-15-intel", "windows-latest", "windows-11-arm"])
 		assert.ok(desktop.includes(required), required);
-	assert.equal((desktop.match(/agent:desktop -- smoke/gu) ?? []).length, 2, "Both native platform jobs must exercise their packaged app.");
+	assert.match(desktop, /agent:desktop -- smoke --app "[^"\n]*Quarterdeck-darwin[^"\n]*" --json/u);
+	assert.match(desktop, /agent:desktop -- smoke --app "[^"\n]*Quarterdeck-win32[^"\n]*" --json/u);
+	assert.match(desktop, /agent:desktop -- smoke --app "[^"\n]*Quarterdeck-win32[^"\n]*" --session-recovery --no-agent --json/u);
 });
 
 test("anonymous download rejects unsafe redirects and bounded truncated assets", async () => {
