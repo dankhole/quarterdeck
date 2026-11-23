@@ -1160,6 +1160,7 @@ describe.runIf(process.platform === "win32")("native Windows smoke", { concurren
 				cwd: projectPath,
 				homeDir: tempHome,
 				port: await getAvailablePort(),
+				sourceOnly: true,
 				extraEnv: mergeProcessEnvironment(serverEnvironment, {
 					QUARTERDECK_AGENT_LAB: undefined,
 				}),

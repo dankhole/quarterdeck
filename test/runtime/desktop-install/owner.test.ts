@@ -68,7 +68,7 @@ describe("recorded npm package slot", () => {
 		await writeFile(join(other, "dist/build-manifest.json"), JSON.stringify(dependencies.owner.identity));
 		await writeFile(join(other, "package.json"), JSON.stringify({ name: "quarterdeck", version: "0.12.8" }));
 		await rm(dependencies.owner.packageSlot);
-		await symlink(other, dependencies.owner.packageSlot);
+		await symlink(other, dependencies.owner.packageSlot, "junction");
 		await expect(validateDesktopInstallationOwner(dependencies.owner)).rejects.toThrow("owning npm CLI");
 	});
 	it.each([undefined, "browser-only", "unknown"])(

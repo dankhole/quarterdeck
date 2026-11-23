@@ -19,6 +19,10 @@ jobs:
     name: Windows desktop (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    defaults:
+      run:
+        # Stop on each failed npm command, not just the last one in a block.
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -47,18 +51,25 @@ jobs:
           npm ci --prefix web-ui
           npm ci --prefix desktop
           npm --prefix desktop exec -- install-electron
-      - name: Check Windows desktop boundaries
-        run: |
-          npm --prefix desktop run typecheck
-          npm --prefix desktop test -- test/windows-portability.test.ts test/windows-pe.test.mjs test/maker-windows-zip.test.mjs test/desktop-target.test.mjs test/native-runtime.test.mjs test/desktop-launch-identity.test.ts test/native-menus.test.ts test/desktop-window.test.ts test/environment-preferences.test.ts
-          npm --prefix desktop test -- test/npm-update-runner.test.ts test/environment-controller.test.ts test/release-policy.test.mjs test/launch-config.test.ts
-          npm test -- test/integration/windows-desktop-admission.integration.test.ts test/integration/windows-desktop-installation.integration.test.ts test/runtime/desktop-install/windows-archive.test.ts
+      - name: Typecheck desktop sources
+        run: npm --prefix desktop run typecheck
+      - name: Check Windows desktop sources
+        run: >-
+          npm --prefix desktop test --
+          test/windows-portability.test.ts test/windows-pe.test.mjs test/maker-windows-zip.test.mjs
+          test/desktop-target.test.mjs test/native-runtime.test.mjs test/desktop-launch-identity.test.ts
+          test/native-menus.test.ts test/desktop-window.test.ts test/environment-preferences.test.ts
+          test/npm-update-runner.test.ts test/environment-controller.test.ts test/release-policy.test.mjs test/launch-config.test.ts
+      - name: Check native installation boundaries
+        run: >-
+          npm test -- test/integration/windows-desktop-admission.integration.test.ts
+          test/integration/windows-desktop-installation.integration.test.ts test/runtime/desktop-install/windows-archive.test.ts
       - name: Build and verify Windows desktop candidate
         run: |
           npm run build
-          npm --prefix desktop run make -- --arch=$env:TARGET_ARCH
-          npm --prefix desktop run verify -- --manifest "out/artifact-manifest-win32-$env:TARGET_ARCH.json"
-          npm run --silent agent:desktop -- smoke --app "$PWD/desktop/out/Quarterdeck-win32-$env:TARGET_ARCH" --json
+          npm --prefix desktop run make -- --arch="$TARGET_ARCH"
+          npm --prefix desktop run verify -- --manifest "out/artifact-manifest-win32-$TARGET_ARCH.json"
+          npm run --silent agent:desktop -- smoke --app "desktop/out/Quarterdeck-win32-$TARGET_ARCH" --json
       - name: Upload local Windows candidate
         uses: actions/upload-artifact@v7
         with:
@@ -69,6 +80,7 @@ jobs:
             test-results/agent-lab/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
   package:
     name: Unsigned desktop (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}

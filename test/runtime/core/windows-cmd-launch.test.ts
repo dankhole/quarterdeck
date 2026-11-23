@@ -1,7 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stripVTControlCharacters } from "node:util";
 import { spawn } from "node-pty";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -228,7 +227,12 @@ describe("shouldUseWindowsCmdLaunch", () => {
 			tempDirectories.push(directory);
 			const cmdPath = createWindowsBinary(directory, "codex.cmd");
 			const receiver = join(directory, "argv.cjs");
-			writeFileSync(receiver, "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n");
+			// ConPTY output can include console titles and redraws. Assert what the
+			// receiver actually got rather than treating terminal output as JSON.
+			writeFileSync(
+				receiver,
+				'require("node:fs").writeFileSync("argv.json", JSON.stringify(process.argv.slice(2)));\n',
+			);
 			writeFileSync(
 				join(directory, "codex.ps1"),
 				"& $env:QD_ARGV_TEST_NODE $env:QD_ARGV_TEST_RECEIVER @args\nexit $LASTEXITCODE\n",
@@ -247,13 +251,11 @@ describe("shouldUseWindowsCmdLaunch", () => {
 				cols: 180,
 				rows: 40,
 			});
-			let output = "";
-			terminal.onData((data) => (output += data));
 			const timeout = setTimeout(() => terminal.kill(), 6_000);
 			try {
 				const result = await new Promise<{ exitCode: number }>((resolve) => terminal.onExit(resolve));
 				expect(result.exitCode).toBe(0);
-				expect(JSON.parse(stripVTControlCharacters(output).trim())).toEqual(args);
+				expect(JSON.parse(readFileSync(join(directory, "argv.json"), "utf8"))).toEqual(args);
 			} finally {
 				clearTimeout(timeout);
 			}

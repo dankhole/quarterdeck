@@ -1,8 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtemp, realpath } from "node:fs/promises";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { normalizeFileSystemPathForComparison } from "../../src/core/path-comparison.js";
+import { resolveCanonicalRuntimeStateHome } from "../../src/server/runtime-ownership.js";
 import type { DesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { readDesktopLaunchConfig, validateDesktopLaunchRequest } from "../src/launch-config.js";
 
@@ -14,10 +16,15 @@ afterEach(() => {
 	else process.env.QUARTERDECK_STATE_HOME = priorHome;
 });
 
+async function temporaryRoot(base = tmpdir()): Promise<string> {
+	const path = await mkdtemp(join(base, "quarterdeck-desktop-profile-"));
+	roots.push(path);
+	return await realpath(path);
+}
+
 describe("ordinary desktop profile preparation", () => {
 	it("selects the requested canonical profile before default environment storage and retains its project intent", async () => {
-		const root = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-desktop-profile-")));
-		roots.push(root);
+		const root = await temporaryRoot();
 		mkdirSync(join(root, "project"));
 		process.env.QUARTERDECK_STATE_HOME = join(root, "unrelated-env-state");
 		const request: DesktopLaunchRequest = {
@@ -27,8 +34,8 @@ describe("ordinary desktop profile preparation", () => {
 			appPath: join(root, "Quarterdeck.app"),
 			buildId: "build",
 			appAsarSha256: "a".repeat(64),
-			stateHome: normalizeFileSystemPathForComparison(join(root, "requested-state")),
-			projectPath: join(root, "project"),
+			stateHome: await resolveCanonicalRuntimeStateHome(join(root, "requested-state")),
+			projectPath: await realpath(join(root, "project")),
 		};
 		const first = await readDesktopLaunchConfig(undefined, join(root, "electron"), request);
 		expect(first.stateHome).toBe(request.stateHome);
@@ -42,8 +49,7 @@ describe("ordinary desktop profile preparation", () => {
 		);
 	});
 	it("rejects aliased or missing project paths before any runtime or profile storage is selected", async () => {
-		const root = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-desktop-profile-")));
-		roots.push(root);
+		const root = await temporaryRoot();
 		mkdirSync(join(root, "state"));
 		mkdirSync(join(root, "project"));
 		symlinkSync(join(root, "state"), join(root, "state-alias"), process.platform === "win32" ? "junction" : "dir");
@@ -59,9 +65,10 @@ describe("ordinary desktop profile preparation", () => {
 			appPath: join(root, "Quarterdeck.app"),
 			buildId: "build",
 			appAsarSha256: "a".repeat(64),
-			stateHome: normalizeFileSystemPathForComparison(join(root, "state")),
-			projectPath: join(root, "project"),
+			stateHome: await resolveCanonicalRuntimeStateHome(join(root, "state")),
+			projectPath: await realpath(join(root, "project")),
 		};
+		await expect(validateDesktopLaunchRequest(request)).resolves.toEqual(request);
 		await expect(
 			validateDesktopLaunchRequest({
 				...request,
@@ -75,18 +82,20 @@ describe("ordinary desktop profile preparation", () => {
 		expect(existsSync(join(root, "electron"))).toBe(false);
 	});
 	it("accepts typed fixture requests without weakening lab storage, process or project isolation", async () => {
-		const root = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-desktop-profile-")));
-		const outside = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-desktop-outside-")));
-		roots.push(root, outside);
+		// Lab admission uses the real Windows profile's Temp, not an overridden TEMP.
+		const base = process.platform === "win32" ? join(userInfo().homedir, "AppData", "Local", "Temp") : tmpdir();
+		const root = await temporaryRoot(base);
+		const outside = await temporaryRoot(base);
 		for (const name of ["state", "electron", "project", "second-project"]) mkdirSync(join(root, name));
 		writeFileSync(join(root, "host.json"), "{}", { mode: 0o600 });
+		const secondProject = await realpath(join(root, "second-project"));
 		const lab = {
 			version: 1,
 			tempRoot: root,
-			stateHome: normalizeFileSystemPathForComparison(join(root, "state")),
-			userDataPath: join(root, "electron"),
-			projectPath: join(root, "project"),
-			hostSimulationConfigPath: join(root, "host.json"),
+			stateHome: await resolveCanonicalRuntimeStateHome(join(root, "state")),
+			userDataPath: await realpath(join(root, "electron")),
+			projectPath: await realpath(join(root, "project")),
+			hostSimulationConfigPath: await realpath(join(root, "host.json")),
 			processEvidencePath: join(root, "processes.json"),
 			showWindow: false,
 		};
@@ -108,22 +117,21 @@ describe("ordinary desktop profile preparation", () => {
 		await expect(
 			readDesktopLaunchConfig(configPath, "unused", {
 				...request,
-				stateHome: normalizeFileSystemPathForComparison(outside),
+				stateHome: await resolveCanonicalRuntimeStateHome(outside),
 			}),
 		).rejects.toThrow("exact isolated state home");
 		await expect(readDesktopLaunchConfig(configPath, "unused", { ...request, projectPath: outside })).rejects.toThrow(
 			"temporary root",
 		);
 		await expect(
-			validateDesktopLaunchRequest({ ...request, projectPath: join(root, "second-project") }, launch.lab),
-		).resolves.toMatchObject({ projectPath: join(root, "second-project") });
+			validateDesktopLaunchRequest({ ...request, projectPath: secondProject }, launch.lab),
+		).resolves.toMatchObject({ projectPath: secondProject });
 		await expect(validateDesktopLaunchRequest({ ...request, projectPath: outside }, launch.lab)).rejects.toThrow(
 			"temporary root",
 		);
 	});
 	it("creates only scoped presentation storage before Electron setPath needs it", async () => {
-		const root = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-desktop-profile-")));
-		roots.push(root);
+		const root = await temporaryRoot();
 		process.env.QUARTERDECK_STATE_HOME = join(root, "runtime-not-created");
 		const launch = await readDesktopLaunchConfig(undefined, join(root, "electron-not-created"));
 		expect(launch.synthetic).toBe(false);
@@ -132,8 +140,7 @@ describe("ordinary desktop profile preparation", () => {
 		expect(existsSync(launch.stateHome)).toBe(false);
 	});
 	it("uses one profile for canonical aliases and a different profile for another state home", async () => {
-		const root = realpathSync(mkdtempSync(join(tmpdir(), "quarterdeck-desktop-profile-")));
-		roots.push(root);
+		const root = await temporaryRoot();
 		mkdirSync(join(root, "state"));
 		symlinkSync(join(root, "state"), join(root, "alias"), process.platform === "win32" ? "junction" : "dir");
 		process.env.QUARTERDECK_STATE_HOME = join(root, "state");

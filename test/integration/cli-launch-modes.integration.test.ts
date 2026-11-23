@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, inject, it } from "vitest";
 import { createGitTestEnv } from "../utilities/git-env.js";
 import { resolveIntegrationNodeArgs } from "../utilities/integration-server";
 import { createTempDir } from "../utilities/temp-dir.js";
@@ -54,7 +54,12 @@ describe("CLI launch mode routing", () => {
 	])("rejects $args before installation or runtime startup", ({ args, message }) => {
 		expectRejectedLaunch(args, message, true);
 	});
-	it("cannot open the user's desktop app from an ordinary source test invocation", () => {
+	it.skipIf(!inject("compileIntegrationCli"))("rejects a compiled internal launch without lab authorization", () => {
+		expectRejectedLaunch(["--internal-runtime"], "Internal runtime execution is restricted", false, {
+			QUARTERDECK_AGENT_LAB: undefined,
+		});
+	});
+	it("cannot open the user's desktop app from an ordinary CLI invocation", () => {
 		expectRejectedLaunch(
 			[],
 			["darwin", "win32"].includes(process.platform) ? "local graphical session" : "macOS 13+",

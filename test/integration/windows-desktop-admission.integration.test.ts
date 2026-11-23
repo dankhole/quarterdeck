@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { listWindowsDesktopProcesses } from "../../scripts/agent-lab/desktop-windows-processes.js";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
+import { resolveWindowsSystem32ExecutablePath } from "../../src/core/windows-system-paths.js";
 import { acquireDesktopMutation } from "../../src/desktop-install/admission.js";
 
 const execute = promisify(execFile);
@@ -29,12 +30,16 @@ async function release(lock: string, lease: Lease) {
 		windowsHide: true,
 	});
 }
-async function expectBusy(lock: string): Promise<void> {
+async function expectBusy(lock: string, diagnostic?: string): Promise<void> {
 	let unexpected: Lease;
 	try {
 		unexpected = await acquire(lock);
 	} catch (error) {
-		expect([73, 74]).toContain((error as { code: unknown }).code);
+		if (diagnostic) {
+			expect(error).toMatchObject({ code: 73, stderr: expect.stringContaining(diagnostic) });
+		} else {
+			expect([73, 74]).toContain((error as { code: unknown }).code);
+		}
 		return;
 	}
 	await release(lock, unexpected);
@@ -52,8 +57,12 @@ async function simulateNewBoot(lock: string): Promise<void> {
 }
 function ready(child: ChildProcess): Promise<void> {
 	return new Promise((accept, reject) => {
-		let output = "";
-		const timer = setTimeout(() => reject(new Error("Native fixture did not become ready.")), 10000);
+		let output = "",
+			stderr = "";
+		const timer = setTimeout(() => reject(new Error(`Native fixture did not become ready: ${stderr}`)), 10000);
+		child.stderr?.on("data", (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
 		child.stdout?.on("data", (chunk: Buffer) => {
 			output += chunk.toString();
 			if (output.includes("HELPER_READY")) {
@@ -65,10 +74,10 @@ function ready(child: ChildProcess): Promise<void> {
 			clearTimeout(timer);
 			reject(error);
 		});
-		child.once("exit", (code) => {
+		child.once("close", (code) => {
 			if (!output.includes("HELPER_READY")) {
 				clearTimeout(timer);
-				reject(new Error(`Native fixture exited ${code}: ${output}`));
+				reject(new Error(`Native fixture exited ${code}: ${output}${stderr}`));
 			}
 		});
 	});
@@ -174,7 +183,14 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		const closed = new Promise<void>((accept) => child.once("close", () => accept()));
 		try {
 			const message = await new Promise<unknown>((accept, reject) => {
-				const timer = setTimeout(() => reject(new Error("Admitted Node IPC channel did not respond.")), 5000);
+				let stderr = "";
+				child.stderr?.on("data", (chunk: Buffer) => {
+					stderr += chunk.toString();
+				});
+				const timer = setTimeout(
+					() => reject(new Error(`Admitted Node IPC channel did not respond: ${stderr}`)),
+					5000,
+				);
 				child.once("message", (value) => {
 					clearTimeout(timer);
 					accept(value);
@@ -183,9 +199,9 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 					clearTimeout(timer);
 					reject(error);
 				});
-				child.once("exit", (code) => {
+				child.once("close", (code) => {
 					clearTimeout(timer);
-					if (code !== 0) reject(new Error(`Admitted IPC child exited ${code}`));
+					reject(new Error(`Admitted IPC child exited ${code} before sending a message: ${stderr}`));
 				});
 			});
 			expect(message).toEqual({ admitted: true });
@@ -260,11 +276,11 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		await expect(acquireDesktopMutation(executable, join(alias, "admission.lock"))).rejects.toMatchObject({
 			code: "installation_changed",
 		});
-		await expectBusy(join(alias, "admission.lock"));
+		await expectBusy(join(alias, "admission.lock"), "parent directory: reparse point refused");
 		// An unprotected parent outside the protected fixture has inherited broad access.
 		const outside = await mkdtemp(join(resolve("desktop/.cache"), "unprotected-admission-"));
 		try {
-			await expectBusy(join(outside, "admission.lock"));
+			await expectBusy(join(outside, "admission.lock"), "protected metadata directory:");
 		} finally {
 			await rm(outside, { recursive: true, force: true });
 		}
@@ -273,7 +289,20 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		const lock = join(root, "linked.lock");
 		await writeFile(lock, "");
 		await link(lock, join(root, "second-link.lock"));
-		await expectBusy(lock);
+		await expectBusy(lock, "installation lock: not a regular single-link file");
+	});
+	it("refuses an Administrators access grant even inside protected metadata", async () => {
+		const lock = join(root, "administrators-access.lock");
+		// Prove the parent and initial lock pass admission before changing the DACL.
+		await release(lock, await acquire(lock));
+		await execute(resolveWindowsSystem32ExecutablePath("icacls.exe"), [lock, "/grant", "*S-1-5-32-544:(R)"], {
+			timeout: 10_000,
+			windowsHide: true,
+		});
+		await expectBusy(
+			lock,
+			"installation lock: DACL grants access to a principal other than the current user or LocalSystem",
+		);
 	});
 	it("creates an owned shortcut with Windows app identity and preserves unrelated links", async () => {
 		const target = join(root, "app target 项目.exe"),

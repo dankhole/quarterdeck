@@ -1,6 +1,6 @@
 # Native Windows Validation
 
-Quarterdeck's reusable test workflow contains a non-optional `Windows native` job. Pull-request CI and publishing both call that workflow, so a Windows failure fails the caller rather than being treated as an allowed experiment. The automated lane uses only isolated synthetic data and deterministic fake commands; the separate manual matrix is the final real-provider release gate.
+Quarterdeck's reusable test workflow runs `Windows native` (source checks) in parallel with a Windows matrix job (build, packed npm smoke, and renderer tests). Pull-request CI and publishing both require both jobs to pass. The automated lane uses only isolated synthetic data and deterministic fake commands; the separate manual matrix is the final real-provider release gate.
 
 ## Clean validation
 

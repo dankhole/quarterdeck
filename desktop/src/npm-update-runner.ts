@@ -69,9 +69,10 @@ export interface NpmUpdatePreparationServices {
 }
 
 export class NpmUpdatePreparationError extends Error {
-	constructor(reason: string, installation: DesktopInstallation, targetVersion: string) {
+	constructor(reason: string, installation: DesktopInstallation, targetVersion: string, options?: ErrorOptions) {
 		super(
 			`${reason}\n\nQuit Quarterdeck, then run:\n${npmUpdateRetryCommand(installation.owner.prefix, targetVersion)}`,
+			options,
 		);
 		this.name = "NpmUpdatePreparationError";
 	}
@@ -420,6 +421,7 @@ export async function prepareNpmUpdate(
 			desktopVersionSchema.safeParse(options.targetVersion).success
 				? options.targetVersion
 				: options.installation.version,
+			{ cause: error },
 		);
 	}
 }

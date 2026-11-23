@@ -23,7 +23,7 @@ permissions:
 jobs:
   build-check-test:
     if: ${{ !inputs.focused_windows }}
-    timeout-minutes: 10
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 25 || 10 }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -34,6 +34,9 @@ jobs:
           - os: ubuntu-latest
             node-version: 24.21.0
           - os: macos-latest
+            node-version: 22.23.2
+          # Windows source checks run in parallel in windows-native below.
+          - os: windows-latest
             node-version: 22.23.2
     steps:
       - name: Checkout
@@ -72,6 +75,7 @@ jobs:
           npm run test:package -- --npm-cache "$(npm config get cache)" "${release_args[@]}"
 
       - name: Check (agent instructions, lint, typecheck, root tests)
+        if: ${{ runner.os != 'Windows' }}
         run: npm run check
 
       - name: Web UI tests
@@ -92,33 +96,13 @@ jobs:
         with:
           node-version: 22.23.2
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web-ui/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install pinned npm
         run: npm install --global npm@11.19.1
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install web-ui dependencies
-        if: ${{ !inputs.focused_windows }}
-        run: npm ci --prefix web-ui
-
-      - name: Build
-        if: ${{ !inputs.focused_windows }}
-        run: npm run build
-
-      - name: Published package artifact smoke
-        if: ${{ !inputs.focused_windows }}
-        shell: bash
-        env:
-          RELEASE_SOURCE_SHA: ${{ inputs.ref }}
-        run: |
-          release_args=()
-          if [[ -n "$RELEASE_SOURCE_SHA" ]]; then release_args=(--release-source-sha "$RELEASE_SOURCE_SHA"); fi
-          npm run test:package -- --npm-cache "$(npm config get cache)" "${release_args[@]}"
 
       - name: Focused native Windows smoke
         if: ${{ inputs.focused_windows }}
@@ -127,7 +111,3 @@ jobs:
       - name: Check (includes native Windows smoke)
         if: ${{ !inputs.focused_windows }}
         run: npm run check
-
-      - name: Web UI tests
-        if: ${{ !inputs.focused_windows }}
-        run: npm run web:test

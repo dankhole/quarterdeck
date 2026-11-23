@@ -227,7 +227,7 @@ See [`test/README.md`](./test/README.md) for root-test placement and naming. Ren
 ## CI/CD
 
 - `ci.yml`: runs on pushes to `main` and PRs targeting `main`, delegating to reusable test workflow(s)
-- `test.yml`: Ubuntu/macOS matrix plus a non-optional native Windows job covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
+- `test.yml`: Ubuntu/macOS/Windows matrix plus a parallel native Windows source-check job, together covering clean installs, the build (including web typecheck), packaged CLI fetch/shutdown, native ConPTY resize/reconnect/restore, Git/worktree/path fidelity, exact process ownership and DACLs, hook transport, lint, runtime typecheck/tests, and web-ui tests without repeating the standalone web typecheck
 - `publish.yml`: runs on version-tag pushes (`v*.*.*`), tests the exact release commit, publishes npm via OIDC, publishing and anonymously verifying matching macOS and Windows desktop assets first; paid macOS signing remains optional; manual dispatch remains available for retries. See the [release workflow](RELEASE_WORKFLOW.md) for immutable assets, generated notes, and retry ordering.
 
 ## Agent tracking and runtime hooks
