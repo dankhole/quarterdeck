@@ -44,6 +44,28 @@ That command fails immediately off Windows. It runs the packaged CLI smoke plus 
 - graceful source, development-wrapper, and packaged-CLI shutdown through the parent stdin control pipe; and
 - private Windows DACLs on the managed-process registry/record, runtime descriptor/token, journal directory/segments/manifest, and an exported bundle under a configured state home and custom output path. Inspected roots must be protected, and effective file ACLs may grant access only to the current user and LocalSystem.
 
+## Manual physical Ctrl+V acceptance
+
+Run only on an explicitly chosen disposable, interactive Windows VM or test desktop, as a non-admin, with clipboard history, sync and VM/RDP clipboard sharing disabled. Do not run on a daily-use workstation or in CI. This replaces the disposable desktop's clipboard with synthetic text; no clipboard operations are automated by Agent Lab.
+
+1. Build a fresh [inspection-enabled local candidate](desktop-release.md#local-unsigned-candidate) from the source under test. In an interactive PowerShell console on that desktop, launch the isolated probe with the **literal name of the chosen disposable computer**, not an expression that selects the current machine:
+
+   ```powershell
+   npm run agent:desktop -- windows-native-paste --app 'C:\path\to\Quarterdeck-win32-x64' --disposable-desktop 'QD-TEST-VM'
+   ```
+
+   The runner uses the private Agent Lab installation and synthetic project, opens a visible manual shell and waits up to three minutes for its receipt. No provider is started. Do not substitute a development instance, an installed app, or a public artifact.
+2. In a separate PowerShell console on that same desktop, load the exact three synthetic lines with Windows CRLF separators and **no final newline** (ASCII-only command for Windows PowerShell compatibility):
+
+   ```powershell
+   $lines = @(('Quarterdeck caf' + [char]0xE9), ([string][char]0x6F22 + [char]0x5B57 + ' ' + [char]::ConvertFromUtf32(0x1F680)), 'last synthetic line')
+   Set-Clipboard -Value ($lines -join "`r`n")
+   ```
+
+3. Click the Agent Lab terminal and **type** `node native-paste-probe.mjs`, then press Enter to start the child. Wait for `READY`. With no selection, physically press **Ctrl+V once** and release it. Do not use Playwright typing/`insertText`, a synthetic DOM paste event, an app menu or a context menu. Do not press Enter yet.
+4. Wait for `PASTE ONLY: exact frame, zero submits`. The raw child requires exactly one `ESC [ 200 ~` frame with the UTF-8 text (xterm normalizes the two CRLF separators to CR), followed by `ESC [ 201 ~` and a 1.5-second quiet interval without any extra bytes. Only after that checkpoint, physically press **Enter once**. The child requires one additional `0d` byte and another quiet interval before passing. Early Enter, literal Ctrl+V, unframed/altered text, duplicate frames and extra Enter fail. Missing input times out. This tests the native shortcut through the packaged renderer and manual-shell ConPTY, not provider submission behavior.
+5. Require a passing runner exit. Keep `native-paste-receipt.json` (exact frame and final input hex, zero prior submits and one separate submit), `native-paste-bundle-manifest.json`, and `desktop-manifest.json` from the printed evidence directory. Record Windows version/architecture and that the physical steps were performed. Check confirmed graceful Quit with no fallback and no remaining owned PIDs. On failure or interruption use Ctrl+C in the runner console and retain its evidence; do not kill by executable name or delete unconfirmed live state. Revert/dispose of the test desktop after the run.
+
 ## Manual real-provider acceptance
 
 Use a normal non-administrator Windows account, synthetic repositories, and a dedicated disposable `QUARTERDECK_STATE_HOME`. Do not attach automation to an active Quarterdeck instance or run crash/recovery checks against ordinary user state. Coding agents need explicit authorization for each real-provider/account lane; deterministic fake coverage does not grant it. For each installed supported provider—Claude Code, Codex, and the exact pinned Pi release—verify:

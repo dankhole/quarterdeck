@@ -26,7 +26,7 @@ Use `npm run agent:desktop -- smoke --help` for the exact current combinations. 
 
 | Scenario | Claim |
 | --- | --- |
-| Default fake-provider smoke | Packaged startup, task PTY/hooks, card/board/project lifecycle indicators, permissions and interruption, board, diagnostics, Files draft recovery, and graceful shutdown. On Windows, the task Restart action verifies exact provider resume. On macOS, the runtime restart verifies exact resume across runtime generations. |
+| Default fake-provider smoke | Packaged startup, task PTY/hooks, card/board/project lifecycle indicators, permissions and interruption, board, diagnostics, Files draft recovery, and graceful shutdown. On Windows, the task Restart action verifies exact provider resume, and the Settings shortcut checks terminal focus restoration. On macOS, the runtime restart verifies exact resume across runtime generations. |
 | `--no-agent` | Startup/renderer subset only; not task PTY or provider compatibility |
 | `--npm-launch --no-agent` | Synthetic npm/app identity, project handoff and alternate-owner refusal |
 | `--manual-shells --no-agent` | Home/Detail shell process survives Hide and viewer detach, explicit Terminate retires it, reopening creates a fresh shell. On macOS it also checks native Close, which enters Quit on Windows. |
@@ -36,6 +36,9 @@ Use `npm run agent:desktop -- smoke --help` for the exact current combinations. 
 | `--performance` | Desktop-only idle process CPU/RSS, task navigation and available terminal acknowledgements; excludes competing scenarios, reloads and crashes |
 | `--main-loss` | Fake-provider recovery after exact isolated main-process loss; no real-provider account access |
 | `--session-recovery --no-agent` | Blocked unclean startup, cancellation, explicit acknowledgement and ordinary startup retry |
+| `--windows-terminal-focus` | Windows-only, hidden, non-crash check: dismiss Settings with Escape and deliver input to the same task PTY without refocusing. Also part of the default Windows smoke. |
+
+The separate [`windows-native-paste` command](windows-native-smoke.md#manual-physical-ctrlv-acceptance) requires an explicitly chosen disposable Windows desktop and physical keyboard input. The hidden CI smoke does not touch the OS clipboard.
 
 Add `--show-window` only when visibility/focus is part of the claim; it can take focus. Do not infer physical Dock, taskbar, folder-picker, display, accessibility, sleep/wake or notification experience from hidden/simulated runs. Performance observations remain bounded samples, not proof of sustained use.
 

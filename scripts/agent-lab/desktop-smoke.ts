@@ -46,6 +46,7 @@ import {
 	validateDesktopSessionRecoverySelection,
 } from "./desktop-session-recovery";
 import { desktopSettingsButton, dismissDesktopOnboarding } from "./desktop-settings";
+import { exerciseWindowsTerminalFocus } from "./desktop-terminal-focus";
 import { type DesktopAgentMode, DesktopProcessEvidenceSchema } from "./desktop-types";
 import { proveWindowsChromiumCustody } from "./desktop-windows-custody";
 import { assertWindowsDesktopInUse, finishWindowsDesktopLifecycle } from "./desktop-windows-fixture";
@@ -503,6 +504,7 @@ export async function runDesktopSmoke(options: {
 	performance?: boolean;
 	mainLoss?: boolean;
 	sessionRecovery?: boolean;
+	windowsTerminalFocus?: boolean;
 	npmLaunch?: boolean;
 	manualShells?: boolean;
 	compareWindow?: boolean;
@@ -522,6 +524,21 @@ export async function runDesktopSmoke(options: {
 		throw new Error(
 			"Windows Agent Lab requires the fake provider. Npm-launch, main-loss, performance and visible native experience require macOS.",
 		);
+	if (
+		options.windowsTerminalFocus &&
+		(process.platform !== "win32" ||
+			options.includeAgent === false ||
+			options.showWindow ||
+			options.nativeExperience ||
+			options.performance ||
+			options.mainLoss ||
+			options.sessionRecovery ||
+			options.npmLaunch ||
+			options.manualShells ||
+			options.compareWindow ||
+			options.notifications)
+	)
+		throw new Error("--windows-terminal-focus requires a hidden Windows fake-provider run with no other scenario.");
 	if (options.compareWindow) validateDesktopCompareWindowSelection(options);
 	if (options.sessionRecovery) validateDesktopSessionRecoverySelection(options);
 	if (options.notifications) validateDesktopNotificationSelection(options);
@@ -609,6 +626,11 @@ export async function runDesktopSmoke(options: {
 				if (await settings.isVisible()) await settings.getByRole("button", { name: "Cancel", exact: true }).click();
 			}
 			await driver.inspect("completed");
+		} else if (options.windowsTerminalFocus) {
+			const taskId = await exerciseFakeAgent(page, driver);
+			await exerciseWindowsTerminalFocus(page, driver, taskId);
+			driver.sockets.assertTraffic();
+			await driver.inspect("completed");
 		} else if (options.performance) {
 			const taskId = await exerciseFakeAgent(page, driver);
 			await exercisePackagedDesktopPerformance(page, driver, taskId);
@@ -689,6 +711,7 @@ export async function runDesktopSmoke(options: {
 				if (!fixture.config.showWindow) page = await exerciseDesktopRendererRecovery(page, driver);
 				await exerciseDesktopProductCoverage(page, driver);
 				const taskId = await exerciseFakeAgent(page, driver, false);
+				if (windows) await exerciseWindowsTerminalFocus(page, driver, taskId);
 				await exerciseDesktopLifecycleCoverage(page, driver, taskId);
 				driver.sockets.assertTraffic();
 				if (options.mainLoss) {

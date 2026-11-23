@@ -33,6 +33,8 @@ jobs:
             arch: arm64
     env:
       TARGET_ARCH: ${{ matrix.arch }}
+      # Exercise native build/launch without implicit cmd.exe cwd lookup.
+      NoDefaultCurrentDirectoryInExePath: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -53,6 +55,8 @@ jobs:
           npm --prefix desktop exec -- install-electron
       - name: Typecheck desktop sources
         run: npm --prefix desktop run typecheck
+      - name: Check native paste probe
+        run: node --test scripts/agent-lab/windows-native-paste-probe.test.mjs
       - name: Check Windows desktop sources
         run: >-
           npm --prefix desktop test --
@@ -60,6 +64,7 @@ jobs:
           test/desktop-target.test.mjs test/native-runtime.test.mjs test/desktop-launch-identity.test.ts
           test/native-menus.test.ts test/desktop-window.test.ts test/environment-preferences.test.ts
           test/npm-update-runner.test.ts test/environment-controller.test.ts test/release-policy.test.mjs test/launch-config.test.ts
+          test/recovery-helper.test.ts test/runtime-supervisor.test.ts test/session-recovery.test.ts test/desktop-host-effects.test.ts
       - name: Check native installation boundaries
         run: >-
           npm test -- test/integration/windows-desktop-admission.integration.test.ts
@@ -69,12 +74,15 @@ jobs:
           npm run build
           npm --prefix desktop run make -- --arch="$TARGET_ARCH"
           npm --prefix desktop run verify -- --manifest "out/artifact-manifest-win32-$TARGET_ARCH.json"
-          npm run --silent agent:desktop -- smoke --app "desktop/out/Quarterdeck-win32-$TARGET_ARCH" --json
+      - name: Exercise the installed Windows candidate and terminal focus with a fake provider
+        run: npm run --silent agent:desktop -- smoke --app "desktop/out/Quarterdeck-win32-$TARGET_ARCH" --json
+      - name: Check Windows startup recovery after unclean shutdown
+        run: npm run --silent agent:desktop -- smoke --app "desktop/out/Quarterdeck-win32-$TARGET_ARCH" --session-recovery --no-agent --json
       - name: Upload synthetic Windows lab evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-lab-windows-${{ matrix.arch }}-${{ github.run_attempt }}
+          name: desktop-windows-lab-${{ matrix.arch }}-${{ github.run_attempt }}
           path: test-results/agent-lab/
           if-no-files-found: ignore
           retention-days: 7

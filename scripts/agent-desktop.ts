@@ -4,6 +4,7 @@ import { Command } from "commander";
 
 import { runDesktopSmoke } from "./agent-lab/desktop-smoke";
 import { DesktopAgentModeSchema } from "./agent-lab/desktop-types";
+import { runWindowsNativePaste } from "./agent-lab/desktop-windows-native-paste";
 
 const program = new Command("agent-desktop").description(
 	"Isolated packaged Electron Agent Lab; never attaches to the user's application.",
@@ -24,6 +25,7 @@ program
 	.option("--native-experience", "Check keyboard navigation, enlarged text, and visible close/reopen when requested")
 	.option("--performance", "Measure hidden packaged desktop idle CPU/RSS, task navigation and available terminal ACKs")
 	.option("--main-loss", "Verify fake-provider recovery after exact isolated app process loss")
+	.option("--windows-terminal-focus", "Check hidden Windows terminal focus and PTY input after dismissing Settings")
 	.option("--session-recovery", "Check explicit acknowledgement after isolated unclean startup; requires --no-agent")
 	.option("--provider <mode>", "Provider mode: fake, real-codex, or real-claude", "fake")
 	.option("--json", "Print artifact references as JSON")
@@ -37,6 +39,7 @@ program
 			performance?: boolean;
 			mainLoss?: boolean;
 			sessionRecovery?: boolean;
+			windowsTerminalFocus?: boolean;
 			npmLaunch?: boolean;
 			manualShells?: boolean;
 			compareWindow?: boolean;
@@ -55,6 +58,7 @@ program
 				performance: options.performance,
 				mainLoss: options.mainLoss,
 				sessionRecovery: options.sessionRecovery,
+				windowsTerminalFocus: options.windowsTerminalFocus,
 				npmLaunch: options.npmLaunch,
 				manualShells: options.manualShells,
 				compareWindow: options.compareWindow,
@@ -68,6 +72,16 @@ program
 			);
 		},
 	);
+
+program
+	.command("windows-native-paste")
+	.description("Manually verify physical Ctrl+V; never run on a daily-use desktop or in CI")
+	.requiredOption("--app <path>", "Fresh local packaged Windows application directory")
+	.requiredOption("--disposable-desktop <computer-name>", "Explicitly chosen disposable Windows computer name")
+	.action(async (options: { app: string; disposableDesktop: string }) => {
+		const manifest = await runWindowsNativePaste(options.app, options.disposableDesktop);
+		process.stdout.write(`Physical paste probe passed. Evidence: ${manifest}\n`);
+	});
 
 await program.parseAsync().catch((error: unknown) => {
 	process.stderr.write(`[agent-desktop] ${error instanceof Error ? error.message : String(error)}\n`);

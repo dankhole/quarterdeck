@@ -1,13 +1,17 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 import { getFakeAgentVersionOutput } from "../../scripts/agent-lab/fake-agent-protocol";
-import { writeAgentProviderLaunchers } from "../../scripts/agent-lab/fixture";
-import { resolveWindowsCompatibleCommand } from "../../src/core/windows-cmd-launch";
+import { requireInstalledWindowsFakeAgentNode, writeAgentProviderLaunchers } from "../../scripts/agent-lab/fixture";
+import {
+	buildWindowsCmdArgsCommandLine,
+	resolveWindowsCompatibleCommand,
+	resolveWindowsComSpec,
+} from "../../src/core/windows-cmd-launch";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,6 +45,54 @@ describe("synthetic agent launcher availability", () => {
 			await rm(root, { recursive: true, force: true });
 		}
 	});
+
+	it.runIf(process.platform === "win32").each(["cmd", "powershell"] as const)(
+		"requires the exact bundled Node from PATH in the installed Windows %s launcher",
+		async (shell) => {
+			const root = await mkdtemp(join(tmpdir(), "quarterdeck fake path-"));
+			try {
+				await writeAgentProviderLaunchers(root, { mode: "fake" });
+				const entry = join(root, "synthetic-tsx.cjs");
+				const fakeAgent = join(root, "synthetic-agent.ts");
+				await writeFile(entry, "console.log(JSON.stringify(process.argv.slice(2)));\n");
+				const env = {
+					...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PATH")),
+					PATH: dirname(process.execPath),
+					QUARTERDECK_AGENT_LAB_NODE: join(root, "nonexistent-explicit-node.exe"),
+					QUARTERDECK_AGENT_LAB_TSX_CLI: entry,
+					QUARTERDECK_AGENT_LAB_FAKE_AGENT: fakeAgent,
+				};
+				const launcher = join(root, "codex.cmd");
+				function run(args: string[], path = env.PATH) {
+					const options = { cwd: root, env: { ...env, PATH: path }, timeout: 5_000 };
+					if (shell === "cmd") {
+						return execFileAsync(resolveWindowsComSpec(env), [buildWindowsCmdArgsCommandLine(launcher, args)], {
+							...options,
+							windowsVerbatimArguments: true,
+						});
+					}
+					const command = resolveWindowsCompatibleCommand(launcher, args, "win32", env);
+					return execFileAsync(command.binary, command.args, options);
+				}
+				const args = ["resume", "exact-session-id", "synthetic prompt with spaces"];
+				await requireInstalledWindowsFakeAgentNode(root, process.execPath);
+				expect((await run(["--version"], "")).stdout.trim()).toBe(getFakeAgentVersionOutput("codex"));
+				await expect(run(args, "")).rejects.toMatchObject({ stdout: "" });
+				expect(JSON.parse((await run(args)).stdout)).toEqual([fakeAgent, ...args]);
+
+				// The same working PATH Node must be rejected when it isn't this installation's Node.
+				const otherNode = join(root, "other-node.exe");
+				await writeFile(otherNode, "not the PATH Node");
+				await requireInstalledWindowsFakeAgentNode(root, otherNode);
+				await expect(run(args)).rejects.toMatchObject({
+					stderr: expect.stringContaining("did not resolve the installed bundled node.exe from PATH"),
+					stdout: "",
+				});
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		},
+	);
 
 	it("forwards task arguments and provider identity to the synthetic TUI", async () => {
 		const root = await mkdtemp(join(tmpdir(), "quarterdeck-fake-launch-"));

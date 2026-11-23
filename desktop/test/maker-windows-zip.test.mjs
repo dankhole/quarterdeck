@@ -1,12 +1,12 @@
-import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { MakerWindowsZip } from "../scripts/maker-windows-zip.mjs";
+import { withExtractedWindowsArchive } from "../scripts/verify-windows-archive.mjs";
 
 it.skipIf(process.platform !== "win32")(
-	"archives files beyond MAX_PATH using installer-relative entry names",
+	"extracts Forge ZIP files beyond MAX_PATH with the installer decoder",
 	async () => {
 		const root = await mkdtemp(join(tmpdir(), "quarterdeck-zip-"));
 		try {
@@ -23,15 +23,14 @@ it.skipIf(process.platform !== "win32")(
 				packageJSON: { version: "1.0.0" },
 				targetArch: "x64",
 			});
-			const entry = [...components, "fixture.txt"].join("/");
-			const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
-			const listing = execFileSync(tar, ["-tf", archive], { encoding: "utf8", windowsHide: true });
-			expect(listing.split(/\r?\n/u)).toContain(entry);
-			expect(execFileSync(tar, ["-xOf", archive, entry], { encoding: "utf8", windowsHide: true })).toBe(
-				"Quarterdeck ZIP fixture",
-			);
+			await withExtractedWindowsArchive(archive, async (appPath) => {
+				const extracted = join(appPath, ...components, "fixture.txt");
+				expect(extracted.length).toBeGreaterThan(260);
+				expect(await readFile(extracted, "utf8")).toBe("Quarterdeck ZIP fixture");
+			});
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
 	},
+	15_000,
 );

@@ -86,7 +86,8 @@ export async function buildWindowsAdmission(output, { test = false, gui = false,
 	);
 	run(
 		join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe"),
-		["/d", "/s", "/c", "build-windows-admission.cmd"],
+		// An unqualified name can skip cwd (NoDefaultCurrentDirectoryInExePath).
+		["/d", "/s", "/c", ".\\build-windows-admission.cmd"],
 		{ cwd: directory, windowsHide: true, timeout: 120000 },
 	);
 	return resolve(output);
