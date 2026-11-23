@@ -131,17 +131,52 @@ jobs:
           npm run build
           npm --prefix desktop run typecheck
           npm --prefix desktop test
-      - name: Make and verify native desktop artifact
+      - name: Package once, then verify archives and smoke the same app in parallel
+        shell: bash
         env:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
-          npm --prefix desktop run make -- --arch="$TARGET_ARCH"
-          npm --prefix desktop run verify -- --manifest "$PWD/desktop/out/artifact-manifest-darwin-$TARGET_ARCH.json"
-      - name: Exercise isolated packaged app with a fake provider
-        env:
-          TARGET_ARCH: ${{ matrix.arch }}
-        run: npm run agent:desktop -- smoke --app "desktop/out/Quarterdeck-darwin-$TARGET_ARCH/Quarterdeck.app" --json
-      - name: Upload synthetic desktop lab evidence
+          evidence="$PWD/test-results/agent-lab/ci-logs"
+          mkdir -p "$evidence"
+
+          run_timed() {
+            local phase=$1 started=$SECONDS status=0
+            shift
+            {
+              printf '[desktop timing] %s: start\n' "$phase"
+              "$@" || status=$?
+              printf '[desktop timing] %s: exit %d (%ds)\n' "$phase" "$status" "$((SECONDS - started))"
+              return "$status"
+            } 2>&1 | tee "$evidence/$phase.log"
+          }
+
+          make_archives() (
+            # Match desktop-command.mjs, without its build/stage/package work.
+            cd desktop || exit
+            export QUARTERDECK_DESKTOP_ARCH="$TARGET_ARCH"
+            export QUARTERDECK_DESKTOP_RUNTIME_PATH="$PWD/.stage/$TARGET_ARCH/runtime"
+            "$QUARTERDECK_DESKTOP_RUNTIME_PATH/bin/node" node_modules/@electron-forge/cli/dist/electron-forge.js \
+              make --from-package --platform=darwin --arch="$TARGET_ARCH"
+          )
+
+          run_timed package npm --prefix desktop run package -- --arch="$TARGET_ARCH"
+          parallel_started=$SECONDS
+          (
+            run_timed make make_archives &&
+              run_timed verify npm --prefix desktop run verify -- --manifest "$PWD/desktop/out/artifact-manifest-darwin-$TARGET_ARCH.json"
+          ) &
+          archives_pid=$!
+          run_timed smoke npm run --silent agent:desktop -- smoke --app "desktop/out/Quarterdeck-darwin-$TARGET_ARCH/Quarterdeck.app" --json &
+          smoke_pid=$!
+
+          # Wait for both even if one fails, so the other can finish and retain its evidence.
+          archives_status=0 smoke_status=0
+          wait "$archives_pid" || archives_status=$?
+          wait "$smoke_pid" || smoke_status=$?
+          printf '[desktop timing] parallel: archives exit %d, smoke exit %d (%ds)\n' \
+            "$archives_status" "$smoke_status" "$((SECONDS - parallel_started))" | tee "$evidence/parallel.log"
+          (( archives_status == 0 && smoke_status == 0 ))
+      - name: Upload synthetic desktop lab evidence and packaging logs
         if: always()
         uses: actions/upload-artifact@v7
         with:

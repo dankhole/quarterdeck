@@ -1,8 +1,28 @@
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rename, rm, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { MakerBase } from "@electron-forge/maker-base";
 import { requireNativeMacTarget } from "./paths.mjs";
-import { run } from "./process.mjs";
+
+async function runTimed(stage, command, args) {
+	console.log(`[desktop timing] dmg.${stage}: start`);
+	const started = performance.now();
+	let outcome = "failure";
+	try {
+		await new Promise((resolve, reject) => {
+			const child = spawn(command, args, { stdio: "inherit" });
+			child.once("error", reject);
+			child.once("close", (code, signal) => {
+				if (code === 0) resolve();
+				else if (signal) reject(new Error(`${command} terminated by ${signal}.`));
+				else reject(new Error(`${command} exited with code ${code ?? "unknown"}.`));
+			});
+		});
+		outcome = "success";
+	} finally {
+		console.log(`[desktop timing] dmg.${stage}: ${outcome} (${Math.round(performance.now() - started)} ms)`);
+	}
+}
 
 /** Native installation container; signing and notarization remain release gates. */
 export class MakerDMG extends MakerBase {
@@ -27,10 +47,10 @@ export class MakerDMG extends MakerBase {
 			const source = join(temporary, "source");
 			await mkdir(source);
 			// ditto preserves signed bundle metadata, executable modes, and framework symlinks.
-			run("/usr/bin/ditto", [resolve(dir, `${appName}.app`), join(source, `${appName}.app`)]);
+			await runTimed("ditto", "/usr/bin/ditto", [resolve(dir, `${appName}.app`), join(source, `${appName}.app`)]);
 			await symlink("/Applications", join(source, "Applications"));
 			const image = join(temporary, "image.dmg");
-			run("/usr/bin/hdiutil", [
+			await runTimed("create", "/usr/bin/hdiutil", [
 				"create",
 				"-srcfolder",
 				source,
@@ -42,7 +62,7 @@ export class MakerDMG extends MakerBase {
 				"ULFO",
 				image,
 			]);
-			run("/usr/bin/hdiutil", ["verify", image]);
+			await runTimed("verify", "/usr/bin/hdiutil", ["verify", image]);
 			await rename(image, output);
 			return [output];
 		} finally {

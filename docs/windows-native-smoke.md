@@ -1,6 +1,6 @@
 # Native Windows Validation
 
-Quarterdeck's reusable test workflow runs `Windows native` (source checks) in parallel with a Windows matrix job (build, packed npm smoke, and renderer tests). Pull-request CI and publishing both require both jobs to pass. The automated lane uses only isolated synthetic data and deterministic fake commands; the separate manual matrix is the final real-provider release gate.
+Quarterdeck’s reusable Test workflow splits the full Windows runtime test suite across parallel runners. Every test file belongs to one shard. Static source checks run once, and a separate Windows job builds the app, checks the packed npm artifact, and runs the renderer tests. Pull-request CI and publishing require all of these checks. The automated lane uses only isolated synthetic data and deterministic fake commands; the separate manual matrix is the final real-provider release gate.
 
 ## Clean validation
 
