@@ -5,6 +5,7 @@ export {
 	RUNTIME_AGENT_CATALOG,
 	RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS,
 	type RuntimeAgentCatalogEntry,
+	SUPPORTED_PI_VERSION,
 } from "./agent-catalog";
 export * from "./api-contract";
 export {

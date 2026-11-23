@@ -30,7 +30,7 @@ When changing the instruction bridge, run `npm run check:agent-instructions`. Do
 
 ### Supported agents
 
-Claude Code, Codex, and Pi are supported desktop task-agent targets. Pi support is pinned to the exact validated release declared in `src/config/agent-registry.ts`; do not accept newer Pi releases until their lifecycle, trust, interaction, and exact-resume contracts pass the compatibility suite.
+Claude Code, Codex, and Pi are supported desktop task-agent targets. Pi support is pinned to the exact validated release declared in `src/core/agent-catalog.ts`; do not accept newer Pi releases until their lifecycle, trust, interaction, and exact-resume contracts pass the compatibility suite.
 
 ## Work-area routing
 

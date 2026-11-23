@@ -14,6 +14,7 @@ import {
 	RUNTIME_AGENT_CATALOG,
 	resolveWindowsBinaryPath,
 	resolveWindowsCompatibleCommand,
+	SUPPORTED_PI_VERSION,
 } from "../core";
 import { assertRuntimeProcessLaunchAdmission } from "../core/runtime-process-launch-admission.js";
 import { isGenerationHelperAvailable, isLlmConfigured } from "../title";
@@ -76,7 +77,6 @@ export type AgentAvailabilityDiagnosticSink = (event: AgentAvailabilityDiagnosti
 
 const MINIMUM_CODEX_VERSION = "0.157.0";
 const MINIMUM_CLAUDE_VERSION = "2.1.198";
-export const SUPPORTED_PI_VERSION = "1.5.2";
 const PROBE_OUTPUT_SNIPPET_MAX_LENGTH = 500;
 /**
  * Applies to every agent's `--version` probe and Codex's `features list` probe
@@ -354,7 +354,12 @@ async function detectAgentVersion(
 	try {
 		const result = await runProbeCommand(agentId, "version", binary, ["--version"], timeoutMs);
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-		const version = extractVersion(output);
+		// Pi prints its complete version on stdout. Do not strip a prerelease suffix
+		// or mistake a version mentioned by a diagnostic for the installed release.
+		const version =
+			agentId === "pi"
+				? (result.stdout.trim().match(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/)?.[0] ?? null)
+				: extractVersion(output);
 		log.debug(`${agentName} version probe completed`, {
 			binary,
 			version,

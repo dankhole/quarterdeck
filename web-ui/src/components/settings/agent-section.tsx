@@ -1,5 +1,6 @@
 // Settings section: harness launch tuning and worktree system prompt.
 import * as RadixCollapsible from "@radix-ui/react-collapsible";
+import { SUPPORTED_PI_VERSION } from "@runtime-agent-catalog";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
 import { SettingsSwitch } from "@/components/ui/settings-controls";
@@ -73,7 +74,8 @@ export function HarnessSection({
 	const PromptChevron = systemPromptExpanded ? ChevronDown : ChevronRight;
 	const claudeSettingsSummary = `New/restarted sessions only · ${CLAUDE_PERMISSION_MODE_LABELS[fields.claudeLaunchPermissionMode]}`;
 	const codexSettingsSummary = `New/restarted sessions only · ${CODEX_APPROVALS_REVIEWER_LABELS[fields.codexApprovalsReviewer]}`;
-	const piSupportedVersion = config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? "1.5.2";
+	const piSupportedVersion =
+		config?.agents.find((agent) => agent.id === "pi")?.requiredVersion ?? SUPPORTED_PI_VERSION;
 	const piSettingsSummary = `Exactly ${piSupportedVersion} · Native Pi execution`;
 
 	return (

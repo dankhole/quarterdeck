@@ -3,9 +3,8 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { SUPPORTED_PI_VERSION } from "../../../src/config/agent-registry.js";
 import { preparePiModelDiscovery } from "../../../src/config/pi-model-discovery.js";
+import { SUPPORTED_PI_VERSION } from "../../../src/core/agent-catalog.js";
 import * as quarterdeckCommand from "../../../src/core/quarterdeck-command.js";
 
 const roots: string[] = [];

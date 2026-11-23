@@ -1,7 +1,7 @@
 /**
  * Native, account-free macOS Pi compatibility gate. Never starts Quarterdeck.
  * Install privately (with external Node first on PATH):
- *   npm install --prefix /tmp/pi-smoke --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.5.2
+ *   npm install --prefix /tmp/pi-smoke --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.6.0
  * Run: node --import tsx scripts/pi-compatibility-smoke.ts /tmp/pi-smoke/node_modules/@earendil-works/pi-coding-agent
  * Uses the production launch asset and native CLI events, not a mocked ExtensionAPI.
  * The local HTTP server records and acknowledges hooks; it does not test board ingestion.
@@ -14,20 +14,21 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { type IPty, spawn as spawnPty } from "node-pty";
 import { preparePiModelDiscovery } from "../src/config/pi-model-discovery.js";
+import { SUPPORTED_PI_VERSION } from "../src/core/agent-catalog.js";
 import type { RuntimeHookIngestRequest } from "../src/core/api/task-session.js";
 import { buildPiLifecycleExtensionSource } from "../src/terminal/pi-lifecycle-extension.js";
+import { PI_FILE_PROMPT_INSTRUCTION } from "../src/terminal/pi-prompt-delivery.js";
 
-const EXPECTED_VERSION = "1.5.2";
 const scripts = dirname(fileURLToPath(import.meta.url));
 const packagePath = process.argv[2];
 assert(packagePath, "Pass the absolute path to a private Pi package installation");
 assert.equal(process.platform, "darwin", "This native compatibility gate currently claims macOS only");
 const manifest = JSON.parse(await readFile(join(packagePath, "package.json"), "utf8"));
 assert.equal(manifest.name, "@earendil-works/pi-coding-agent");
-assert.equal(manifest.version, EXPECTED_VERSION, "Wrong native SDK release");
+assert.equal(manifest.version, SUPPORTED_PI_VERSION, "Wrong native SDK release");
 const cli = join(await realpath(packagePath), manifest.bin.pi);
 const root = await realpath(await mkdtemp("/tmp/quarterdeck-pi-native-"));
 const home = join(root, "home");
@@ -323,8 +324,8 @@ try {
 	);
 	const version = await runProcess(process.execPath, [cli, "--version"], baseEnv, cwd);
 	assert.equal(version.code, 0);
-	assert.equal(version.stdout.trim(), EXPECTED_VERSION);
-	pass(`private SDK manifest and native CLI are exactly ${EXPECTED_VERSION}`);
+	assert.equal(version.stdout.trim(), SUPPORTED_PI_VERSION);
+	pass(`private SDK manifest and native CLI are exactly ${SUPPORTED_PI_VERSION}`);
 
 	const fresh = rpc("fresh");
 	const initial = object((await fresh.command("get_state")).data);
@@ -418,14 +419,25 @@ try {
 	assert(!existsSync(join(agentDir, "trust.json")));
 	pass("parent-scope mismatch cannot grant trust; explicit --no-approve retains precedence");
 
-	const fullscreen = terminal("fullscreen", ["smoke:fullscreen"]);
+	const promptPath = join(root, "prompt #1.txt");
+	const promptText = "/new is literal task text\n\n  Preserve this indentation.";
+	await writeFile(promptPath, `\uFEFF${promptText}`, { mode: 0o600 });
+	const fullscreen = terminal("fullscreen", ["--", `@${pathToFileURL(promptPath).href}`, PI_FILE_PROMPT_INSTRUCTION]);
 	await hook(fullscreen.env, "AgentSettled");
 	assert(
 		fullscreen.output().includes("\x1b[?1049h"),
 		"Native CLI must enter alternate-screen fullscreen despite regular saved setting",
 	);
 	await fullscreen.stop();
-	pass("actual native PTY accepts --tui-mode fullscreen and enters alternate screen");
+	const modelRequests = (await audit(String(fullscreen.env.PI_SMOKE_AUDIT))).filter(
+		(entry) => entry.type === "model_request",
+	);
+	assert.equal(modelRequests.length, 1, "The file and instruction must reach the same initial turn");
+	assert.equal(
+		modelRequests[0]?.prompt,
+		`<file name="${promptPath}">\n${promptText}\n</file>\n${PI_FILE_PROMPT_INSTRUCTION}`,
+	);
+	pass("native fullscreen PTY eagerly includes the file-backed prompt and instruction in one turn");
 
 	// The saved header still names task/, but the fallback launch directory exists.
 	// Use the exact saved file here: UUID lookup from a different cwd has an
@@ -504,7 +516,7 @@ try {
 	});
 	assert.deepEqual(await Promise.all([home, fallback, sessions].map(snapshot)), beforeDiscovery);
 	pass(
-		"production offline model discovery uses the installed 1.5.2 SDK, preserves scope order, executes no extensions, and writes nothing",
+		"production offline model discovery uses the installed Pi SDK, preserves scope order, executes no extensions, and writes nothing",
 	);
 
 	assert.equal(await readFile(networkAudit, "utf8"), "", "Unexpected Node network attempt occurred");
@@ -527,7 +539,7 @@ try {
 console.log(
 	JSON.stringify(
 		{
-			version: EXPECTED_VERSION,
+			version: SUPPORTED_PI_VERSION,
 			node: process.execPath,
 			platform: process.platform,
 			assertions,

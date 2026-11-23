@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import { join } from "node:path";
 import { TRPCError } from "@trpc/server";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
-import { getAgentAvailability, SUPPORTED_PI_VERSION, waitForPendingAgentAvailabilityProbes } from "../config";
+import { getAgentAvailability, waitForPendingAgentAvailabilityProbes } from "../config";
 import {
 	ConversationSourceHintStore,
 	type ConversationTaskSessionResolver,
@@ -23,6 +23,7 @@ import {
 	KeyedOperationCoordinator,
 	normalizeDiagnosticErrorClass,
 	QUARTERDECK_BUILD_ID,
+	SUPPORTED_PI_VERSION,
 	setQuarterdeckRuntimePort,
 	shouldRejectLegacyRuntimeStreamClient,
 	TaskResourceOperationCoordinator,
