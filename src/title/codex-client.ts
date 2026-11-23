@@ -1,10 +1,13 @@
 import type { ChildProcess, ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
+import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import {
 	createTaggedLogger,
 	isBinaryAvailableOnPath,
 	normalizeDiagnosticErrorClass,
+	resolveWindowsBinaryPath,
 	resolveWindowsCompatibleCommand,
 	terminateProcessForTimeout,
 } from "../core";
@@ -56,9 +59,34 @@ function outputByteLength(chunk: string | Buffer): number {
 	return Buffer.isBuffer(chunk) ? chunk.byteLength : Buffer.byteLength(chunk);
 }
 
+function resolveCodexCommand(args: string[]): { binary: string; args: string[] } {
+	if (process.platform === "win32") {
+		const resolved = resolveWindowsBinaryPath(CODEX_BINARY);
+		if (resolved && (resolved.extension === ".cmd" || resolved.extension === ".ps1")) {
+			const shimDir = dirname(resolved.path);
+			const parentDir = dirname(shimDir);
+			const modulesDir =
+				basename(shimDir).toLowerCase() === ".bin" && basename(parentDir).toLowerCase() === "node_modules"
+					? parentDir
+					: join(shimDir, "node_modules");
+			const entry = join(modulesDir, "@openai", "codex", "bin", "codex.js");
+			// The npm PowerShell shim rejects the standalone `-` and re-encodes piped input.
+			// Use the package entry from the selected npm installation with the runtime's Node.
+			try {
+				if (statSync(entry, { throwIfNoEntry: false })?.isFile()) {
+					return { binary: process.execPath, args: [entry, ...args] };
+				}
+			} catch {
+				// An inaccessible package entry must not prevent normal shim resolution.
+			}
+		}
+	}
+	return resolveWindowsCompatibleCommand(CODEX_BINARY, args);
+}
+
 function runCodexCommand(args: string[], timeoutMs: number, input: string): Promise<CodexCommandResult> {
 	return new Promise((resolve) => {
-		const command = resolveWindowsCompatibleCommand(CODEX_BINARY, args);
+		const command = resolveCodexCommand(args);
 		let child: ChildProcess | null = null;
 		let timeoutHandle: NodeJS.Timeout | null = null;
 		let settled = false;
