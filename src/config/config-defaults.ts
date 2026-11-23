@@ -8,6 +8,7 @@
 import type { PromptShortcut, RuntimeAgentId } from "../core";
 import {
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
+	DEFAULT_IMPLEMENT_PROMPT_TEMPLATE,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE,
 	DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
@@ -51,12 +52,12 @@ export const DEFAULT_AUDIBLE_NOTIFICATION_SUPPRESS_CURRENT_PROJECT: AudibleNotif
 
 export const DEFAULT_PROMPT_SHORTCUTS: readonly PromptShortcut[] = [
 	{
-		label: "Commit",
-		prompt: DEFAULT_COMMIT_PROMPT_TEMPLATE,
-	},
-	{
 		label: "Squash Merge",
 		prompt: DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE,
+	},
+	{
+		label: "Implement",
+		prompt: DEFAULT_IMPLEMENT_PROMPT_TEMPLATE,
 	},
 ];
 

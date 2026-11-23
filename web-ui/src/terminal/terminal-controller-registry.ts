@@ -1,6 +1,8 @@
+import type { TerminalPasteOptions } from "@/terminal/terminal-input";
+
 export interface TerminalController {
 	input: (text: string) => boolean;
-	paste: (text: string) => boolean;
+	paste: (text: string, options?: TerminalPasteOptions) => boolean;
 	focus?: () => void;
 	waitForLikelyPrompt?: (timeoutMs: number) => Promise<boolean>;
 }

@@ -1,4 +1,5 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
+import type { TerminalPasteOptions } from "@/terminal/terminal-input";
 import { acquireForTask, attachPoolContainer, cancelWarmup, releaseTask, warmup } from "@/terminal/terminal-pool";
 
 export interface TaskTerminalSubscriber {
@@ -28,7 +29,7 @@ export interface TaskTerminalHandle {
 	reset: () => void;
 	requestRestore: () => void;
 	input: (text: string) => boolean;
-	paste: (text: string) => boolean;
+	paste: (text: string, options?: TerminalPasteOptions) => boolean;
 	waitForLikelyPrompt: (timeoutMs: number) => Promise<boolean>;
 	clear: () => void;
 	stop: () => Promise<void>;

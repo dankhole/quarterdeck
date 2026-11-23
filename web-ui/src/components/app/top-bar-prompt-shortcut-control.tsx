@@ -1,5 +1,5 @@
 import * as RadixPopover from "@radix-ui/react-popover";
-import { Check, ChevronDown, MessageSquare, Settings } from "lucide-react";
+import { Check, ChevronDown, ClipboardPaste, MessageSquare, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -33,9 +33,25 @@ export function TopBarPromptShortcutControl({
 			<Button
 				variant="default"
 				size="sm"
-				icon={isPromptShortcutRunning ? <Spinner size={12} /> : <MessageSquare size={14} />}
+				icon={isPromptShortcutRunning ? <Spinner size={12} /> : <ClipboardPaste size={14} />}
 				disabled={isPromptShortcutRunning}
-				onClick={() => onRunPromptShortcut(selectedTaskId, activePromptShortcut.label)}
+				aria-label={`Paste prompt shortcut: ${activePromptShortcut.label}`}
+				title="Paste into the agent terminal. Review or edit the draft, then press Enter to send."
+				onMouseDown={(event) => {
+					if (event.button === 0) event.preventDefault();
+				}}
+				onKeyDown={(event) => {
+					// Do not focus the terminal while Enter is still held and can repeat there.
+					if (event.key === "Enter") event.preventDefault();
+				}}
+				onKeyUp={(event) => {
+					if (event.key === "Enter" && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+						event.currentTarget.click();
+					}
+				}}
+				onClick={(event) => {
+					if (event.detail <= 1) onRunPromptShortcut(selectedTaskId, activePromptShortcut.label);
+				}}
 				className="text-xs rounded-r-none kb-navbar-btn"
 			>
 				{activePromptShortcut.label}

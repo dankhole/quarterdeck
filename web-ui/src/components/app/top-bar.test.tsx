@@ -156,7 +156,7 @@ describe("TopBar script shortcut onboarding", () => {
 		expect(container.querySelector('[aria-label="Open in VS Code"]')).toBeNull();
 	});
 
-	it("shows prompt shortcut button when a task is selected and shortcuts are configured", async () => {
+	it("labels the prompt paste action and keeps pointer clicks from stealing terminal focus", async () => {
 		const onRunPromptShortcut = vi.fn();
 
 		await act(async () => {
@@ -171,13 +171,65 @@ describe("TopBar script shortcut onboarding", () => {
 		});
 
 		const approveButton = findButtonByText(container, "Approve");
-		expect(approveButton).toBeInstanceOf(HTMLButtonElement);
+		expect(approveButton?.getAttribute("aria-label")).toBe("Paste prompt shortcut: Approve");
+		expect(approveButton?.title).toContain("Review or edit the draft, then press Enter to send.");
+		const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 });
 
 		await act(async () => {
-			approveButton?.click();
+			approveButton?.dispatchEvent(mouseDown);
+			approveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+			approveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 }));
 		});
 
-		expect(onRunPromptShortcut).toHaveBeenCalledWith("task-1", "Approve");
+		expect(mouseDown.defaultPrevented).toBe(true);
+		expect(onRunPromptShortcut).toHaveBeenCalledExactlyOnceWith("task-1", "Approve");
+	});
+
+	it("waits for Enter to be released before pasting and handing focus to the terminal", async () => {
+		const onRunPromptShortcut = vi.fn();
+		const shortcut = { label: "Implement", prompt: "Implement the plan" };
+		await act(async () => {
+			root.render(
+				<TopBar
+					selectedTaskId="task-1"
+					activePromptShortcut={shortcut}
+					onRunPromptShortcut={onRunPromptShortcut}
+				/>,
+			);
+		});
+		const button = findButtonByText(container, "Implement");
+		const keyDown = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+		const repeat = new KeyboardEvent("keydown", { key: "Enter", repeat: true, bubbles: true, cancelable: true });
+		button?.dispatchEvent(keyDown);
+		button?.dispatchEvent(repeat);
+		expect(keyDown.defaultPrevented).toBe(true);
+		expect(repeat.defaultPrevented).toBe(true);
+		expect(onRunPromptShortcut).not.toHaveBeenCalled();
+
+		button?.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+		expect(onRunPromptShortcut).toHaveBeenCalledExactlyOnceWith("task-1", "Implement");
+	});
+
+	it("disables both prompt shortcut controls while a paste is pending", async () => {
+		const onRunPromptShortcut = vi.fn();
+		const shortcut = { label: "Implement", prompt: "Implement the plan" };
+		await act(async () => {
+			root.render(
+				<TopBar
+					selectedTaskId="task-1"
+					promptShortcuts={[shortcut]}
+					activePromptShortcut={shortcut}
+					onRunPromptShortcut={onRunPromptShortcut}
+					isPromptShortcutRunning
+				/>,
+			);
+		});
+		const primaryButton = findButtonByText(container, "Implement");
+		const selector = container.querySelector<HTMLButtonElement>('[aria-label="Select prompt shortcut"]');
+		expect(primaryButton?.disabled).toBe(true);
+		expect(selector?.disabled).toBe(true);
+		primaryButton?.click();
+		expect(onRunPromptShortcut).not.toHaveBeenCalled();
 	});
 
 	it("hides prompt shortcut button when no task is selected", async () => {

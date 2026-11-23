@@ -356,13 +356,18 @@ describe("usePersistentTerminalSession", () => {
 		const subscriber = terminal.subscribe.mock.calls.at(-1)?.[0];
 		subscriber?.onConnectionReady?.("task-a");
 		subscriber?.onSummary?.(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "old-session" }));
+		const draftOptions = { asAgentDraft: true };
 		expect(controller.input("wrong session")).toBe(false);
+		expect(controller.paste("wrong session", draftOptions)).toBe(false);
 		subscriber?.onSummary?.(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1" }));
 		expect(controller.input("current session")).toBe(true);
+		expect(controller.paste("first\nsecond", draftOptions)).toBe(true);
+		expect(terminal.paste).toHaveBeenCalledExactlyOnceWith("first\nsecond", draftOptions);
 		subscriber?.onSummary?.(
 			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "replacement-session" }),
 		);
 		expect(controller.input("replaced session")).toBe(false);
+		expect(controller.paste("replaced session", draftOptions)).toBe(false);
 	});
 
 	it("uses dedicated terminal path for home shell", async () => {

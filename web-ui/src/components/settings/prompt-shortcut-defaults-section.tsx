@@ -16,6 +16,10 @@ import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { RuntimeConfigResponse } from "@/runtime/types";
 import { toErrorMessage } from "@/utils/to-error-message";
 
+const normalizeShortcutLabel = (label: string) => label.trim().toLowerCase();
+const defaultLabels = new Set(DEFAULT_PROMPT_SHORTCUTS.map((shortcut) => normalizeShortcutLabel(shortcut.label)));
+const defaultNames = DEFAULT_PROMPT_SHORTCUTS.map((shortcut) => shortcut.label).join(", ");
+
 /** Global immediate action: deliberately independent of the main form's project and drafts. */
 export function PromptShortcutDefaultsSection({
 	config,
@@ -34,10 +38,10 @@ export function PromptShortcutDefaultsSection({
 	const wasConfirmationOpenRef = useRef(false);
 	const shortcuts = config?.promptShortcuts ?? [];
 	const needsRestore =
-		(config?.hiddenDefaultPromptShortcuts ?? []).length > 0 ||
+		config?.hiddenDefaultPromptShortcuts?.some((label) => defaultLabels.has(normalizeShortcutLabel(label))) ||
 		DEFAULT_PROMPT_SHORTCUTS.some((defaultShortcut) => {
 			const match = shortcuts.find(
-				(shortcut) => shortcut.label.trim().toLowerCase() === defaultShortcut.label.trim().toLowerCase(),
+				(shortcut) => normalizeShortcutLabel(shortcut.label) === normalizeShortcutLabel(defaultShortcut.label),
 			);
 			return match !== undefined && match.prompt !== defaultShortcut.prompt;
 		});
@@ -58,10 +62,9 @@ export function PromptShortcutDefaultsSection({
 		setBusy(true);
 		setError(null);
 		try {
-			const defaultLabels = new Set(DEFAULT_PROMPT_SHORTCUTS.map((shortcut) => shortcut.label.trim().toLowerCase()));
 			// null is the supported global API path, including when no projects exist.
 			await saveRuntimeConfig(null, {
-				promptShortcuts: shortcuts.filter((shortcut) => !defaultLabels.has(shortcut.label.trim().toLowerCase())),
+				promptShortcuts: shortcuts.filter((shortcut) => !defaultLabels.has(normalizeShortcutLabel(shortcut.label))),
 				hiddenDefaultPromptShortcuts: [],
 			});
 			setConfirmOpen(false);
@@ -85,8 +88,9 @@ export function PromptShortcutDefaultsSection({
 					Built-in prompt shortcuts
 				</h3>
 				<p className="text-text-secondary mt-1 mb-0">
-					Prompt shortcuts send reusable prompts to agents from Review cards. Edit prompts from the prompt shortcut
-					menu; these are separate from project command shortcuts.
+					Prompt shortcuts paste reusable prompts into the task's agent terminal. Review or edit the draft, then
+					press Enter to send. To edit a saved shortcut, choose Manage shortcuts from the prompt shortcut menu in
+					the top bar.
 				</p>
 			</div>
 			<div className="border-t border-border pt-4">
@@ -114,7 +118,7 @@ export function PromptShortcutDefaultsSection({
 				</AlertDialogHeader>
 				<AlertDialogBody>
 					<AlertDialogDescription>
-						This immediately restores the built-in defaults (Commit and Squash Merge) for all projects, replacing
+						This immediately restores the built-in defaults ({defaultNames}) for all projects, replacing
 						customizations to those names. Your other custom prompt shortcuts and unsaved Settings changes are not
 						affected.
 					</AlertDialogDescription>

@@ -32,11 +32,14 @@ function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
 	return snapshot;
 }
 
+const REVIEW_SHORTCUT = { label: "Review", prompt: "Review the changes.\nCall out risks." };
+const DEFAULT_TEST_SHORTCUTS = [REVIEW_SHORTCUT];
+
 function HookHarness({
 	onSnapshot,
 	sendTaskSessionInput,
 	currentProjectId = "project-1",
-	promptShortcuts = [{ label: "Commit", prompt: "/commit" }],
+	promptShortcuts = DEFAULT_TEST_SHORTCUTS,
 }: {
 	onSnapshot: (snapshot: HookSnapshot) => void;
 	sendTaskSessionInput: Parameters<typeof usePromptShortcuts>[0]["sendTaskSessionInput"];
@@ -100,11 +103,9 @@ describe("usePromptShortcuts", () => {
 			(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
 				previousActEnvironment;
 		}
-		vi.useRealTimers();
 	});
 
-	it("runs prompt shortcut via paste and submit", async () => {
-		vi.useFakeTimers();
+	it("pastes the entire prompt as one draft without submitting", async () => {
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -119,27 +120,21 @@ describe("usePromptShortcuts", () => {
 			);
 		});
 
-		const runPromise = act(async () => {
-			const promise = requireSnapshot(latestSnapshot).runPromptShortcut("task-1", "Commit");
-			await vi.advanceTimersByTimeAsync(200);
-			await promise;
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).runPromptShortcut("task-1", REVIEW_SHORTCUT.label);
 		});
 
-		await runPromise;
-
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(1, "task-1", "/commit", {
+		expect(sendTaskSessionInput).toHaveBeenCalledExactlyOnceWith("task-1", REVIEW_SHORTCUT.prompt, {
 			intent: "write",
 			appendNewline: false,
 			mode: "paste",
-		});
-		expect(sendTaskSessionInput).toHaveBeenNthCalledWith(2, "task-1", "\r", {
-			intent: "submit",
-			appendNewline: false,
+			asAgentDraft: true,
 		});
 		expect(showAppToastMock).not.toHaveBeenCalled();
 	});
 
-	it("shows error toast when paste fails", async () => {
+	it("shows an error when paste fails without changing the remembered shortcut", async () => {
+		localStorage.setItem(LocalStorageKey.PromptShortcutLastLabel, "Previous");
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: false, message: "Connection failed" }));
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -155,9 +150,11 @@ describe("usePromptShortcuts", () => {
 		});
 
 		await act(async () => {
-			await requireSnapshot(latestSnapshot).runPromptShortcut("task-1", "Commit");
+			await requireSnapshot(latestSnapshot).runPromptShortcut("task-1", REVIEW_SHORTCUT.label);
 		});
 
+		expect(sendTaskSessionInput).toHaveBeenCalledOnce();
+		expect(localStorage.getItem(LocalStorageKey.PromptShortcutLastLabel)).toBe("Previous");
 		expect(showAppToastMock).toHaveBeenCalledWith({
 			intent: "danger",
 			icon: "warning-sign",
@@ -167,8 +164,7 @@ describe("usePromptShortcuts", () => {
 		expect(requireSnapshot(latestSnapshot).isRunning).toBe(false);
 	});
 
-	it("updates last used label after successful run", async () => {
-		vi.useFakeTimers();
+	it("updates the remembered label after a successful paste", async () => {
 		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -176,10 +172,7 @@ describe("usePromptShortcuts", () => {
 			root.render(
 				<HookHarness
 					sendTaskSessionInput={sendTaskSessionInput}
-					promptShortcuts={[
-						{ label: "Commit", prompt: "/commit" },
-						{ label: "Review", prompt: "/review" },
-					]}
+					promptShortcuts={[{ label: "Implement", prompt: "Implement the plan" }, REVIEW_SHORTCUT]}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
 					}}
@@ -187,29 +180,28 @@ describe("usePromptShortcuts", () => {
 			);
 		});
 
-		const runPromise = act(async () => {
-			const promise = requireSnapshot(latestSnapshot).runPromptShortcut("task-1", "Review");
-			await vi.advanceTimersByTimeAsync(200);
-			await promise;
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).runPromptShortcut("task-1", REVIEW_SHORTCUT.label);
 		});
 
-		await runPromise;
-
-		expect(localStorage.getItem(LocalStorageKey.PromptShortcutLastLabel)).toBe("Review");
+		expect(localStorage.getItem(LocalStorageKey.PromptShortcutLastLabel)).toBe(REVIEW_SHORTCUT.label);
 	});
 
-	it("falls back to first shortcut when last used label not found", async () => {
-		localStorage.setItem(LocalStorageKey.PromptShortcutLastLabel, "NonExistent");
-		const sendTaskSessionInput = vi.fn(async () => ({ ok: true }));
+	it.each([
+		[null, "Squash Merge"],
+		["Missing", "Squash Merge"],
+		["Commit", "Commit"],
+	])("resolves remembered shortcut %s to %s", async (remembered, expected) => {
+		if (remembered !== null) localStorage.setItem(LocalStorageKey.PromptShortcutLastLabel, remembered);
 		let latestSnapshot: HookSnapshot | null = null;
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					sendTaskSessionInput={sendTaskSessionInput}
+					sendTaskSessionInput={vi.fn(async () => ({ ok: true }))}
 					promptShortcuts={[
-						{ label: "First", prompt: "/first" },
-						{ label: "Second", prompt: "/second" },
+						{ label: "Squash Merge", prompt: "Review the squash merge" },
+						{ label: "Commit", prompt: "My custom commit prompt" },
 					]}
 					onSnapshot={(snapshot) => {
 						latestSnapshot = snapshot;
@@ -218,7 +210,7 @@ describe("usePromptShortcuts", () => {
 			);
 		});
 
-		expect(requireSnapshot(latestSnapshot).activeShortcut?.label).toBe("First");
+		expect(requireSnapshot(latestSnapshot).activeShortcut?.label).toBe(expected);
 	});
 
 	it("saves prompt shortcuts via config", async () => {
@@ -253,21 +245,12 @@ describe("usePromptShortcuts", () => {
 		});
 	});
 
-	it("does not fire shortcut when already running", async () => {
-		vi.useFakeTimers();
-		let resolveFirstCall: (() => void) | null = null;
-		const firstCallPromise = new Promise<void>((resolve) => {
-			resolveFirstCall = resolve;
+	it("ignores a second click while the paste is pending", async () => {
+		let finishPaste!: (result: { ok: boolean }) => void;
+		const paste = new Promise<{ ok: boolean }>((resolve) => {
+			finishPaste = resolve;
 		});
-		let callCount = 0;
-
-		const sendTaskSessionInput = vi.fn(async () => {
-			callCount++;
-			if (callCount === 1) {
-				await firstCallPromise;
-			}
-			return { ok: true };
-		});
+		const sendTaskSessionInput = vi.fn(() => paste);
 
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -282,22 +265,20 @@ describe("usePromptShortcuts", () => {
 			);
 		});
 
-		// Start first run (intentionally not awaited immediately to test concurrent behavior)
-		const firstRunPromise = act(async () => {
-			const promise = requireSnapshot(latestSnapshot).runPromptShortcut("task-1", "Commit");
-			await vi.advanceTimersByTimeAsync(0);
-			return promise;
+		let pending: Promise<void> | undefined;
+		await act(async () => {
+			const { runPromptShortcut } = requireSnapshot(latestSnapshot);
+			pending = runPromptShortcut("task-1", REVIEW_SHORTCUT.label);
+			await runPromptShortcut("task-1", REVIEW_SHORTCUT.label);
 		});
+		expect(sendTaskSessionInput).toHaveBeenCalledOnce();
+		expect(requireSnapshot(latestSnapshot).isRunning).toBe(true);
 
 		await act(async () => {
-			await requireSnapshot(latestSnapshot).runPromptShortcut("task-1", "Commit");
+			finishPaste({ ok: true });
+			await pending;
 		});
-
-		expect(sendTaskSessionInput).toHaveBeenCalledTimes(1);
-
-		(resolveFirstCall as (() => void) | null)?.();
-		await vi.advanceTimersByTimeAsync(200);
-		await firstRunPromise;
+		expect(requireSnapshot(latestSnapshot).isRunning).toBe(false);
 	});
 
 	it("shows error toast when save fails", async () => {
@@ -354,16 +335,8 @@ describe("usePromptShortcuts", () => {
 		expect(saveRuntimeConfigMock).not.toHaveBeenCalled();
 	});
 
-	it("handles submit failure after paste success", async () => {
-		vi.useFakeTimers();
-		let callNumber = 0;
-		const sendTaskSessionInput = vi.fn(async () => {
-			callNumber++;
-			if (callNumber === 1) {
-				return { ok: true };
-			}
-			return { ok: false, message: "Submit failed" };
-		});
+	it("keeps retry available when the paste transport throws", async () => {
+		const sendTaskSessionInput = vi.fn().mockRejectedValueOnce(new Error("Connection closed"));
 
 		let latestSnapshot: HookSnapshot | null = null;
 
@@ -378,19 +351,16 @@ describe("usePromptShortcuts", () => {
 			);
 		});
 
-		const runPromise = act(async () => {
-			const promise = requireSnapshot(latestSnapshot).runPromptShortcut("task-1", "Commit");
-			await vi.advanceTimersByTimeAsync(200);
-			await promise;
+		await act(async () => {
+			await requireSnapshot(latestSnapshot).runPromptShortcut("task-1", REVIEW_SHORTCUT.label);
 		});
 
-		await runPromise;
-
-		expect(sendTaskSessionInput).toHaveBeenCalledTimes(2);
+		expect(sendTaskSessionInput).toHaveBeenCalledOnce();
+		expect(requireSnapshot(latestSnapshot).isRunning).toBe(false);
 		expect(showAppToastMock).toHaveBeenCalledWith({
 			intent: "danger",
 			icon: "warning-sign",
-			message: "Submit failed",
+			message: "Connection closed",
 			timeout: 7000,
 		});
 	});

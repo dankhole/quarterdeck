@@ -3,6 +3,7 @@ import {
 	type PersistentTerminalSubscriber,
 	TerminalAttachmentController,
 } from "@/terminal/terminal-attachment-controller";
+import type { TerminalPasteOptions } from "@/terminal/terminal-input";
 import {
 	appendTerminalHeuristicText,
 	hasInterruptAcknowledgement,
@@ -144,8 +145,8 @@ export class TerminalSlot {
 		return this.attachment.input(text);
 	}
 
-	paste(text: string): boolean {
-		return this.attachment.paste(text);
+	paste(text: string, options?: TerminalPasteOptions): boolean {
+		return this.attachment.paste(text, options);
 	}
 
 	clear(): void {

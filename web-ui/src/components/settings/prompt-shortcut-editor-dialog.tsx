@@ -182,8 +182,8 @@ export function PromptShortcutEditorDialog({
 				<DialogHeader title="Prompt Shortcuts" />
 				<DialogBody>
 					<p id="prompt-shortcut-editor-description" className="text-text-secondary text-[13px] mb-3">
-						Enter a full prompt or just invoke a skill (e.g. <code className="text-text-primary">/commit</code>).
-						The text is pasted into the harness terminal and submitted.
+						Save a full prompt or a skill command. Clicking a shortcut pastes the text into the task's agent
+						terminal without sending it. Review or edit the draft, then press Enter to send.
 					</p>
 					<DragDropContext onDragEnd={handleDragEnd}>
 						<Droppable droppableId="prompt-shortcuts">

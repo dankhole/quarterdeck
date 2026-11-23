@@ -4,7 +4,6 @@ import { showAppToast } from "@/components/app-toaster";
 import { saveRuntimeConfig } from "@/runtime/runtime-config-query";
 import type { PromptShortcut } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
-import { getTerminalController } from "@/terminal/terminal-controller-registry";
 import type { SendTerminalInputOptions } from "@/terminal/terminal-input";
 import { useRawLocalStorageValue } from "@/utils/react-use";
 import { toErrorMessage } from "@/utils/to-error-message";
@@ -42,7 +41,7 @@ export function usePromptShortcuts({
 }: UsePromptShortcutsInput): UsePromptShortcutsResult {
 	const [lastUsedLabel, setLastUsedLabel] = useRawLocalStorageValue<string>(
 		LocalStorageKey.PromptShortcutLastLabel,
-		"Commit",
+		"",
 		normalizeLabel,
 	);
 	const [isRunning, setIsRunning] = useState(false);
@@ -64,36 +63,19 @@ export function usePromptShortcuts({
 					intent: "write",
 					appendNewline: false,
 					mode: "paste",
+					asAgentDraft: true,
 				});
 				if (!pasteResult.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: pasteResult.message ?? "Could not send prompt to the task session.",
-						timeout: 7000,
-					});
-					return;
+					throw new Error(pasteResult.message ?? "Could not paste prompt into the agent terminal.");
 				}
-
-				await new Promise<void>((resolve) => {
-					setTimeout(resolve, 200);
-				});
-
-				const submitResult = await sendTaskSessionInput(taskId, "\r", {
-					intent: "submit",
-					appendNewline: false,
-				});
-				if (!submitResult.ok) {
-					showAppToast({
-						intent: "danger",
-						icon: "warning-sign",
-						message: submitResult.message ?? "Could not submit prompt to the task session.",
-						timeout: 7000,
-					});
-				}
-
 				setLastUsedLabel(shortcutLabel);
-				getTerminalController(taskId)?.focus?.();
+			} catch (error) {
+				showAppToast({
+					intent: "danger",
+					icon: "warning-sign",
+					message: toErrorMessage(error),
+					timeout: 7000,
+				});
 			} finally {
 				isRunningRef.current = false;
 				setIsRunning(false);

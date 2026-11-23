@@ -1,5 +1,6 @@
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
+import type { TerminalPasteOptions } from "@/terminal/terminal-input";
 import { shouldForceResizeBeforeRestore } from "@/terminal/terminal-restore-policy";
 import { type PersistentTerminalSubscriber, TerminalSessionHandle } from "@/terminal/terminal-session-handle";
 import { type PersistentTerminalAppearance, TerminalViewport } from "@/terminal/terminal-viewport";
@@ -274,12 +275,8 @@ export class TerminalAttachmentController {
 		return true;
 	}
 
-	paste(text: string): boolean {
-		if (!this.session.isIoOpen) {
-			return false;
-		}
-		this.viewport.paste(text);
-		return true;
+	paste(text: string, options?: TerminalPasteOptions): boolean {
+		return this.session.isIoOpen && this.viewport.paste(text, options);
 	}
 
 	clear(): void {

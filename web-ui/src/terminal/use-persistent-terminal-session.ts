@@ -249,7 +249,7 @@ export function usePersistentTerminalSession({
 			taskId,
 			{
 				input: (text) => (active && ready ? terminal.input(text) : false),
-				paste: (text) => (active && ready ? terminal.paste(text) : false),
+				paste: (text, options) => active && ready && terminal.paste(text, options),
 				focus: () => {
 					if (active) terminal.focus();
 				},

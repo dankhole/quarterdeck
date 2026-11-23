@@ -159,8 +159,8 @@ export function ShortcutsSection({ fields, setField, disabled }: SettingsSection
 				</Button>
 			</div>
 			<p className="m-0 text-sm leading-6 text-text-secondary">
-				Run shell commands from this project's top bar. These are separate from global prompt shortcuts, which send
-				instructions to an agent. Command changes take effect after Save changes.
+				Run shell commands from this project's top bar. These are separate from global prompt shortcuts, which paste
+				editable drafts into the task's agent terminal. Command changes take effect after Save changes.
 			</p>
 
 			{fields.shortcuts.map((shortcut, shortcutIndex) => (

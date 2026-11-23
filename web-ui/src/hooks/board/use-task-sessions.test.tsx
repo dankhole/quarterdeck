@@ -65,6 +65,8 @@ function createSummary(updatedAt: number, warningMessage?: string): RuntimeTaskS
 	});
 }
 
+const draftPasteOptions = { intent: "write", appendNewline: false, mode: "paste", asAgentDraft: true } as const;
+
 function createTask(): BoardCard {
 	return {
 		id: "task-1",
@@ -307,6 +309,50 @@ describe("useTaskSessions", () => {
 		expect(getTerminalControllerMock).not.toHaveBeenCalled();
 		expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
 	});
+
+	it("pastes once through the scoped terminal and focuses it without typing or submitting", async () => {
+		const paste = vi.fn(() => true);
+		const input = vi.fn();
+		const focus = vi.fn();
+		getTerminalControllerMock.mockReturnValue({ paste, input, focus });
+		const prompt = "First line\r\nSecond line\n\tIndented";
+
+		await expect(
+			requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", prompt, draftPasteOptions),
+		).resolves.toEqual({
+			ok: true,
+		});
+		expect(getTerminalControllerMock).toHaveBeenCalledExactlyOnceWith("task-1", { projectId: "project-1" });
+		expect(paste).toHaveBeenCalledExactlyOnceWith(prompt, { asAgentDraft: true });
+		expect(input).not.toHaveBeenCalled();
+		expect(focus).toHaveBeenCalledOnce();
+		expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["missing", "not writable"])("does not fall back to raw input if the terminal is %s", async (state) => {
+		const paste = vi.fn(() => false);
+		const focus = vi.fn();
+		if (state === "not writable") getTerminalControllerMock.mockReturnValue({ paste, focus });
+
+		await expect(
+			requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", "First\nSecond", draftPasteOptions),
+		).resolves.toMatchObject({ ok: false, message: expect.stringContaining("Open the task's agent terminal") });
+		expect(focus).not.toHaveBeenCalled();
+		expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
+	});
+
+	it.each(["First\rSecond", "First\x03Second", "First\x1b[201~\nSecond"])(
+		"rejects unsafe control input in a draft %j before writing to the terminal",
+		async (prompt) => {
+			const paste = vi.fn(() => true);
+			getTerminalControllerMock.mockReturnValue({ paste });
+			await expect(
+				requireSnapshot(latestSnapshot).sendTaskSessionInput("task-1", prompt, draftPasteOptions),
+			).resolves.toMatchObject({ ok: false, message: expect.stringContaining("control characters") });
+			expect(paste).not.toHaveBeenCalled();
+			expect(sendTaskSessionInputMutateMock).not.toHaveBeenCalled();
+		},
+	);
 
 	it("falls back to the runtime input API and merges its returned summary", async () => {
 		const summary = createSummary(30);

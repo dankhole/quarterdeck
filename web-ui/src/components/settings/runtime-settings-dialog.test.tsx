@@ -560,7 +560,7 @@ describe("RuntimeSettingsDialog", () => {
 		const config = createSavedConfig({
 			projectConfigPath: "/alpha/config.json",
 			worktreeSetupScript: "alpha setup",
-			hiddenDefaultPromptShortcuts: ["Commit"],
+			hiddenDefaultPromptShortcuts: ["Implement"],
 			promptShortcuts: [{ label: "Custom", prompt: "Keep custom" }],
 		});
 		const props = { open: true, projectId: "alpha", projects: [project], onOpenChange: vi.fn() };
@@ -607,7 +607,8 @@ describe("RuntimeSettingsDialog", () => {
 					projectId={null}
 					initialConfig={createSavedConfig({
 						promptShortcuts: [
-							{ label: "Commit", prompt: "Customized built-in" },
+							{ label: "Implement", prompt: "Customized built-in" },
+							{ label: "Commit", prompt: "Preserve my commit prompt" },
 							{ label: "My custom prompt", prompt: "Preserve me" },
 						],
 						hiddenDefaultPromptShortcuts: ["Squash Merge"],
@@ -624,12 +625,17 @@ describe("RuntimeSettingsDialog", () => {
 		expect(document.body.querySelector('[role="alertdialog"]')).not.toBeNull();
 		expect(restoreDefaultsMock).not.toHaveBeenCalled();
 		const confirmation = document.body.querySelector('[role="alertdialog"]')!;
+		expect(confirmation.textContent).toContain("Squash Merge, Implement");
+		expect(confirmation.textContent).not.toContain("Commit");
 		await act(async () => findButtonByText(confirmation, "Cancel")?.click());
 		expect(restoreDefaultsMock).not.toHaveBeenCalled();
 		await act(async () => findButtonByText(document.body, "Restore defaults now…")?.click());
 		await act(async () => findButtonByText(document.body, "Restore and save now")?.click());
 		expect(restoreDefaultsMock).toHaveBeenCalledWith(null, {
-			promptShortcuts: [{ label: "My custom prompt", prompt: "Preserve me" }],
+			promptShortcuts: [
+				{ label: "Commit", prompt: "Preserve my commit prompt" },
+				{ label: "My custom prompt", prompt: "Preserve me" },
+			],
 			hiddenDefaultPromptShortcuts: [],
 		});
 		expect(saveMock).not.toHaveBeenCalled();
@@ -641,6 +647,25 @@ describe("RuntimeSettingsDialog", () => {
 		expect(saveMock.mock.calls[0]?.[0]).not.toHaveProperty("shortcuts");
 	});
 
+	it("does not offer restoration for a retired built-in or a custom shortcut named Commit", async () => {
+		await act(async () =>
+			root.render(
+				<RuntimeSettingsDialog
+					open
+					projectId={null}
+					initialConfig={createSavedConfig({
+						hiddenDefaultPromptShortcuts: ["Commit"],
+						promptShortcuts: [{ label: "Commit", prompt: "My custom commit prompt" }],
+					})}
+					onOpenChange={() => {}}
+				/>,
+			),
+		);
+		await navigateTo("Prompt shortcuts");
+		expect(findButtonByText(document.body, "Restore defaults now…")?.disabled).toBe(true);
+		expect(document.body.textContent).toContain("Review or edit the draft, then press Enter to send.");
+	});
+
 	it("keeps restoration errors actionable without closing the confirmation", async () => {
 		restoreDefaultsMock.mockRejectedValueOnce(new Error("Disk is read-only"));
 		await act(async () =>
@@ -648,7 +673,7 @@ describe("RuntimeSettingsDialog", () => {
 				<RuntimeSettingsDialog
 					open
 					projectId={null}
-					initialConfig={createSavedConfig({ hiddenDefaultPromptShortcuts: ["Commit"] })}
+					initialConfig={createSavedConfig({ hiddenDefaultPromptShortcuts: ["Implement"] })}
 					onOpenChange={() => {}}
 				/>,
 			),

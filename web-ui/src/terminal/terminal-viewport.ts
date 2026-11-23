@@ -11,7 +11,7 @@ import { SlotWriteQueue } from "@/terminal/slot-write-queue";
 import { TerminalAutofocus } from "@/terminal/terminal-autofocus";
 import { TerminalBrowserInput } from "@/terminal/terminal-browser-input";
 import { TERMINAL_SCROLLBACK } from "@/terminal/terminal-constants";
-import type { TerminalImagePasteWriter } from "@/terminal/terminal-input";
+import type { TerminalImagePasteWriter, TerminalPasteOptions } from "@/terminal/terminal-input";
 import { createQuarterdeckTerminalOptions, type PersistentTerminalAppearance } from "@/terminal/terminal-options";
 import { shouldSkipEmptyRestoreSnapshot } from "@/terminal/terminal-restore-policy";
 import { TerminalWheelTransport } from "@/terminal/terminal-wheel-transport";
@@ -360,8 +360,18 @@ export class TerminalViewport {
 		this.terminal.input(text);
 	}
 
-	paste(text: string): void {
+	paste(text: string, options?: TerminalPasteOptions): boolean {
+		if (
+			options?.asAgentDraft &&
+			(!this.callbacks.getSessionAgentId() ||
+				!this.terminal.modes.bracketedPasteMode ||
+				this.terminal.options.ignoreBracketedPasteMode ||
+				this.terminal.options.disableStdin)
+		) {
+			return false;
+		}
 		this.terminal.paste(text);
+		return true;
 	}
 
 	clear(): void {

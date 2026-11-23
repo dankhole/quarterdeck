@@ -5,11 +5,11 @@ import { SlotRenderer } from "@/terminal/slot-renderer";
 import { TerminalViewport } from "@/terminal/terminal-viewport";
 
 /** Real xterm public DOM path, parser, encoder and onData/onBinary viewport wiring. */
-describe("TerminalViewport wheel transport", () => {
+describe("TerminalViewport input transport", () => {
 	let terminal: Terminal;
 	let viewport: TerminalViewport;
 	let host: HTMLDivElement;
-	let agentId: RuntimeAgentId;
+	let agentId: RuntimeAgentId | null;
 	let handleWheel: (event: WheelEvent) => boolean;
 	const send = vi.fn(() => true);
 
@@ -189,6 +189,34 @@ describe("TerminalViewport wheel transport", () => {
 		terminal.element!.addEventListener("wheel", () => viewport.dispose(), { once: true });
 		handleWheel(new WheelEvent("wheel", { deltaY: 60, clientX: 120, clientY: 150 }));
 		expect(send).not.toHaveBeenCalled();
+	});
+
+	it("only sends a shortcut draft when xterm can emit a bracketed paste", async () => {
+		const draft = "first\nsecond";
+		const options = { asAgentDraft: true };
+		expect(viewport.paste(draft, options)).toBe(false);
+		expect(send).not.toHaveBeenCalled();
+
+		await write("\x1b[?2004h");
+		expect(viewport.paste(draft, options)).toBe(true);
+		expect(send).toHaveBeenCalledExactlyOnceWith("\x1b[200~first\rsecond\x1b[201~");
+		viewport.input("\r");
+		expect(send).toHaveBeenNthCalledWith(2, "\r");
+
+		await write("\x1b[?2004l");
+		expect(viewport.paste(draft, options)).toBe(false);
+		expect(send).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not paste a shortcut into a shell even when it supports bracketed paste", async () => {
+		agentId = null;
+		await write("\x1b[?2004h");
+		expect(viewport.paste("first\nsecond", { asAgentDraft: true })).toBe(false);
+		expect(send).not.toHaveBeenCalled();
+
+		// The safety requirement is opt-in; generic shell paste remains available.
+		expect(viewport.paste("first\nsecond")).toBe(true);
+		expect(send).toHaveBeenCalledExactlyOnceWith("\x1b[200~first\rsecond\x1b[201~");
 	});
 
 	it("keeps paste and protocol replies at their original immediate boundaries", async () => {

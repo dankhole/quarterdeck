@@ -28,6 +28,7 @@ import {
 	normalizeShortcutLabel,
 	normalizeShortcuts,
 	normalizeWorktreeSetupScript,
+	PROMPT_SHORTCUTS_VERSION,
 	type RuntimeGlobalConfigFileShape,
 	type RuntimeProjectConfigFileShape,
 } from "./runtime-config-normalizers";
@@ -193,8 +194,13 @@ export async function writeRuntimeGlobalConfigFile(
 	// promptShortcuts
 	if (config.promptShortcuts !== undefined) {
 		payload.promptShortcuts = config.promptShortcuts;
+		// New saves are user intent, even if a row exactly matches a retired default.
+		payload.promptShortcutsVersion = PROMPT_SHORTCUTS_VERSION;
 	} else if (existing !== null && Object.hasOwn(existing, "promptShortcuts")) {
-		payload.promptShortcuts = (existing as RuntimeGlobalConfigFileShape).promptShortcuts;
+		payload.promptShortcuts = existing.promptShortcuts;
+		if (Object.hasOwn(existing, "promptShortcutsVersion")) {
+			payload.promptShortcutsVersion = existing.promptShortcutsVersion;
+		}
 	}
 
 	// hiddenDefaultPromptShortcuts

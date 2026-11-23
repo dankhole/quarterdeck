@@ -140,7 +140,7 @@ Remembered harness selection must not create a second React render-state source 
 Quarterdeck has two unrelated shortcut systems:
 
 - **Project shortcuts** (`RuntimeProjectShortcut`, `useShortcutActions`) run terminal commands in the dev shell from the top bar. They are project-scoped and use `appendNewline: true`.
-- **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`) inject agent prompts from sidebar Review cards. They are global and use paste mode plus auto-submit.
+- **Prompt shortcuts** (`PromptShortcut`, `usePromptShortcuts`) paste saved text into the task agent’s terminal from the task toolbar. They are global and never submit the text; the user reviews it and presses Enter.
 
 Keep their types, persistence, and execution paths distinct.
 

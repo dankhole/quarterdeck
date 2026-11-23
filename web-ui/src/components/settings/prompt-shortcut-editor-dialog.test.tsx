@@ -256,7 +256,7 @@ describe("PromptShortcutEditorDialog", () => {
 		expect(saveButton?.disabled).toBe(true);
 	});
 
-	it("shows reminder text about skills", async () => {
+	it("explains that shortcuts paste text for review before sending", async () => {
 		await act(async () => {
 			root.render(
 				<PromptShortcutEditorDialog
@@ -270,8 +270,7 @@ describe("PromptShortcutEditorDialog", () => {
 		});
 
 		const bodyText = document.body.textContent;
-		expect(bodyText).toContain("Enter a full prompt or just invoke a skill");
-		expect(bodyText).toContain("/commit");
-		expect(bodyText).toContain("The text is pasted into the harness terminal and submitted");
+		expect(bodyText).toContain("Save a full prompt or a skill command.");
+		expect(bodyText).toContain("without sending it. Review or edit the draft, then press Enter to send.");
 	});
 });

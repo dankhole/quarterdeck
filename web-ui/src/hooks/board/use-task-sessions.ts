@@ -93,6 +93,24 @@ export function useTaskSessions({ currentProjectId, setSessions }: UseTaskSessio
 				options.preferTerminal === false || options.replyToSessionInstanceId
 					? null
 					: getTerminalController(taskId, { projectId: currentProjectId });
+			if (options.asAgentDraft) {
+				// biome-ignore lint/suspicious/noControlCharactersInRegex: Controls can escape the bracketed paste or act as keys.
+				if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(text.replace(/\r\n/g, "\n"))) {
+					return {
+						ok: false,
+						message: "Remove terminal control characters from the prompt shortcut and try again.",
+					};
+				}
+				// The runtime fallback sends raw text, even when mode is paste.
+				if (!controller?.paste(text, { asAgentDraft: true })) {
+					return {
+						ok: false,
+						message: "Open the task's agent terminal and wait for it to accept input, then try again.",
+					};
+				}
+				controller.focus?.();
+				return { ok: true };
+			}
 			if (controller) {
 				const sent = appendNewline
 					? (options.mode === "paste" ? controller.paste(text) : controller.input(text)) && controller.input("\r")

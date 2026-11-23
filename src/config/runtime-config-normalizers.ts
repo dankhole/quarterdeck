@@ -1,6 +1,7 @@
 // Pure normalization functions and state assembly for runtime config.
 // No file I/O — all functions are deterministic and side-effect free.
 
+import { hash } from "node:crypto";
 import type { PromptShortcut, RuntimeAgentId, RuntimeProjectShortcut } from "../core";
 import { isRuntimeAgentLaunchSupported } from "../core";
 import type { AudibleNotificationEvents, AudibleNotificationSuppressCurrentProject } from "./config-defaults";
@@ -11,6 +12,7 @@ import {
 	DEFAULT_COMMIT_PROMPT_TEMPLATE,
 	DEFAULT_OPEN_PR_PROMPT_TEMPLATE,
 	DEFAULT_PROMPT_SHORTCUTS,
+	DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE,
 	DEFAULT_WORKTREE_SYSTEM_PROMPT_TEMPLATE,
 } from "./config-defaults";
 import {
@@ -31,6 +33,7 @@ export interface RuntimeGlobalConfigFileShape extends Partial<GlobalConfigFieldV
 	selectedAgentId?: RuntimeAgentId;
 	selectedShortcutLabel?: string;
 	promptShortcuts?: Array<{ label: string; prompt: string }>;
+	promptShortcutsVersion?: number;
 	hiddenDefaultPromptShortcuts?: string[];
 	audibleNotificationEvents?: AudibleNotificationEventsShape;
 	audibleNotificationSuppressCurrentProject?: AudibleNotificationEventsShape;
@@ -234,74 +237,57 @@ export function normalizeHiddenDefaultPromptShortcuts(raw: unknown): string[] {
 	const result: string[] = [];
 	for (const item of raw) {
 		if (typeof item === "string") {
-			const trimmed = item.trim().toLowerCase();
-			if (trimmed) {
-				result.push(trimmed);
+			const key = item.trim().toLowerCase();
+			// Commit no longer has a built-in prompt to hide.
+			if (key && key !== "commit") {
+				result.push(key);
 			}
 		}
 	}
 	return result;
 }
 
-const LEGACY_SQUASH_MERGE_WORKTREE_SECTION = [
-	"Parse correctly by extracting the worktree path from the block that contains the matching branch:",
-	"",
-	"```bash",
-	'git worktree list --porcelain | awk -v target="branch refs/heads/<target>" \'/^worktree /{wt=$0; sub(/^worktree /,"",wt)} $0==target{print wt}\'',
-	"```",
-	"",
-	"If this prints a path (and it's not the current worktree), check for uncommitted work **now** — before `update-ref` changes anything:",
-].join("\n");
+export const PROMPT_SHORTCUTS_VERSION = 1;
 
-const PORTABLE_SQUASH_MERGE_WORKTREE_SECTION = [
-	"Parse correctly by extracting the worktree path from the block that contains the matching branch:",
-	"",
-	"```bash",
-	"git worktree list --porcelain",
-	"```",
-	"",
-	"Inspect the output block by block without relying on Unix-only shell tools. Find the block whose `branch` line is exactly `branch refs/heads/<target>`, then use that same block's `worktree` line as the target worktree path. If no block matches, the target branch is not checked out in another worktree.",
-	"",
-	"If a matching block provides a path (and it's not the current worktree), check for uncommitted work **now** — before `update-ref` changes anything:",
-].join("\n");
-
-function migrateLegacyPromptShortcut(label: string, prompt: string): string {
-	if (label.toLowerCase() !== "squash merge") return prompt;
-	return prompt.replace(LEGACY_SQUASH_MERGE_WORKTREE_SECTION, PORTABLE_SQUASH_MERGE_WORKTREE_SECTION);
-}
+// SHA-256 of the complete old built-in prompts. Match the whole prompt rather than a
+// recognizable excerpt so a user edit to an otherwise stock prompt survives upgrades.
+const RETIRED_COMMIT_PROMPT_HASH = "0d93f8becf8026bff2d98d7ef16e00018878bc62474c8482dbd4d993ee52b46a";
+const LEGACY_SQUASH_MERGE_PROMPT_HASHES = new Set([
+	"a8147b0c77902693eb085863675ce947220cf2d60d1da03418623b0b66e5c819", // Portable worktree detection (4b53decf)
+	"27b61fd0c85391d7c7bbcb59acadff877169971c0b5b6b4fe89b96c8c7565cb5", // Unix-only worktree detection (6b636b8d)
+	"1103a0ea24a6c2734a0f1aa20c6212b24e5ef2ad0475f2eafa6ac37088516c39", // Original workflow (f3f0039d)
+]);
 
 export function normalizePromptShortcuts(
 	shortcuts: Array<{ label: string; prompt: string }> | null | undefined,
 	hiddenDefaults?: string[] | null,
+	migrateLegacyDefaults = false,
 ): PromptShortcut[] {
-	const hidden = new Set(hiddenDefaults?.map((h) => h.trim().toLowerCase()) ?? []);
-
-	if (!Array.isArray(shortcuts)) {
-		return DEFAULT_PROMPT_SHORTCUTS.filter((d) => !hidden.has(d.label.trim().toLowerCase())).map((d) => ({ ...d }));
-	}
-
-	const userShortcuts: PromptShortcut[] = [];
-	for (const shortcut of shortcuts) {
+	const hidden = new Set(normalizeHiddenDefaultPromptShortcuts(hiddenDefaults));
+	const savedShortcuts: PromptShortcut[] = [];
+	for (const shortcut of Array.isArray(shortcuts) ? shortcuts : []) {
 		if (!shortcut || typeof shortcut !== "object") {
 			continue;
 		}
 		const label = typeof shortcut.label === "string" ? shortcut.label.trim() : "";
-		const prompt = typeof shortcut.prompt === "string" ? shortcut.prompt.trim() : "";
-		if (label && prompt) {
-			userShortcuts.push({ label, prompt: migrateLegacyPromptShortcut(label, prompt) });
+		let prompt = typeof shortcut.prompt === "string" ? shortcut.prompt.trim() : "";
+		if (!label || !prompt) continue;
+		if (migrateLegacyDefaults) {
+			if (label === "Commit" && hash("sha256", prompt) === RETIRED_COMMIT_PROMPT_HASH) continue;
+			if (label === "Squash Merge" && LEGACY_SQUASH_MERGE_PROMPT_HASHES.has(hash("sha256", prompt))) {
+				prompt = DEFAULT_SQUASH_MERGE_PROMPT_TEMPLATE;
+			}
 		}
+		savedShortcuts.push({ label, prompt });
 	}
 
-	const userLabelSet = new Set(userShortcuts.map((s) => s.label.trim().toLowerCase()));
-
-	const missingDefaults = DEFAULT_PROMPT_SHORTCUTS.filter((d) => {
-		const key = d.label.trim().toLowerCase();
-		return !hidden.has(key) && !userLabelSet.has(key);
+	const savedLabels = new Set(savedShortcuts.map((s) => s.label.toLowerCase()));
+	const missingDefaults = DEFAULT_PROMPT_SHORTCUTS.filter((shortcut) => {
+		const key = shortcut.label.toLowerCase();
+		return !hidden.has(key) && !savedLabels.has(key);
 	});
 
-	const merged = [...userShortcuts, ...missingDefaults.map((d) => ({ ...d }))];
-	if (merged.length > 0) return merged;
-	return hidden.size > 0 ? [] : [...DEFAULT_PROMPT_SHORTCUTS];
+	return [...savedShortcuts, ...missingDefaults.map((shortcut) => ({ ...shortcut }))];
 }
 
 export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly string[]): RuntimeAgentId | null {
@@ -350,6 +336,7 @@ export function toRuntimeConfigState({
 		promptShortcuts: normalizePromptShortcuts(
 			globalConfig?.promptShortcuts,
 			globalConfig?.hiddenDefaultPromptShortcuts,
+			globalConfig?.promptShortcutsVersion === undefined,
 		),
 		commitPromptTemplate: normalizePromptTemplate(globalConfig?.commitPromptTemplate, DEFAULT_COMMIT_PROMPT_TEMPLATE),
 		openPrPromptTemplate: normalizePromptTemplate(

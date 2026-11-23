@@ -110,7 +110,7 @@ To keep the configuration across shell sessions, add the exports to the shell st
 Settings groups categories by where changes apply:
 
 - **All projects** controls shared agent, notification, terminal, editor, branch-picker, code-navigation, and agent prompt-shortcut preferences.
-- **Project: _name_** controls only the named project's task-creation defaults and command shortcuts. Command shortcuts run shell commands; agent prompt shortcuts send prompts to an agent.
+- **Project: _name_** controls only the named project's task-creation defaults and command shortcuts. Command shortcuts run shell commands; agent prompt shortcuts paste editable text into the task agent’s input without submitting it.
 - **This desktop** contains native environment preferences when using the desktop app.
 - **Tools** contains diagnostics, AI setup guidance, and troubleshooting actions.
 
@@ -160,7 +160,7 @@ Enable **Settings → All projects → Git branches → Group branches by folder
 
 6. Land the work.
 
-   Use Commit, Open PR, Squash Merge, cherry-pick, or the git view to move reviewed work back toward your base branch. Prompt shortcuts help automate repetitive landing steps.
+   Use the Git view to commit or cherry-pick reviewed work. The task toolbar has two built-in saved prompts: **Squash Merge** asks the agent to update the task from `main` or `master` and squash the work onto that branch; **Implement** asks it to plan, implement, and review work with parallel subagents. Selecting a prompt from the dropdown changes the toolbar shortcut. With the task agent’s terminal open and ready for input, click the toolbar shortcut to paste its text. Review or edit it, then press Enter when you’re ready to send. The former built-in **Commit** prompt is no longer included; customized Commit prompts are kept.
 
 7. Clean up or resume.
 
