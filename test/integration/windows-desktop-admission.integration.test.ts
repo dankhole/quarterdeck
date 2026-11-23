@@ -1,6 +1,8 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { copyFile, link, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -350,18 +352,19 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		},
 	);
 
-	it("hands updates to Explorer outside the application's non-breakaway job", async (context) => {
-		const { stdout } = await execute(executable, ["--quarterdeck-test-explorer"], {
-			timeout: 10_000,
-			windowsHide: true,
-		});
-		const explorer = stdout.trim();
-		// Only the absence of a desktop shell permits a skip. COM and launch failures below must fail.
-		if (explorer === "absent") {
-			context.skip("No shell window on the test process's desktop.");
-			return;
+	it("hands updates to Explorer outside the application job or refuses on the hosted ARM64 desktop", async () => {
+		let expectRefusal = false;
+		if (process.env.RUNNER_ENVIRONMENT === "github-hosted" && process.arch === "arm64") {
+			// The hosted ARM64 image can have a shell HWND without a desktop in the ShellWindows collection.
+			// Only an independent canonical lookup may select the refusal test, never a product error.
+			const { stdout } = await execute(executable, ["--quarterdeck-test-explorer"], {
+				timeout: 10_000,
+				windowsHide: true,
+			});
+			const desktop = stdout.trim();
+			expect(["present registered", "present not-found"]).toContain(desktop);
+			expectRefusal = desktop === "present not-found";
 		}
-		expect(explorer).toBe("present");
 		const directory = join(root, "update-broker");
 		await ensurePrivateDirectory(directory);
 		const marker = join(directory, "ready"),
@@ -381,37 +384,64 @@ while (-not [IO.File]::Exists(${quote(finish)})) {
 }
 [IO.File]::WriteAllText(${quote(done)},'done')`,
 		);
-		const main = `const fs=require('node:fs');fs.fstatSync(198);require('node:child_process').execFileSync(${JSON.stringify(executable)},['--quarterdeck-update-window',${JSON.stringify(script)}],{stdio:'inherit',windowsHide:true,timeout:10000});const deadline=Date.now()+10000;const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(marker)})){clearInterval(timer);console.log('HELPER_READY');process.exit(0)}if(Date.now()>deadline)process.exit(9)},30);`;
-		const child = spawn(executable, ["--quarterdeck-test-exec", lock, process.execPath, "-e", main], {
-			stdio: ["ignore", "pipe", "pipe"],
+		// The production helper is safe to run on the refusal path. Use the fixture's SW_HIDE only for success.
+		const helper = expectRefusal ? production : executable;
+		const main = `
+require('node:fs').fstatSync(198);
+const result = require('node:child_process').spawnSync(${JSON.stringify(helper)},
+    ['--quarterdeck-update-window', ${JSON.stringify(script)}], {stdio:'inherit', windowsHide:true, timeout:10000});
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;
+`;
+		const handoff = execute(executable, ["--quarterdeck-test-exec", lock, process.execPath, "-e", main], {
+			timeout: 35_000,
 			windowsHide: true,
 		});
-		const closed = new Promise<void>((accept) => child.once("close", () => accept()));
 		let failure: unknown;
 		try {
-			await ready(child);
-			await vi.waitFor(() => expect(child.exitCode).toBe(0), { timeout: 5_000 });
-			const pid = Number(await readFile(marker, "utf8"));
-			expect(Number.isInteger(pid) && pid > 0).toBe(true);
-			const lease = await acquire(lock);
-			try {
-				process.kill(pid, 0);
+			if (expectRefusal) {
+				await expect(handoff).rejects.toMatchObject({
+					code: 73,
+					stderr: expect.stringContaining(
+						"FindWindowSW returned S_FALSE, HRESULT 0x00000001); no worker launched.",
+					),
+				});
+				// A fallback could start asynchronously; give it a chance to write its first receipt.
+				await delay(2_000);
+				await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
 				await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
-			} finally {
-				await release(lock, lease);
+				console.info("Hosted ARM64 Explorer handoff refused: shell window present, automation desktop not found.");
+			} else {
+				await handoff;
+				const pid = await vi.waitFor(
+					async () => {
+						const value = Number(await readFile(marker, "utf8"));
+						expect(Number.isInteger(value) && value > 0).toBe(true);
+						return value;
+					},
+					{ timeout: 10_000 },
+				);
+				// Custody has drained and admission is exclusive while this PowerShell is still running.
+				const lease = await acquire(lock);
+				try {
+					process.kill(pid, 0);
+					await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
+				} finally {
+					await release(lock, lease);
+				}
 			}
 		} catch (error) {
 			failure = error;
 		} finally {
 			try {
 				await writeFile(finish, "");
-				await vi.waitFor(async () => expect(await readFile(done, "utf8")).toBe("done"), { timeout: 10_000 });
+				if (existsSync(marker)) {
+					await vi.waitFor(async () => expect(await readFile(done, "utf8")).toBe("done"), { timeout: 10_000 });
+				}
 			} catch (cause) {
 				failure ??= new Error("Synthetic Explorer worker cleanup was not confirmed.", { cause });
 			}
-			child.kill();
-			await closed;
 		}
 		if (failure) throw failure;
-	}, 40000);
+	}, 60_000);
 });

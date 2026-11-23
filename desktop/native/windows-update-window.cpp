@@ -31,13 +31,22 @@ static int open_from_desktop(const wchar_t *script) {
     ComPtr<IShellWindows> windows;
     HRESULT result=CoCreateInstance(CLSID_ShellWindows,nullptr,CLSCTX_LOCAL_SERVER,IID_PPV_ARGS(&windows));
     if(FAILED(result)) return update_failure("create ShellWindows",result);
+    // For SWC_DESKTOP, Microsoft's FindDesktopFolderView example uses
+    // VT_I4(CSIDL_DESKTOP) for the location and VT_EMPTY for the root. The
+    // FindWindowSW reference describes the PIDL form for ordinary folders.
+    // https://devblogs.microsoft.com/oldnewthing/20130318-00/?p=4933
     VARIANT empty; VariantInit(&empty);
     ShellValue desktop(CSIDL_DESKTOP);
     long window=0;
     ComPtr<IDispatch> dispatch;
     result=windows->FindWindowSW(&desktop.value,&empty,SWC_DESKTOP,&window,SWFO_NEEDDISPATCH,&dispatch);
-    // S_FALSE means the COM server did not find a desktop, which is not a successful handoff.
-    if(result!=S_OK || !dispatch) return update_failure("find desktop shell window",result);
+    if(result==S_FALSE && !dispatch) {
+        std::fputs("Quarterdeck update window: Explorer desktop automation was not found "
+            "(FindWindowSW returned S_FALSE, HRESULT 0x00000001); no worker launched.\n",stderr);
+        return 73;
+    }
+    if(result!=S_OK) return update_failure("find desktop shell window",result);
+    if(!dispatch) return update_failure("find desktop shell window",E_UNEXPECTED);
     ComPtr<IServiceProvider> provider;
     ComPtr<IShellBrowser> browser;
     ComPtr<IShellView> view;
@@ -78,6 +87,40 @@ static int open_from_desktop(const wchar_t *script) {
     result=shell->ShellExecute(executable.value.bstrVal,arguments.value,directory.value,operation.value,show.value);
     return result==S_OK ? 0 : update_failure("launch PowerShell from Explorer",result);
 }
+
+#ifdef QUARTERDECK_ADMISSION_TEST
+#pragma comment(lib, "user32.lib")
+
+static HRESULT probe_desktop_automation() {
+    // Independent control: reproduce Microsoft's ATL example (whose default
+    // activation context is CLSCTX_ALL), not the product lookup or launch path.
+    ComPtr<IShellWindows> windows;
+    HRESULT result=CoCreateInstance(CLSID_ShellWindows,nullptr,CLSCTX_ALL,IID_PPV_ARGS(&windows));
+    if(FAILED(result)) return result;
+    if(!windows) return E_UNEXPECTED;
+    VARIANT location, root;
+    VariantInit(&location);
+    VariantInit(&root);
+    location.vt=VT_I4;
+    location.lVal=CSIDL_DESKTOP;
+    long window=0;
+    ComPtr<IDispatch> dispatch;
+    result=windows->FindWindowSW(&location,&root,SWC_DESKTOP,&window,SWFO_NEEDDISPATCH,&dispatch);
+    if((result==S_OK && !dispatch) || (result==S_FALSE && dispatch)) return E_UNEXPECTED;
+    return result;
+}
+
+extern "C" int quarterdeck_test_explorer() {
+    const char *shell=GetShellWindow() ? "present" : "absent";
+    HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    if(FAILED(initialized)) return update_failure("initialize desktop probe",initialized);
+    HRESULT result=probe_desktop_automation();
+    CoUninitialize();
+    if(result!=S_OK && result!=S_FALSE) return update_failure("probe desktop automation",result);
+    std::printf("%s %s\n",shell,result==S_OK ? "registered" : "not-found");
+    return 0;
+}
+#endif
 
 extern "C" int quarterdeck_update_window(const wchar_t *script) {
     if(!script || wcspbrk(script,L"\"\r\n") || !quarterdeck_safe_ancestors(script,1)) return 73;

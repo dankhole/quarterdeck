@@ -20,6 +20,9 @@
 extern int quarterdeck_shortcut(int operation);
 extern int quarterdeck_shortcut_paths(const wchar_t *target, const wchar_t *path, int operation);
 extern int quarterdeck_update_window(const wchar_t *script);
+#ifdef QUARTERDECK_ADMISSION_TEST
+extern int quarterdeck_test_explorer(void);
+#endif
 
 #ifndef QUARTERDECK_ADMISSION_TEST
 static HRESULT login_profile(PWSTR *profile) {
@@ -313,19 +316,9 @@ static int launch_admitted(const wchar_t *lock, const wchar_t *host, const wchar
     return result < 0 ? refuse("could not launch the admitted host.") : (int)result;
 }
 
-#ifdef QUARTERDECK_ADMISSION_TEST
-#pragma comment(lib, "user32.lib")
-/* A process named explorer.exe may belong to a different desktop or logon session.
- * Check this desktop's shell independently of COM so a broken broker still fails the test. */
-static int test_explorer_presence(void) {
-    puts(GetShellWindow() ? "present" : "absent");
-    return 0;
-}
-#endif
-
 int wmain(int argc, wchar_t **argv) {
 #ifdef QUARTERDECK_ADMISSION_TEST
-    if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-explorer")) return test_explorer_presence();
+    if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-explorer")) return quarterdeck_test_explorer();
 #endif
 #ifdef QUARTERDECK_ADMISSION_LAB_PROFILE
     if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-check-shortcut")) return quarterdeck_shortcut(2);
