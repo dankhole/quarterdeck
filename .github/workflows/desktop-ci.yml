@@ -50,7 +50,7 @@ jobs:
       - name: Check Windows desktop boundaries
         run: |
           npm --prefix desktop run typecheck
-          npm --prefix desktop test -- test/windows-portability.test.ts test/windows-pe.test.mjs test/desktop-target.test.mjs test/native-runtime.test.mjs test/desktop-launch-identity.test.ts test/native-menus.test.ts test/desktop-window.test.ts test/environment-preferences.test.ts
+          npm --prefix desktop test -- test/windows-portability.test.ts test/windows-pe.test.mjs test/maker-windows-zip.test.mjs test/desktop-target.test.mjs test/native-runtime.test.mjs test/desktop-launch-identity.test.ts test/native-menus.test.ts test/desktop-window.test.ts test/environment-preferences.test.ts
           npm --prefix desktop test -- test/npm-update-runner.test.ts test/environment-controller.test.ts test/release-policy.test.mjs test/launch-config.test.ts
           npm test -- test/integration/windows-desktop-admission.integration.test.ts test/integration/windows-desktop-installation.integration.test.ts test/runtime/desktop-install/windows-archive.test.ts
       - name: Build and verify Windows desktop candidate

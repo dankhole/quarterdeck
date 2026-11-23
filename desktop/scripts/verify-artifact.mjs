@@ -108,10 +108,9 @@ export async function verifyRuntime(runtimePath) {
 	if ((await readPairedBuildIdentity(join(runtimePath, "dist"))) !== manifest.buildId)
 		throw new Error("Bundled runtime and browser build identities differ.");
 	const build = await readBuildManifest(join(runtimePath, "dist"));
-	for (const key of ["version", "buildId", "sourceSha"]) {
+	for (const key of ["version", "buildId", "sourceSha", "sourceDirty"]) {
 		if (build[key] !== manifest[key]) throw new Error(`Bundled root build provenance differs: ${key}.`);
 	}
-	if (build.sourceDirty && !manifest.sourceDirty) throw new Error("Dirty root build cannot claim clean provenance.");
 	const ptyOutput = run(nodeBin, ["-e", nativeSmoke], options).stdout.trim();
 	if (ptyOutput !== "quarterdeck-bundled-pty-ok") throw new Error("Bundled native PTY did not pass its smoke check.");
 	return manifest;

@@ -92,7 +92,7 @@ export async function prepareDesktopLabFixture(options: {
 		const fixture = await prepareAgentLabFixture(launch);
 		const tempRoot = await realpath(launch.tempRoot);
 		if (process.platform === "win32") {
-			const prepared = await prepareWindowsDesktopLabApp(app.appPath, tempRoot);
+			const prepared = await prepareWindowsDesktopLabApp(app.appPath, tempRoot, launch.artifactDir);
 			app = { appPath: prepared.appPath, executablePath: prepared.executablePath };
 			windowsInstallation = prepared.installation;
 		}

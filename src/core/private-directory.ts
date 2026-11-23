@@ -1,6 +1,7 @@
 import type { ExecFileException } from "node:child_process";
 import { execFile } from "node:child_process";
 import { chmod, mkdir } from "node:fs/promises";
+import { win32 } from "node:path";
 import { mergeProcessEnvironment } from "./process-environment.js";
 import { terminateProcessForTimeout } from "./process-termination.js";
 import { resolveWindowsPowerShellPath } from "./windows-system-paths.js";
@@ -114,7 +115,12 @@ function runPowerShellAclCommand(command: string, paths: readonly string[]): Pro
 }
 
 async function defaultRunWindowsAclCommand(paths: readonly string[]): Promise<WindowsPrivateAclCommandResult> {
-	return await runPowerShellAclCommand(resolveWindowsPowerShellPath(), paths);
+	// Windows PowerShell 5.1's Directory ACL methods need the Win32 namespace
+	// prefix for long paths. Node's mkdir already handles those paths.
+	return await runPowerShellAclCommand(
+		resolveWindowsPowerShellPath(),
+		paths.map((path) => win32.toNamespacedPath(path)),
+	);
 }
 
 /** Creates protected directories before sensitive or integrity-critical content is written. */

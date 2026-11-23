@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isFileEditorRecoveryRootPath } from "../../../../src/shared/file-editor-recovery-storage-contract.js";
 import type { FileEditorDraft, FileEditorScopeIdentity } from "./file-editor-cache";
 
 export const FILE_EDITOR_RECOVERY_KEY = "quarterdeck.desktop.file-drafts.v1";
@@ -25,7 +26,7 @@ const scopeSchema = z
 		projectId: textIdentity,
 		taskId: textIdentity.nullable(),
 		taskCreatedAt: z.number().finite().nonnegative().optional(),
-		rootPath: textIdentity.refine((value) => value.startsWith("/")),
+		rootPath: textIdentity.refine(isFileEditorRecoveryRootPath),
 	})
 	.strict()
 	.refine((scope) => scope.taskId === null || scope.taskCreatedAt !== undefined);

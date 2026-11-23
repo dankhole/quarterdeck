@@ -2,10 +2,10 @@ import { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 import { _electron, type ElectronApplication, type Page } from "playwright-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopLabDriver, withDesktopDeadline } from "../../../scripts/agent-lab/desktop-driver";
 import type { DesktopEvaluationModule } from "../../../scripts/agent-lab/desktop-evaluation-types";
@@ -18,6 +18,16 @@ import type { DesktopLabProcess } from "../../../scripts/agent-lab/desktop-types
 import { captureDesktopDiagnosticSnapshot } from "../../../scripts/agent-lab/snapshot";
 
 const cleanupPollWait = vi.fn(async (_milliseconds: number) => {});
+const hostPlatform = process.platform;
+
+// The fake Electron application below models a macOS process tree and bundle.
+// Real Windows bootstrap custody is exercised by the packaged smoke.
+beforeEach(() => {
+	Object.defineProperty(process, "platform", { value: "darwin" });
+});
+afterEach(() => {
+	Object.defineProperty(process, "platform", { value: hostPlatform });
+});
 
 vi.mock("playwright-core", () => ({ _electron: { launch: vi.fn() } }));
 vi.mock("../../../scripts/agent-lab/snapshot", () => ({ captureDesktopDiagnosticSnapshot: vi.fn(async () => {}) }));
@@ -377,7 +387,7 @@ describe("desktop driver cleanup orchestration", () => {
 
 	it("retains a marked alternate installation only inside the same private fixture", async () => {
 		const fixture = await createFixture();
-		const appPath = join(fixture.config.tempRoot, "managed-alternate/Quarterdeck.app");
+		const appPath = posix.join(fixture.config.tempRoot, "managed-alternate/Quarterdeck.app");
 		const secondary: DesktopLabProcess = {
 			pid: 52_000,
 			parentPid: process.pid,

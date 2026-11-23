@@ -39,9 +39,13 @@ export class DesktopRecoveryHelper {
 			const environment = sanitizeDesktopHelperEnvironment(this.options.environment, bundle.nodePath);
 			delete environment.QUARTERDECK_DESKTOP_CHILD;
 			delete environment.QUARTERDECK_DESKTOP_LAB_CONFIG;
-			if (launch.synthetic && launch.labConfigPath)
-				environment.QUARTERDECK_DESKTOP_LAB_CONFIG = launch.labConfigPath;
 			delete environment.QUARTERDECK_AGENT_LAB;
+			if (launch.synthetic && launch.labConfigPath) {
+				environment.QUARTERDECK_DESKTOP_LAB_CONFIG = launch.labConfigPath;
+				// The recover CLI must validate the inherited private installation lock
+				// against the same trusted lab launch as the ordinary runtime helper.
+				if (this.options.installationAdmission) environment.QUARTERDECK_AGENT_LAB = "1";
+			}
 			child = (this.options.spawnChild ?? spawn)(bundle.nodePath, [bundle.cliPath, "recover", "--confirm-stopped"], {
 				cwd: bundle.root,
 				env: {

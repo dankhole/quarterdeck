@@ -69,6 +69,16 @@ describe("desktop file draft recovery serialization", () => {
 		])
 			expect(sameFileEditorRecoveryScope(scope, replacement)).toBe(false);
 	});
+	it.each(["C:\\work\\repo", "D:/work/repo", "\\\\server\\share\\repo"])(
+		"round trips a Windows workspace root %s",
+		(rootPath) => {
+			const source = draft();
+			const scope = { ...source.scope, rootPath };
+			const snapshot = encoded([{ ...source, scope }]);
+			expect(decodeFileEditorRecovery(snapshot.raw, now)).toMatchObject({ problem: null, drafts: [{ scope }] });
+			expect(sameFileEditorRecoveryScope(scope, { ...scope, rootPath: "C:repo" })).toBe(false);
+		},
+	);
 	it.each(["../a.ts", "/a.ts", "a/../b", "a\\b", "a\0b"])("refuses unsafe relative path %s", (path) => {
 		const source = draft();
 		expect(encodeFileEditorRecovery([{ ...source, tab: { ...source.tab, path } }], [], now)).toMatchObject({

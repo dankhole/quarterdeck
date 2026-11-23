@@ -11,14 +11,14 @@ const program = new Command("agent-desktop").description(
 
 program
 	.command("smoke")
-	.description("Launch a packaged .app with synthetic state, exercise native/renderer boundaries, and always stop it")
-	.requiredOption("--app <path>", "Packaged Quarterdeck .app path")
+	.description("Exercise a packaged desktop app with synthetic state and always stop it")
+	.requiredOption("--app <path>", "Packaged Quarterdeck .app or Windows application directory")
 	.option("--name <name>", "Artifact run name", "desktop-smoke")
 	.option("--keep-temp", "Retain synthetic data after cleanup")
 	.option("--show-window", "Show and focus the isolated window for explicit native visibility checks")
 	.option("--no-agent", "Limit the smoke to startup, shortcuts, window, and renderer lifecycle")
 	.option("--npm-launch", "Check typed npm project handoff and installation identity with hidden synthetic state")
-	.option("--manual-shells", "Check Home/Detail shell panel lifetime and hidden native close without a task agent")
+	.option("--manual-shells", "Check Home/Detail shell panel lifetime without a task agent")
 	.option("--compare-window", "Check an independent hidden read-only Compare window; requires --no-agent")
 	.option("--notifications", "Check hidden desktop tone intent, Settings volume, and muted events with a fake task")
 	.option("--native-experience", "Check keyboard navigation, enlarged text, and visible close/reopen when requested")

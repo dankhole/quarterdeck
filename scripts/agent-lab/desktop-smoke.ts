@@ -249,7 +249,7 @@ export async function exerciseFakeAgent(page: Page, driver: DesktopLabDriver, co
 	return taskId;
 }
 
-async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, taskId: string): Promise<void> {
+async function captureFakeConversation(driver: DesktopLabDriver, taskId: string) {
 	const config = driver.fixture.config;
 	const before = DesktopProcessEvidenceSchema.parse(
 		JSON.parse(await readFile(config.processEvidencePath, "utf8")) as unknown,
@@ -276,6 +276,13 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 		taskId,
 		marker: `packaged-recovery-${driver.fixture.manifest.runId}`,
 	});
+	return { before, beforeLaunch, beforeReceipt, originalHelper, oldInvocation, historyBefore };
+}
+
+async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, taskId: string): Promise<void> {
+	const config = driver.fixture.config;
+	const conversation = await captureFakeConversation(driver, taskId);
+	const { before, originalHelper } = conversation;
 	const documentMarker = driver.fixture.manifest.runId;
 	await page.evaluate((marker) => {
 		localStorage.setItem("quarterdeck.desktop-lab.persistence-proof", "synthetic-persisted-value");
@@ -374,12 +381,46 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 	const persisted = await page.evaluate(() => localStorage.getItem("quarterdeck.desktop-lab.persistence-proof"));
 	if (persisted !== "synthetic-persisted-value")
 		throw new Error("Desktop local storage was lost across runtime port change.");
+	const recoveryProof = await verifyFakeConversationReplacement(driver, taskId, conversation, after.helperPid, true);
+	await assertRendererIsolation(page);
+	await driver.inspect("runtime-restarted");
+	await writeJsonAtomic(join(driver.fixture.manifest.artifactDir, "persistence-smoke.json"), {
+		before,
+		after,
+		taskId,
+		stableOrigin: page.url(),
+		storagePersisted: true,
+		worktreePersisted: true,
+		mountedProductPreservedWhileOffline: true,
+		restartViaNativeMenu: true,
+		documentBefore,
+		documentAfterFailure,
+		exactRecovery: recoveryProof,
+	});
+}
+
+async function verifyFakeConversationReplacement(
+	driver: DesktopLabDriver,
+	taskId: string,
+	conversation: Awaited<ReturnType<typeof captureFakeConversation>>,
+	helperPid: number | null,
+	requireReview: boolean,
+): Promise<unknown> {
+	const config = driver.fixture.config;
+	const { beforeLaunch, beforeReceipt, oldInvocation, historyBefore } = conversation;
 	if (!(await findPtyProof(join(config.stateHome, "worktrees"))) && !(await findPtyProof(config.projectPath)))
-		throw new Error("Persisted packaged task worktree was lost across runtime replacement.");
+		throw new Error("Persisted packaged task worktree was lost across session replacement.");
 	let recoveryProof: unknown = null;
 	await waitFor(
 		async () => {
 			const session = await readDesktopTaskSession(config.stateHome, taskId);
+			if (
+				session?.sessionInstanceId &&
+				session.sessionInstanceId !== beforeLaunch.sessionInstanceId &&
+				session.pid === null &&
+				session.exitCode !== null
+			)
+				throw new Error(`Replacement fake task exited with code ${session.exitCode} before proving exact resume.`);
 			const launch = session && projectDesktopFakeReadiness(session, taskId);
 			if (!launch || launch.sessionInstanceId === beforeLaunch.sessionInstanceId) return false;
 			const receipt = await readFakeInvocationReceipt({
@@ -389,7 +430,7 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 			if (!receipt) return false;
 			assertDesktopFakeExactRecovery({ before: beforeLaunch, after: launch, beforeReceipt, afterReceipt: receipt });
 			const processes = await listDesktopProcesses();
-			const helper = driver.fixture.manifest.processes.find((process) => process.pid === after.helperPid);
+			const helper = driver.fixture.manifest.processes.find((process) => process.pid === helperPid);
 			if (!helper) throw new Error("Recovered fake launch has no captured current helper identity.");
 			const invocation = assertDesktopFakeInvocationOwnership({ launch, receipt, helper, processes });
 			if (
@@ -398,8 +439,9 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 						sameDesktopProcess(process, oldInvocation.pty) || sameDesktopProcess(process, oldInvocation.worker),
 				)
 			)
-				throw new Error("Runtime replacement retained the previous exact fake process identity.");
-			if (session?.state !== "awaiting_review" || session.reviewReason !== "hook")
+				throw new Error("Session replacement retained the previous exact fake process identity.");
+			const reviewPreserved = session?.state === "awaiting_review" && session.reviewReason === "hook";
+			if (requireReview && !reviewPreserved)
 				throw new Error("Exact recovery did not preserve completed Review semantics.");
 			const historyAfter = await readDesktopFakeHistory({
 				environment: driver.fixture.environment,
@@ -418,7 +460,7 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 				beforeWorkerBirth: oldInvocation.worker.startedAt,
 				afterWorkerBirth: invocation.worker.startedAt,
 				oldProcessStopped: true,
-				reviewPreserved: true,
+				reviewPreserved,
 				historyBefore,
 				historyAfter,
 				historyPreserved: true,
@@ -428,20 +470,29 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 		"targeted fake conversation recovery with a new owned PTY and native hook",
 		90_000,
 	);
-	await assertRendererIsolation(page);
-	await driver.inspect("runtime-restarted");
-	await writeJsonAtomic(join(driver.fixture.manifest.artifactDir, "persistence-smoke.json"), {
-		before,
-		after,
+	return recoveryProof;
+}
+
+async function exerciseWindowsTaskRestart(page: Page, driver: DesktopLabDriver, taskId: string): Promise<void> {
+	const conversation = await captureFakeConversation(driver, taskId);
+	const task = page.locator(`[data-task-id="${taskId}"]:visible`).first();
+	await task.hover({ position: { x: 4, y: 4 } });
+	const restart = task.getByRole("button", { name: /^(Force restart agent session|Restart agent session)$/ }).first();
+	await restart.waitFor({ state: "visible" });
+	await restart.press("Enter");
+	const exactRecovery = await verifyFakeConversationReplacement(
+		driver,
 		taskId,
-		stableOrigin: page.url(),
-		storagePersisted: true,
+		conversation,
+		conversation.originalHelper.pid,
+		false,
+	);
+	await driver.inspect("task-restarted");
+	await writeJsonAtomic(join(driver.fixture.manifest.artifactDir, "windows-task-restart.json"), {
+		taskId,
+		runtimeGeneration: conversation.before.generation,
 		worktreePersisted: true,
-		mountedProductPreservedWhileOffline: true,
-		restartViaNativeMenu: true,
-		documentBefore,
-		documentAfterFailure,
-		exactRecovery: recoveryProof,
+		exactRecovery,
 	});
 }
 
@@ -468,15 +519,13 @@ export async function runDesktopSmoke(options: {
 		process.platform === "win32" &&
 		(options.mainLoss ||
 			options.npmLaunch ||
-			options.sessionRecovery ||
-			options.nativeExperience ||
-			options.notifications ||
 			options.performance ||
-			options.manualShells ||
-			options.compareWindow ||
+			(options.nativeExperience && options.showWindow) ||
 			(options.agentMode ?? "fake") !== "fake")
 	)
-		throw new Error("This Windows packaged lane requires the default deterministic fake scenario.");
+		throw new Error(
+			"Windows Agent Lab requires the fake provider. Npm-launch, main-loss, performance and visible native experience require macOS.",
+		);
 	if (options.compareWindow) validateDesktopCompareWindowSelection(options);
 	if (options.sessionRecovery) validateDesktopSessionRecoverySelection(options);
 	if (options.notifications) validateDesktopNotificationSelection(options);
@@ -543,18 +592,12 @@ export async function runDesktopSmoke(options: {
 		await assertRendererIsolation(page);
 		await driver.markReady();
 		await driver.inspect("ready");
-		if (recoverySeed) {
-			await driver.inspect("completed");
-		} else if (process.platform === "win32") {
+		const windows = process.platform === "win32";
+		if (windows) {
 			await proveWindowsChromiumCustody(driver);
 			await assertWindowsDesktopInUse(fixture);
-			await driver.proveSecondLaunch({ readSecondInstanceCount: await driver.observeSecondInstances() });
-			if (options.includeAgent !== false) await exerciseFakeAgent(page, driver, true);
-			await Promise.all([page.waitForEvent("load"), invokeNativeMenu(driver, "desktop.reload")]);
-			await page
-				.getByRole("button", { name: "Settings", exact: true })
-				.waitFor({ state: "visible", timeout: 45000 });
-			await assertRendererIsolation(page);
+		}
+		if (recoverySeed) {
 			await driver.inspect("completed");
 		} else if (npmPreparation) {
 			await exerciseDesktopNpmLaunch(page, driver, npmPreparation);
@@ -578,7 +621,8 @@ export async function runDesktopSmoke(options: {
 			driver.sockets.assertTraffic();
 			await driver.inspect("completed");
 		} else {
-			if (!options.agentMode || options.agentMode === "fake") await exerciseDesktopEnvironmentSettings(page, driver);
+			if (!windows && (!options.agentMode || options.agentMode === "fake"))
+				await exerciseDesktopEnvironmentSettings(page, driver);
 			if (options.nativeExperience) {
 				try {
 					const proof = await exerciseDesktopNativeExperience(page, driver);
@@ -595,9 +639,12 @@ export async function runDesktopSmoke(options: {
 			}
 			if (!fixture.config.showWindow && (!options.agentMode || options.agentMode === "fake")) {
 				try {
-					const proof = await proveDesktopSecondLaunch(fixture, {
+					const launchOptions = {
 						readSecondInstanceCount: await driver.observeSecondInstances(),
-					});
+					};
+					const proof = windows
+						? await driver.proveSecondLaunch(launchOptions)
+						: await proveDesktopSecondLaunch(fixture, launchOptions);
 					await writeJsonAtomic(join(fixture.manifest.artifactDir, "second-launch-proof.json"), proof);
 					await driver.inspect("second-launch");
 				} catch (error) {
@@ -606,12 +653,12 @@ export async function runDesktopSmoke(options: {
 					throw error;
 				}
 			}
-			await page.keyboard.press("Meta+Shift+S");
+			await page.keyboard.press(windows ? "Control+Shift+S" : "Meta+Shift+S");
 			await page.getByRole("dialog", { name: "Settings" }).waitFor({ state: "visible" });
 			await page.keyboard.press("Escape");
 			await page.getByRole("dialog", { name: "Settings" }).waitFor({ state: "hidden" });
 			const helperPid = fixture.manifest.helperPid;
-			if (fixture.config.showWindow && !options.nativeExperience) {
+			if (!windows && fixture.config.showWindow && !options.nativeExperience) {
 				await driver.app.evaluate(({ BrowserWindow }: DesktopEvaluationModule) =>
 					BrowserWindow.getAllWindows()[0]?.close(),
 				);
@@ -639,6 +686,7 @@ export async function runDesktopSmoke(options: {
 			await page.getByRole("button", { name: "Settings", exact: true }).waitFor({ state: "visible" });
 			await dismissOnboarding(page);
 			await openDesktopPrimaryProject(page);
+			await assertRendererIsolation(page);
 			await driver.inspect("renderer-reloaded");
 			if (fixture.manifest.helperPid !== helperPid) throw new Error("Renderer reload replaced the runtime helper.");
 			if (options.agentMode && options.agentMode !== "fake") {
@@ -656,6 +704,8 @@ export async function runDesktopSmoke(options: {
 						},
 					});
 					page = recovered.page;
+				} else if (windows) {
+					await exerciseWindowsTaskRestart(page, driver, taskId);
 				} else {
 					await exerciseRuntimePersistence(page, driver, taskId);
 				}
@@ -694,8 +744,13 @@ export async function runDesktopSmoke(options: {
 				.join("\n"),
 		);
 	if (process.platform === "win32") {
-		await finishWindowsDesktopLifecycle(fixture);
-		if (!options.keepTemp) await rm(fixture.config.tempRoot, { recursive: true, force: true });
+		try {
+			await finishWindowsDesktopLifecycle(fixture);
+			if (!options.keepTemp) await rm(fixture.config.tempRoot, { recursive: true, force: true });
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			throw new Error(`${detail}\nDesktop evidence: ${fixture.manifestPath}`, { cause: error });
+		}
 	}
 	return {
 		runId: fixture.manifest.runId,

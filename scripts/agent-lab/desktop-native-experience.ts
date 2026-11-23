@@ -524,7 +524,7 @@ export async function exerciseDesktopNativeExperience(page: Page, driver: Deskto
 					await record();
 					step = "settings_actions";
 					await check("Settings Cancel", dialog.getByRole("button", { name: "Cancel", exact: true }));
-					await check("Settings Save", dialog.getByRole("button", { name: "Save", exact: true }));
+					await check("Settings Save", dialog.getByRole("button", { name: "Save changes", exact: true }));
 				} finally {
 					await page.keyboard.press("Escape");
 				}

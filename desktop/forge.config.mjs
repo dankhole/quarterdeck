@@ -5,6 +5,7 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { finalizeLocalAppSignature } from "./scripts/app-signature.mjs";
 import { recordMakeArtifacts, recordPackagedApp } from "./scripts/artifact-manifest.mjs";
 import { MakerDMG } from "./scripts/maker-dmg.mjs";
+import { MakerWindowsZip } from "./scripts/maker-windows-zip.mjs";
 import { installDesktopNativeAdmission } from "./scripts/native-admission.mjs";
 import { desktopRoot, requireNativeDesktopTarget, resolveTargetArch, stagedRuntimePath } from "./scripts/paths.mjs";
 import { releaseBuildSettings } from "./scripts/release-policy.mjs";
@@ -104,10 +105,12 @@ export default {
 			[FuseV1Options.WasmTrapHandlers]: true,
 		}),
 	],
-	makers: [
-		...(windows ? [] : [new MakerDMG({ name: `Quarterdeck-${desktopPackage.version}-${arch}` })]),
-		{ name: "@electron-forge/maker-zip", platforms: ["darwin", "win32"], config: {} },
-	],
+	makers: windows
+		? [new MakerWindowsZip({})]
+		: [
+				new MakerDMG({ name: `Quarterdeck-${desktopPackage.version}-${arch}` }),
+				{ name: "@electron-forge/maker-zip", platforms: ["darwin"], config: {} },
+			],
 	publishers: [],
 	hooks: {
 		prePackage: async (_config, platform, targetArch) => {

@@ -11,8 +11,9 @@ import {
 	type Request,
 	type Response,
 } from "playwright-core";
-import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
+import { areFileSystemPathsEqual, isFileSystemPathWithin } from "../../src/core/path-comparison.js";
 import { setDesktopTreeWritable } from "../../src/desktop-install/files.js";
+import { desktopResourcesPath } from "../../src/desktop-install/layout.js";
 import { DESKTOP_LAUNCH_ARGUMENT, serializeDesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
 import { DesktopConfigObserver } from "./desktop-config-evidence";
 import type { DesktopEvaluationModule, DesktopReobserveEvaluationModule } from "./desktop-evaluation-types";
@@ -341,8 +342,11 @@ export class DesktopLabDriver {
 			if (
 				state.mainPid !== originalMain.pid ||
 				!state.packaged ||
-				state.appPath !== join(this.fixture.manifest.appPath, "Contents", "Resources", "app.asar") ||
-				state.userDataPath !== this.fixture.config.userDataPath
+				!areFileSystemPathsEqual(
+					state.appPath,
+					join(desktopResourcesPath(this.fixture.manifest.appPath, process.platform), "app.asar"),
+				) ||
+				!areFileSystemPathsEqual(state.userDataPath, this.fixture.config.userDataPath)
 			)
 				throw new Error("Desktop renderer observation found another application fixture.");
 			return state;

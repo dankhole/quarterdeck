@@ -1,6 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
+import { spawn } from "node-pty";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -213,11 +215,51 @@ describe("shouldUseWindowsCmdLaunch", () => {
 				"line one\nline two",
 				"%NAME%",
 				"!value!",
-				'quoted \\"value\\"',
+				'"quoted \\"value\\""',
 				'slash\\\\\\"quote',
 			],
 		});
 	});
+
+	it.skipIf(process.platform !== "win32")(
+		"keeps a quoted Codex worktree setting intact through ConPTY",
+		async () => {
+			const directory = mkdtempSync(join(tmpdir(), "quarterdeck-win-forwarded-argv-"));
+			tempDirectories.push(directory);
+			const cmdPath = createWindowsBinary(directory, "codex.cmd");
+			const receiver = join(directory, "argv.cjs");
+			writeFileSync(receiver, "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n");
+			writeFileSync(
+				join(directory, "codex.ps1"),
+				"& $env:QD_ARGV_TEST_NODE $env:QD_ARGV_TEST_RECEIVER @args\nexit $LASTEXITCODE\n",
+			);
+			const args = [
+				"-c",
+				'developer_instructions="You are working in a git worktree."',
+				"resume",
+				"fixture-session",
+			];
+			const env = { ...process.env, QD_ARGV_TEST_NODE: process.execPath, QD_ARGV_TEST_RECEIVER: receiver };
+			const resolved = resolveWindowsCompatibleCommand(cmdPath, args, "win32", env);
+			const terminal = spawn(resolved.binary, resolved.commandLine ?? resolved.args, {
+				cwd: directory,
+				env,
+				cols: 180,
+				rows: 40,
+			});
+			let output = "";
+			terminal.onData((data) => (output += data));
+			const timeout = setTimeout(() => terminal.kill(), 6_000);
+			try {
+				const result = await new Promise<{ exitCode: number }>((resolve) => terminal.onExit(resolve));
+				expect(result.exitCode).toBe(0);
+				expect(JSON.parse(stripVTControlCharacters(output).trim())).toEqual(args);
+			} finally {
+				clearTimeout(timeout);
+			}
+		},
+		10_000,
+	);
 
 	it("preserves PowerShell argument semantics for an explicitly requested script", () => {
 		const tempDirectory = mkdtempSync(join(tmpdir(), "quarterdeck-win-launch-"));

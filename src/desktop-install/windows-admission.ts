@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, readdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, win32 } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { ensurePrivateDirectory } from "../core/private-directory.js";
@@ -39,7 +39,7 @@ export async function acquireWindowsDesktopMutation(bootstrap: string, lockPath:
 		if ((await desktopFileSha256(retained)) !== expected)
 			throw new Error("Native admission helper changed during copy.");
 		acquisitionStarted = true;
-		const { stdout } = await execute(retained, ["--quarterdeck-acquire-mutation", lockPath], {
+		const { stdout } = await execute(win32.toNamespacedPath(retained), ["--quarterdeck-acquire-mutation", lockPath], {
 			windowsHide: true,
 			timeout: 15000,
 			maxBuffer: 4096,
@@ -64,11 +64,11 @@ export async function acquireWindowsDesktopMutation(bootstrap: string, lockPath:
 		// Never retry a numeric OS handle after an ambiguous close: it could have
 		// been reused. Concurrent and repeated releases share the same outcome.
 		releaseOperation ??= (async () => {
-			await execute(retained, ["--quarterdeck-release-mutation", lockPath, acquired.handle, acquired.birth], {
-				windowsHide: true,
-				timeout: 15000,
-				maxBuffer: 4096,
-			});
+			await execute(
+				win32.toNamespacedPath(retained),
+				["--quarterdeck-release-mutation", lockPath, acquired.handle, acquired.birth],
+				{ windowsHide: true, timeout: 15000, maxBuffer: 4096 },
+			);
 			await rm(directory, { recursive: true, force: true });
 		})();
 		return releaseOperation;

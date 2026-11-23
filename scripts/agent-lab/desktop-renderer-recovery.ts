@@ -8,6 +8,7 @@ import {
 	FILE_EDITOR_RECOVERY_DATABASE_VERSION,
 	FILE_EDITOR_RECOVERY_OBJECT_STORE,
 	FILE_EDITOR_RECOVERY_SNAPSHOT_KEY,
+	isFileEditorRecoveryRootPath,
 } from "../../src/shared/file-editor-recovery-storage-contract.js";
 import { type DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import type { DesktopEvaluationModule } from "./desktop-evaluation-types";
@@ -208,7 +209,7 @@ const recoverySnapshotSchema = z
 								projectId: recoveryText,
 								taskId: recoveryText.nullable(),
 								taskCreatedAt: z.number().finite().nonnegative().optional(),
-								rootPath: recoveryText.refine((value) => value.startsWith("/")),
+								rootPath: recoveryText.refine(isFileEditorRecoveryRootPath),
 							})
 							.strict()
 							.refine((scope) => scope.taskId === null || scope.taskCreatedAt !== undefined),
@@ -677,7 +678,7 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 	await page.getByRole("button", { name: "example.ts", exact: true }).first().click();
 	const editor = page.locator('.cm-content[role="textbox"][contenteditable="true"]');
 	await editor.focus();
-	await page.keyboard.press("Meta+A");
+	await page.keyboard.press(process.platform === "win32" ? "Control+A" : "Meta+A");
 	await page.keyboard.insertText(draft);
 	await waitFor(() => page.getByRole("button", { name: "Save file", exact: true }).isEnabled(), "dirty Files draft");
 	const savedFixture = await verifyDesktopInitialDirtyFixture(

@@ -7,6 +7,8 @@ import { type RuntimeOwnershipClaim, runtimeOwnershipClaimSchema } from "../../s
 import { runtimeTaskSessionSummarySchema } from "../../src/core/api/task-session.js";
 import { isFileSystemPathWithin } from "../../src/core/path-comparison.js";
 import { terminateProcessForTimeout } from "../../src/core/process-termination.js";
+import { desktopResourcesPath } from "../../src/desktop-install/layout.js";
+import { assertDesktopPrivateDirectory } from "../../src/desktop-install/private-directory.js";
 import { readRuntimeBootIdentity } from "../../src/server/runtime-boot-identity.js";
 import { discoverRuntimeOwner, readPriorRuntimeOwnershipClaims } from "../../src/server/runtime-ownership.js";
 import { readAcknowledgedRuntimeRecoveryBoundary } from "../../src/server/runtime-recovery-acknowledgement.js";
@@ -294,7 +296,7 @@ export async function exerciseDesktopSessionRecovery(
 			};
 		},
 		{
-			appPath: join(fixture.manifest.appPath, "Contents/Resources/app.asar"),
+			appPath: join(desktopResourcesPath(fixture.manifest.appPath, process.platform), "app.asar"),
 			userDataPath: fixture.config.userDataPath,
 			errorUrl: ERROR_URL,
 		},
@@ -336,8 +338,13 @@ export async function exerciseDesktopSessionRecovery(
 			throw new Error("Confirmed recovery did not bind the exact predecessor history and ordinary retry.");
 		const receiptPath = join(receiptsDirectory, `${boundary}.json`);
 		const receiptStat = await lstat(receiptPath);
-		if (!receiptStat.isFile() || receiptStat.isSymbolicLink() || (receiptStat.mode & 0o077) !== 0)
+		if (
+			!receiptStat.isFile() ||
+			receiptStat.isSymbolicLink() ||
+			(process.platform !== "win32" && (receiptStat.mode & 0o077) !== 0)
+		)
 			throw new Error("Desktop recovery acknowledgement is not a private ordinary file.");
+		if (process.platform === "win32") await assertDesktopPrivateDirectory(receiptsDirectory);
 		await assertOriginalEvidence(fixture, seed);
 		await writeJsonAtomic(join(fixture.manifest.artifactDir, "session-recovery.json"), {
 			seededClaim: seed.claim,

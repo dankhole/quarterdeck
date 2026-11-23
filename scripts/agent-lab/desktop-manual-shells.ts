@@ -5,6 +5,9 @@ import type { Page } from "playwright-core";
 import { z } from "zod";
 import { runtimeProjectStateResponseSchema } from "../../src/core/api/project-state";
 import { getRuntimeDetailTerminalTaskId, RUNTIME_DETAIL_TERMINAL_TASK_PREFIX } from "../../src/core/api/task-session";
+import { areFileSystemPathsEqual } from "../../src/core/path-comparison";
+import { resolveWindowsPowerShellPath } from "../../src/core/windows-system-paths";
+import { desktopResourcesPath } from "../../src/desktop-install/layout";
 import { type DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import {
 	assertDesktopManualShellFresh,
@@ -180,19 +183,33 @@ async function writeShellProof(
 	const input = page.locator("textarea.xterm-helper-textarea:visible");
 	await input.waitFor({ state: "visible" });
 	await input.focus();
-	await page.keyboard.type(`printf '%s\\n' "$$" ${quoteShell(marker)} "$PWD" > ${quoteShell(path)}`);
+	const windows = process.platform === "win32";
+	if (windows) {
+		const target = path.replaceAll("'", "''");
+		const script = [
+			"$ErrorActionPreference='Stop'",
+			"$parent=(Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)).ParentProcessId",
+			`[IO.File]::WriteAllLines('${target}', [string[]]@($parent, '${marker}', [Environment]::CurrentDirectory))`,
+		].join("; ");
+		const encoded = Buffer.from(script, "utf16le").toString("base64");
+		await page.keyboard.type(
+			`"${resolveWindowsPowerShellPath()}" -NoProfile -NonInteractive -EncodedCommand ${encoded}`,
+		);
+	} else {
+		await page.keyboard.type(`printf '%s\\n' "$$" ${quoteShell(marker)} "$PWD" > ${quoteShell(path)}`);
+	}
 	await page.keyboard.press("Enter");
-	const deadline = Date.now() + 10_000;
+	const deadline = Date.now() + (windows ? 20_000 : 10_000);
 	while (Date.now() < deadline) {
 		try {
 			if ((await stat(path)).size > 4_096) throw new Error("Manual shell marker exceeds its bound.");
-			const contents = (await readFile(path, "utf8")).trimEnd().split("\n");
+			const contents = (await readFile(path, "utf8")).trimEnd().split(/\r?\n/u);
 			if (contents.length >= 3) {
 				if (
 					contents.length !== 3 ||
 					contents[0] !== String(identity.process.pid) ||
 					contents[1] !== marker ||
-					contents[2] !== identity.cwd
+					!areFileSystemPathsEqual(contents[2], identity.cwd)
 				)
 					throw new Error("Manual shell marker came from a different process or workspace.");
 				return { marker, shellPid: identity.process.pid, cwd: identity.cwd };
@@ -247,7 +264,12 @@ export function validateDesktopManualShellSelection(options: {
 
 /** Actual packaged UI panels; the existing driver exclusively owns all process cleanup. */
 export async function exerciseDesktopManualShells(page: Page, driver: DesktopLabDriver): Promise<void> {
-	const bundleManifest = join(driver.fixture.manifest.appPath, "Contents/Resources/runtime/bundle-manifest.json");
+	const windows = process.platform === "win32";
+	const mode = windows ? "hidden-shell-panels" : "hidden-native-close-handler";
+	const bundleManifest = join(
+		desktopResourcesPath(driver.fixture.manifest.appPath, process.platform),
+		"runtime/bundle-manifest.json",
+	);
 	if ((await stat(bundleManifest)).size > 64 * 1024) throw new Error("Packaged bundle manifest exceeds its bound.");
 	await copyFile(bundleManifest, join(driver.fixture.manifest.artifactDir, "manual-shells-bundle-manifest.json"));
 	const projectId = decodeURIComponent(new URL(page.url()).pathname.split("/").filter(Boolean)[0] ?? "");
@@ -307,7 +329,7 @@ export async function exerciseDesktopManualShells(page: Page, driver: DesktopLab
 				documentNonceAfter: nonce,
 			};
 			await writeJsonAtomic(join(driver.fixture.manifest.artifactDir, "manual-shells-proof.json"), {
-				mode: "hidden-native-close-handler",
+				mode,
 				physicalDockHideOrReopenVerified: false,
 				providerTaskStarted: false,
 				expectedDocumentNavigation,
@@ -370,19 +392,24 @@ export async function exerciseDesktopManualShells(page: Page, driver: DesktopLab
 		};
 		let live = await open();
 		const initial = live;
-		const beforeCloseMarker = await writeShellProof(page, driver, live, `${surface}-before-hidden-close`);
-		await driver.app.evaluate(({ BrowserWindow }: ManualShellNativeModule) => {
-			const window = BrowserWindow.getAllWindows()[0];
-			if (!window || window.isVisible() || window.isFocused())
-				throw new Error("Native close requires an already hidden window.");
-			window.close();
-		});
-		assertDesktopManualShellPreserved(live, await capture());
-		const afterCloseMarker = await writeShellProof(page, driver, live, `${surface}-after-hidden-close`);
-		assertDesktopManualShellPreserved(live, await capture());
-		const ownerAfterClose = await readOwner(page, driver, nonce);
-		assertOwner(owner, ownerAfterClose);
-		await driver.inspect(`manual-${surface}-hidden-close`);
+		const beforeCloseMarker = await writeShellProof(page, driver, live, `${surface}-initial`);
+		const closeProof = windows
+			? null
+			: await (async () => {
+					await driver.app.evaluate(({ BrowserWindow }: ManualShellNativeModule) => {
+						const window = BrowserWindow.getAllWindows()[0];
+						if (!window || window.isVisible() || window.isFocused())
+							throw new Error("Native close requires an already hidden window.");
+						window.close();
+					});
+					assertDesktopManualShellPreserved(live, await capture());
+					const afterCloseMarker = await writeShellProof(page, driver, live, `${surface}-after-hidden-close`);
+					assertDesktopManualShellPreserved(live, await capture());
+					const ownerAfterClose = await readOwner(page, driver, nonce);
+					assertOwner(owner, ownerAfterClose);
+					await driver.inspect(`manual-${surface}-hidden-close`);
+					return { afterCloseMarker, ownerAfterHiddenClose: publicOwner(ownerAfterClose) };
+				})();
 		const beforeHide = live;
 		// The panel header follows the top-bar toggle, which also hides the shell.
 		await page.getByRole("button", { name: "Hide shell", exact: true }).last().click();
@@ -428,9 +455,8 @@ export async function exerciseDesktopManualShells(page: Page, driver: DesktopLab
 			surface,
 			initial: publicIdentity(initial),
 			beforeCloseMarker,
-			afterCloseMarker,
 			ownerBeforeHiddenClose: publicOwner(owner),
-			ownerAfterHiddenClose: publicOwner(ownerAfterClose),
+			...closeProof,
 			documentNonce: nonce,
 			hideAndReattach: {
 				exactProcessPreserved: true,
@@ -444,7 +470,7 @@ export async function exerciseDesktopManualShells(page: Page, driver: DesktopLab
 			closes,
 		});
 		await writeJsonAtomic(join(driver.fixture.manifest.artifactDir, "manual-shells-proof.json"), {
-			mode: "hidden-native-close-handler",
+			mode,
 			physicalDockHideOrReopenVerified: false,
 			providerTaskStarted: false,
 			expectedDocumentNavigation,

@@ -28,6 +28,11 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 		expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(
 			overrides.launch?.synthetic ? overrides.launch.labConfigPath : undefined,
 		);
+		expect(options.env?.QUARTERDECK_AGENT_LAB).toBe(
+			overrides.launch?.synthetic && overrides.launch.labConfigPath && overrides.installationAdmission
+				? "1"
+				: undefined,
+		);
 		expect(executable).toBe(nodePath);
 		expect(args).toEqual([cliPath, "recover", "--confirm-stopped"]);
 		expect(options).toMatchObject({
@@ -46,13 +51,7 @@ function helper(mode = "recovered", overrides: Partial<DesktopRecoveryHelperOpti
 			expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_FD).toBeUndefined();
 			expect(options.env?.QUARTERDECK_INSTALLATION_LOCK_PATH).toBeUndefined();
 		}
-		for (const name of [
-			"QUARTERDECK_DESKTOP_CHILD",
-			"QUARTERDECK_AGENT_LAB",
-			"NODE_OPTIONS",
-			"NODE_PATH",
-			"DYLD_INSERT_LIBRARIES",
-		]) {
+		for (const name of ["QUARTERDECK_DESKTOP_CHILD", "NODE_OPTIONS", "NODE_PATH", "DYLD_INSERT_LIBRARIES"]) {
 			expect(options.env?.[name]).toBeUndefined();
 		}
 		const child = spawn(
@@ -128,7 +127,15 @@ describe("trusted desktop recovery helper", () => {
 		const path = join(root, "admission.lock");
 		const file = await open(path, "wx", 0o600);
 		try {
-			const { owner } = helper("recovered", { installationAdmission: { fd: file.fd, path } });
+			const { owner } = helper("recovered", {
+				installationAdmission: { fd: file.fd, path },
+				launch: {
+					synthetic: true,
+					stateHome: "/synthetic/state",
+					projectPath: "/synthetic/project",
+					labConfigPath: "/synthetic/validated-lab.json",
+				},
+			});
 			expect(await owner.run()).toBe("recovered");
 		} finally {
 			await file.close();

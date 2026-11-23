@@ -1,11 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "playwright-core";
 import {
 	type RuntimeHostIntegrationEvent,
 	runtimeHostIntegrationEventLedgerFileSchema,
 } from "../../src/core/api/host-integrations";
-import type { DesktopLabDriver } from "./desktop-driver";
+import { type DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import { readDesktopTaskSession } from "./desktop-session-evidence";
 import { writeJsonAtomic } from "./paths";
 
@@ -23,6 +23,63 @@ interface Box {
 	right: number;
 	top: number;
 	bottom: number;
+}
+
+type CaptureRect = { x: number; y: number; width: number; height: number };
+
+interface DesktopCaptureModule {
+	BrowserWindow: {
+		getAllWindows(): Array<{
+			webContents: {
+				getURL(): string;
+				getZoomFactor(): number;
+				capturePage(
+					rect: CaptureRect | undefined,
+					options: { stayHidden: true; stayAwake: false },
+				): Promise<{ isEmpty(): boolean; toPNG(): { toString(encoding: "base64"): string } }>;
+			};
+		}>;
+	};
+}
+
+async function captureProductPage(
+	page: Page,
+	driver: DesktopLabDriver,
+	path: string,
+	clip?: CaptureRect,
+): Promise<void> {
+	// Playwright screenshots can wait indefinitely for hidden Windows paint
+	// after renderer recovery. Capture through the original Electron owner.
+	const png = await withDesktopDeadline(
+		driver.app.evaluate(
+			async ({ BrowserWindow }: DesktopCaptureModule, { clip, url }) => {
+				const windows = BrowserWindow.getAllWindows();
+				const contents = windows[0]?.webContents;
+				if (windows.length !== 1 || !contents || contents.getURL() !== url)
+					throw new Error("Native capture refused another document.");
+				let rect: CaptureRect | undefined;
+				if (clip) {
+					const zoom = contents.getZoomFactor();
+					const x = Math.floor(clip.x * zoom);
+					const y = Math.floor(clip.y * zoom);
+					rect = {
+						x,
+						y,
+						width: Math.ceil((clip.x + clip.width) * zoom) - x,
+						height: Math.ceil((clip.y + clip.height) * zoom) - y,
+					};
+				}
+				const image = await contents.capturePage(rect, { stayHidden: true, stayAwake: false });
+				if (image.isEmpty()) throw new Error("Native capture is empty.");
+				return image.toPNG().toString("base64");
+			},
+			{ clip, url: page.url() },
+		),
+		"Native product capture",
+		10_000,
+	);
+	if (png.length > 24 * 1024 * 1024) throw new Error("Native product capture exceeds its bound.");
+	await writeFile(path, Buffer.from(png, "base64"));
 }
 
 export function assertTaskActionLayout(boxes: readonly Box[], wrapped: boolean): void {
@@ -201,7 +258,7 @@ export async function exerciseDesktopProductCoverage(page: Page, driver: Desktop
 			await sideCard.evaluate((element, pixels) => {
 				element.style.width = `${pixels}px`;
 			}, width);
-			await sideCard.hover();
+			await sideCard.hover({ position: { x: 4, y: 4 } });
 			await rail.getByRole("button", { name: "Edit title" }).waitFor({ state: "visible" });
 			await waitFor(() => header.evaluate((element) => element.scrollWidth <= element.clientWidth), "card overflow");
 			const boxes = await rail.getByRole("button").evaluateAll((buttons) =>
@@ -211,7 +268,14 @@ export async function exerciseDesktopProductCoverage(page: Page, driver: Desktop
 				}),
 			);
 			assertTaskActionLayout(boxes, width === 90);
-			await sideCard.screenshot({ path: join(driver.fixture.manifest.artifactDir, `task-actions-${width}.png`) });
+			const clip = await sideCard.boundingBox();
+			if (!clip) throw new Error("Task card disappeared before layout capture.");
+			await captureProductPage(
+				page,
+				driver,
+				join(driver.fixture.manifest.artifactDir, `task-actions-${width}.png`),
+				clip,
+			);
 		}
 		await driver.inspect("task-action-layout");
 	} finally {
@@ -259,7 +323,11 @@ export async function exerciseDesktopLifecycleCoverage(
 		try {
 			await waitFor(async () => (await card.textContent())?.includes(text) === true, text);
 		} catch (error) {
-			await page.screenshot({ path: join(driver.fixture.manifest.artifactDir, "lifecycle-projection-failure.png") });
+			await captureProductPage(
+				page,
+				driver,
+				join(driver.fixture.manifest.artifactDir, "lifecycle-projection-failure.png"),
+			).catch(() => undefined);
 			throw error;
 		}
 		await page.getByRole("button", { name: "Home", exact: true }).click();
@@ -291,6 +359,24 @@ export async function exerciseDesktopLifecycleCoverage(
 	const clipboard = (await readHostEvents(driver)).filter((event) => event.kind === "clipboard_write").at(-1);
 	if (clipboard?.kind !== "clipboard_write" || clipboard.characterCount <= 0)
 		throw new Error("Files copy did not reach the simulated clipboard.");
+	const windows = process.platform === "win32";
+	const projectId = decodeURIComponent(new URL(page.url()).pathname.split("/").filter(Boolean)[0] ?? "");
+	if (!projectId) throw new Error("Task lifecycle coverage lacks its project identity.");
+	const acknowledgeWindowsOutput = async (pattern: RegExp, input: string): Promise<number> => {
+		const fence = driver.sockets.terminalOutputFence(projectId, taskId, pattern);
+		try {
+			await command(input);
+			let receipt: number | null = null;
+			await waitFor(async () => {
+				receipt = fence.receipt();
+				return receipt !== null;
+			}, `Windows terminal output acknowledgement for ${input}`);
+			if (receipt === null) throw new Error("Windows terminal output receipt was lost.");
+			return receipt;
+		} finally {
+			fence.dispose();
+		}
+	};
 	const terminalProcessed = (
 		label: string,
 		requestClipboardRead: () => Promise<void> = () => command("/clipboard-read"),
@@ -301,7 +387,12 @@ export async function exerciseDesktopLifecycleCoverage(
 			characterCount: clipboard.characterCount,
 			label,
 		});
-	const initialClipboardReceipt = await terminalProcessed("initial OSC 52 clipboard read");
+	const initialReceipt = windows
+		? await acknowledgeWindowsOutput(
+				/AGENT LAB LOCAL ACTION: initial-lifecycle-fence/u,
+				"/local-action initial-lifecycle-fence",
+			)
+		: await terminalProcessed("initial OSC 52 clipboard read");
 	await command("/working provider-confirmed desktop coverage");
 	await projection("Running", initialReview - 1, initialNeedsInput);
 	await card.press("Enter");
@@ -310,7 +401,9 @@ export async function exerciseDesktopLifecycleCoverage(
 	// Observe neutrality before typing again: Readline must finish interpreting
 	// standalone Escape rather than consume the receipt command's slash as Alt+/.
 	await assertRunningStable("bare Escape before receipt");
-	const bareEscapeReceipt = await terminalProcessed("bare Escape");
+	const bareEscapeReceipt = windows
+		? await acknowledgeWindowsOutput(/AGENT LAB LOCAL ACTION: bare-escape-fence/u, "/local-action bare-escape-fence")
+		: await terminalProcessed("bare Escape");
 	await assertRunningStable("bare Escape");
 	await command("/native-interrupt");
 	await projection("Interrupted", initialReview, initialNeedsInput);
@@ -336,10 +429,17 @@ export async function exerciseDesktopLifecycleCoverage(
 	await projection("Interrupted", initialReview, initialNeedsInput);
 	await command("/new-turn historical redraw fence");
 	await projection("Running", initialReview - 1, initialNeedsInput);
-	const historicalRedrawReceipt = await terminalProcessed("historical interruption redraw", () =>
-		command("/redraw-interruption-history"),
+	const historicalRedrawReceipt = windows
+		? await acknowledgeWindowsOutput(
+				/AGENT LAB CURRENT TURN WORKING[\s\S]{0,4096}Ask Codex to do anything/u,
+				"/redraw-interruption-history",
+			)
+		: await terminalProcessed("historical interruption redraw", () => command("/redraw-interruption-history"));
+	await captureProductPage(
+		page,
+		driver,
+		join(driver.fixture.manifest.artifactDir, "historical-redraw-after-receipt.png"),
 	);
-	await page.screenshot({ path: join(driver.fixture.manifest.artifactDir, "historical-redraw-after-receipt.png") });
 	await assertRunningStable("historical interruption redraw");
 	await command("/turn-interrupted");
 	await projection("Interrupted", initialReview, initialNeedsInput);
@@ -353,9 +453,9 @@ export async function exerciseDesktopLifecycleCoverage(
 		responsePending: true,
 		automaticPermission: true,
 		overlayPermission: true,
-		historicalRedrawFence: "packaged-inline-osc52-receipt-then-running-stable-negative-assertion",
+		historicalRedrawFence: windows ? "terminal-output-ack" : "inline-osc52-receipt",
 		terminalProcessingReceipts: {
-			initialClipboard: initialClipboardReceipt,
+			initial: initialReceipt,
 			bareEscape: bareEscapeReceipt,
 			historicalRedraw: historicalRedrawReceipt,
 		},

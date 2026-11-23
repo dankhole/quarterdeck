@@ -322,6 +322,8 @@ A probe whose timeout timer fired is a timeout regardless of the child's later e
 
 Close the probe child's stdin immediately. Windows npm PowerShell shims forward pipeline input and may wait for EOF before invoking the agent, turning a working installation into a probe timeout if the parent leaves stdin open.
 
+Verify task-launch arguments at the native executable when changing Windows shim serialization. Windows PowerShell's legacy forwarding can split an argument at spaces inside literal quotes, such as Codex's `developer_instructions` setting. Version probes and tests against the argument builder alone do not exercise this hop. The ConPTY regression drives a `.cmd` installation with its sibling `.ps1` shim and checks that the worktree setting and resume target arrive intact.
+
 Keep availability probe diagnostics metadata-only: `agentId`, probe kind, duration, and typed outcome. Do not include command output, thrown messages, or inherited environment values.
 
 ### Host effects

@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -23,10 +24,18 @@ export interface WindowsDesktopLabInstallation {
 	initial: DesktopInstallation;
 }
 
+function recordWindowsInstallationPhase(artifactDir: string, phase: string) {
+	return writeJsonAtomic(join(artifactDir, "windows-installation-phase.json"), {
+		phase,
+		at: new Date().toISOString(),
+	});
+}
+
 /** Compile-time redirection exists only in this isolated copy; no production
  * environment variable can redirect native installation admission or shortcuts. */
-export async function prepareWindowsDesktopLabApp(source: string, tempRoot: string) {
+export async function prepareWindowsDesktopLabApp(source: string, tempRoot: string, artifactDir: string) {
 	await ensurePrivateDirectory(tempRoot);
+	await recordWindowsInstallationPhase(artifactDir, "copying-candidate");
 	const profile = join(tempRoot, "native-profile");
 	await mkdir(profile);
 	const sourceApp = join(tempRoot, "source-app");
@@ -36,6 +45,7 @@ export async function prepareWindowsDesktopLabApp(source: string, tempRoot: stri
 	await ensurePrivateDirectory(metadataRoot);
 	await mkdir(join(profile, "StartMenu"));
 	const bootstrap = join(tempRoot, "native-build/admission.exe");
+	await recordWindowsInstallationPhase(artifactDir, "compiling-private-bootstrap");
 	await buildWindowsAdmission(bootstrap, { gui: true, labProfileRoot: profile });
 	for (const entry of ["Quarterdeck.exe", "host/resources/runtime/installation-admission.exe"])
 		await copyFile(bootstrap, join(sourceApp, entry));
@@ -68,7 +78,9 @@ export async function prepareWindowsDesktopLabApp(source: string, tempRoot: stri
 		},
 	};
 	const service = createDesktopInstallationService(dependencies);
+	await recordWindowsInstallationPhase(artifactDir, "installing");
 	const initial = await service.ensureDesktopInstallation({ version: identity.version, from: sourceApp });
+	await recordWindowsInstallationPhase(artifactDir, "installed");
 	return {
 		appPath,
 		executablePath: join(appPath, "Quarterdeck.exe"),
@@ -100,13 +112,17 @@ export async function finishWindowsDesktopLifecycle(fixture: DesktopLabFixture):
 	const installation = fixture.windowsInstallation;
 	if (!installation || fixture.manifest.remainingPids.length || fixture.manifest.shutdown?.fallbackUsed)
 		throw new Error("Windows lifecycle requires confirmed graceful process cleanup.");
+	const recordPhase = (phase: string) => recordWindowsInstallationPhase(fixture.manifest.artifactDir, phase);
+	await recordPhase("validating-after-quit");
 	const before = await installation.service.validateDesktopInstallation();
+	await recordPhase("replacing");
 	const replaced = await installation.service.ensureDesktopInstallation({
 		version: installation.version,
 		from: installation.sourceApp,
 	});
 	if (replaced.installId === before.installId || replaced.cleanupPending)
 		throw new Error("Windows packaged replacement did not complete.");
+	await recordPhase("uninstalling");
 	await installation.service.uninstallDesktopInstallation();
 	if ((await installation.service.getDesktopInstallationStatus()).state !== "missing")
 		throw new Error("Windows packaged uninstall remained incomplete.");
@@ -120,6 +136,5 @@ export async function finishWindowsDesktopLifecycle(fixture: DesktopLabFixture):
 		userStatePreserved: true,
 		remainingPids: fixture.manifest.remainingPids,
 	});
+	await recordPhase("complete");
 }
-
-import { execFile } from "node:child_process";

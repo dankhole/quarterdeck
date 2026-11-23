@@ -323,7 +323,8 @@ describe.skipIf(process.platform !== "win32")("Windows desktop installation tran
 		expect((await f.service.getDesktopInstallationStatus()).state).toBe("missing");
 	}, 30000);
 	it("recovers shortcut publication without downloading or requiring the original --from option", async () => {
-		const f = await fixture("presentation-recovery");
+		// Include a real long installer staging directory even in a short checkout.
+		const f = await fixture("presentation-recovery".padEnd(208 - root.length, "-"));
 		let publications = 0;
 		f.dependencies.presentation = {
 			install: async () => {

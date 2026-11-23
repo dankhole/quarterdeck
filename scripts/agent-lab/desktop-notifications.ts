@@ -46,6 +46,7 @@ async function openSettings(page: Page) {
 	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
 	await dialog.waitFor({ state: "visible" });
+	await dialog.getByRole("button", { name: "Notifications", exact: true }).click();
 	return dialog;
 }
 
@@ -61,10 +62,7 @@ export async function exerciseDesktopNotifications(
 	const projectId = decodeURIComponent(new URL(page.url()).pathname.split("/").filter(Boolean)[0] ?? "");
 	if (!projectId) throw new Error("Notification scenario requires its selected synthetic project.");
 	const settings = await openSettings(page);
-	const master = settings
-		.getByText("Play sounds when tasks need attention", { exact: true })
-		.locator("..")
-		.getByRole("switch");
+	const master = settings.getByRole("switch", { name: "Play sounds when tasks need attention", exact: true });
 	const controlsDeadline = Date.now() + 5_000;
 	while (!(await master.isEnabled()) && Date.now() < controlsDeadline) await page.waitForTimeout(100);
 	if (!(await master.isEnabled())) throw new Error("Notification settings did not finish loading.");
@@ -75,7 +73,7 @@ export async function exerciseDesktopNotifications(
 	await volume.press("Home");
 	for (let index = 0; index < 40; index++) await volume.press("ArrowRight");
 	if ((await volume.inputValue()) !== "40") throw new Error("Notification volume selection did not apply.");
-	await settings.getByRole("button", { name: "Save", exact: true }).click();
+	await settings.getByRole("button", { name: "Save changes", exact: true }).click();
 	await settings.waitFor({ state: "hidden" });
 	const taskId = await startFakeTask();
 	const deadline = Date.now() + 15_000;
@@ -103,7 +101,7 @@ export async function exerciseDesktopNotifications(
 		throw new Error("Hidden task review did not produce exactly one desktop sound intent.");
 	const mutedSettings = await openSettings(page);
 	await mutedSettings.locator("#audible-notification-review").click();
-	await mutedSettings.getByRole("button", { name: "Save", exact: true }).click();
+	await mutedSettings.getByRole("button", { name: "Save changes", exact: true }).click();
 	await mutedSettings.waitFor({ state: "hidden" });
 	const input = page.getByRole("textbox", { name: "Terminal input" });
 	await input.focus();

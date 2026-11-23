@@ -54,12 +54,13 @@ export async function stageRuntime(arch = process.arch) {
 	if (
 		build.buildId !== buildId ||
 		build.version !== runtimePackage.version ||
-		build.sourceSha !== currentSource.sourceSha
+		build.sourceSha !== currentSource.sourceSha ||
+		build.sourceDirty !== currentSource.sourceDirty
 	)
 		throw new Error("Root build provenance differs from the paired build or packaging checkout. Rebuild first.");
 	// Ad-hoc candidates can exercise production fuses/signatures in a dirty
 	// worktree. Their dirty provenance still blocks finalization and publication.
-	if (releaseSettings.signedDistribution && (build.sourceDirty || currentSource.sourceDirty))
+	if (releaseSettings.signedDistribution && build.sourceDirty)
 		throw new Error("Signed distribution requires a clean root build and packaging checkout.");
 	const runtimePath = stagedRuntimePath(arch);
 	const { archive, filename, nodeVersion, sha256 } = await downloadNode(desktopPackage, arch);
@@ -132,7 +133,7 @@ export async function stageRuntime(arch = process.arch) {
 		...releaseSettings,
 		version: runtimePackage.version,
 		sourceSha: build.sourceSha,
-		sourceDirty: build.sourceDirty || currentSource.sourceDirty,
+		sourceDirty: build.sourceDirty,
 		buildId,
 		platform: process.platform,
 		arch,

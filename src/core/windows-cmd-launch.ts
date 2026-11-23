@@ -60,7 +60,9 @@ function resolveWindowsPowerShellShim(resolved: ResolvedWindowsBinaryPath): stri
 function escapeWindowsPowerShellNativeForwardedArgument(value: string): string {
 	// Windows PowerShell 5 removes unescaped quotes when a .ps1 shim forwards
 	// @args to a native executable. Preserve each quote through that second
-	// command-line parse while retaining any preceding literal backslashes.
+	// parse. Its legacy binder can mistake spaces inside escaped literal quotes
+	// for already-quoted text, so supply the native argument's outer quotes too.
+	if (value.includes('"') && /\s/u.test(value)) return quoteWindowsProcessArgument(value);
 	return value.replace(/(\\*)"/gu, (_match, backslashes: string) => `${backslashes}${backslashes}\\"`);
 }
 

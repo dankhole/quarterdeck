@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { lstat } from "node:fs/promises";
+import { win32 } from "node:path";
 import { promisify } from "node:util";
 import { resolveWindowsPowerShellPath } from "../core/windows-system-paths.js";
 import { DesktopInstallationError } from "./errors.js";
@@ -38,7 +39,7 @@ export async function assertDesktopPrivateDirectory(path: string): Promise<void>
 				resolveWindowsPowerShellPath(),
 				["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
 				{
-					env: { ...process.env, QUARTERDECK_VERIFY_PRIVATE_PATH: path },
+					env: { ...process.env, QUARTERDECK_VERIFY_PRIVATE_PATH: win32.toNamespacedPath(path) },
 					timeout: 10000,
 					windowsHide: true,
 					maxBuffer: 4096,

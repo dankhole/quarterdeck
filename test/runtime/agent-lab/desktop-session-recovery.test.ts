@@ -112,7 +112,11 @@ describe("packaged session recovery intercepted navigation", () => {
 		const native = {
 			app: {
 				isPackaged: true,
-				getAppPath: () => join("/synthetic/Quarterdeck.app", "Contents/Resources/app.asar"),
+				getAppPath: () =>
+					join(
+						"/synthetic/Quarterdeck.app",
+						process.platform === "win32" ? "resources/app.asar" : "Contents/Resources/app.asar",
+					),
 				getPath: () => "/synthetic/fixture/user-data",
 				__quarterdeckLabSessionRecoveryDialog: original,
 			},

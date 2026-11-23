@@ -22,17 +22,17 @@ The former interactive standalone browser lab (`start`, named browser actions an
 
 ## Scenario selection
 
-Use `npm run agent:desktop -- smoke --help` for the exact current combinations. Important boundaries:
+Use `npm run agent:desktop -- smoke --help` for the exact current combinations. Windows supports the hidden fake-provider scenarios below except `--npm-launch`, `--performance`, and `--main-loss`, which use macOS-specific fixtures or process probes. The default Windows run includes typed same-instance launch handoff. Important boundaries:
 
 | Scenario | Claim |
 | --- | --- |
-| Default fake-provider smoke | Packaged startup, task PTY/hooks, card/board/project lifecycle indicators, permissions and interruption; board, diagnostics, unstarted-editor and action-layout checks migrated from web smoke; reload, renderer/session recovery and graceful shutdown |
+| Default fake-provider smoke | Packaged startup, task PTY/hooks, card/board/project lifecycle indicators, permissions and interruption, board, diagnostics, Files draft recovery, and graceful shutdown. On Windows, the task Restart action verifies exact provider resume. On macOS, the runtime restart verifies exact resume across runtime generations. |
 | `--no-agent` | Startup/renderer subset only; not task PTY or provider compatibility |
 | `--npm-launch --no-agent` | Synthetic npm/app identity, project handoff and alternate-owner refusal |
-| `--manual-shells --no-agent` | Home/Detail shell process survives Hide and viewer detach, explicit Terminate retires it, reopening creates a fresh shell |
+| `--manual-shells --no-agent` | Home/Detail shell process survives Hide and viewer detach, explicit Terminate retires it, reopening creates a fresh shell. On macOS it also checks native Close, which enters Quit on Windows. |
 | `--compare-window --no-agent` | Independent read-only comparison surface without taking editable/native-command authority |
 | `--notifications` | Hidden fake-task tone intent, Settings volume and muted events through the simulation ledger; not actual audible sound or OS banners |
-| `--native-experience --no-agent` | Keyboard and enlarged-text behavior; add `--show-window` only for native focus/close/reopen claims |
+| `--native-experience --no-agent` | Keyboard and enlarged-text behavior. On macOS, add `--show-window` for native focus, close, and reopen checks. |
 | `--performance` | Desktop-only idle process CPU/RSS, task navigation and available terminal acknowledgements; excludes competing scenarios, reloads and crashes |
 | `--main-loss` | Fake-provider recovery after exact isolated main-process loss; no real-provider account access |
 | `--session-recovery --no-agent` | Blocked unclean startup, cancellation, explicit acknowledgement and ordinary startup retry |
@@ -61,6 +61,8 @@ Normal acceptance requires confirmed graceful Quit, no remaining owned processes
 
 Renderer-crash recovery reobserves the original captured document through an observation-only CDP client, bound to exact process/profile/WebContents/document identity. The original Electron application remains the Quit owner. A fresh unrelated browser or product window is not proof of recovering that document.
 
-On Windows, native lab evidence covers actual installation locks, Chromium/crashpad job membership, ConPTY, replacement, shortcut replacement and uninstall under a private profile. It does not prove a real user's Start menu, SmartScreen, minimum Windows release or another architecture.
+On Windows, native lab evidence covers actual installation locks, Chromium/crashpad job membership, ConPTY, replacement, shortcut replacement and uninstall under a private profile. An app manifest with `status: "stopped"` confirms the end of the application run. The runner may still be verifying or replacing the installation. Check `windows-installation-phase.json` for progress and `windows-installation-lifecycle.json` for the completed lifecycle receipt. It does not prove a real user's Start menu, SmartScreen, minimum Windows release or another architecture.
+
+The Windows lifecycle checks wait for xterm to acknowledge the task's synthetic output on the paired terminal sockets. This includes the historical redraw through its current prompt. The macOS checks use an inline OSC 52 receipt, which ConPTY did not deliver in the Windows lab. Both lanes check the Files clipboard action separately through the simulated host ledger.
 
 Public installation, N-to-N+1 updating, actual OS approval, native architecture/minimum-OS coverage, provider compatibility and sustained daily use remain separate [desktop acceptance gates](desktop-validation.md). Report exact candidate scope and limitations; passing source tests or an old package is not current native acceptance.
