@@ -41,18 +41,46 @@ jobs:
         with:
           node-version: "22.23.2"
           architecture: ${{ matrix.arch }}
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web-ui/package-lock.json
-            desktop/package-lock.json
+          package-manager-cache: false
+      - name: Restore npm downloads
+        id: npm-cache
+        uses: actions/cache/restore@v6
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/quarterdeck-npm/_cacache
+          key: desktop-npm-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('package-lock.json', 'web-ui/package-lock.json', 'desktop/package-lock.json') }}
       - name: Install locked dependencies
+        env:
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/quarterdeck-npm
+          NPM_CONFIG_PREFER_OFFLINE: "true"
         run: |
           npm install --global npm@11.19.1
-          npm ci
-          npm ci --prefix web-ui
-          npm ci --prefix desktop
-          npm --prefix desktop exec -- install-electron
+
+          # Each project writes its own node_modules; npm's download cache supports concurrent access.
+          npm ci &
+          root_pid=$!
+          npm ci --prefix web-ui &
+          web_pid=$!
+          npm ci --prefix desktop &
+          desktop_pid=$!
+
+          # Always collect all three results before saving the cache or running verification.
+          root_status=0 web_status=0 desktop_status=0
+          wait "$root_pid" || root_status=$?
+          wait "$web_pid" || web_status=$?
+          wait "$desktop_pid" || desktop_status=$?
+          printf 'npm ci exit codes: root=%d web-ui=%d desktop=%d\n' "$root_status" "$web_status" "$desktop_status"
+          (( root_status == 0 && web_status == 0 && desktop_status == 0 ))
+      - name: Save npm downloads
+        # Save after npm ci succeeds, even if a later native check fails.
+        if: steps.npm-cache.outputs.cache-hit != 'true' && steps.npm-cache.outputs.cache-primary-key != ''
+        uses: actions/cache/save@v6
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/quarterdeck-npm/_cacache
+          key: ${{ steps.npm-cache.outputs.cache-primary-key }}
+      - name: Install Electron
+        run: npm --prefix desktop exec -- install-electron
       - name: Typecheck desktop sources
         run: npm --prefix desktop run typecheck
       - name: Check native paste probe

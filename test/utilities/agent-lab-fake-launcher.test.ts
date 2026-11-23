@@ -129,15 +129,24 @@ describe("synthetic agent launcher availability", () => {
 	);
 
 	it.runIf(process.platform === "win32")(
-		"forwards quoted Codex task settings, exact resume id and prompt through the installed ConPTY launcher",
+		"forwards quoted Codex task settings, exact resume id, prompt and hook paths through the installed ConPTY launcher",
 		async () => {
 			const root = await mkdtemp(join(tmpdir(), "quarterdeck fake conpty-"));
 			try {
-				const env = installedWindowsFakeAgentEnvironment(root);
+				const env = {
+					...installedWindowsFakeAgentEnvironment(root),
+					QUARTERDECK_AGENT_LAB_HOOK_NODE: process.execPath,
+					QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT: join(root, "packaged runtime", "dist", "hooks.js"),
+				};
 				await requireInstalledWindowsFakeAgentNode(root, process.execPath);
 				await writeFile(
 					env.QUARTERDECK_AGENT_LAB_TSX_CLI,
-					'require("node:fs").writeFileSync("argv.json", JSON.stringify({args:process.argv.slice(2),provider:process.env.QUARTERDECK_AGENT_LAB_PROVIDER}));\n',
+					`require("node:fs").writeFileSync("argv.json", JSON.stringify({
+						args: process.argv.slice(2),
+						provider: process.env.QUARTERDECK_AGENT_LAB_PROVIDER,
+						hookNode: process.env.QUARTERDECK_AGENT_LAB_HOOK_NODE,
+						hookEntrypoint: process.env.QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT,
+					}));`,
 				);
 				const args = [
 					"-c",
@@ -162,6 +171,8 @@ describe("synthetic agent launcher availability", () => {
 					expect(JSON.parse(await readFile(join(root, "argv.json"), "utf8"))).toEqual({
 						args: [env.QUARTERDECK_AGENT_LAB_FAKE_AGENT, ...args],
 						provider: "codex",
+						hookNode: env.QUARTERDECK_AGENT_LAB_HOOK_NODE,
+						hookEntrypoint: env.QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT,
 					});
 				} finally {
 					clearTimeout(timeout);

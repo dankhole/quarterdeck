@@ -46,7 +46,7 @@ The lab-only mock keychain avoids modifying the user's macOS Keychain. Ordinary 
 
 ## Providers
 
-The default `fake` provider is deterministic, offline and suitable for CI. Reusable fixture/provider modules remain under `scripts/agent-lab/`; the terminal protocol is in the skill's `references/protocol.md`. Real provider availability does not authorize using it.
+The default `fake` provider is deterministic, offline and suitable for CI. Packaged fake providers send hooks through the candidate’s bundled Node and `dist/hooks.js`, without loading the source CLI through TSX. A fake invocation receipt proves the process launched, not that the runtime accepted its current `SessionStart` hook. Reusable fixture/provider modules remain under `scripts/agent-lab/`; the terminal protocol is in the skill's `references/protocol.md`. Real provider availability does not authorize using it.
 
 Use `--provider real-codex` or `--provider real-claude` only with explicit user/account authorization and only when the unresolved question depends on actual TUI behavior, hook schemas/order, exact resume, or launcher interpretation. First pass the fresh candidate through the fake scenario. Keep the real prompt tiny, synthetic and behind normal approval controls; never run real modes in CI. Interactive Claude has no hard budget ceiling, so its inexpensive model default is not an enforced spending limit.
 
