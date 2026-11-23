@@ -1,9 +1,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QUARTERDECK_DESKTOP_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/desktop-runtime-protocol.js";
 import { QUARTERDECK_RUNTIME_PROTOCOL_VERSION } from "../../src/core/api/runtime-protocol.js";
 import { DesktopQuitCoordinator } from "../src/quit-coordinator.js";
@@ -17,10 +18,19 @@ const children: ChildProcess[] = [];
 const bundleRoot = join(tmpdir(), "synthetic-runtime");
 const nodePath = join(bundleRoot, "bin", "node");
 const cliPath = join(bundleRoot, "dist", "cli.js");
+const startupDeadlineMs = 500;
+const shortDeadlineMs = 20;
+
+beforeEach(() => {
+	// Keep real child IPC and exit events, but don't race host scheduling against
+	// supervisor deadlines. Advance the clock only when testing an expiry.
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+});
 afterEach(async () => {
+	vi.useRealTimers();
 	await Promise.all(
 		children.splice(0).map(async (child) => {
-			if (child.exitCode !== null || child.signalCode !== null) return;
+			if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
 			const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
 			if (child.connected) child.disconnect();
 			await exited;
@@ -70,8 +80,8 @@ function supervisor(
 			QUARTERDECK_DESKTOP_LAB_CONFIG: "/untrusted/lab.json",
 		},
 		installationAdmission,
-		startupDeadlineMs: 500,
-		shutdownDeadlineMs: mode === "shutdown-timeout" ? 20 : 1000,
+		startupDeadlineMs,
+		shutdownDeadlineMs: mode === "shutdown-timeout" ? shortDeadlineMs : 1000,
 		spawnChild: (executable, args, options) => {
 			expect(options.env?.QUARTERDECK_DESKTOP_LAB_CONFIG).toBe(labConfigPath);
 			expect(executable).toBe(nodePath);
@@ -207,7 +217,12 @@ describe("private bundled runtime supervision", () => {
 		async (mode) => {
 			const { owner } = supervisor(mode);
 			await owner.start();
-			expect(await owner.stop()).toMatchObject({ status: "incomplete" });
+			const shutdown = owner.stop();
+			if (mode === "shutdown-timeout") await vi.advanceTimersByTimeAsync(shortDeadlineMs);
+			expect(await shutdown).toMatchObject({
+				status: "incomplete",
+				reasons: [mode === "shutdown-timeout" ? "deadline" : "persistence_failed"],
+			});
 			expect(owner.isRunning()).toBe(true);
 			expect(owner.canForceQuit()).toBe(false);
 		},
@@ -267,7 +282,16 @@ describe("private bundled runtime supervision", () => {
 
 	it("rejects readiness from another launch and shuts down its actual helper", async () => {
 		const { owner, evidence } = supervisor("wrong-startup");
-		await expect(owner.start()).rejects.toThrow("could not become ready");
+		const startup = owner.start();
+		const child = children[0];
+		if (!child) throw new Error("Expected a spawned runtime helper");
+		await Promise.all([
+			expect(startup).rejects.toThrow("could not become ready"),
+			once(child, "message").then(async ([message]) => {
+				expect(message).toMatchObject({ type: "quarterdeck:desktop-ready" });
+				await vi.advanceTimersByTimeAsync(startupDeadlineMs);
+			}),
+		]);
 		expect(owner.isRunning()).toBe(false);
 		expect(evidence.some((item) => item.phase === "ready")).toBe(false);
 	});
@@ -295,7 +319,9 @@ describe("private bundled runtime supervision", () => {
 		expect(await owner.control("get-quit-summary")).toBeNull();
 		const timeout = supervisor("control-timeout").owner;
 		await timeout.start();
-		expect(await timeout.control("get-quit-summary", 20)).toBeNull();
+		const control = timeout.control("get-quit-summary", shortDeadlineMs);
+		await vi.advanceTimersByTimeAsync(shortDeadlineMs);
+		expect(await control).toBeNull();
 		await timeout.stop();
 	});
 	it("preserves only the typed content-safe startup failure class", async () => {

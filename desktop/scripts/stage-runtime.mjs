@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { readBuildManifest, readSourceIdentity } from "../../scripts/build-manifest.mjs";
@@ -10,30 +11,62 @@ import { desktopRoot, repoRoot, requireNativeDesktopTarget, stagedRuntimePath } 
 import { run } from "./process.mjs";
 import { createReleasePolicy, releaseBuildSettings } from "./release-policy.mjs";
 
-async function downloadNode(desktopPackage, arch) {
+const NODE_DOWNLOAD_ATTEMPTS = 3;
+const TRANSIENT_DOWNLOAD_CODES = new Set([
+	"EAI_AGAIN",
+	"ECONNRESET",
+	"ETIMEDOUT",
+	"UND_ERR_BODY_TIMEOUT",
+	"UND_ERR_CONNECT_TIMEOUT",
+	"UND_ERR_HEADERS_TIMEOUT",
+	"UND_ERR_SOCKET",
+]);
+
+async function fetchNodeArchive(nodeVersion, filename) {
+	const url = `https://nodejs.org/dist/v${nodeVersion}/${filename}`;
+	for (let attempt = 1; ; attempt++) {
+		try {
+			const response = await fetch(url);
+			if (!response.ok) throw new Error(`Node archive download returned HTTP ${response.status}.`);
+			return Buffer.from(await response.arrayBuffer());
+		} catch (error) {
+			const code = error?.cause?.code ?? error?.code;
+			if (attempt === NODE_DOWNLOAD_ATTEMPTS || !TRANSIENT_DOWNLOAD_CODES.has(code)) throw error;
+			console.warn(
+				`Node archive download attempt ${attempt}/${NODE_DOWNLOAD_ATTEMPTS} failed for ${filename} (${code}); retrying.`,
+			);
+			await delay(500 * attempt);
+		}
+	}
+}
+
+export async function downloadNode(desktopPackage, arch, cache = join(desktopRoot, ".cache", "node")) {
 	const { nodeVersion, nodeArchives, windowsNodeArchives } = desktopPackage.quarterdeckDesktop;
 	const windows = process.platform === "win32";
 	const expectedSha256 = (windows ? windowsNodeArchives : nodeArchives)?.[arch];
 	if (!/^[a-f0-9]{64}$/u.test(expectedSha256 ?? "")) throw new Error("No pinned Node archive for this native target.");
 	const filename = `node-v${nodeVersion}-${windows ? "win" : "darwin"}-${arch}.${windows ? "zip" : "tar.gz"}`;
-	const cache = join(desktopRoot, ".cache", "node");
 	const archive = join(cache, filename);
 	await mkdir(cache, { recursive: true });
-	let bytes;
-	try {
-		bytes = await readFile(archive);
-	} catch (error) {
+	const cached = await readFile(archive).catch((error) => {
 		if (error.code !== "ENOENT") throw error;
-	}
-	if (!bytes) {
-		const response = await fetch(`https://nodejs.org/dist/v${nodeVersion}/${filename}`);
-		if (!response.ok) throw new Error(`Node archive download returned HTTP ${response.status}.`);
-		bytes = Buffer.from(await response.arrayBuffer());
-	}
+		return null;
+	});
+	const bytes = cached ?? (await fetchNodeArchive(nodeVersion, filename));
 	if (createHash("sha256").update(bytes).digest("hex") !== expectedSha256) {
 		throw new Error(`Official Node archive checksum mismatch for ${filename}.`);
 	}
-	await writeFile(archive, bytes);
+	if (!cached) {
+		// Only complete, verified archives become visible at the cache path.
+		const temp = await mkdtemp(join(cache, ".download-"));
+		try {
+			const pending = join(temp, filename);
+			await writeFile(pending, bytes);
+			await rename(pending, archive);
+		} finally {
+			await rm(temp, { recursive: true, force: true });
+		}
+	}
 	return { archive, filename, nodeVersion, sha256: expectedSha256 };
 }
 
