@@ -3,7 +3,7 @@ import { copyFile, link, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink,
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
 import { resolveWindowsSystem32ExecutablePath } from "../../src/core/windows-system-paths.js";
 import { acquireDesktopMutation } from "../../src/desktop-install/admission.js";
@@ -356,52 +356,62 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 			windowsHide: true,
 		});
 		const explorer = stdout.trim();
+		// Only the absence of a desktop shell permits a skip. COM and launch failures below must fail.
 		if (explorer === "absent") {
-			context.skip();
+			context.skip("No shell window on the test process's desktop.");
 			return;
 		}
 		expect(explorer).toBe("present");
 		const directory = join(root, "update-broker");
 		await ensurePrivateDirectory(directory);
 		const marker = join(directory, "ready"),
+			finish = join(directory, "finish"),
 			done = join(directory, "done"),
 			script = join(directory, "Update.ps1"),
 			lock = join(directory, "admission.lock");
 		const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+		// Keep PowerShell alive until the assertion finishes rather than racing a fixed sleep.
 		await writeFile(
 			script,
-			`\uFEFF[IO.File]::WriteAllText(${quote(marker)},$PID.ToString()); Start-Sleep -Seconds 3; [IO.File]::WriteAllText(${quote(done)},'done')`,
+			`\uFEFF[IO.File]::WriteAllText(${quote(marker)},$PID.ToString())
+$timer = [Diagnostics.Stopwatch]::StartNew()
+while (-not [IO.File]::Exists(${quote(finish)})) {
+    if ($timer.ElapsedMilliseconds -ge 20000) { exit 1 }
+    Start-Sleep -Milliseconds 50
+}
+[IO.File]::WriteAllText(${quote(done)},'done')`,
 		);
-		const main = `const fs=require('node:fs');require('node:child_process').execFileSync(${JSON.stringify(executable)},['--quarterdeck-update-window',${JSON.stringify(script)}]);const deadline=Date.now()+10000;const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(marker)})){clearInterval(timer);console.log('HELPER_READY');process.exit(0)}if(Date.now()>deadline)process.exit(9)},30);`;
+		const main = `const fs=require('node:fs');fs.fstatSync(198);require('node:child_process').execFileSync(${JSON.stringify(executable)},['--quarterdeck-update-window',${JSON.stringify(script)}],{stdio:'inherit',windowsHide:true,timeout:10000});const deadline=Date.now()+10000;const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(marker)})){clearInterval(timer);console.log('HELPER_READY');process.exit(0)}if(Date.now()>deadline)process.exit(9)},30);`;
 		const child = spawn(executable, ["--quarterdeck-test-exec", lock, process.execPath, "-e", main], {
 			stdio: ["ignore", "pipe", "pipe"],
 			windowsHide: true,
 		});
-		const exited = new Promise<number | null>((accept) => child.once("exit", accept));
+		const closed = new Promise<void>((accept) => child.once("close", () => accept()));
 		let failure: unknown;
 		try {
 			await ready(child);
-			expect(await exited).toBe(0);
-			await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
-			await release(lock, await acquire(lock));
+			await vi.waitFor(() => expect(child.exitCode).toBe(0), { timeout: 5_000 });
+			const pid = Number(await readFile(marker, "utf8"));
+			expect(Number.isInteger(pid) && pid > 0).toBe(true);
+			const lease = await acquire(lock);
+			try {
+				process.kill(pid, 0);
+				await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
+			} finally {
+				await release(lock, lease);
+			}
 		} catch (error) {
 			failure = error;
 		} finally {
-			child.kill();
-			await exited;
-			const deadline = Date.now() + 10000;
-			let completed = false;
-			while (Date.now() < deadline) {
-				try {
-					await readFile(done);
-					completed = true;
-					break;
-				} catch {
-					await new Promise((accept) => setTimeout(accept, 100));
-				}
+			try {
+				await writeFile(finish, "");
+				await vi.waitFor(async () => expect(await readFile(done, "utf8")).toBe("done"), { timeout: 10_000 });
+			} catch (cause) {
+				failure ??= new Error("Synthetic Explorer worker cleanup was not confirmed.", { cause });
 			}
-			if (!completed) failure ??= new Error("Synthetic Explorer worker cleanup was not confirmed.");
+			child.kill();
+			await closed;
 		}
 		if (failure) throw failure;
-	}, 25000);
+	}, 40000);
 });

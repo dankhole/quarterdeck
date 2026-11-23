@@ -314,24 +314,11 @@ static int launch_admitted(const wchar_t *lock, const wchar_t *host, const wchar
 }
 
 #ifdef QUARTERDECK_ADMISSION_TEST
-/* Explorer presence is a fixture prerequisite, not proof that the real handoff works. */
+#pragma comment(lib, "user32.lib")
+/* A process named explorer.exe may belong to a different desktop or logon session.
+ * Check this desktop's shell independently of COM so a broken broker still fails the test. */
 static int test_explorer_presence(void) {
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) {
-        report_failure("Explorer probe", "could not snapshot processes", GetLastError());
-        return 73;
-    }
-    PROCESSENTRY32W row = {0};
-    row.dwSize = sizeof(row);
-    BOOL more = Process32FirstW(snapshot, &row);
-    while (more && _wcsicmp(row.szExeFile, L"explorer.exe")) more = Process32NextW(snapshot, &row);
-    DWORD error = more ? ERROR_SUCCESS : GetLastError();
-    CloseHandle(snapshot);
-    if (!more && error != ERROR_NO_MORE_FILES) {
-        report_failure("Explorer probe", "could not enumerate processes", error);
-        return 73;
-    }
-    puts(more ? "present" : "absent");
+    puts(GetShellWindow() ? "present" : "absent");
     return 0;
 }
 #endif
