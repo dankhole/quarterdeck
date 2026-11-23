@@ -79,6 +79,19 @@ For Windows-only iteration from a non-Windows host, dispatch the reusable `Test`
 
 ## Focused test selection
 
+For day-to-day local verification, aim for **under five minutes with dependencies already installed**. From the repository root, run the relevant lines below. Vitest's `--changed` uses Git and module imports to select affected tests, including on a branch whose edits are already committed. Use a current `origin/main` (or substitute the branch's actual base).
+
+```sh
+# Runtime or shared tooling
+npm run typecheck && npm test -- --mode integration --changed origin/main
+# Renderer
+npm run web:typecheck && npm run web:test -- --changed origin/main
+# Desktop (requires the separate desktop dependency tree)
+npm --prefix desktop run typecheck && npm --prefix desktop test -- --changed origin/main
+```
+
+For shared changes, include the affected consumers. Native sources, subprocess entrypoints, generated files, and workflow YAML aren't all connected by module imports: name their focused tests explicitly, and run the release-policy checks for workflow changes. An empty selection is **not** proof that a change is covered. Use explicit test paths if a shared dependency selects most of a suite. Local verification doesn't build installers by default and doesn't replace the full CI matrix.
+
 Choose test files by the owner changed, not by the size of the diff. Examples:
 
 - A task classifier change starts with its classifier tests and one projection consumer.

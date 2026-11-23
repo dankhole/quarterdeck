@@ -111,14 +111,12 @@ export async function stageRuntime(arch = process.arch) {
 	delete env.npm_config_target;
 	delete env.npm_config_disturl;
 	run(nodeBin, [npmCli, "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: runtimePath, env });
-	if (windows) {
-		// Quarterdeck always supplies the resolved Claude executable to the SDK.
-		// Its optional fallback executable adds hundreds of MB to every app verification.
-		await rm(join(runtimePath, "node_modules", "@anthropic-ai", `claude-agent-sdk-win32-${arch}`), {
-			recursive: true,
-			force: true,
-		});
-	}
+	// The SDK stays in the app, but Quarterdeck always supplies its executable path.
+	// Don't sign, archive and verify a second, unused copy of the Claude CLI.
+	await rm(join(runtimePath, "node_modules", "@anthropic-ai", `claude-agent-sdk-${process.platform}-${arch}`), {
+		recursive: true,
+		force: true,
+	});
 	prepareRuntimePty({ runtimePath, nodeBin, nodeVersion, arch, env });
 	// Keep native runtime products without node-gyp's Python symlink and
 	// generated build files containing machine-local toolchain paths.
