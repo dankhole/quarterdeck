@@ -36,13 +36,12 @@ import {
 	resolveAgentCommand,
 	resolveAgentCommandForLaunch,
 	runProbeCommand,
-	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 	setAgentProbeTimeoutMsForTests,
 	setBinaryIdentityResolverForTests,
 	waitForPendingAgentAvailabilityProbes,
 } from "../../../src/config";
-import { getRuntimeAgentCatalogEntry } from "../../../src/core";
+import { getRuntimeAgentCatalogEntry, SUPPORTED_PI_VERSION } from "../../../src/core";
 import { runtimeConfigResponseSchema, runtimeConfigSaveRequestSchema } from "../../../src/core/api/config";
 import { installRuntimeProcessLaunchAdmission } from "../../../src/core/runtime-process-launch-admission.js";
 import { createTestRuntimeConfigState } from "../../utilities/runtime-config-factory";
@@ -78,7 +77,9 @@ function mockSuccessfulAgentProbe(): void {
 			}
 			callback(
 				null,
-				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe") ? "1.5.2\n" : "0.157.0\n",
+				normalizedBinary === "pi" || normalizedBinary.endsWith("/pi.exe")
+					? `${SUPPORTED_PI_VERSION}\n`
+					: "0.157.0\n",
 				"",
 			);
 			return {} as ChildProcess;
@@ -854,7 +855,7 @@ describe("agent-registry", () => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
 
 		const detected = detectInstalledCommands();
-		const resolved = await resolveAgentCommand(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
+		const resolved = await resolveAgentCommandForLaunch(createTestRuntimeConfigState({ selectedAgentId: "pi" }));
 
 		expect(detected).toEqual(["pi"]);
 		expect(resolved).toEqual({
@@ -869,7 +870,7 @@ describe("agent-registry", () => {
 		expect(commandDiscoveryMocks.isBinaryAvailableOnPath).toHaveBeenCalledWith("pi");
 	});
 
-	it.each(["0.84.2", "1.4.0", "1.5.1"])(
+	it.each(["0.84.2", "1.5.2"])(
 		"disables Pi when the detected version is older than the supported release: %s",
 		async (version) => {
 			commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
@@ -890,17 +891,17 @@ describe("agent-registry", () => {
 			expect(resolved).toBeNull();
 			expect(pi?.installed).toBe(false);
 			expect(pi?.status).toBe("upgrade_required");
-			expect(pi?.statusMessage).toContain("exactly 1.5.2");
-			expect(pi?.statusMessage).toContain("@earendil-works/pi-coding-agent@1.5.2");
+			expect(pi?.statusMessage).toContain(`exactly ${SUPPORTED_PI_VERSION}`);
+			expect(pi?.statusMessage).toContain(`@earendil-works/pi-coding-agent@${SUPPORTED_PI_VERSION}`);
 		},
 	);
 
-	it("rejects an untested newer Pi release", async () => {
+	it.each(["1.6.1", "1.6.0-rc.1", "1.6.0+custom"])("rejects untested Pi release %s", async (version) => {
 		commandDiscoveryMocks.isBinaryAvailableOnPath.mockImplementation((binary: string) => binary === "pi");
 		childProcessMocks.execFile.mockImplementation((_binary: string, args: string[], ...rest: unknown[]) => {
 			const callback = readExecFileCallback(rest);
 			if (args[0] === "--version") {
-				callback(null, "1.5.3\n", "");
+				callback(null, `${version}\n`, "");
 				return {} as ChildProcess;
 			}
 			callback(null, "", "");
@@ -913,8 +914,9 @@ describe("agent-registry", () => {
 
 		expect(resolved).toBeNull();
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("Detected Pi 1.5.3");
-		expect(pi?.statusMessage).toContain("exactly 1.5.2");
+		expect(pi?.detectedVersion).toBe(version);
+		expect(pi?.statusMessage).toContain(`Detected Pi ${version}`);
+		expect(pi?.statusMessage).toContain(`exactly ${SUPPORTED_PI_VERSION}`);
 	});
 
 	it("disables Pi when its version cannot be determined", async () => {
@@ -936,7 +938,7 @@ describe("agent-registry", () => {
 		expect(resolved).toBeNull();
 		expect(pi?.installed).toBe(false);
 		expect(pi?.status).toBe("upgrade_required");
-		expect(pi?.statusMessage).toContain("exactly 1.5.2");
+		expect(pi?.statusMessage).toContain(`exactly ${SUPPORTED_PI_VERSION}`);
 	});
 });
 

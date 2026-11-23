@@ -43,7 +43,7 @@ function createPromptCleanup(directory: string): () => Promise<void> {
 }
 
 /**
- * Pi 1.5.2 parses @file even after --, reads it before starting the first turn,
+ * Pi parses @file even after --, reads it before starting the first turn,
  * and includes all text in its native <file> wrapper. It does not ask a tool to
  * read the file. Preserve the adapter's existing outer-whitespace trimming.
  */

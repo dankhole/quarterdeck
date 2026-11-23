@@ -4,9 +4,9 @@ import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 
+import { SUPPORTED_PI_VERSION } from "../core/agent-catalog.js";
 import { resolveWindowsBinaryPath } from "../core/command-discovery.js";
 import { resolveQuarterdeckCommandParts } from "../core/quarterdeck-command.js";
-import { SUPPORTED_PI_VERSION } from "./agent-registry.js";
 
 const PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const DISCOVERY_ERROR = "Pi model discovery is unavailable. You can still use Pi default.";

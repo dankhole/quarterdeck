@@ -1,5 +1,8 @@
 import type { RuntimeAgentId } from "./api-contract";
 
+/** Exact release validated against Pi’s native extension and session contracts. */
+export const SUPPORTED_PI_VERSION = "1.6.0";
+
 export interface RuntimeAgentCatalogEntry {
 	id: RuntimeAgentId;
 	label: string;
@@ -51,8 +54,8 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		binary: "pi",
 		baseArgs: [],
 		description: "Pi with native execution and launch-scoped lifecycle tracking.",
-		installCommand: "npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2",
-		installUrl: "https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/1.5.2",
+		installCommand: `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${SUPPORTED_PI_VERSION}`,
+		installUrl: `https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/${SUPPORTED_PI_VERSION}`,
 		signInCommand: "pi",
 		signInDescription: "Start Pi, enter /login, and choose a provider.",
 	},

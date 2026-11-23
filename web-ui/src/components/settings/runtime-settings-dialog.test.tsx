@@ -32,7 +32,8 @@ function RuntimeSettingsDialog({
 	return <RuntimeSettingsDialogComponent {...props} projects={projects} />;
 }
 
-vi.mock("@runtime-agent-catalog", () => ({
+vi.mock("@runtime-agent-catalog", async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
 	getRuntimeAgentCatalogEntry: vi.fn((agentId: string) => ({
 		id: agentId,
 		installUrl: null,

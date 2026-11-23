@@ -10,7 +10,7 @@ The commands below are the shortest macOS/Linux setup path. Follow the linked of
 | --- | --- | --- | --- | --- |
 | [Claude Code](https://code.claude.com/docs/en/getting-started) | `curl -fsSL https://claude.ai/install.sh \| bash` | Run `claude` and follow the browser prompt | `claude auth status` | 2.1.198+ |
 | [OpenAI Codex](https://developers.openai.com/codex/cli) | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex login` | `codex login status` | 0.157.0+ with native hooks and auto-review support |
-| [Pi 1.5.2](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/1.5.2) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 1.5.2 |
+| [Pi 1.6.0](https://www.npmjs.com/package/@earendil-works/pi-coding-agent/v/1.6.0) | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.6.0` | Run `pi`, then enter `/login` | Start `pi` successfully | Exactly 1.6.0 |
 
 On native Windows, run the installer from PowerShell:
 
@@ -18,7 +18,7 @@ On native Windows, run the installer from PowerShell:
 | --- | --- |
 | Claude Code | `irm https://claude.ai/install.ps1 \| iex` |
 | OpenAI Codex | `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 \| iex"` |
-| Pi 1.5.2 | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.5.2` |
+| Pi 1.6.0 | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.6.0` |
 
 Codex supports ChatGPT sign-in with `codex login`. For API-key authentication, set `OPENAI_API_KEY`, then run `printenv OPENAI_API_KEY | codex login --with-api-key` on macOS/Linux or `$env:OPENAI_API_KEY | codex login --with-api-key` in PowerShell. Claude Code requires an account or provider-backed authentication supported by Claude Code. Pi lets you choose a provider during `/login`.
 
@@ -32,7 +32,7 @@ The searchable picker follows Pi’s `enabledModels` shortlist using the install
 
 After saving changes in Pi, close and reopen **New task** to refresh the starting-model list. Discovery reads installed Pi metadata offline without starting a session, loading extensions or MCP, changing Pi settings, or installing packages. It requires the supported npm installation’s SDK files; unsupported wrappers and standalone installations leave **Pi default** available. Extension-defined and uncached models may be absent: use Pi default or Pi’s native `/model` selector for those. If discovery fails or the configured shortlist has no available matches, task creation still works with Pi default.
 
-Pi users need exactly Pi 1.5.2. When upgrading from a Quarterdeck build pinned to Pi 1.4.0, update Quarterdeck and Pi together, restart the owning runtime, and restart managed Pi tasks. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
+Pi users need exactly Pi 1.6.0. Update Quarterdeck and Pi together, restart the owning runtime, and restart managed Pi tasks. Quarterdeck deliberately rejects older and newer Pi versions until the lifecycle extension and exact-session recovery suite is validated against a new release. Pi support is currently validated on macOS.
 
 Pi runs with its native tools, extensions, and project-trust settings. Quarterdeck adds no tool approval dialogs or project-trust override. Existing Pi tasks must be restarted to pick up this change. The retired `piToolApprovalsEnabled` setting is ignored and removed on the next configuration save. After upgrading Quarterdeck, restart the desktop app and owning runtime to load the matching configuration protocol.
 
@@ -194,7 +194,7 @@ File search is independent of tree expansion. Folder-project searches use bounde
 
 If `quarterdeck` is not found after `npm install --global quarterdeck`, make sure your npm global bin directory is on `PATH`. Contributors using a source checkout can run `npm run link` instead.
 
-If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 1.5.2 for supported task-agent launches.
+If no agent is available, install Claude Code, OpenAI Codex, or Pi and confirm the matching binary (`claude`, `codex`, or `pi`) is available on `PATH`. Quarterdeck requires Claude Code 2.1.198+, Codex 0.157.0+, or exactly Pi 1.6.0 for supported task-agent launches.
 
 If terminal symbols look wrong, install [JetBrainsMono Nerd Font](https://www.nerdfonts.com/), which Quarterdeck prefers when available, then reopen the app.
 

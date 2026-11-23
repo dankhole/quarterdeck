@@ -1311,7 +1311,7 @@ describe("agent-lab fake agent protocol", () => {
 	});
 
 	it("parses Pi renderer, resume, and prompt tokens without treating option values as prompts", () => {
-		expect(getFakeAgentVersionOutput("pi")).toBe("1.5.2");
+		expect(getFakeAgentVersionOutput("pi")).toBe("1.6.0");
 		for (const args of [
 			["--tui-mode", "fullscreen"],
 			["--tui-mode", "regular", "--tui-mode", "fullscreen"],

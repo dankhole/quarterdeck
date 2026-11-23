@@ -31,7 +31,7 @@ export const runtimeCodexOptionsSchema = z.object({
 });
 export type RuntimeCodexOptions = z.infer<typeof runtimeCodexOptionsSchema>;
 
-/** Native Pi 1.5.2 `--thinking` levels; Pi clamps unsupported levels for the selected model. */
+/** Native Pi `--thinking` levels; Pi clamps unsupported levels for the selected model. */
 export const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export const runtimePiThinkingLevelSchema = z.enum(PI_THINKING_LEVELS);
 export type RuntimePiThinkingLevel = z.infer<typeof runtimePiThinkingLevelSchema>;

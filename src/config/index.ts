@@ -17,7 +17,6 @@ export {
 	resolveAgentCommand,
 	resolveAgentCommandForLaunch,
 	runProbeCommand,
-	SUPPORTED_PI_VERSION,
 	setAgentAvailabilityDiagnosticSink,
 	setAgentProbeTimeoutMsForTests,
 	setBinaryIdentityResolverForTests,

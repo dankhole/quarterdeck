@@ -1,4 +1,5 @@
 import { PassThrough, type Readable } from "node:stream";
+import { SUPPORTED_PI_VERSION } from "../../src/core/agent-catalog";
 import { buildShellCommandLine } from "../../src/core/shell";
 import { buildWindowsProcessArgsCommandLine } from "../../src/core/windows-cmd-launch";
 import { type AgentLabScenario, AgentLabScenarioSchema } from "./types";
@@ -94,7 +95,7 @@ export interface FakeAgentInvocation {
 const FAKE_AGENT_VERSION_OUTPUT: Record<FakeAgentProvider, string> = {
 	claude: "2.1.198 (Claude Code)",
 	codex: "codex-cli 0.157.0",
-	pi: "1.5.2",
+	pi: SUPPORTED_PI_VERSION,
 };
 
 export function parseFakeAgentProvider(value: string | undefined): FakeAgentProvider {
@@ -127,7 +128,7 @@ function findOptionValue(args: readonly string[], optionName: string): string | 
 	return null;
 }
 
-// Pi 1.5.2's native value-taking options consume the next token, even when it
+// Pi's native value-taking options consume the next token, even when it
 // looks like a flag. Keep literal system prompts out of renderer/resume detection.
 const PI_OPTIONS_WITH_VALUES = new Set([
 	"--provider",
