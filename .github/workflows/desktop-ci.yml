@@ -70,6 +70,14 @@ jobs:
           npm --prefix desktop run make -- --arch="$TARGET_ARCH"
           npm --prefix desktop run verify -- --manifest "out/artifact-manifest-win32-$TARGET_ARCH.json"
           npm run --silent agent:desktop -- smoke --app "desktop/out/Quarterdeck-win32-$TARGET_ARCH" --json
+      - name: Upload synthetic Windows lab evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-lab-windows-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: test-results/agent-lab/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload local Windows candidate
         uses: actions/upload-artifact@v7
         with:
@@ -77,7 +85,6 @@ jobs:
           path: |
             desktop/out/make/**/*.zip
             desktop/out/artifact-manifest-win32-${{ matrix.arch }}.json
-            test-results/agent-lab/
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

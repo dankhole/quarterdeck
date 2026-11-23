@@ -61,6 +61,8 @@ Normal acceptance requires confirmed graceful Quit, no remaining owned processes
 
 Renderer-crash recovery reobserves the original captured document through an observation-only CDP client, bound to exact process/profile/WebContents/document identity. The original Electron application remains the Quit owner. A fresh unrelated browser or product window is not proof of recovering that document.
 
+The smoke uses the Settings button’s test ID to detect the mounted toolbar. Modal dialogs can hide that toolbar from accessibility queries without unmounting it. Settings opens with a normal click and an assertion that the Settings dialog appeared. Only startup onboarding is dismissed automatically; verify and close recovered-draft review explicitly.
+
 On Windows, native lab evidence covers actual installation locks, Chromium/crashpad job membership, ConPTY, replacement, shortcut replacement and uninstall under a private profile. An app manifest with `status: "stopped"` confirms the end of the application run. The runner may still be verifying or replacing the installation. Check `windows-installation-phase.json` for progress and `windows-installation-lifecycle.json` for the completed lifecycle receipt. It does not prove a real user's Start menu, SmartScreen, minimum Windows release or another architecture.
 
 The Windows lifecycle checks wait for xterm to acknowledge the task's synthetic output on the paired terminal sockets. This includes the historical redraw through its current prompt. The macOS checks use an inline OSC 52 receipt, which ConPTY did not deliver in the Windows lab. Both lanes check the Files clipboard action separately through the simulated host ledger.

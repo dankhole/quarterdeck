@@ -4,6 +4,7 @@ import {
 	desktopEnvironmentSnapshotSchema,
 } from "../../src/shared/desktop-environment-contract";
 import type { DesktopLabDriver } from "./desktop-driver";
+import { desktopSettingsButton, openDesktopSettings } from "./desktop-settings";
 
 async function readEnvironment(page: Page) {
 	return desktopEnvironmentSnapshotSchema.parse(
@@ -42,8 +43,7 @@ export async function exerciseDesktopEnvironmentSettings(page: Page, driver: Des
 
 	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
 	const open = async (): Promise<void> => {
-		await page.getByRole("button", { name: "Settings", exact: true }).click();
-		await settings.waitFor({ state: "visible" });
+		await openDesktopSettings(page);
 		await settings.getByRole("button", { name: "Runtime environment", exact: true }).click();
 		await settings
 			.getByRole("checkbox", { name: "Import login-shell environment (saves immediately)", exact: true })
@@ -79,7 +79,7 @@ export async function exerciseDesktopEnvironmentSettings(page: Page, driver: Des
 		generation,
 		{ timeout: 45_000 },
 	);
-	await page.getByRole("button", { name: "Settings", exact: true }).waitFor({ state: "visible" });
+	await desktopSettingsButton(page).waitFor({ state: "visible" });
 	const refreshed = await readEnvironment(page);
 	if (refreshed.ownership !== "owned" || refreshed.appliedImportLoginShellEnvironment !== true)
 		throw new Error("Guarded desktop refresh did not apply the saved environment choice.");

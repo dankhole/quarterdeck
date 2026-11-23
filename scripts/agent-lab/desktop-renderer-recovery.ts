@@ -13,6 +13,7 @@ import {
 import { type DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import type { DesktopEvaluationModule } from "./desktop-evaluation-types";
 import { listDesktopProcesses, sameDesktopProcess } from "./desktop-processes";
+import { desktopSettingsButton, dismissDesktopOnboarding, openDesktopSettings } from "./desktop-settings";
 import { type DesktopLabProcess, type DesktopProcessEvidence, DesktopProcessEvidenceSchema } from "./desktop-types";
 import { writeJsonAtomic } from "./paths";
 
@@ -613,7 +614,7 @@ async function productPage(
 				if (page.isClosed() || !page.url().startsWith("app://quarterdeck/")) continue;
 				const locator =
 					name === "Settings"
-						? page.getByRole("button", { name, exact: true })
+						? desktopSettingsButton(page)
 						: name === "Unsaved files"
 							? page.getByRole("dialog", { name, exact: true })
 							: page.getByRole("heading", { name, exact: true });
@@ -668,8 +669,7 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 		projectId: matchingProjects[0].projectId,
 		contentSha256: createHash("sha256").update(draft).digest("hex"),
 	};
-	await page.getByRole("button", { name: "Settings", exact: true }).click();
-	const settings = page.getByRole("dialog", { name: "Settings" });
+	const settings = await openDesktopSettings(page);
 	await settings.getByRole("button", { name: "Terminal & editor", exact: true }).click();
 	if ((await settings.getByRole("combobox", { name: "File editor autosave" }).inputValue()) !== "off")
 		throw new Error("Renderer recovery fixture must begin with file autosave disabled.");
@@ -703,8 +703,8 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 	await sourceMustRemainUnchanged(sourcePath, original);
 	await driver.inspect("renderer-crashed");
 	await failedPage.getByRole("link", { name: "Reload window", exact: true }).click();
-	// Hydration opens the recovered-draft review before the product toolbar can
-	// participate in accessibility queries. Preserve it until Files owns its workspace.
+	// Hydration opens the recovered-draft review over the mounted product toolbar.
+	// Verify and close the review without changing the draft before using the toolbar.
 	const reviewPage = await productPage(driver, "Unsaved files");
 	await verifyDesktopRecoveredDirtyFixture(
 		reviewPage,
@@ -713,12 +713,12 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 	);
 	await closeDesktopRecoveredDraftReview(reviewPage, draft, () => sourceMustRemainUnchanged(sourcePath, original));
 	const recoveredPage = await productPage(driver, "Settings");
+	await dismissDesktopOnboarding(recoveredPage);
 	await openDesktopPrimaryProject(recoveredPage);
 	assertDesktopRendererRecovery(before, await checkpoint(driver));
 	// Enable the existing delay policy before restoring: recovered text must still
 	// require a deliberate Save, even after the ordinary 1.5-second autosave period.
-	await recoveredPage.getByRole("button", { name: "Settings", exact: true }).click();
-	const recoveredSettings = recoveredPage.getByRole("dialog", { name: "Settings" });
+	const recoveredSettings = await openDesktopSettings(recoveredPage);
 	await recoveredSettings.getByRole("button", { name: "Terminal & editor", exact: true }).click();
 	await recoveredSettings.getByRole("combobox", { name: "File editor autosave" }).selectOption("delay");
 	await recoveredSettings.getByRole("button", { name: "Save changes", exact: true }).click();

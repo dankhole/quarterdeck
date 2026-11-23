@@ -4,7 +4,9 @@ Quarterdeck's reusable test workflow runs `Windows native` (source checks) in pa
 
 ## Clean validation
 
-Run these commands from a fresh Windows checkout with Git, Node.js 22.23.2, and npm 11.19.1. Do not run the focused smoke as well as this full sequence on the same unchanged tree; `npm run check` already includes its integration specs.
+Run these commands from a fresh Windows checkout in a non-elevated shell with Git, Node.js 22.23.2, and npm 11.19.1. Do not run the focused smoke as well as this full sequence on the same unchanged tree; `npm run check` already includes its integration specs.
+
+Desktop admission requires newly created metadata to be owned by the current user, as in a normal per-user install. The hosted full check matches Desktop CI by using Git Bash, whose [Windows runtime sets the process token's default owner to the current user](https://github.com/git-for-windows/msys2-runtime/blob/main/winsup/cygwin/uinfo.cc#L73-L85). This avoids Administrators-owned fixtures without changing system policy or relaxing admission.
 
 ```powershell
 npm ci

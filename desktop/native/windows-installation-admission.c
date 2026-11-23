@@ -313,7 +313,33 @@ static int launch_admitted(const wchar_t *lock, const wchar_t *host, const wchar
     return result < 0 ? refuse("could not launch the admitted host.") : (int)result;
 }
 
+#ifdef QUARTERDECK_ADMISSION_TEST
+/* Explorer presence is a fixture prerequisite, not proof that the real handoff works. */
+static int test_explorer_presence(void) {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        report_failure("Explorer probe", "could not snapshot processes", GetLastError());
+        return 73;
+    }
+    PROCESSENTRY32W row = {0};
+    row.dwSize = sizeof(row);
+    BOOL more = Process32FirstW(snapshot, &row);
+    while (more && _wcsicmp(row.szExeFile, L"explorer.exe")) more = Process32NextW(snapshot, &row);
+    DWORD error = more ? ERROR_SUCCESS : GetLastError();
+    CloseHandle(snapshot);
+    if (!more && error != ERROR_NO_MORE_FILES) {
+        report_failure("Explorer probe", "could not enumerate processes", error);
+        return 73;
+    }
+    puts(more ? "present" : "absent");
+    return 0;
+}
+#endif
+
 int wmain(int argc, wchar_t **argv) {
+#ifdef QUARTERDECK_ADMISSION_TEST
+    if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-explorer")) return test_explorer_presence();
+#endif
 #ifdef QUARTERDECK_ADMISSION_LAB_PROFILE
     if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-check-shortcut")) return quarterdeck_shortcut(2);
 #endif

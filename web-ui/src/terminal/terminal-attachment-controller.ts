@@ -48,7 +48,6 @@ export class TerminalAttachmentController {
 	private readonly viewport: TerminalViewport;
 	private readonly session: TerminalSessionHandle;
 	private showTimestamp: number | null = null;
-	private attachmentGeneration = 0;
 
 	constructor(
 		private readonly slotId: number,
@@ -115,15 +114,16 @@ export class TerminalAttachmentController {
 				void this.viewport.enqueueWrite(data, options);
 			},
 			applyRestore: async (snapshot, cols, rows) => {
-				const generation = this.attachmentGeneration;
+				const generation = this.session.connectionGeneration;
+				const isCurrentConnection = () => generation === this.session.connectionGeneration;
 				await this.viewport.applyRestoreSnapshot(snapshot, cols, rows);
-				if (generation !== this.attachmentGeneration) {
+				if (!isCurrentConnection()) {
 					return;
 				}
 				const isInteractive = await this.viewport.finalizeRestorePresentation({
 					hasActiveIoSocket: this.session.hasIoSocket,
 				});
-				if (isInteractive && generation === this.attachmentGeneration) {
+				if (isInteractive && isCurrentConnection()) {
 					this.session.notifyConnectionReadyAfterRestore(this.showTimestamp);
 					this.showTimestamp = null;
 				}
@@ -208,7 +208,6 @@ export class TerminalAttachmentController {
 			return;
 		}
 		clearTerminalGeometry(previousTaskId);
-		this.attachmentGeneration += 1;
 		this.showTimestamp = null;
 		this.viewport.hide();
 		// Queue the reset before returning control to the pool. A slot can be

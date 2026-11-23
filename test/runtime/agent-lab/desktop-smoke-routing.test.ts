@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => {
 		evaluate: vi.fn(async () => ({ nodeRequire: false, nodeProcess: false })),
 		locator: vi.fn(() => locator),
 		getByRole: vi.fn(() => locator),
+		getByTestId: vi.fn(() => locator),
 		keyboard: { type: vi.fn(async () => {}), press: vi.fn(async (_key: string) => {}) },
 	};
 	const driver = {
@@ -176,6 +177,7 @@ describe.skipIf(process.platform !== "darwin")("packaged scenario routing", () =
 
 	it("routes performance without crash/reload, second launch or main loss", async () => {
 		await runDesktopSmoke({ appPath: fixture.manifest.appPath, performance: true });
+		expect(mocks.page.getByTestId).toHaveBeenCalledWith("open-settings-button");
 		expect(exercisePackagedDesktopPerformance).toHaveBeenCalledExactlyOnceWith(
 			mocks.page,
 			expect.objectContaining({ fixture }),

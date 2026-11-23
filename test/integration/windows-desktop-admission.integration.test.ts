@@ -4,7 +4,6 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { listWindowsDesktopProcesses } from "../../scripts/agent-lab/desktop-windows-processes.js";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
 import { resolveWindowsSystem32ExecutablePath } from "../../src/core/windows-system-paths.js";
 import { acquireDesktopMutation } from "../../src/desktop-install/admission.js";
@@ -159,7 +158,7 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		);
 		expect(JSON.parse(stdout)).toEqual({ fd: 198, path: lock });
 	});
-	it("keeps arbitrary lock paths and synthetic launch commands out of the production helper", async () => {
+	it("keeps arbitrary lock paths and test-only commands out of the production helper", async () => {
 		await expect(
 			execute(production, ["--quarterdeck-acquire-mutation", join(root, "foreign.lock")], {
 				timeout: 10000,
@@ -171,6 +170,9 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 				timeout: 10000,
 				windowsHide: true,
 			}),
+		).rejects.toMatchObject({ code: 73 });
+		await expect(
+			execute(production, ["--quarterdeck-test-explorer"], { timeout: 10000, windowsHide: true }),
 		).rejects.toMatchObject({ code: 73 });
 	});
 	it("preserves the private Node IPC channel through native admission", async () => {
@@ -349,10 +351,16 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 	);
 
 	it("hands updates to Explorer outside the application's non-breakaway job", async (context) => {
-		if (!(await listWindowsDesktopProcesses()).some((row) => /\\explorer\.exe(?:"|\s|$)/iu.test(row.command))) {
+		const { stdout } = await execute(executable, ["--quarterdeck-test-explorer"], {
+			timeout: 10_000,
+			windowsHide: true,
+		});
+		const explorer = stdout.trim();
+		if (explorer === "absent") {
 			context.skip();
 			return;
 		}
+		expect(explorer).toBe("present");
 		const directory = join(root, "update-broker");
 		await ensurePrivateDirectory(directory);
 		const marker = join(directory, "ready"),

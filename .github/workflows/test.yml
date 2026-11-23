@@ -110,4 +110,7 @@ jobs:
 
       - name: Check (includes native Windows smoke)
         if: ${{ !inputs.focused_windows }}
+        # Git Bash sets the process token's default owner to the current user.
+        # Match Desktop CI so admission fixtures don't inherit Administrators ownership.
+        shell: bash
         run: npm run check

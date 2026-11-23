@@ -15,6 +15,8 @@ const CONNECTION_READY_FALLBACK_MS = 1500;
 
 export interface PersistentTerminalSubscriber {
 	onConnectionReady?: (taskId: string) => void;
+	/** The live session reported on the current control connection when input is ready, or null. */
+	onInputSessionChange?: (summary: RuntimeTaskSessionSummary | null) => void;
 	onContentPending?: (pending: boolean) => void;
 	onLastError?: (message: string | null) => void;
 	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
@@ -47,12 +49,14 @@ export class TerminalSessionHandle {
 	private taskId: string | null = null;
 	private projectId: string | null = null;
 	private latestSummary: RuntimeTaskSessionSummary | null = null;
+	private summaryConnectionVersion = -1;
 	private lastError: string | null = null;
 	private contentPending = false;
 	private onceConnectionReadyCallback: (() => void) | null = null;
 	private connectTimestamp: number | null = null;
 	private restoreRequestTimestamp: number | null = null;
 	private connectionReadyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+	private connectionVersion = 0;
 
 	constructor(
 		private readonly slotId: number,
@@ -77,7 +81,17 @@ export class TerminalSessionHandle {
 			onIoOpen: () => {
 				if (!this.sockets.connectionReady) {
 					this.scheduleConnectionReadyFallback();
+				} else {
+					this.notifyInputSessionChange();
 				}
+			},
+			onIoClose: () => {
+				this.connectionVersion++;
+				this.notifyInputSessionChange();
+			},
+			onControlClose: () => {
+				// Losing the state source ends scoped input readiness, not IO presentation.
+				this.notifyInputSessionChange();
 			},
 			onConnectionReady: () => {
 				this.notifyConnectionReady();
@@ -158,6 +172,10 @@ export class TerminalSessionHandle {
 		return this.sockets.connectionReady;
 	}
 
+	get connectionGeneration(): number {
+		return this.connectionVersion;
+	}
+
 	get restoreCompleted(): boolean {
 		return this.sockets.restoreCompleted;
 	}
@@ -200,6 +218,8 @@ export class TerminalSessionHandle {
 		this.clearConnectionReadyFallback();
 		this.sockets.closeAll();
 		this.sockets.resetConnectionState();
+		this.connectionVersion++;
+		this.notifyInputSessionChange();
 		this.connectTimestamp = performance.now();
 		this.restoreRequestTimestamp = null;
 		this.sockets.connectIo(this.taskId, this.projectId);
@@ -233,7 +253,9 @@ export class TerminalSessionHandle {
 		const previousTaskId = this.taskId;
 		this.sockets.closeAll();
 		this.sockets.resetConnectionState();
+		this.connectionVersion++;
 		this.latestSummary = null;
+		this.notifyInputSessionChange();
 		this.setContentPending(false);
 		this.lastError = null;
 		this.restoreRequestTimestamp = null;
@@ -259,6 +281,7 @@ export class TerminalSessionHandle {
 		if (this.sockets.connectionReady && this.taskId) {
 			subscriber.onConnectionReady?.(this.taskId);
 		}
+		subscriber.onInputSessionChange?.(this.inputSession);
 		return () => {
 			this.subscribers.delete(subscriber);
 		};
@@ -296,6 +319,8 @@ export class TerminalSessionHandle {
 
 	dispose(): void {
 		this.sockets.closeAll();
+		this.connectionVersion++;
+		this.notifyInputSessionChange();
 		this.clearConnectionReadyFallback();
 		this.subscribers.clear();
 		this.onceConnectionReadyCallback = null;
@@ -337,6 +362,7 @@ export class TerminalSessionHandle {
 		}
 		const taskId = this.taskId;
 		const projectId = this.projectId;
+		const generation = this.connectionGeneration;
 		log.warn(`slot ${this.slotId} terminal restore readiness fallback`, {
 			taskId,
 			projectId,
@@ -352,6 +378,7 @@ export class TerminalSessionHandle {
 		}
 		if (
 			this.callbacks.isDisposed() ||
+			generation !== this.connectionGeneration ||
 			this.taskId !== taskId ||
 			this.projectId !== projectId ||
 			this.sockets.connectionReady ||
@@ -385,6 +412,9 @@ export class TerminalSessionHandle {
 	private handleState(payload: RuntimeTerminalWsServerMessage & { type: "state" }): void {
 		const previousSummary = this.latestSummary;
 		this.latestSummary = payload.summary;
+		// A state change can synchronously replace the sockets below. Preserve the
+		// source generation so the replacement must observe its own live summary.
+		this.summaryConnectionVersion = this.connectionGeneration;
 		if (!payload.summary.agentId || payload.summary.pid === null) {
 			this.setContentPending(false);
 		} else if (
@@ -398,6 +428,22 @@ export class TerminalSessionHandle {
 		for (const subscriber of this.subscribers) {
 			subscriber.onSummary?.(payload.summary);
 		}
+		this.notifyInputSessionChange();
+	}
+
+	private get inputSession(): RuntimeTaskSessionSummary | null {
+		return this.summaryConnectionVersion === this.connectionGeneration &&
+			this.sockets.connectionReady &&
+			this.sockets.isIoOpen &&
+			this.sockets.isControlOpen &&
+			this.latestSummary?.pid != null
+			? this.latestSummary
+			: null;
+	}
+
+	private notifyInputSessionChange(): void {
+		const summary = this.inputSession;
+		for (const subscriber of this.subscribers) subscriber.onInputSessionChange?.(summary);
 	}
 
 	private handleExit(code: number | null): void {
@@ -461,6 +507,7 @@ export class TerminalSessionHandle {
 		for (const subscriber of this.subscribers) {
 			subscriber.onConnectionReady?.(taskId);
 		}
+		this.notifyInputSessionChange();
 		if (this.onceConnectionReadyCallback) {
 			const callback = this.onceConnectionReadyCallback;
 			this.onceConnectionReadyCallback = null;

@@ -45,6 +45,7 @@ import {
 	prepareDesktopSessionRecovery,
 	validateDesktopSessionRecoverySelection,
 } from "./desktop-session-recovery";
+import { desktopSettingsButton, dismissDesktopOnboarding } from "./desktop-settings";
 import { type DesktopAgentMode, DesktopProcessEvidenceSchema } from "./desktop-types";
 import { proveWindowsChromiumCustody } from "./desktop-windows-custody";
 import { assertWindowsDesktopInUse, finishWindowsDesktopLifecycle } from "./desktop-windows-fixture";
@@ -58,11 +59,6 @@ async function waitFor(condition: () => Promise<boolean>, label: string, timeout
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
 	throw new Error(`Desktop smoke timed out waiting for ${label}.`);
-}
-
-async function dismissOnboarding(page: Page): Promise<void> {
-	const onboarding = page.getByRole("dialog", { name: "Get started" });
-	if (await onboarding.isVisible()) await page.keyboard.press("Escape");
 }
 
 async function invokeNativeMenu(driver: DesktopLabDriver, id: "desktop.reload" | "desktop.restartRuntime") {
@@ -359,8 +355,8 @@ async function exerciseRuntimePersistence(page: Page, driver: DesktopLabDriver, 
 			45_000,
 		);
 		await offline.waitFor({ state: "hidden", timeout: 45_000 });
-		await page.getByRole("button", { name: "Settings", exact: true }).waitFor({ state: "visible", timeout: 45_000 });
-		await dismissOnboarding(page);
+		await desktopSettingsButton(page).waitFor({ state: "visible", timeout: 45_000 });
+		await dismissDesktopOnboarding(page);
 		await openDesktopPrimaryProject(page);
 		await page.locator(`[data-task-id="${taskId}"]`).first().waitFor({ state: "visible" });
 		await driver.markReady();
@@ -582,10 +578,8 @@ export async function runDesktopSmoke(options: {
 		if (recoverySeed) {
 			await exerciseDesktopSessionRecovery(page, driver, recoverySeed);
 		} else {
-			await page
-				.getByRole("button", { name: "Settings", exact: true })
-				.waitFor({ state: "visible", timeout: 45_000 });
-			await dismissOnboarding(page);
+			await desktopSettingsButton(page).waitFor({ state: "visible", timeout: 45_000 });
+			await dismissDesktopOnboarding(page);
 			if (npmPreparation) await assertDesktopNpmInitialProject(page, fixture);
 			else await openDesktopPrimaryProject(page);
 		}
@@ -683,8 +677,8 @@ export async function runDesktopSmoke(options: {
 				page.waitForEvent("domcontentloaded", { timeout: 25_000 }),
 				invokeNativeMenu(driver, "desktop.reload"),
 			]);
-			await page.getByRole("button", { name: "Settings", exact: true }).waitFor({ state: "visible" });
-			await dismissOnboarding(page);
+			await desktopSettingsButton(page).waitFor({ state: "visible" });
+			await dismissDesktopOnboarding(page);
 			await openDesktopPrimaryProject(page);
 			await assertRendererIsolation(page);
 			await driver.inspect("renderer-reloaded");

@@ -7,6 +7,7 @@ import {
 } from "../../src/core/api/host-integrations";
 import { type DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import { readDesktopTaskSession } from "./desktop-session-evidence";
+import { openDesktopSettings } from "./desktop-settings";
 import { writeJsonAtomic } from "./paths";
 
 async function waitFor(check: () => Promise<boolean>, label: string, timeoutMs = 20_000): Promise<void> {
@@ -149,9 +150,7 @@ async function exerciseDesktopHostCoverage(page: Page, driver: DesktopLabDriver)
 			),
 		"scoped IDE request",
 	);
-	await page.getByTestId("open-settings-button").click();
-	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-	await settings.waitFor({ state: "visible" });
+	const settings = await openDesktopSettings(page);
 	await settings.getByRole("button", { name: "Open configuration file for all projects", exact: true }).click();
 	await waitFor(
 		async () =>
