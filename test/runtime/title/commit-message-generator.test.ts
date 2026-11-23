@@ -60,6 +60,8 @@ function createContext(
 
 describe("generateCommitMessage", () => {
 	beforeEach(() => {
+		// Mock providers take no simulated time; assert their budgets independently of host scheduling.
+		vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
 		resetGenerationHelperPolicyForTests();
 		callLlmMock.mockReset();
 		callCodexMock.mockReset().mockResolvedValue(null);
