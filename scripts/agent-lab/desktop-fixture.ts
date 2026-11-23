@@ -99,6 +99,7 @@ export async function prepareDesktopLabFixture(options: {
 				await requireInstalledWindowsFakeAgentNode(
 					fixture.fakeBinPath,
 					join(app.appPath, "host/resources/runtime/bin/node.exe"),
+					launch.artifactDir,
 				);
 			}
 		}

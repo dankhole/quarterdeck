@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +39,8 @@ describe("synthetic agent launcher availability", () => {
 			}
 			const powershell = await readFile(join(root, `${provider}.ps1`), "utf8");
 			expect(powershell).toContain(getFakeAgentVersionOutput(provider));
+			expect(powershell).toContain("[Console]::Out.WriteLine($response)");
+			expect(powershell).not.toContain("Save-ProbePhase");
 			expect(powershell).toContain("$env:QUARTERDECK_AGENT_LAB_FAKE_AGENT @args");
 			expect(powershell).not.toContain("QUARTERDECK_AGENT_LAB_FAKE_CODEX");
 		} finally {
@@ -64,21 +66,54 @@ describe("synthetic agent launcher availability", () => {
 				};
 				const launcher = join(root, "codex.cmd");
 				function run(args: string[], path = env.PATH) {
-					const options = { cwd: root, env: { ...env, PATH: path }, timeout: 5_000 };
-					if (shell === "cmd") {
-						return execFileAsync(resolveWindowsComSpec(env), [buildWindowsCmdArgsCommandLine(launcher, args)], {
-							...options,
-							windowsVerbatimArguments: true,
-						});
-					}
-					const command = resolveWindowsCompatibleCommand(launcher, args, "win32", env);
-					return execFileAsync(command.binary, command.args, options);
+					const procEnv = { ...env, PATH: path };
+					const options = { cwd: root, env: procEnv, timeout: 5_000, windowsHide: true };
+					const command =
+						shell === "cmd"
+							? {
+									binary: resolveWindowsComSpec(procEnv),
+									args: [buildWindowsCmdArgsCommandLine(launcher, args)],
+								}
+							: resolveWindowsCompatibleCommand(launcher, args, "win32", procEnv);
+					const result = execFileAsync(command.binary, command.args, {
+						...options,
+						windowsVerbatimArguments: shell === "cmd",
+					});
+					result.child.stdin?.end();
+					return result;
 				}
-				const args = ["resume", "exact-session-id", "synthetic prompt with spaces"];
-				await requireInstalledWindowsFakeAgentNode(root, process.execPath);
-				expect((await run(["--version"], "")).stdout.trim()).toBe(getFakeAgentVersionOutput("codex"));
+				const args = [
+					...(shell === "powershell" ? ["-c", 'developer_instructions="Stay in the synthetic worktree."'] : []),
+					"resume",
+					"exact-session-id",
+					"synthetic prompt with spaces",
+				];
+				const artifactDir = join(root, "lab's réceipts");
+				const probeDir = join(artifactDir, "windows-fake-agent-probes");
+				await requireInstalledWindowsFakeAgentNode(root, process.execPath, artifactDir);
+				for (const [probeArgs, output] of [
+					[["--version"], getFakeAgentVersionOutput("codex")],
+					[["features", "list"], "hooks                                stable             true"],
+				] satisfies [string[], string][]) {
+					const result = await run(probeArgs, "");
+					expect(result.stdout.trim()).toBe(output);
+					expect(result.stderr).toBe("");
+				}
 				await expect(run(args, "")).rejects.toMatchObject({ stdout: "" });
 				expect(JSON.parse((await run(args)).stdout)).toEqual([fakeAgent, ...args]);
+				if (shell === "powershell") {
+					expect((await readdir(probeDir)).sort()).toEqual(["codex-features.txt", "codex-version.txt"]);
+					for (const name of ["codex-features.txt", "codex-version.txt"]) {
+						const receipt = await readFile(join(probeDir, name), "utf8");
+						expect(receipt).toMatch(/^\d{4}-\d\d-\d\dT\S+Z\t[1-9]\d*\tstdout-flushed$/u);
+					}
+					await rm(probeDir, { recursive: true });
+					const withoutReceipt = await run(["--version"], "");
+					expect(withoutReceipt.stdout.trim()).toBe(getFakeAgentVersionOutput("codex"));
+					expect(withoutReceipt.stderr).toBe("");
+				} else {
+					expect(await readdir(probeDir)).toEqual([]);
+				}
 
 				// The same working PATH Node must be rejected when it isn't this installation's Node.
 				const otherNode = join(root, "other-node.exe");
