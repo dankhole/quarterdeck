@@ -66,17 +66,30 @@ async function flush() {
 class FakeTerminal implements TaskTerminalHandle {
 	private readonly subscribers = new Set<TaskTerminalSubscriber>();
 	private ready = false;
+	private transportSummary = summary();
 	subscribe = (subscriber: TaskTerminalSubscriber) => {
 		this.subscribers.add(subscriber);
-		subscriber.onSummary?.(summary());
+		subscriber.onSummary?.(this.transportSummary);
 		if (this.ready) subscriber.onConnectionReady?.(HOME);
+		subscriber.onInputSessionChange?.(this.ready ? this.transportSummary : null);
 		return () => {
 			this.subscribers.delete(subscriber);
 		};
 	};
 	markReady() {
 		this.ready = true;
-		for (const subscriber of this.subscribers) subscriber.onConnectionReady?.(HOME);
+		for (const subscriber of this.subscribers) {
+			subscriber.onConnectionReady?.(HOME);
+			subscriber.onInputSessionChange?.(this.transportSummary);
+		}
+	}
+	reconnect(value: RuntimeTaskSessionSummary) {
+		this.ready = false;
+		this.transportSummary = value;
+		for (const subscriber of this.subscribers) {
+			subscriber.onInputSessionChange?.(null);
+			subscriber.onSummary?.(value);
+		}
 	}
 	emitExit() {
 		for (const subscriber of this.subscribers) subscriber.onExit?.(HOME, 1);
@@ -189,7 +202,7 @@ describe("manual shell exact-viewer readiness and lifetime", () => {
 		vi.useRealTimers();
 	});
 
-	it("waits for exact controller readiness when transport becomes ready before the start response", async () => {
+	it("replays exact transport readiness after the start response without replacing the viewer", async () => {
 		const start = deferred<{ ok: boolean; summary: RuntimeTaskSessionSummary; hadExistingSession: boolean }>();
 		mocks.start.mockReturnValueOnce(start.promise);
 		await render();
@@ -201,28 +214,30 @@ describe("manual shell exact-viewer readiness and lifetime", () => {
 				settled = true;
 			});
 		});
-		await action(() => latestTerminal().markReady());
+		const viewer = latestTerminal();
+		await action(() => viewer.markReady());
 		expect(getTerminalController(HOME)).toBeNull();
-		await action(() => start.resolve({ ok: true, summary: summary(), hadExistingSession: false }));
-		expect(terminals).toHaveLength(2);
-		expect(
-			getTerminalController(HOME, { projectId: "project-1", sessionInstanceId: "shell-instance" }),
-		).not.toBeNull();
-		expect(getTerminalControllerAttachment(HOME)?.ready).toBe(false);
 		expect(settled).toBe(false);
-		await action(() => latestTerminal().markReady());
+		await action(() => start.resolve({ ok: true, summary: summary(), hadExistingSession: false }));
+		expect(terminals).toEqual([viewer]);
+		expect(getTerminalControllerAttachment(HOME)?.ready).toBe(true);
+		expect(settled).toBe(true);
 		const prepared = await preparation;
 		expect(prepared).toMatchObject({ ok: true, targetSessionInstanceId: "shell-instance" });
 		expect(prepared.isCurrent?.()).toBe(true);
 		expect(getTerminalController(HOME)?.input("run command")).toBe(true);
 	});
 
-	it("does not accept the already-ready old viewer while a corrected start timestamp awaits React commit", async () => {
+	it("waits for the corrected start timestamp and a ready transport on the same viewer", async () => {
 		await render();
 		await action(() => snapshot.handleToggleHomeTerminal());
-		await action(() => latestTerminal().markReady());
+		const viewer = latestTerminal();
+		await action(() => viewer.markReady());
+		const oldAttachment = getTerminalControllerAttachment(HOME);
+		expect(oldAttachment?.ready).toBe(true);
 		await action(() => snapshot.setSummary(summary({ pid: null, state: "idle" })));
-		mocks.start.mockResolvedValueOnce({ ok: true, summary: summary({ startedAt: 20 }), hadExistingSession: true });
+		const correctedSummary = summary({ startedAt: 20 });
+		mocks.start.mockResolvedValueOnce({ ok: true, summary: correctedSummary, hadExistingSession: true });
 		let preparation!: ReturnType<UseTerminalPanelsResult["prepareTerminalForShortcut"]>;
 		let settled = false;
 		await action(() => {
@@ -231,9 +246,19 @@ describe("manual shell exact-viewer readiness and lifetime", () => {
 				settled = true;
 			});
 		});
+		const replacement = getTerminalControllerAttachment(HOME, {
+			projectId: "project-1",
+			sessionInstanceId: "shell-instance",
+			sessionStartedAt: 20,
+		});
+		expect(oldAttachment?.signal.aborted).toBe(true);
+		expect(terminals).toEqual([viewer]);
+		expect(replacement?.ready).toBe(false);
 		expect(settled).toBe(false);
-		expect(getTerminalControllerAttachment(HOME)?.ready).toBe(false);
-		await action(() => latestTerminal().markReady());
+		await action(() => viewer.reconnect(correctedSummary));
+		expect(replacement?.ready).toBe(false);
+		expect(settled).toBe(false);
+		await action(() => viewer.markReady());
 		expect(await preparation).toMatchObject({ ok: true, hadExistingSession: true });
 	});
 

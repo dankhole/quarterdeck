@@ -343,8 +343,9 @@ describe("usePersistentTerminalSession", () => {
 		const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
 		expect(controller.input("not yet connected")).toBe(false);
 		const subscriber = acquireTaskTerminalMock.mock.results.at(-1)?.value.subscribe.mock.calls.at(-1)?.[0];
-		subscriber.onSummary(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1" }));
-		subscriber.onConnectionReady("task-a");
+		subscriber.onInputSessionChange(
+			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1", startedAt: 100 }),
+		);
 		expect(controller.input("current project")).toBe(true);
 	});
 
@@ -354,20 +355,25 @@ describe("usePersistentTerminalSession", () => {
 		await act(async () => root.render(<HookHarness taskId="task-a" projectId="project-1" sessionStartedAt={100} />));
 		const controller = registerTerminalControllerMock.mock.calls.at(-1)?.[1];
 		const subscriber = terminal.subscribe.mock.calls.at(-1)?.[0];
-		subscriber?.onConnectionReady?.("task-a");
-		subscriber?.onSummary?.(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "old-session" }));
+		subscriber?.onInputSessionChange?.(
+			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "old-session", startedAt: 100 }),
+		);
 		const draftOptions = { asAgentDraft: true };
 		expect(controller.input("wrong session")).toBe(false);
 		expect(controller.paste("wrong session", draftOptions)).toBe(false);
-		subscriber?.onSummary?.(createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1" }));
+		subscriber?.onInputSessionChange?.(
+			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "session-1", startedAt: 100 }),
+		);
 		expect(controller.input("current session")).toBe(true);
 		expect(controller.paste("first\nsecond", draftOptions)).toBe(true);
 		expect(terminal.paste).toHaveBeenCalledExactlyOnceWith("first\nsecond", draftOptions);
-		subscriber?.onSummary?.(
-			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "replacement-session" }),
+		subscriber?.onInputSessionChange?.(
+			createTestTaskSessionSummary({ taskId: "task-a", sessionInstanceId: "replacement-session", startedAt: 200 }),
 		);
 		expect(controller.input("replaced session")).toBe(false);
 		expect(controller.paste("replaced session", draftOptions)).toBe(false);
+		subscriber?.onInputSessionChange?.(null);
+		expect(controller.input("closed connection")).toBe(false);
 	});
 
 	it("uses dedicated terminal path for home shell", async () => {

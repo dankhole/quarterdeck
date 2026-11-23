@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => ({
 		globalSetup: "./test/global-setup.ts",
 		exclude: [
 			".github/**", // Release policy checks use Node's test runner, not Vitest.
+			"scripts/agent-lab/windows-native-paste-probe.test.mjs", // Desktop CI runs this directly with node --test.
 			"apps/**",
 			"desktop/**",
 			"web-ui/**",

@@ -3,10 +3,10 @@ import { randomUUID } from "node:crypto";
 import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
 import { resolveWindowsPowerShellPath } from "../../src/core/windows-system-paths.js";
 import type { DesktopInstallation } from "../../src/desktop-install/index.js";
@@ -17,6 +17,7 @@ import {
 	type PreparedNpmUpdate,
 	prepareNpmUpdate,
 } from "../src/npm-update-runner.js";
+import * as updateWorker from "../src/npm-update-worker.js";
 import {
 	cleanupNpmUpdateDirectory,
 	identifyUpdateFile,
@@ -61,11 +62,25 @@ afterEach(async () => {
 });
 
 async function stop(child: ChildProcess): Promise<void> {
-	if (child.exitCode !== null || child.signalCode !== null) return;
+	if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
 	await new Promise<void>((resolve) => {
 		child.once("exit", () => resolve());
 		child.kill("SIGTERM");
 	});
+}
+
+function observeWorker(child: ChildProcess): Promise<{ code: number | null; output: string }> {
+	children.push(child);
+	let output = "";
+	const collect = (bytes: Buffer) => {
+		output += bytes.toString();
+	};
+	child.stdout?.on("data", collect);
+	child.stderr?.on("data", collect);
+	child.once("error", (error) => {
+		output += error.message;
+	});
+	return new Promise((resolve) => child.once("close", (code) => resolve({ code, output })));
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -83,15 +98,20 @@ async function fixture(mode = "success", overrides: NodeJS.ProcessEnv = {}) {
 	fixtures.push(root);
 	const prefix = join(root, "Node's $(unused) `literal` prefix");
 	const packageRoot = desktopGlobalPackageSlot(prefix);
-	const appPath = join(root, "Applications/Quarterdeck.app");
+	const windows = process.platform === "win32";
+	const appPath = windows ? join(root, "Programs", "Quarterdeck") : join(root, "Applications", "Quarterdeck.app");
+	const bundledBin = join(appPath, windows ? "host/resources/runtime/bin" : "Contents/Resources/runtime/bin");
+	const packageBin = join(packageRoot, "bin");
 	const receiptPath = join(root, "managed/managed-installation.json");
-	const npmRoot = join(prefix, process.platform === "win32" ? "node_modules/npm" : "lib/node_modules/npm");
-	const bin = process.platform === "win32" ? prefix : join(prefix, "bin");
+	const npmRoot = join(prefix, windows ? "node_modules/npm" : "lib/node_modules/npm");
+	const npmPath = join(npmRoot, "bin", "npm-cli.js");
+	const bin = windows ? prefix : join(prefix, "bin");
 	await Promise.all([
 		mkdir(join(packageRoot, "dist"), { recursive: true }),
-		mkdir(appPath, { recursive: true }),
+		mkdir(packageBin, { recursive: true }),
+		mkdir(bundledBin, { recursive: true }),
 		mkdir(dirname(receiptPath), { recursive: true }),
-		mkdir(join(npmRoot, "bin"), { recursive: true }),
+		mkdir(dirname(npmPath), { recursive: true }),
 		mkdir(bin, { recursive: true }),
 	]);
 	const installation: DesktopInstallation = {
@@ -133,10 +153,11 @@ async function fixture(mode = "success", overrides: NodeJS.ProcessEnv = {}) {
 		desktopLaunchProtocolVersion: 1,
 		updatesEnabled: false,
 		owner: installation.owner,
-		signing: { verified: true, teamId: "ABCDEFGHIJ" },
+		...(windows ? { distributionMode: "windows-unsigned" } : {}),
+		signing: windows ? { verified: false, teamId: null } : { verified: true, teamId: "ABCDEFGHIJ" },
 		release: {
 			manifestSha256: "d".repeat(64),
-			containerName: "synthetic.dmg",
+			containerName: windows ? "synthetic.zip" : "synthetic.dmg",
 			containerSha256: "e".repeat(64),
 			sourceSha: "b".repeat(40),
 		},
@@ -151,7 +172,10 @@ async function fixture(mode = "success", overrides: NodeJS.ProcessEnv = {}) {
 	};
 	await Promise.all([
 		writeFile(receiptPath, JSON.stringify(receipt)),
-		writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: "quarterdeck", version: "1.0.0" })),
+		writeFile(
+			join(packageRoot, "package.json"),
+			JSON.stringify({ name: "quarterdeck", version: "1.0.0", type: "module" }),
+		),
 		writeFile(join(packageRoot, "dist/build-manifest.json"), JSON.stringify(installation.owner.identity)),
 		writeFile(
 			join(packageRoot, "dist/cli.js"),
@@ -161,7 +185,7 @@ async function fixture(mode = "success", overrides: NodeJS.ProcessEnv = {}) {
 		writeFile(join(root, "status.json"), JSON.stringify({ state: "ready", pending: false, installation: updated })),
 	]);
 	await writeFile(
-		join(npmRoot, "bin/npm-cli.js"),
+		npmPath,
 		`#!/usr/bin/env node
 import {readFileSync,writeFileSync} from 'node:fs';
 if (process.argv[2] === '--version') { console.log('11.19.1'); process.exit(0); }
@@ -175,23 +199,19 @@ if (process.env.TEST_MODE === 'pending') result.pending=true;
 writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 `,
 	);
-	await chmod(join(npmRoot, "bin/npm-cli.js"), 0o700);
-	if (process.platform === "win32") await writeFile(join(bin, "npm.cmd"), "@echo synthetic npm shim");
-	else await symlink(join(npmRoot, "bin/npm-cli.js"), join(bin, "npm"));
+	await chmod(npmPath, 0o700);
+	if (windows) await writeFile(join(bin, "npm.cmd"), "@echo synthetic npm shim");
+	else await symlink(npmPath, join(bin, "npm"));
 	const node = await realpath(process.execPath);
 	const parent = spawn(node, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: { PATH: dirname(node) } });
 	children.push(parent);
 	if (!parent.pid) throw new Error("Synthetic parent did not start.");
-	let worker: ChildProcess | undefined;
-	let output = "";
+	let workerFinished: ReturnType<typeof observeWorker> | undefined;
 	let handoffDirectory = "";
 	const environment: NodeJS.ProcessEnv = {
 		HOME: root,
 		USERPROFILE: root,
-		PATH:
-			process.platform === "win32"
-				? [bin, join(appPath, "resources/runtime/bin"), join(packageRoot, "bin"), dirname(node)].join(";")
-				: `${bin}:${appPath}/Contents/Resources/runtime/bin:${packageRoot}/bin:${dirname(node)}:/usr/bin:/bin`,
+		PATH: [bin, bundledBin, packageBin, dirname(node), ...(windows ? [] : ["/usr/bin", "/bin"])].join(delimiter),
 		TEST_TRACE: join(root, "trace.json"),
 		TEST_STATUS: join(root, "status.json"),
 		TEST_MODE: mode,
@@ -223,60 +243,59 @@ writeFileSync(process.env.TEST_STATUS,JSON.stringify(result));
 						"synthetic-in-memory-only",
 					);
 					expect(privateWorker.startsWith(root)).toBe(true);
-					worker = spawn(
-						process.platform === "win32" ? resolveWindowsPowerShellPath() : "/bin/sh",
-						process.platform === "win32"
-							? ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", commandPath]
-							: [commandPath],
-						{
+					const command = windows ? resolveWindowsPowerShellPath() : "/bin/sh";
+					const args = windows
+						? ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", commandPath]
+						: [commandPath];
+					workerFinished = observeWorker(
+						spawn(command, args, {
 							stdio: ["ignore", "pipe", "pipe"],
-							env:
-								process.platform === "win32"
-									? { SystemRoot: process.env.SystemRoot }
-									: { PATH: "/usr/bin:/bin" },
-							cwd: process.platform === "win32" ? root : "/",
+							env: windows ? { SystemRoot: process.env.SystemRoot } : { PATH: "/usr/bin:/bin" },
+							cwd: windows ? root : "/",
 							windowsHide: true,
-						},
+						}),
 					);
-					children.push(worker);
-					worker.stdout?.on("data", (bytes: Buffer) => {
-						output += bytes.toString();
-					});
-					worker.stderr?.on("data", (bytes: Buffer) => {
-						output += bytes.toString();
-					});
 				},
 				...services,
 			},
 		);
 		prepared.push(handoff);
-		return handoff;
+		return {
+			...handoff,
+			async launch() {
+				try {
+					await handoff.launch();
+				} catch (error) {
+					if (!workerFinished) throw error;
+					const { code, output } = await workerFinished;
+					throw new Error(`Synthetic worker closed (${code}) during launch: ${output}`, { cause: error });
+				}
+			},
+		};
 	};
 	const finished = async () => {
-		if (!worker) throw new Error("No synthetic worker was launched.");
-		const code =
-			worker.exitCode ??
-			(await new Promise<number | null>((resolve) => worker?.once("exit", (code) => resolve(code))));
-		return { code, output };
+		if (!workerFinished) throw new Error("No synthetic worker was launched.");
+		return await workerFinished;
 	};
 	return {
 		root,
+		bundledBin,
+		packageBin,
+		npmPath,
 		installation,
 		receipt,
 		parent,
 		environment,
 		prepare,
 		finished,
-		output: () => output,
 		directory: () => handoffDirectory,
 		tracePath: join(root, "trace.json"),
 	};
 }
 
 async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
-	const directory = await mkdtemp(join(f.root, "raw-"));
-	await chmod(directory, 0o700);
-	if (process.platform === "win32") await ensurePrivateDirectory(directory);
+	const directory = await realpath(await mkdtemp(join(f.root, "raw-")));
+	await ensurePrivateDirectory(directory);
 	const installation = f.installation;
 	const request = npmUpdateRequestSchema.parse({
 		schemaVersion: 1,
@@ -285,15 +304,10 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 		parentPid: f.parent.pid,
 		authorizationTimeoutMs: 5_000,
 		parentExitTimeoutMs: 1_000,
-		verificationTimeoutMs: 500,
+		verificationTimeoutMs: 5_000,
 		targetVersion: "1.1.0",
 		node: await identifyUpdateFile(process.execPath),
-		npm: await identifyUpdateFile(
-			join(
-				installation.owner.prefix,
-				process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "lib/node_modules/npm/bin/npm-cli.js",
-			),
-		),
+		npm: await identifyUpdateFile(f.npmPath),
 		installation: {
 			appPath: installation.appPath,
 			receiptPath: installation.receiptPath,
@@ -316,31 +330,33 @@ async function rawWorker(f: Awaited<ReturnType<typeof fixture>>) {
 		server.once("error", reject);
 		server.listen(updateControlPath(directory), resolve);
 	});
-	const child = spawn(request.node.path, [join(directory, "worker.mjs"), directory], {
-		env: process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : { PATH: "/usr/bin:/bin" },
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-	children.push(child);
-	let output = "";
-	child.stdout?.on("data", (bytes: Buffer) => {
-		output += bytes.toString();
-	});
-	child.stderr?.on("data", (bytes: Buffer) => {
-		output += bytes.toString();
-	});
-	const finished = new Promise<{ code: number | null; output: string }>((resolve) =>
-		child.once("exit", (code) => resolve({ code, output })),
+	const finished = observeWorker(
+		spawn(request.node.path, [join(directory, "worker.mjs"), directory], {
+			env: process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : { PATH: "/usr/bin:/bin" },
+			stdio: ["ignore", "pipe", "pipe"],
+		}),
 	);
-	const channel = await admitted;
-	expect(await channel.next()).toEqual({ kind: "hello", token: request.token });
-	await channel.send({ kind: "environment", environment: f.environment });
-	expect(await channel.next()).toEqual({ kind: "ready" });
+	const channel = await Promise.race([
+		admitted,
+		finished.then(({ code, output }) => {
+			throw new Error(`Synthetic worker closed (${code}) before connecting: ${output}`);
+		}),
+	]);
+	try {
+		expect(await channel.next()).toEqual({ kind: "hello", token: request.token });
+		await channel.send({ kind: "environment", environment: f.environment });
+		expect(await channel.next()).toEqual({ kind: "ready" });
+	} catch (error) {
+		channel.socket.destroy();
+		const { code, output } = await finished;
+		throw new Error(`Synthetic worker closed (${code}) during readiness: ${output}`, { cause: error });
+	}
 	return { channel, finished, directory };
 }
 
-// These process integration tests probe external Node/npm and repeatedly hash the real
-// Node executable. Intel CI can exceed Vitest's 5s default before the protocol assertions;
-// allow the same 15s integration budget as root tests, preserving worker deadlines and assertions.
+// These process integration tests probe Node/npm and repeatedly hash the real executable.
+// Windows additionally starts PowerShell for ACL checks; allow that overhead without
+// changing the worker's authorization or parent-exit deadlines.
 describe("private npm update handoff", { timeout: process.platform === "win32" ? 45_000 : 15_000 }, () => {
 	it.each([undefined, "browser", "desktop"])(
 		"explicitly updates the desktop pair with inherited %s install mode",
@@ -369,11 +385,10 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 		const trace = JSON.parse(await readFile(f.tracePath, "utf8"));
 		expect(trace.args).toEqual(npmUpdateArguments(f.installation.owner.prefix, "1.1.0"));
 		expect(trace.installMode).toBe("desktop");
-		expect(trace.PATH.split(process.platform === "win32" ? ";" : ":")[0]).toBe(
-			dirname(await realpath(process.execPath)),
-		);
-		expect(trace.PATH).not.toContain(f.installation.appPath);
-		expect(trace.PATH).not.toContain(f.installation.owner.packageRoot);
+		const paths = trace.PATH.split(delimiter);
+		expect(paths[0]).toBe(dirname(await realpath(process.execPath)));
+		expect(paths).not.toContain(await realpath(f.bundledBin));
+		expect(paths).not.toContain(await realpath(f.packageBin));
 		expect(trace.lockFd).toBeUndefined();
 		expect(trace.nodeOptions).toBeUndefined();
 		expect(trace.secret).toBe("synthetic-in-memory-only");
@@ -414,7 +429,14 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 		await handoff.launch();
 		await handoff.authorize();
 		if (committed) handoff.commit();
-		await handoff.cancel();
+		// The separately bundled worker must clean up; the app must not race it.
+		const appCleanup = vi.spyOn(updateWorker, "cleanupNpmUpdateDirectory");
+		try {
+			await handoff.cancel();
+			expect(appCleanup).not.toHaveBeenCalled();
+		} finally {
+			appCleanup.mockRestore();
+		}
 		await stop(f.parent);
 		expect((await f.finished()).code).toBe(0);
 		expect(await exists(f.tracePath)).toBe(false);
@@ -524,6 +546,15 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 		expect(await exists(f.tracePath)).toBe(false);
 	});
 
+	it("preserves the preparation error cause without exposing it in retry guidance", async () => {
+		const f = await fixture();
+		const missingWorker = join(f.root, "missing-worker.mjs");
+		await expect(f.prepare({ workerPath: missingWorker })).rejects.toMatchObject({
+			message: expect.not.stringContaining(missingWorker),
+			cause: { code: "ENOENT", path: missingWorker },
+		});
+	});
+
 	it("rejects a PATH with Node but no npm without consulting a global prefix", async () => {
 		const f = await fixture();
 		const nodeOnly = join(f.root, "node-only");
@@ -531,17 +562,16 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 		if (process.platform === "win32") await copyFile(process.execPath, join(nodeOnly, "node.exe"));
 		else await symlink(process.execPath, join(nodeOnly, "node"));
 		f.environment.PATH = nodeOnly;
-		await expect(f.prepare()).rejects.toBeInstanceOf(NpmUpdatePreparationError);
+		await expect(f.prepare()).rejects.toThrow("A usable external npm");
 		expect(await exists(f.tracePath)).toBe(false);
 	});
 
 	it("does not accept bundled Node as the external update tool", async () => {
 		const f = await fixture();
-		const bundled = join(f.installation.appPath, "Contents/Resources/runtime/bin");
-		await mkdir(bundled, { recursive: true });
-		await writeFile(join(bundled, "node"), "#!/bin/sh\necho v22.22.2\n", { mode: 0o700 });
-		f.environment.PATH = bundled;
-		await expect(f.prepare()).rejects.toBeInstanceOf(NpmUpdatePreparationError);
+		const nodeName = process.platform === "win32" ? "node.exe" : "node";
+		await copyFile(process.execPath, join(f.bundledBin, nodeName));
+		f.environment.PATH = f.bundledBin;
+		await expect(f.prepare()).rejects.toThrow(`A usable external ${nodeName}`);
 		expect(await exists(f.tracePath)).toBe(false);
 	});
 
@@ -559,11 +589,7 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 		await handoff.launch();
 		await handoff.authorize();
 		handoff.commit();
-		const npm = join(
-			f.installation.owner.prefix,
-			process.platform === "win32" ? "node_modules/npm/bin/npm-cli.js" : "lib/node_modules/npm/bin/npm-cli.js",
-		);
-		await writeFile(npm, `${await readFile(npm, "utf8")}\n// changed\n`);
+		await writeFile(f.npmPath, `${await readFile(f.npmPath, "utf8")}\n// changed\n`);
 		await stop(f.parent);
 		expect(await f.finished()).toMatchObject({ code: 1, output: expect.stringContaining("Node or npm changed") });
 		expect(await exists(f.tracePath)).toBe(false);
@@ -592,15 +618,15 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 	it("bounds abandoned handoffs and reports their exact inspection directory", async () => {
 		const f = await fixture();
 		const root = join(f.root, `quarterdeck-npm-updates-${process.getuid?.() ?? "user"}`);
-		await mkdir(root, { mode: 0o700 });
+		await ensurePrivateDirectory(root);
 		await Promise.all([0, 1, 2, 3].map((index) => mkdir(join(root, `retained-${index}`))));
 		await expect(f.prepare()).rejects.toThrow(`Four update handoffs remain in ${root}`);
 		expect((await readdir(root)).length).toBe(4);
 	});
 
 	it("retains unrecognized files during conservative cleanup", async () => {
-		const root = await mkdtemp(join(suite, "unknown-"));
-		if (process.platform === "win32") await ensurePrivateDirectory(root);
+		const root = await realpath(await mkdtemp(join(suite, "unknown-")));
+		await ensurePrivateDirectory(root);
 		await writeFile(join(root, "unrecognized"), "keep");
 		await expect(cleanupNpmUpdateDirectory(root)).rejects.toThrow("Unrecognized");
 		expect(await readFile(join(root, "unrecognized"), "utf8")).toBe("keep");

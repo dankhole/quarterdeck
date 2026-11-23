@@ -20,6 +20,9 @@
 extern int quarterdeck_shortcut(int operation);
 extern int quarterdeck_shortcut_paths(const wchar_t *target, const wchar_t *path, int operation);
 extern int quarterdeck_update_window(const wchar_t *script);
+#ifdef QUARTERDECK_ADMISSION_TEST
+extern int quarterdeck_test_explorer(void);
+#endif
 
 #ifndef QUARTERDECK_ADMISSION_TEST
 static HRESULT login_profile(PWSTR *profile) {
@@ -51,8 +54,16 @@ static int current_user_sid(BYTE *buffer, DWORD capacity, PSID *sid) {
     return IsValidSid(*sid);
 }
 
-/* Protected metadata admits only the current user and LocalSystem. */
-int quarterdeck_private_handle(HANDLE file) {
+/* Report a fixed stage/reason and optional OS error, never a path, SID, or ACL. */
+static int report_failure(const char *stage, const char *reason, DWORD error) {
+    fprintf(stderr, "Quarterdeck installation admission: %s: %s", stage, reason);
+    if (error != ERROR_SUCCESS) fprintf(stderr, " (Win32 error %lu)", error);
+    fputc('\n', stderr);
+    return 0;
+}
+
+/* Protected metadata must be owned by the current user and admit only that user and LocalSystem. */
+static int private_handle(HANDLE file, const char *stage) {
     BYTE token[4096];
     PSID user = NULL, owner = NULL;
     BYTE system_buffer[SECURITY_MAX_SID_SIZE];
@@ -62,26 +73,44 @@ int quarterdeck_private_handle(HANDLE file) {
     SECURITY_DESCRIPTOR_CONTROL control = 0;
     DWORD revision = 0;
     if (!current_user_sid(token, sizeof(token), &user) ||
-        !CreateWellKnownSid(WinLocalSystemSid, NULL, system_buffer, &system_size)) return 0;
-    if (GetSecurityInfo(file, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-        &owner, NULL, &dacl, NULL, &security) != ERROR_SUCCESS) return 0;
-    int ok = owner && EqualSid(owner, user) && dacl &&
-        GetSecurityDescriptorControl(security, &control, &revision);
+        !CreateWellKnownSid(WinLocalSystemSid, NULL, system_buffer, &system_size))
+        return report_failure(stage, "could not resolve allowed security principals", ERROR_SUCCESS);
+    DWORD error = GetSecurityInfo(file, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+        &owner, NULL, &dacl, NULL, &security);
+    if (error != ERROR_SUCCESS) return report_failure(stage, "could not read security descriptor", error);
+
+    const char *failure = NULL;
+    if (!owner || !IsValidSid(owner)) {
+        failure = "missing or invalid owner";
+    } else if (!EqualSid(owner, user)) {
+        failure = IsWellKnownSid(owner, WinBuiltinAdministratorsSid) ?
+            "owner is Builtin Administrators, not the current user" : "owner is not the current user";
+    } else if (!dacl || !GetSecurityDescriptorControl(security, &control, &revision)) {
+        failure = "missing or invalid DACL";
+    }
     int user_access = 0;
-    for (DWORD i = 0; ok && i < dacl->AceCount; ++i) {
+    for (DWORD i = 0; !failure && i < dacl->AceCount; ++i) {
         void *ace = NULL;
-        if (!GetAce(dacl, i, &ace)) { ok = 0; break; }
+        if (!GetAce(dacl, i, &ace)) { failure = "unreadable DACL entry"; error = GetLastError(); break; }
         ACE_HEADER *header = (ACE_HEADER *)ace;
         if (header->AceFlags & INHERIT_ONLY_ACE) continue;
-        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE) { ok = 0; break; }
+        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE) { failure = "DACL contains a non-allow entry"; break; }
         ACCESS_ALLOWED_ACE *allowed = (ACCESS_ALLOWED_ACE *)ace;
         PSID trustee = (PSID)&allowed->SidStart;
-        if (!IsValidSid(trustee) || (!EqualSid(trustee, user) && !EqualSid(trustee, system_buffer))) ok = 0;
-        if (EqualSid(trustee, user) && (allowed->Mask & (GENERIC_ALL | FILE_ALL_ACCESS)) == FILE_ALL_ACCESS)
-            user_access = 1;
+        if (!IsValidSid(trustee)) { failure = "DACL contains an invalid trustee"; break; }
+        if (EqualSid(trustee, user)) {
+            if ((allowed->Mask & (GENERIC_ALL | FILE_ALL_ACCESS)) == FILE_ALL_ACCESS) user_access = 1;
+        } else if (!EqualSid(trustee, system_buffer)) {
+            failure = "DACL grants access to a principal other than the current user or LocalSystem";
+        }
     }
     LocalFree(security);
-    return ok && user_access;
+    if (!failure && !user_access) failure = "DACL does not grant full access to the current user";
+    return failure ? report_failure(stage, failure, error) : 1;
+}
+
+int quarterdeck_private_handle(HANDLE file) {
+    return private_handle(file, "protected file");
 }
 
 static int absolute_local_path(const wchar_t *path) {
@@ -92,26 +121,36 @@ static int absolute_local_path(const wchar_t *path) {
 
 int quarterdeck_safe_ancestors(const wchar_t *path, int protected_parent) {
     wchar_t current[PATH_CAPACITY];
-    if (!absolute_local_path(path) || wcslen(path) >= PATH_CAPACITY) return 0;
+    if (!absolute_local_path(path) || wcslen(path) >= PATH_CAPACITY)
+        return report_failure("ancestor path", "expected a local absolute path within the path limit", ERROR_SUCCESS);
     wcscpy_s(current, PATH_CAPACITY, path);
     wchar_t *slash = wcsrchr(current, L'\\');
-    if (!slash || slash <= current + 2) return 0;
+    if (!slash || slash <= current + 2)
+        return report_failure("ancestor path", "missing parent directory", ERROR_SUCCESS);
     *slash = L'\0';
     int first = 1;
     while (wcslen(current) > 3) {
+        const char *stage = first ? "parent directory" : "ancestor directory";
         HANDLE directory = CreateFileW(current, READ_CONTROL | FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-        if (directory == INVALID_HANDLE_VALUE) return 0;
+        if (directory == INVALID_HANDLE_VALUE) return report_failure(stage, "could not open directory", GetLastError());
         BY_HANDLE_FILE_INFORMATION info;
-        int ok = GetFileInformationByHandle(directory, &info) &&
-            (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
-            !(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && (!protected_parent || !first || quarterdeck_private_handle(directory));
+        int ok;
+        if (!GetFileInformationByHandle(directory, &info)) {
+            ok = report_failure(stage, "could not read directory attributes", GetLastError());
+        } else if (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            ok = report_failure(stage, "reparse point refused", ERROR_SUCCESS);
+        } else if (!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            ok = report_failure(stage, "not a directory", ERROR_SUCCESS);
+        } else {
+            ok = !protected_parent || !first || private_handle(directory, "protected metadata directory");
+        }
         CloseHandle(directory);
         if (!ok) return 0;
         first = 0;
         slash = wcsrchr(current, L'\\');
-        if (!slash) return 0;
+        if (!slash) return report_failure("ancestor path", "invalid directory path", ERROR_SUCCESS);
         if (slash == current + 2) break;
         *slash = L'\0';
     }
@@ -124,22 +163,31 @@ static HANDLE open_lock(const wchar_t *path, int exclusive) {
     HANDLE file = CreateFileW(path, GENERIC_READ | READ_CONTROL,
         exclusive ? 0 : FILE_SHARE_READ, &attributes, OPEN_ALWAYS,
         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-    if (file == INVALID_HANDLE_VALUE) return file;
-    BY_HANDLE_FILE_INFORMATION info;
-    if (!GetFileInformationByHandle(file, &info) || info.nNumberOfLinks != 1 ||
-        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) ||
-        GetFileType(file) != FILE_TYPE_DISK || !quarterdeck_private_handle(file)) {
-        CloseHandle(file);
-        return INVALID_HANDLE_VALUE;
+    if (file == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        report_failure("installation lock", error == ERROR_SHARING_VIOLATION ?
+            "installation is in use" : "could not open lock", error);
+        return file;
     }
-    return file;
+    BY_HANDLE_FILE_INFORMATION info;
+    if (!GetFileInformationByHandle(file, &info)) {
+        report_failure("installation lock", "could not read lock attributes", GetLastError());
+    } else if (info.nNumberOfLinks != 1 ||
+        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) ||
+        GetFileType(file) != FILE_TYPE_DISK) {
+        report_failure("installation lock", "not a regular single-link file", ERROR_SUCCESS);
+    } else if (private_handle(file, "installation lock")) {
+        return file;
+    }
+    CloseHandle(file);
+    return INVALID_HANDLE_VALUE;
 }
 
 static int same_lock(HANDLE file, const wchar_t *path) {
     wchar_t actual[PATH_CAPACITY];
     DWORD size = GetFinalPathNameByHandleW(file, actual, PATH_CAPACITY, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
     return size > 4 && size < PATH_CAPACITY && !wcsncmp(actual, L"\\\\?\\", 4) &&
-        !_wcsicmp(actual + 4, path) && quarterdeck_private_handle(file);
+        !_wcsicmp(actual + 4, path) && private_handle(file, "installation lock");
 }
 
 static HANDLE invoking_parent(ULONGLONG *birth) {
@@ -166,7 +214,7 @@ static HANDLE invoking_parent(ULONGLONG *birth) {
 /* Duplicate into the installer process: helper death cannot release its mutation admission. */
 static int acquire_mutation(const wchar_t *path) {
     HANDLE file = open_lock(path, 1);
-    if (file == INVALID_HANDLE_VALUE) return refuse("installation is in use or its protected lock is invalid.");
+    if (file == INVALID_HANDLE_VALUE) return 73;
     if (!quarterdeck_launches_drained(path)) {
         CloseHandle(file);
         refuse("a native launch did not confirm all descendants exited. Restart Windows before installing or updating Quarterdeck.");
@@ -233,8 +281,8 @@ static wchar_t *quote_argument(const wchar_t *value) {
 
 static int launch_admitted(const wchar_t *lock, const wchar_t *host, const wchar_t *const *args) {
     HANDLE file = open_lock(lock, 0);
-    if (file == INVALID_HANDLE_VALUE) return refuse("an installation operation is running or admission is invalid.");
-    if (!quarterdeck_safe_ancestors(host, 0)) { CloseHandle(file); return refuse("desktop host has a reparse-point ancestor."); }
+    if (file == INVALID_HANDLE_VALUE) return 73;
+    if (!quarterdeck_safe_ancestors(host, 0)) { CloseHandle(file); return 73; }
     int descriptor = _open_osfhandle((intptr_t)file, _O_RDONLY | _O_BINARY);
     if (descriptor < 0) { CloseHandle(file); return refuse("could not retain shared admission."); }
     if (descriptor != ADMISSION_FD) {
@@ -269,6 +317,9 @@ static int launch_admitted(const wchar_t *lock, const wchar_t *host, const wchar
 }
 
 int wmain(int argc, wchar_t **argv) {
+#ifdef QUARTERDECK_ADMISSION_TEST
+    if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-explorer")) return quarterdeck_test_explorer();
+#endif
 #ifdef QUARTERDECK_ADMISSION_LAB_PROFILE
     if (argc == 2 && !wcscmp(argv[1], L"--quarterdeck-test-check-shortcut")) return quarterdeck_shortcut(2);
 #endif

@@ -73,11 +73,24 @@ Package smoke explicitly isolates its npm prefix, configuration, state and nativ
 
 Package smoke uses a cold temporary npm cache by default. `npm run test:package -- --npm-cache <directory>` reuses only npm package downloads; installation roots, npm configuration, lifecycle policy, state, and native PTY checks remain isolated. CI passes its cached npm directory explicitly. Never share a mutable `node_modules` tree between worktrees.
 
-CI runs the production build (which includes the web typecheck), `npm run check`, and web unit tests on Ubuntu, macOS, and Windows. Linux remains a shared source/packaging validation host, not a supported graphical product. Standalone browser smoke and browser downloads are removed; packaged desktop smoke belongs to the native desktop workflow. The non-optional Windows job also checks the packed npm artifact before the root gate, whose integration suite covers native ConPTY resize/reconnect/restore, long/case-sensitive Git paths, junction/copy worktrees, exact process ownership, DACLs, hook transport, host launch, and parent-disconnect shutdown. CI does not repeat the web typecheck as a separate step. Local validation should prove the change; it does not need to impersonate CI unless release or PR-readiness work explicitly calls for that gate. See the [native Windows guide](./windows-native-smoke.md) for the exact clean, focused, and manual commands.
+CI runs the production build (which includes the web typecheck), the checks covered by `npm run check`, and web unit tests on Ubuntu, macOS, and Windows. Linux remains a shared source/packaging validation host, not a supported graphical product. Standalone browser smoke and browser downloads are removed; packaged desktop smoke belongs to the native desktop workflow. On Windows, the build, packed npm artifact smoke and web tests run on a separate runner so they do not delay the required root checks. The root integration suite covers native ConPTY resize/reconnect/restore, long/case-sensitive Git paths, junction/copy worktrees, exact process ownership, DACLs, hook transport, host launch, and parent-disconnect shutdown. CI does not repeat the web typecheck as a separate step. Local validation should prove the change; it does not need to impersonate CI unless release or PR-readiness work explicitly calls for that gate. See the [native Windows guide](./windows-native-smoke.md) for the exact clean, focused, and manual commands.
 
 For Windows-only iteration from a non-Windows host, dispatch the reusable `Test` workflow with `focused_windows=true` against the working branch. That lane installs only root dependencies and runs `test/integration/windows-native-smoke.integration.test.ts`; it is an inner-loop diagnostic and does not replace the final required CI matrix.
 
 ## Focused test selection
+
+For day-to-day local verification, aim for **under five minutes with dependencies already installed**. From the repository root, run the relevant lines below. Vitest's `--changed` uses Git and module imports to select affected tests, including on a branch whose edits are already committed. Use a current `origin/main` (or substitute the branch's actual base).
+
+```sh
+# Runtime or shared tooling
+npm run typecheck && npm test -- --mode integration --changed origin/main
+# Renderer
+npm run web:typecheck && npm run web:test -- --changed origin/main
+# Desktop (requires the separate desktop dependency tree)
+npm --prefix desktop run typecheck && npm --prefix desktop test -- --changed origin/main
+```
+
+For shared changes, include the affected consumers. Native sources, subprocess entrypoints, generated files, and workflow YAML aren't all connected by module imports: name their focused tests explicitly, and run the release-policy checks for workflow changes. An empty selection is **not** proof that a change is covered. Use explicit test paths if a shared dependency selects most of a suite. Local verification doesn't build installers by default and doesn't replace the full CI matrix.
 
 Choose test files by the owner changed, not by the size of the diff. Examples:
 

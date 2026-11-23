@@ -7,6 +7,7 @@ import {
 } from "../../src/core/api/host-integrations";
 import type { DesktopLabDriver } from "./desktop-driver";
 import type { DesktopEvaluationModule } from "./desktop-evaluation-types";
+import { openDesktopSettings } from "./desktop-settings";
 import type { DesktopAgentMode } from "./desktop-types";
 import { writeJsonAtomic } from "./paths";
 
@@ -43,9 +44,7 @@ async function readEvents(driver: DesktopLabDriver): Promise<RuntimeHostIntegrat
 }
 
 async function openSettings(page: Page) {
-	await page.getByRole("button", { name: "Settings", exact: true }).click();
-	const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
-	await dialog.waitFor({ state: "visible" });
+	const dialog = await openDesktopSettings(page);
 	await dialog.getByRole("button", { name: "Notifications", exact: true }).click();
 	return dialog;
 }

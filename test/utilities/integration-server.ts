@@ -12,6 +12,7 @@ import {
 	QUARTERDECK_DESKTOP_TOKEN_HEADER,
 } from "../../src/core/api/desktop-runtime-protocol.js";
 import { runtimeProjectsResponseSchema } from "../../src/core/api/project-state.js";
+import { mergeProcessEnvironment } from "../../src/core/process-environment.js";
 import { terminateProcessTree } from "../../src/core/process-termination.js";
 import { enrollDesktopClient, verifyRuntimeOwner } from "../../src/server/runtime-owner-client.js";
 import { discoverRuntimeOwner } from "../../src/server/runtime-ownership.js";
@@ -65,6 +66,21 @@ export function resolveIntegrationEntrypoint(
 export function resolveIntegrationNodeArgs(source = "src/cli.ts"): string[] {
 	const entrypoint = resolveIntegrationEntrypoint(source);
 	return [...entrypoint.execArgv, entrypoint.path];
+}
+
+/** Compiled CLI fixtures are outside the source-entrypoint layout that authorizes development launches. */
+export function prepareIntegrationRuntimeLaunch(input: {
+	args?: string[];
+	env?: NodeJS.ProcessEnv;
+	sourceOnly?: boolean;
+}): { args: string[]; env: NodeJS.ProcessEnv } {
+	const compiledEntrypoints = input.sourceOnly ? undefined : inject("compiledIntegrationEntrypoints");
+	const { path, execArgv } = resolveIntegrationEntrypoint("src/cli.ts", compiledEntrypoints ?? {});
+	const env = createGitTestEnv(input.env);
+	return {
+		args: [...execArgv, path, "--internal-runtime", ...(input.args ?? [])],
+		env: compiledEntrypoints?.["src/cli.ts"] ? mergeProcessEnvironment(env, { QUARTERDECK_AGENT_LAB: "1" }) : env,
+	};
 }
 
 export async function waitForProcessStart(
@@ -185,6 +201,8 @@ export async function startQuarterdeckServer(input: {
 	port: number;
 	extraArgs?: string[];
 	extraEnv?: NodeJS.ProcessEnv;
+	/** Bypass the disposable build for tests that need ordinary non-lab source admission. */
+	sourceOnly?: boolean;
 	startupTimeoutMs?: number;
 }): Promise<{
 	runtimeUrl: string;
@@ -194,22 +212,23 @@ export async function startQuarterdeckServer(input: {
 	stop: () => Promise<void>;
 }> {
 	const stateHome = resolve(input.extraEnv?.QUARTERDECK_STATE_HOME ?? join(input.homeDir, ".quarterdeck"));
-	const child = spawn(
-		process.execPath,
-		[...resolveIntegrationNodeArgs(), "--internal-runtime", ...(input.extraArgs ?? [])],
-		{
-			cwd: input.cwd,
-			env: createGitTestEnv({
-				...input.extraEnv,
-				HOME: input.homeDir,
-				USERPROFILE: input.homeDir,
-				QUARTERDECK_STATE_HOME: stateHome,
-				QUARTERDECK_RUNTIME_PORT: String(input.port),
-			}),
-			stdio: ["pipe", "pipe", "pipe"],
-			windowsHide: true,
+	const launch = prepareIntegrationRuntimeLaunch({
+		args: input.extraArgs,
+		sourceOnly: input.sourceOnly,
+		env: {
+			...input.extraEnv,
+			HOME: input.homeDir,
+			USERPROFILE: input.homeDir,
+			QUARTERDECK_STATE_HOME: stateHome,
+			QUARTERDECK_RUNTIME_PORT: String(input.port),
 		},
-	);
+	});
+	const child = spawn(process.execPath, launch.args, {
+		cwd: input.cwd,
+		env: launch.env,
+		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
+	});
 	// Observe close from launch: exit alone can precede stdio/descendant cleanup,
 	// and the process may already have closed by the time teardown starts.
 	const closed = new Promise<void>((resolveClose) => child.once("close", () => resolveClose()));

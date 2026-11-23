@@ -1,15 +1,8 @@
-import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import type { TerminalPasteOptions } from "@/terminal/terminal-input";
 import { acquireForTask, attachPoolContainer, cancelWarmup, releaseTask, warmup } from "@/terminal/terminal-pool";
+import type { PersistentTerminalSubscriber } from "@/terminal/terminal-session-handle";
 
-export interface TaskTerminalSubscriber {
-	onConnectionReady?: (taskId: string) => void;
-	onContentPending?: (pending: boolean) => void;
-	onLastError?: (message: string | null) => void;
-	onSummary?: (summary: RuntimeTaskSessionSummary) => void;
-	onOutputText?: (text: string) => void;
-	onExit?: (taskId: string, exitCode: number | null) => void;
-}
+export type TaskTerminalSubscriber = PersistentTerminalSubscriber;
 
 export interface TaskTerminalHandle {
 	subscribe: (subscriber: TaskTerminalSubscriber) => () => void;

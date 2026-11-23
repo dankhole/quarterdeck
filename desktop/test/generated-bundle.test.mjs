@@ -46,7 +46,7 @@ async function generatedMainPrefix(fixture, virtualArchiveView = false) {
 }
 
 describe("generated desktop bundles", () => {
-	it("initializes main's actual bundled ws dependencies in ESM before Electron startup", async () => {
+	it("initializes main's bundled CommonJS dependencies in ESM before Electron startup", async () => {
 		const cache = join(desktopRoot, ".cache");
 		await mkdir(cache, { recursive: true });
 		const fixture = await mkdtemp(join(cache, "generated-main-test-"));
@@ -61,13 +61,13 @@ describe("generated desktop bundles", () => {
 			expect(initialized.status, initialized.stderr).toBe(0);
 			expect(initialized.stdout.trim()).toBe("quarterdeck-main-dependencies-ready");
 
-			// Prove the caller-path regression is sensitive to the original fault,
-			// rather than merely recognizing the bridge's source text.
+			// Removing the bridge must still break startup. The first builtin
+			// required depends on which bundled dependency initializes first.
 			await writeFile(main, prefix.replace(mainBuildOptions.banner.js, ""));
 			const originalFault = spawnSync(process.execPath, [main], { encoding: "utf8", timeout: 10_000 });
 			expect(originalFault.error).toBeUndefined();
 			expect(originalFault.status).not.toBe(0);
-			expect(originalFault.stderr).toContain('Dynamic require of "events" is not supported');
+			expect(originalFault.stderr).toMatch(/^Error: Dynamic require of "[^"]+" is not supported$/m);
 		} finally {
 			await rm(fixture, { recursive: true, force: true });
 		}
@@ -144,11 +144,13 @@ describe("generated desktop bundles", () => {
 				`import * as virtual from ${JSON.stringify(pathToFileURL(patchedFsStub).href)};
 Object.defineProperty(process.versions, "electron", { value: "44.5.1" });
 ${prefix}
-if ((await virtual.lstat(${JSON.stringify(archive)})).isFile()) throw new Error("Missing virtual archive view");
-const identity = await inspectDesktopApp(${args}, {
-	runCommand: async (command, args) => ({ stdout: command === "/usr/bin/plutil" ? await virtual.readFile(args.at(-1), "utf8") : "arm64", stderr: "" }),
-});
-console.log(identity.appAsarSha256);
+{
+	if ((await virtual.lstat(${JSON.stringify(archive)})).isFile()) throw new Error("Missing virtual archive view");
+	const identity = await inspectDesktopApp(${args}, {
+		runCommand: async (command, args) => ({ stdout: command === "/usr/bin/plutil" ? await virtual.readFile(args.at(-1), "utf8") : "arm64", stderr: "" }),
+	});
+	console.log(identity.appAsarSha256);
+}
 `,
 			);
 			const run = () => spawnSync(process.execPath, [main], { encoding: "utf8", timeout: 10_000 });

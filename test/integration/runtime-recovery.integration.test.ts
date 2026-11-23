@@ -80,7 +80,8 @@ describe("cross-process explicit runtime recovery", () => {
 		prior.child.kill("SIGKILL");
 		await prior.exited;
 		expect(await complete("admit")).toMatchObject({ kind: "denied", reason: "unconfirmed_prior_custody" });
-		expect(await complete("inspect")).toMatchObject({
+		const inspected = await complete("inspect");
+		expect(inspected, `Recovery inspection: ${JSON.stringify(inspected)}`).toMatchObject({
 			kind: "inspected",
 			recoveryRequired: true,
 			bootIdentity: dirty.bootIdentity,
@@ -89,7 +90,11 @@ describe("cross-process explicit runtime recovery", () => {
 			code: "ENOENT",
 		});
 		const confirmed = await complete("acknowledge");
-		expect(confirmed).toMatchObject({ kind: "inspected", recoveryRequired: true, bootIdentity: dirty.bootIdentity });
+		expect(confirmed, `Recovery confirmation: ${JSON.stringify(confirmed)}`).toMatchObject({
+			kind: "inspected",
+			recoveryRequired: true,
+			bootIdentity: dirty.bootIdentity,
+		});
 		expect(await readdir(join(home, "runtime-ownership", "recovery-acknowledged"))).toEqual([
 			`${confirmed.generation}.json`,
 		]);

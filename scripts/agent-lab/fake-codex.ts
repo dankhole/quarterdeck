@@ -21,6 +21,7 @@ import {
 	shouldFakeAgentUseFullscreen,
 } from "./fake-agent-protocol";
 import { readFakeCodexHistory } from "./fake-codex-history";
+import { renderFakeCodexInterruption } from "./fake-codex-interruption";
 import {
 	hasFakeCodexHistory,
 	initializeFreshFakeCodexHistory,
@@ -114,9 +115,11 @@ async function emitHook(
 		sessionSource?: "startup" | "resume";
 	} = { hookEventName: "AgentLab" },
 ): Promise<void> {
+	const hookNode = process.env.QUARTERDECK_AGENT_LAB_HOOK_NODE;
 	const tsxCliPath = process.env.QUARTERDECK_AGENT_LAB_TSX_CLI;
-	const cliEntrypointPath = process.env.QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT;
-	if (!tsxCliPath || !cliEntrypointPath) {
+	const hookEntrypoint = process.env.QUARTERDECK_AGENT_LAB_CLI_ENTRYPOINT;
+	const hookPrefix = hookNode ? [] : tsxCliPath ? [tsxCliPath] : null;
+	if (!hookPrefix || !hookEntrypoint) {
 		writeLine("[agent-lab] Hook environment is incomplete.");
 		return;
 	}
@@ -125,7 +128,7 @@ async function emitHook(
 		options.hookEventName === "PermissionDenied" ||
 		options.hookEventName === "SubagentStop";
 	const delivery = event === "activity" && !reliableActivity ? "notify" : "ingest";
-	const hookArgs = [tsxCliPath, cliEntrypointPath, "hooks", delivery, "--event", event, "--source", provider];
+	const hookArgs = [...hookPrefix, hookEntrypoint, "hooks", delivery, "--event", event, "--source", provider];
 	const claudePayload =
 		provider === "claude"
 			? buildClaudeHookPayload(options.hookEventName, {
@@ -167,7 +170,7 @@ async function emitHook(
 	}
 
 	await new Promise<void>((resolveHook) => {
-		const hook = spawn(process.execPath, hookArgs, {
+		const hook = spawn(hookNode ?? process.execPath, hookArgs, {
 			cwd: process.cwd(),
 			env: process.env,
 			stdio: [claudePayload ? "pipe" : "ignore", "ignore", "pipe"],
@@ -342,10 +345,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			return;
 		case "turn-interrupted":
 			preserveRenderedPromptOnce = true;
-			process.stdout.write(
-				"\u001b[2J\u001b[H\u001b[31m■ Conversation interrupted - tell the model what to do differently. " +
-					"Something went wrong? Hit `/feedback` to report the issue.\u001b[0m\r\n\r\n› Ask Codex to do anything",
-			);
+			process.stdout.write(renderFakeCodexInterruption(process.stdout.columns ?? 80, "current"));
 			return;
 		case "new-turn":
 			nativeInterruptedTurn = false;
@@ -362,11 +362,7 @@ async function executeCommand(command: FakeAgentCommand): Promise<void> {
 			clipboardReadReports.push(false);
 			// Receipt follows this exact frame. A later Readline command can erase
 			// its final composer and is not a neutral historical-redraw fence.
-			process.stdout.write(
-				"\u001b[2J\u001b[H\u001b[31m■ Conversation interrupted - tell the model what to do differently. " +
-					"Something went wrong? Hit `/feedback` to report the issue.\u001b[0m\r\n\r\n" +
-					"› Ask Codex to do anything\r\n\r\nAGENT LAB CURRENT TURN WORKING\r\n\r\n› Ask Codex to do anything\u001b]52;c;?\u0007",
-			);
+			process.stdout.write(renderFakeCodexInterruption(process.stdout.columns ?? 80, "historical"));
 			return;
 		case "local-action":
 			writeLine(`AGENT LAB LOCAL ACTION: ${command.message}`);

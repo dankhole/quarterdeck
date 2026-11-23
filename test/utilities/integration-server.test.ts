@@ -27,7 +27,7 @@ vi.mock("../../src/server/runtime-ownership.js", () => ({
 	discoverRuntimeOwner: vi.fn(async () => ({ descriptor: { status: "ready", process: { pid: 12345 } } })),
 }));
 
-async function startFakeServer() {
+async function startFakeServer(sourceOnly = false) {
 	const child = new childProcess.ChildProcess();
 	Object.defineProperty(child, "pid", { value: 12345 });
 	child.stdin = new PassThrough();
@@ -35,7 +35,13 @@ async function startFakeServer() {
 	child.stdout = stdout;
 	child.stderr = new PassThrough();
 	vi.mocked(childProcess.spawn).mockReturnValue(child);
-	const starting = startQuarterdeckServer({ cwd: process.cwd(), homeDir: process.cwd(), port: 1234 });
+	const starting = startQuarterdeckServer({
+		cwd: process.cwd(),
+		homeDir: process.cwd(),
+		port: 1234,
+		sourceOnly,
+		extraEnv: { QUARTERDECK_AGENT_LAB: undefined },
+	});
 	stdout.write("Quarterdeck internal runtime running.\n");
 	return { child, server: await starting };
 }
@@ -66,7 +72,7 @@ describe("integration server teardown", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("passes the selected source or compiled entrypoint into the actual process launch", async () => {
+	it("authorizes the actual compiled process launch but does not opt a source launch into the lab", async () => {
 		const { child, server } = await startFakeServer();
 		const compiled = inject("compiledIntegrationEntrypoints")?.["src/cli.ts"];
 		expect(childProcess.spawn).toHaveBeenCalledWith(
@@ -76,6 +82,22 @@ describe("integration server teardown", () => {
 				: ["--import", resolveTsxLoaderImportSpecifier(), resolve("src/cli.ts"), "--internal-runtime"],
 			expect.objectContaining({ cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] }),
 		);
+		expect(vi.mocked(childProcess.spawn).mock.calls[0]?.[2]?.env?.QUARTERDECK_AGENT_LAB).toBe(
+			compiled ? "1" : undefined,
+		);
+		exitChild(child);
+		child.emit("close", 0, null);
+		await server.stop();
+	});
+
+	it("lets non-lab restart tests request the source CLI when a compiled entrypoint is available", async () => {
+		const { child, server } = await startFakeServer(true);
+		expect(childProcess.spawn).toHaveBeenCalledWith(
+			process.execPath,
+			["--import", resolveTsxLoaderImportSpecifier(), resolve("src/cli.ts"), "--internal-runtime"],
+			expect.objectContaining({ env: expect.any(Object) }),
+		);
+		expect(vi.mocked(childProcess.spawn).mock.calls[0]?.[2]?.env?.QUARTERDECK_AGENT_LAB).toBeUndefined();
 		exitChild(child);
 		child.emit("close", 0, null);
 		await server.stop();

@@ -82,8 +82,9 @@ async function writeFakeAgentLaunchers(fakeBinPath: string, provider: FakeAgentP
 async function writeWindowsFakeAgentLaunchers(
 	fakeBinPath: string,
 	provider: FakeAgentProvider,
-	requireBundledNode = false,
+	options: { requireBundledNode?: boolean; probeReceiptDirectory?: string } = {},
 ): Promise<void> {
+	const { requireBundledNode, probeReceiptDirectory } = options;
 	const version = getFakeAgentVersionOutput(provider);
 	const cmdNode = requireBundledNode
 		? `node --require "%~dp0${WINDOWS_NODE_PATH_GUARD}"`
@@ -115,8 +116,17 @@ async function writeWindowsFakeAgentLaunchers(
 	await writeFile(
 		join(fakeBinPath, `${provider}.ps1`),
 		[
-			`if ($args.Count -eq 1 -and ($args[0] -ceq '--version' -or $args[0] -ceq 'version')) { Write-Output '${version}'; exit 0 }`,
-			`if ($args.Count -eq 2 -and $args[0] -ceq 'features' -and $args[1] -ceq 'list') { Write-Output '${FAKE_AGENT_FEATURES}'; exit 0 }`,
+			"function Write-FakeProbe($probeKind, $response) {",
+			"  $ErrorActionPreference = 'Stop'",
+			...(probeReceiptDirectory ? ["  Save-ProbePhase $probeKind 'entered'"] : []),
+			// A literal probe reply needs no cmdlet lookup, output pipeline or child process.
+			"  [Console]::Out.WriteLine($response)",
+			"  [Console]::Out.Flush()",
+			...(probeReceiptDirectory ? ["  Save-ProbePhase $probeKind 'stdout-flushed'"] : []),
+			"}",
+			...windowsFakeProbeReceiptScript(provider, probeReceiptDirectory),
+			`if ($args.Count -eq 1 -and ($args[0] -ceq '--version' -or $args[0] -ceq 'version')) { Write-FakeProbe 'version' '${version}'; exit 0 }`,
+			`if ($args.Count -eq 2 -and $args[0] -ceq 'features' -and $args[1] -ceq 'list') { Write-FakeProbe 'features' '${FAKE_AGENT_FEATURES}'; exit 0 }`,
 			...(requireBundledNode ? ["$ErrorActionPreference = 'Stop'"] : []),
 			`$env:QUARTERDECK_AGENT_LAB_PROVIDER = '${provider}'`,
 			`& ${powerShellNode} $env:QUARTERDECK_AGENT_LAB_TSX_CLI $env:QUARTERDECK_AGENT_LAB_FAKE_AGENT @args`,
@@ -127,8 +137,32 @@ async function writeWindowsFakeAgentLaunchers(
 	);
 }
 
+function windowsFakeProbeReceiptScript(provider: FakeAgentProvider, directory: string | undefined): string[] {
+	if (!directory) return [];
+	// Keep the script ASCII and pass the path as data to Windows PowerShell 5.
+	const encodedDirectory = Buffer.from(directory, "utf8").toString("base64");
+	return [
+		"function Save-ProbePhase($probeKind, $phase) {",
+		"  try {",
+		`    $directory = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedDirectory}'))`,
+		// Replace the last observation per provider/probe. Read after shutdown; no argv, environment or output is recorded.
+		`    $receipt = [IO.Path]::Combine($directory, "${provider}-$probeKind.txt")`,
+		"    $observedAt = [DateTime]::UtcNow.ToString('o')",
+		'    [IO.File]::WriteAllText($receipt, "$observedAt`t$PID`t$phase")',
+		"  } catch { }", // Evidence must neither emit output nor determine availability.
+		"}",
+	];
+}
+
 /** Only the installed Windows desktop lab opts in; source fixtures use the runner's Node. */
-export async function requireInstalledWindowsFakeAgentNode(fakeBinPath: string, expectedNode: string): Promise<void> {
+export async function requireInstalledWindowsFakeAgentNode(
+	fakeBinPath: string,
+	expectedNode: string,
+	artifactDir?: string,
+): Promise<void> {
+	const probeReceiptDirectory = artifactDir ? join(artifactDir, "windows-fake-agent-probes") : undefined;
+	if (probeReceiptDirectory) await mkdir(probeReceiptDirectory, { recursive: true });
+	const options = { requireBundledNode: true, probeReceiptDirectory };
 	await Promise.all([
 		writeFile(
 			join(fakeBinPath, WINDOWS_NODE_PATH_GUARD),
@@ -142,8 +176,8 @@ export async function requireInstalledWindowsFakeAgentNode(fakeBinPath: string, 
 			].join("\n"),
 			"utf8",
 		),
-		writeWindowsFakeAgentLaunchers(fakeBinPath, "codex", true),
-		writeWindowsFakeAgentLaunchers(fakeBinPath, "pi", true),
+		writeWindowsFakeAgentLaunchers(fakeBinPath, "codex", options),
+		writeWindowsFakeAgentLaunchers(fakeBinPath, "pi", options),
 	]);
 }
 

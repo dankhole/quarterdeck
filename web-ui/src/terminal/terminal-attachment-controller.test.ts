@@ -93,8 +93,11 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 			hasControlSocket: false,
 			isIoOpen: false,
 			restoreCompleted: false,
+			connectionGeneration: 0,
 			ensureConnected: vi.fn(),
-			reconnect: vi.fn(),
+			reconnect: vi.fn(() => {
+				instance.connectionGeneration++;
+			}),
 			connectToTask: vi.fn((taskId: string, projectId: string) => {
 				instance.connectedTaskId = taskId;
 				instance.connectedProjectId = projectId;
@@ -103,6 +106,7 @@ vi.mock("@/terminal/terminal-session-handle", () => ({
 				const taskId = instance.connectedTaskId;
 				instance.connectedTaskId = null;
 				instance.connectedProjectId = null;
+				instance.connectionGeneration++;
 				return taskId;
 			}),
 			onceConnectionReady: vi.fn(),

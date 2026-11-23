@@ -3,6 +3,7 @@ import { chmod, cp, mkdir, readFile, realpath, symlink, writeFile } from "node:f
 import { dirname, join } from "node:path";
 import { vi } from "vitest";
 import { desktopFileSha256 } from "../../../src/desktop-install/files.js";
+import { desktopGlobalPackageSlot } from "../../../src/desktop-install/layout.js";
 import { desktopContainerName, desktopResourcePaths } from "../../../src/desktop-install/metadata.js";
 import { desktopApplicationBundleId } from "../../../src/desktop-install/receipt.js";
 import type { DesktopInstallationDependencies } from "../../../src/desktop-install/types.js";
@@ -131,11 +132,11 @@ export async function createInstallerDependencies(
 ) {
 	const packageRoot = join(await realpath(root), "package");
 	const prefix = join(root, "prefix");
-	const packageSlot = join(prefix, "lib/node_modules/quarterdeck");
+	const packageSlot = desktopGlobalPackageSlot(prefix);
 	await mkdir(join(packageRoot, "dist"), { recursive: true });
 	await mkdir(dirname(packageSlot), { recursive: true });
 	try {
-		await symlink(packageRoot, packageSlot);
+		await symlink(packageRoot, packageSlot, "junction");
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 	}

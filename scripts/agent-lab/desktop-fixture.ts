@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { access, copyFile, lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { desktopResourcesPath } from "../../src/desktop-install/layout.js";
 import { runDesktopInstallCommand } from "../../src/desktop-install/macos.js";
 import { resolveCanonicalRuntimeStateHome } from "../../src/server/runtime-ownership.js";
 import type { DesktopLaunchRequest } from "../../src/shared/desktop-launch-contract.js";
@@ -95,12 +96,25 @@ export async function prepareDesktopLabFixture(options: {
 			const prepared = await prepareWindowsDesktopLabApp(app.appPath, tempRoot, launch.artifactDir);
 			app = { appPath: prepared.appPath, executablePath: prepared.executablePath };
 			windowsInstallation = prepared.installation;
-			if (launch.agent.mode === "fake") {
-				await requireInstalledWindowsFakeAgentNode(
-					fixture.fakeBinPath,
-					join(app.appPath, "host/resources/runtime/bin/node.exe"),
-				);
-			}
+		}
+		// The candidate ships the provider hook command. Do not load the source CLI
+		// through TSX for each synthetic hook. On Windows use the installed copy,
+		// and independently keep the PATH-based fake provider's exact Node guard.
+		const runtime = join(desktopResourcesPath(app.appPath, process.platform), "runtime");
+		const packagedHooks =
+			launch.agent.mode === "fake"
+				? {
+						node: join(runtime, "bin", process.platform === "win32" ? "node.exe" : "node"),
+						entrypoint: join(runtime, "dist", "hooks.js"),
+					}
+				: null;
+		if (packagedHooks) {
+			await Promise.all([
+				access(packagedHooks.node, constants.X_OK),
+				access(packagedHooks.entrypoint, constants.R_OK),
+			]);
+			if (windowsInstallation)
+				await requireInstalledWindowsFakeAgentNode(fixture.fakeBinPath, packagedHooks.node, launch.artifactDir);
 		}
 		const userDataPath = join(tempRoot, "electron-user-data");
 		const controlPath = join(tempRoot, "desktop-control");
@@ -140,7 +154,7 @@ export async function prepareDesktopLabFixture(options: {
 			repoRoot,
 			tsxCliPath: join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs"),
 			fakeAgentPath: join(repoRoot, "scripts", "agent-lab", "fake-codex.ts"),
-			cliEntrypointPath: join(repoRoot, "src", "cli.ts"),
+			cliEntrypointPath: packagedHooks?.entrypoint ?? join(repoRoot, "src", "cli.ts"),
 			runtimePort: 0,
 			webPort: 0,
 			scenario: "idle",
@@ -184,6 +198,7 @@ export async function prepareDesktopLabFixture(options: {
 			environment: Object.fromEntries(
 				Object.entries({
 					...environment,
+					...(packagedHooks ? { QUARTERDECK_AGENT_LAB_HOOK_NODE: packagedHooks.node } : {}),
 					QUARTERDECK_DESKTOP_LAB_CONFIG: configPath,
 					QUARTERDECK_TITLE_PROVIDER: "local",
 				}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),

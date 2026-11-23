@@ -14,8 +14,8 @@ import {
 import { initGitRepository } from "../utilities/git-env.js";
 import {
 	getAvailablePort,
+	prepareIntegrationRuntimeLaunch,
 	resolveIntegrationEntrypoint,
-	resolveIntegrationNodeArgs,
 	startQuarterdeckServer,
 	waitForExit,
 } from "../utilities/integration-server.js";
@@ -52,9 +52,13 @@ describe("internal runtime ownership and desktop relay attachment", () => {
 	});
 
 	async function invoke(...args: string[]) {
-		return await execute(process.execPath, [...resolveIntegrationNodeArgs(), "--internal-runtime", ...args], {
+		const launch = prepareIntegrationRuntimeLaunch({
+			args,
+			env: { HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },
+		});
+		return await execute(process.execPath, launch.args, {
 			cwd: projectPath,
-			env: { ...process.env, HOME: directory, USERPROFILE: directory, QUARTERDECK_STATE_HOME: stateHome },
+			env: launch.env,
 			timeout: 20_000,
 		});
 	}
@@ -97,7 +101,7 @@ describe("internal runtime ownership and desktop relay attachment", () => {
 		return { child, startupId, ready: await ready };
 	}
 
-	// Three real CLI processes load source and verify native process identity.
+	// Three real CLI processes start and verify native process identity.
 	// The complete scenario must outlive each subprocess's own startup budget.
 	it("attaches a second internal launcher and desktop relay without starting another runtime", async () => {
 		server = await startQuarterdeckServer({

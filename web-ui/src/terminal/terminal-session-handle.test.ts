@@ -378,6 +378,26 @@ describe("TerminalSessionHandle", () => {
 		expect(onConnectionReady).not.toHaveBeenCalled();
 	});
 
+	it("does not mark replacement sockets ready when the previous fallback finishes", async () => {
+		const onConnectionReady = vi.fn();
+		const reveal = createDeferred<boolean>();
+		const revealTerminal = vi.fn(() => reveal.promise);
+		const { handle } = createHandle({ onConnectionReady, revealTerminal });
+		handle.connectToTask("task-1", "project-1");
+		const sockets = socketInstances[0]!;
+		sockets.openIo();
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(revealTerminal).toHaveBeenCalledOnce();
+
+		handle.reconnect("session_instance_changed");
+		sockets.openIo();
+		reveal.resolve(true);
+		await flushMicrotasks();
+		expect(sockets.connectionReady).toBe(false);
+		expect(onConnectionReady).not.toHaveBeenCalled();
+		handle.dispose();
+	});
+
 	it("drops stale sockets and reconnects when the task session instance changes", async () => {
 		const { handle } = createHandle();
 

@@ -1,11 +1,13 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { copyFile, link, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { listWindowsDesktopProcesses } from "../../scripts/agent-lab/desktop-windows-processes.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
+import { resolveWindowsSystem32ExecutablePath } from "../../src/core/windows-system-paths.js";
 import { acquireDesktopMutation } from "../../src/desktop-install/admission.js";
 
 const execute = promisify(execFile);
@@ -29,12 +31,16 @@ async function release(lock: string, lease: Lease) {
 		windowsHide: true,
 	});
 }
-async function expectBusy(lock: string): Promise<void> {
+async function expectBusy(lock: string, diagnostic?: string): Promise<void> {
 	let unexpected: Lease;
 	try {
 		unexpected = await acquire(lock);
 	} catch (error) {
-		expect([73, 74]).toContain((error as { code: unknown }).code);
+		if (diagnostic) {
+			expect(error).toMatchObject({ code: 73, stderr: expect.stringContaining(diagnostic) });
+		} else {
+			expect([73, 74]).toContain((error as { code: unknown }).code);
+		}
 		return;
 	}
 	await release(lock, unexpected);
@@ -52,8 +58,12 @@ async function simulateNewBoot(lock: string): Promise<void> {
 }
 function ready(child: ChildProcess): Promise<void> {
 	return new Promise((accept, reject) => {
-		let output = "";
-		const timer = setTimeout(() => reject(new Error("Native fixture did not become ready.")), 10000);
+		let output = "",
+			stderr = "";
+		const timer = setTimeout(() => reject(new Error(`Native fixture did not become ready: ${stderr}`)), 10000);
+		child.stderr?.on("data", (chunk: Buffer) => {
+			stderr += chunk.toString();
+		});
 		child.stdout?.on("data", (chunk: Buffer) => {
 			output += chunk.toString();
 			if (output.includes("HELPER_READY")) {
@@ -65,10 +75,10 @@ function ready(child: ChildProcess): Promise<void> {
 			clearTimeout(timer);
 			reject(error);
 		});
-		child.once("exit", (code) => {
+		child.once("close", (code) => {
 			if (!output.includes("HELPER_READY")) {
 				clearTimeout(timer);
-				reject(new Error(`Native fixture exited ${code}: ${output}`));
+				reject(new Error(`Native fixture exited ${code}: ${output}${stderr}`));
 			}
 		});
 	});
@@ -150,7 +160,7 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		);
 		expect(JSON.parse(stdout)).toEqual({ fd: 198, path: lock });
 	});
-	it("keeps arbitrary lock paths and synthetic launch commands out of the production helper", async () => {
+	it("keeps arbitrary lock paths and test-only commands out of the production helper", async () => {
 		await expect(
 			execute(production, ["--quarterdeck-acquire-mutation", join(root, "foreign.lock")], {
 				timeout: 10000,
@@ -163,6 +173,9 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 				windowsHide: true,
 			}),
 		).rejects.toMatchObject({ code: 73 });
+		await expect(
+			execute(production, ["--quarterdeck-test-explorer"], { timeout: 10000, windowsHide: true }),
+		).rejects.toMatchObject({ code: 73 });
 	});
 	it("preserves the private Node IPC channel through native admission", async () => {
 		const lock = join(root, "ipc.lock");
@@ -174,7 +187,14 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		const closed = new Promise<void>((accept) => child.once("close", () => accept()));
 		try {
 			const message = await new Promise<unknown>((accept, reject) => {
-				const timer = setTimeout(() => reject(new Error("Admitted Node IPC channel did not respond.")), 5000);
+				let stderr = "";
+				child.stderr?.on("data", (chunk: Buffer) => {
+					stderr += chunk.toString();
+				});
+				const timer = setTimeout(
+					() => reject(new Error(`Admitted Node IPC channel did not respond: ${stderr}`)),
+					5000,
+				);
 				child.once("message", (value) => {
 					clearTimeout(timer);
 					accept(value);
@@ -183,9 +203,9 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 					clearTimeout(timer);
 					reject(error);
 				});
-				child.once("exit", (code) => {
+				child.once("close", (code) => {
 					clearTimeout(timer);
-					if (code !== 0) reject(new Error(`Admitted IPC child exited ${code}`));
+					reject(new Error(`Admitted IPC child exited ${code} before sending a message: ${stderr}`));
 				});
 			});
 			expect(message).toEqual({ admitted: true });
@@ -260,11 +280,11 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		await expect(acquireDesktopMutation(executable, join(alias, "admission.lock"))).rejects.toMatchObject({
 			code: "installation_changed",
 		});
-		await expectBusy(join(alias, "admission.lock"));
+		await expectBusy(join(alias, "admission.lock"), "parent directory: reparse point refused");
 		// An unprotected parent outside the protected fixture has inherited broad access.
 		const outside = await mkdtemp(join(resolve("desktop/.cache"), "unprotected-admission-"));
 		try {
-			await expectBusy(join(outside, "admission.lock"));
+			await expectBusy(join(outside, "admission.lock"), "protected metadata directory:");
 		} finally {
 			await rm(outside, { recursive: true, force: true });
 		}
@@ -273,7 +293,20 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		const lock = join(root, "linked.lock");
 		await writeFile(lock, "");
 		await link(lock, join(root, "second-link.lock"));
-		await expectBusy(lock);
+		await expectBusy(lock, "installation lock: not a regular single-link file");
+	});
+	it("refuses an Administrators access grant even inside protected metadata", async () => {
+		const lock = join(root, "administrators-access.lock");
+		// Prove the parent and initial lock pass admission before changing the DACL.
+		await release(lock, await acquire(lock));
+		await execute(resolveWindowsSystem32ExecutablePath("icacls.exe"), [lock, "/grant", "*S-1-5-32-544:(R)"], {
+			timeout: 10_000,
+			windowsHide: true,
+		});
+		await expectBusy(
+			lock,
+			"installation lock: DACL grants access to a principal other than the current user or LocalSystem",
+		);
 	});
 	it("creates an owned shortcut with Windows app identity and preserves unrelated links", async () => {
 		const target = join(root, "app target 项目.exe"),
@@ -319,52 +352,96 @@ describe.skipIf(process.platform !== "win32")("native Windows installation admis
 		},
 	);
 
-	it("hands updates to Explorer outside the application's non-breakaway job", async (context) => {
-		if (!(await listWindowsDesktopProcesses()).some((row) => /\\explorer\.exe(?:"|\s|$)/iu.test(row.command))) {
-			context.skip();
-			return;
+	it("hands updates to Explorer outside the application job or refuses on the hosted ARM64 desktop", async () => {
+		let expectRefusal = false;
+		if (process.env.RUNNER_ENVIRONMENT === "github-hosted" && process.arch === "arm64") {
+			// The hosted ARM64 image can have a shell HWND without a desktop in the ShellWindows collection.
+			// Only an independent canonical lookup may select the refusal test, never a product error.
+			const { stdout } = await execute(executable, ["--quarterdeck-test-explorer"], {
+				timeout: 10_000,
+				windowsHide: true,
+			});
+			const desktop = stdout.trim();
+			expect(["present registered", "present not-found"]).toContain(desktop);
+			expectRefusal = desktop === "present not-found";
 		}
 		const directory = join(root, "update-broker");
 		await ensurePrivateDirectory(directory);
 		const marker = join(directory, "ready"),
+			finish = join(directory, "finish"),
 			done = join(directory, "done"),
 			script = join(directory, "Update.ps1"),
 			lock = join(directory, "admission.lock");
 		const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+		// Keep PowerShell alive until the assertion finishes rather than racing a fixed sleep.
 		await writeFile(
 			script,
-			`\uFEFF[IO.File]::WriteAllText(${quote(marker)},$PID.ToString()); Start-Sleep -Seconds 3; [IO.File]::WriteAllText(${quote(done)},'done')`,
+			`\uFEFF[IO.File]::WriteAllText(${quote(marker)},$PID.ToString())
+$timer = [Diagnostics.Stopwatch]::StartNew()
+while (-not [IO.File]::Exists(${quote(finish)})) {
+    if ($timer.ElapsedMilliseconds -ge 20000) { exit 1 }
+    Start-Sleep -Milliseconds 50
+}
+[IO.File]::WriteAllText(${quote(done)},'done')`,
 		);
-		const main = `const fs=require('node:fs');require('node:child_process').execFileSync(${JSON.stringify(executable)},['--quarterdeck-update-window',${JSON.stringify(script)}]);const deadline=Date.now()+10000;const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(marker)})){clearInterval(timer);console.log('HELPER_READY');process.exit(0)}if(Date.now()>deadline)process.exit(9)},30);`;
-		const child = spawn(executable, ["--quarterdeck-test-exec", lock, process.execPath, "-e", main], {
-			stdio: ["ignore", "pipe", "pipe"],
+		// The production helper is safe to run on the refusal path. Use the fixture's SW_HIDE only for success.
+		const helper = expectRefusal ? production : executable;
+		const main = `
+require('node:fs').fstatSync(198);
+const result = require('node:child_process').spawnSync(${JSON.stringify(helper)},
+    ['--quarterdeck-update-window', ${JSON.stringify(script)}], {stdio:'inherit', windowsHide:true, timeout:10000});
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;
+`;
+		const handoff = execute(executable, ["--quarterdeck-test-exec", lock, process.execPath, "-e", main], {
+			timeout: 35_000,
 			windowsHide: true,
 		});
-		const exited = new Promise<number | null>((accept) => child.once("exit", accept));
 		let failure: unknown;
 		try {
-			await ready(child);
-			expect(await exited).toBe(0);
-			await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
-			await release(lock, await acquire(lock));
+			if (expectRefusal) {
+				await expect(handoff).rejects.toMatchObject({
+					code: 73,
+					stderr: expect.stringContaining(
+						"FindWindowSW returned S_FALSE, HRESULT 0x00000001); no worker launched.",
+					),
+				});
+				// A fallback could start asynchronously; give it a chance to write its first receipt.
+				await delay(2_000);
+				await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
+				await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
+				console.info("Hosted ARM64 Explorer handoff refused: shell window present, automation desktop not found.");
+			} else {
+				await handoff;
+				const pid = await vi.waitFor(
+					async () => {
+						const value = Number(await readFile(marker, "utf8"));
+						expect(Number.isInteger(value) && value > 0).toBe(true);
+						return value;
+					},
+					{ timeout: 10_000 },
+				);
+				// Custody has drained and admission is exclusive while this PowerShell is still running.
+				const lease = await acquire(lock);
+				try {
+					process.kill(pid, 0);
+					await expect(readFile(done)).rejects.toMatchObject({ code: "ENOENT" });
+				} finally {
+					await release(lock, lease);
+				}
+			}
 		} catch (error) {
 			failure = error;
 		} finally {
-			child.kill();
-			await exited;
-			const deadline = Date.now() + 10000;
-			let completed = false;
-			while (Date.now() < deadline) {
-				try {
-					await readFile(done);
-					completed = true;
-					break;
-				} catch {
-					await new Promise((accept) => setTimeout(accept, 100));
+			try {
+				await writeFile(finish, "");
+				if (existsSync(marker)) {
+					await vi.waitFor(async () => expect(await readFile(done, "utf8")).toBe("done"), { timeout: 10_000 });
 				}
+			} catch (cause) {
+				failure ??= new Error("Synthetic Explorer worker cleanup was not confirmed.", { cause });
 			}
-			if (!completed) failure ??= new Error("Synthetic Explorer worker cleanup was not confirmed.");
 		}
 		if (failure) throw failure;
-	}, 25000);
+	}, 60_000);
 });

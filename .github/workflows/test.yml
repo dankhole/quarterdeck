@@ -23,7 +23,7 @@ permissions:
 jobs:
   build-check-test:
     if: ${{ !inputs.focused_windows }}
-    timeout-minutes: 10
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 25 || 10 }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -34,6 +34,9 @@ jobs:
           - os: ubuntu-latest
             node-version: 24.21.0
           - os: macos-latest
+            node-version: 22.23.2
+          # Windows source checks run in parallel in windows-native below.
+          - os: windows-latest
             node-version: 22.23.2
     steps:
       - name: Checkout
@@ -72,15 +75,20 @@ jobs:
           npm run test:package -- --npm-cache "$(npm config get cache)" "${release_args[@]}"
 
       - name: Check (agent instructions, lint, typecheck, root tests)
+        if: ${{ runner.os != 'Windows' }}
         run: npm run check
 
       - name: Web UI tests
         run: npm run web:test
 
   windows-native:
-    name: Windows native
+    name: ${{ inputs.focused_windows && 'Windows native' || format('Windows native ({0})', matrix.shard) }}
     timeout-minutes: 25
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.focused_windows && '["smoke"]' || '["1/3", "2/3", "3/3"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -92,9 +100,7 @@ jobs:
         with:
           node-version: 22.23.2
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web-ui/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install pinned npm
         run: npm install --global npm@11.19.1
@@ -102,32 +108,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install web-ui dependencies
-        if: ${{ !inputs.focused_windows }}
-        run: npm ci --prefix web-ui
-
-      - name: Build
-        if: ${{ !inputs.focused_windows }}
-        run: npm run build
-
-      - name: Published package artifact smoke
-        if: ${{ !inputs.focused_windows }}
-        shell: bash
-        env:
-          RELEASE_SOURCE_SHA: ${{ inputs.ref }}
-        run: |
-          release_args=()
-          if [[ -n "$RELEASE_SOURCE_SHA" ]]; then release_args=(--release-source-sha "$RELEASE_SOURCE_SHA"); fi
-          npm run test:package -- --npm-cache "$(npm config get cache)" "${release_args[@]}"
-
       - name: Focused native Windows smoke
         if: ${{ inputs.focused_windows }}
         run: npx vitest run test/integration/windows-native-smoke.integration.test.ts
 
-      - name: Check (includes native Windows smoke)
-        if: ${{ !inputs.focused_windows }}
-        run: npm run check
+      # Run the non-Vitest portion of npm run check once across the Windows shards.
+      - name: Static checks and release policy
+        if: ${{ !inputs.focused_windows && strategy.job-index == 0 }}
+        shell: bash
+        run: |
+          npm run check:agent-instructions
+          npx @biomejs/biome check .
+          npm run typecheck
+          npm run test:release-policy
 
-      - name: Web UI tests
+      - name: Root tests in integration mode
         if: ${{ !inputs.focused_windows }}
-        run: npm run web:test
+        # Git Bash sets the process token's default owner to the current user.
+        # Match Desktop CI so admission fixtures don't inherit Administrators ownership.
+        shell: bash
+        env:
+          VITEST_SHARD: ${{ matrix.shard }}
+        run: npm run test -- --mode integration --shard "$VITEST_SHARD"

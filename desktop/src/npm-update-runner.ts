@@ -69,9 +69,10 @@ export interface NpmUpdatePreparationServices {
 }
 
 export class NpmUpdatePreparationError extends Error {
-	constructor(reason: string, installation: DesktopInstallation, targetVersion: string) {
+	constructor(reason: string, installation: DesktopInstallation, targetVersion: string, options?: ErrorOptions) {
 		super(
 			`${reason}\n\nQuit Quarterdeck, then run:\n${npmUpdateRetryCommand(installation.owner.prefix, targetVersion)}`,
+			options,
 		);
 		this.name = "NpmUpdatePreparationError";
 	}
@@ -303,6 +304,14 @@ export async function prepareNpmUpdate(
 			} catch (error) {
 				if (["ENOENT", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) revoked = true;
 			}
+			// Revoke the request before signalling a worker that may start cleaning up on receipt.
+			try {
+				await unlink(join(handoff, "request.json"));
+				revoked = true;
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") revoked = true;
+			}
+			let acknowledged = false;
 			try {
 				if (wasReady && channel) {
 					await bounded(
@@ -313,19 +322,15 @@ export async function prepareNpmUpdate(
 						2_000,
 						"Update cancellation acknowledgement expired.",
 					);
-					revoked = true;
+					acknowledged = true;
 				}
 			} catch {
-				/* Revoke the original request if the worker cannot acknowledge cancellation. */
+				/* Without an acknowledgement, rely on the disk revocation. */
 			} finally {
-				try {
-					await unlink(join(handoff, "request.json"));
-					revoked = true;
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code === "ENOENT") revoked = true;
-				}
 				await close();
 			}
+			// An acknowledging worker cleans up on exit. A second rmdir can race it on Windows.
+			if (acknowledged) return;
 			if (!revoked) throw new Error("The update cancellation could not revoke its private handoff.");
 			try {
 				await cleanupNpmUpdateDirectory(handoff);
@@ -420,6 +425,7 @@ export async function prepareNpmUpdate(
 			desktopVersionSchema.safeParse(options.targetVersion).success
 				? options.targetVersion
 				: options.installation.version,
+			{ cause: error },
 		);
 	}
 }

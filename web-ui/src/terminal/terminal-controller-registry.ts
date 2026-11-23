@@ -10,7 +10,7 @@ export interface TerminalController {
 export interface TerminalControllerScope {
 	projectId: string;
 	sessionInstanceId: string;
-	/** Viewer recreation key; an exact waiter must not accept the pre-commit viewer. */
+	/** Expected PTY start timestamp; an exact waiter must not accept a pre-commit registration. */
 	sessionStartedAt?: number | null;
 }
 

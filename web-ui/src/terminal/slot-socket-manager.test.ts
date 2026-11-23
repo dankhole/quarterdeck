@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SlotSocketManager } from "@/terminal/slot-socket-manager";
 import { TerminalSessionHandle } from "@/terminal/terminal-session-handle";
+import { createTestTaskSessionSummary } from "@/test-utils/task-session-factory";
 
 class FakeWebSocket {
 	static readonly CONNECTING = 0;
@@ -70,6 +71,8 @@ function createCallbacks() {
 		onExit: vi.fn(),
 		onError: vi.fn(),
 		onIoOpen: vi.fn(),
+		onIoClose: vi.fn(),
+		onControlClose: vi.fn(),
 		onConnectionReady: vi.fn(),
 		onLastError: vi.fn(),
 		ensureVisible: vi.fn(),
@@ -83,10 +86,11 @@ function createCallbacks() {
 
 function createSessionHandle() {
 	const applyRestore = vi.fn(async (_snapshot: string) => {});
+	const onSummaryStateChange = vi.fn();
 	const handle = new TerminalSessionHandle(7, {
 		enqueueWrite: vi.fn(),
 		applyRestore,
-		onSummaryStateChange: vi.fn(),
+		onSummaryStateChange,
 		onExit: vi.fn(),
 		ensureVisible: vi.fn(),
 		revealTerminal: vi.fn(async () => true),
@@ -97,7 +101,7 @@ function createSessionHandle() {
 		hasRenderedContent: () => false,
 		isDisposed: () => false,
 	});
-	return { handle, applyRestore };
+	return { handle, applyRestore, onSummaryStateChange };
 }
 
 function getSocket(index: number): FakeWebSocket {
@@ -227,6 +231,71 @@ describe("SlotSocketManager", () => {
 			handle.requestRestore();
 			expect(replacementControl.sentMessages.at(-1)).toBe(JSON.stringify({ type: "request_restore" }));
 			handle.dispose();
+		},
+	);
+
+	it("replays input readiness only for a live summary observed on the current control socket", () => {
+		const { handle, onSummaryStateChange } = createSessionHandle();
+		const initial = createTestTaskSessionSummary({ pid: 1, startedAt: 10, sessionInstanceId: "shell" });
+		const replacement = { ...initial, startedAt: 20 };
+		const onInputSessionChange = vi.fn();
+		handle.connectToTask("task-1", "project-1");
+		getSocket(0).open();
+		getSocket(1).open();
+		getSocket(1).emitMessage(JSON.stringify({ type: "state", summary: initial }));
+		handle.notifyConnectionReadyAfterRestore(null);
+		handle.subscribe({ onInputSessionChange });
+		expect(onInputSessionChange).toHaveBeenLastCalledWith(initial);
+
+		onSummaryStateChange.mockImplementationOnce(() => handle.reconnect("session_instance_changed"));
+		getSocket(1).emitMessage(JSON.stringify({ type: "state", summary: replacement }));
+		expect(onInputSessionChange).toHaveBeenLastCalledWith(null);
+		getSocket(2).open();
+		getSocket(3).open();
+		getSocket(1).emitMessage(JSON.stringify({ type: "state", summary: replacement }));
+		handle.notifyConnectionReadyAfterRestore(null);
+		expect(onInputSessionChange).toHaveBeenLastCalledWith(null);
+		getSocket(3).emitMessage(JSON.stringify({ type: "state", summary: replacement }));
+		expect(onInputSessionChange).toHaveBeenLastCalledWith(replacement);
+		getSocket(2).close();
+		expect(onInputSessionChange).toHaveBeenLastCalledWith(null);
+		handle.dispose();
+	});
+
+	it.each(["before", "after"] as const)(
+		"keeps fallback presentation but clears input readiness when control closes %s fallback",
+		async (closeTiming) => {
+			vi.useFakeTimers();
+			const { handle } = createSessionHandle();
+			try {
+				const summary = createTestTaskSessionSummary({ pid: 1, startedAt: 10, sessionInstanceId: "shell" });
+				const onInputSessionChange = vi.fn();
+				const onConnectionReady = vi.fn();
+				handle.connectToTask("task-1", "project-1");
+				const io = getSocket(0);
+				const control = getSocket(1);
+				io.open();
+				control.open();
+				handle.subscribe({ onInputSessionChange, onConnectionReady });
+				control.emitMessage(JSON.stringify({ type: "state", summary }));
+				if (closeTiming === "before") control.close();
+				await vi.advanceTimersByTimeAsync(1500);
+				if (closeTiming === "after") {
+					expect(onInputSessionChange).toHaveBeenLastCalledWith(summary);
+					control.close();
+				} else {
+					expect(onInputSessionChange).not.toHaveBeenCalledWith(summary);
+				}
+				expect(io.readyState).toBe(FakeWebSocket.OPEN);
+				expect(onConnectionReady).toHaveBeenCalledExactlyOnceWith("task-1");
+				expect(onInputSessionChange).toHaveBeenLastCalledWith(null);
+				const replay = vi.fn();
+				handle.subscribe({ onInputSessionChange: replay });
+				expect(replay).toHaveBeenCalledExactlyOnceWith(null);
+			} finally {
+				handle.dispose();
+				vi.useRealTimers();
+			}
 		},
 	);
 

@@ -257,24 +257,13 @@ export function usePersistentTerminalSession({
 					active && ready && (await terminal.waitForLikelyPrompt(timeoutMs)) && active && ready,
 			},
 			{ projectId, sessionInstanceId, sessionStartedAt },
-			(onReadyChange) => {
-				let transportReady = false;
-				let transportSessionInstanceId: string | null = null;
-				const updateReadiness = () => {
-					ready = transportReady && transportSessionInstanceId === sessionInstanceId;
-					onReadyChange(ready);
-				};
-				return terminal.subscribe({
-					onSummary: (summary) => {
-						transportSessionInstanceId = summary.sessionInstanceId ?? null;
-						updateReadiness();
+			(onReadyChange) =>
+				terminal.subscribe({
+					onInputSessionChange: (summary) => {
+						ready = summary?.sessionInstanceId === sessionInstanceId && summary.startedAt === sessionStartedAt;
+						onReadyChange(ready);
 					},
-					onConnectionReady: () => {
-						transportReady = true;
-						updateReadiness();
-					},
-				});
-			},
+				}),
 		);
 		return () => {
 			active = false;

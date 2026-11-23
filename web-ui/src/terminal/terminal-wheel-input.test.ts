@@ -60,11 +60,20 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		expect(wheel()).toBe(true);
 		expect(reports).not.toHaveBeenCalled();
 	});
-	it.each(["\u001b[?1049l", "\u001b[?1002l", "\u001b[?9h"])("leaves non-wheel mode %j with xterm", async (mode) => {
-		await write(mode);
+	it("leaves normal scrollback with xterm", async () => {
+		await write("\u001b[?1049l");
 		expect(wheel()).toBe(true);
 		expect(reports).not.toHaveBeenCalled();
 	});
+	it.each(["\u001b[?1002l", "\u001b[?9h"])(
+		"does not send reports in alternate-screen mode %j without wheel tracking",
+		async (mode) => {
+			await write(mode);
+			// Pi must suppress xterm's wheel-to-arrow fallback so scrolling cannot edit the prompt.
+			expect(wheel()).toBe(initialAgentId === "codex");
+			expect(reports).not.toHaveBeenCalled();
+		},
+	);
 	it.each<WheelEventInit>([
 		{ ctrlKey: true },
 		{ altKey: true },
@@ -104,10 +113,10 @@ describe.each(["codex", "pi"] as const)("%s wheel input adapter", (initialAgentI
 		wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 });
 		expect(reports).not.toHaveBeenCalled();
 	});
-	it("resets fractional motion when mouse-disabled input falls back to xterm", async () => {
+	it("resets fractional motion on wheel input while mouse tracking is disabled", async () => {
 		wheel({ deltaY: initialAgentId === "pi" ? 6 : 20 });
 		await write("\u001b[?1002l");
-		expect(wheel()).toBe(true);
+		expect(wheel()).toBe(initialAgentId === "codex");
 		await write("\u001b[?1002h");
 		expect(wheel({ deltaY: initialAgentId === "pi" ? 4 : 10 })).toBe(false);
 		expect(reports).not.toHaveBeenCalled();

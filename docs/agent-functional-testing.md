@@ -46,7 +46,7 @@ The lab-only mock keychain avoids modifying the user's macOS Keychain. Ordinary 
 
 ## Providers
 
-The default `fake` provider is deterministic, offline and suitable for CI. Reusable fixture/provider modules remain under `scripts/agent-lab/`; the terminal protocol is in the skill's `references/protocol.md`. Real provider availability does not authorize using it.
+The default `fake` provider is deterministic, offline and suitable for CI. Packaged fake providers send hooks through the candidate’s bundled Node and `dist/hooks.js`, without loading the source CLI through TSX. A fake invocation receipt proves the process launched, not that the runtime accepted its current `SessionStart` hook. Reusable fixture/provider modules remain under `scripts/agent-lab/`; the terminal protocol is in the skill's `references/protocol.md`. Real provider availability does not authorize using it.
 
 Use `--provider real-codex` or `--provider real-claude` only with explicit user/account authorization and only when the unresolved question depends on actual TUI behavior, hook schemas/order, exact resume, or launcher interpretation. First pass the fresh candidate through the fake scenario. Keep the real prompt tiny, synthetic and behind normal approval controls; never run real modes in CI. Interactive Claude has no hard budget ceiling, so its inexpensive model default is not an enforced spending limit.
 
@@ -63,6 +63,8 @@ Keep the returned `desktop-manifest.json`, artifact identity, checkpoints, diagn
 Normal acceptance requires confirmed graceful Quit, no remaining owned processes and no fallback termination. If closure is unconfirmed, preserve the fixture and exact identity evidence; do not delete state or kill processes by executable name. `--keep-temp` retains synthetic evidence, not authorization to leave processes running. Check cleanup even when the scenario fails.
 
 Renderer-crash recovery reobserves the original captured document through an observation-only CDP client, bound to exact process/profile/WebContents/document identity. The original Electron application remains the Quit owner. A fresh unrelated browser or product window is not proof of recovering that document.
+
+The smoke uses the Settings button’s test ID to detect the mounted toolbar. Modal dialogs can hide that toolbar from accessibility queries without unmounting it. Settings and project navigation use normal clicks and verify the destination dialog or board. Their action-scoped handler closes only the **Get started** dialog through its own close button: late agent availability results can show onboarding between Home and Open project, even after the recovered-draft review has closed. Verify and close recovered-draft review explicitly; dismissing onboarding does not count as agent readiness.
 
 On Windows, native lab evidence covers actual installation locks, Chromium/crashpad job membership, ConPTY, replacement, shortcut replacement and uninstall under a private profile. An app manifest with `status: "stopped"` confirms the end of the application run. The runner may still be verifying or replacing the installation. Check `windows-installation-phase.json` for progress and `windows-installation-lifecycle.json` for the completed lifecycle receipt. It does not prove a real user's Start menu, SmartScreen, minimum Windows release or another architecture.
 

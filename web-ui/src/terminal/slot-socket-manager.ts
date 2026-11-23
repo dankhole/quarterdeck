@@ -18,6 +18,8 @@ interface SlotSocketCallbacks {
 	onExit: (code: number | null) => void;
 	onError: (message: string) => void;
 	onIoOpen: () => void;
+	onIoClose: () => void;
+	onControlClose: () => void;
 	onConnectionReady: () => void;
 	onLastError: (message: string | null) => void;
 	ensureVisible: () => void;
@@ -55,6 +57,10 @@ export class SlotSocketManager {
 
 	get isIoOpen(): boolean {
 		return this.ioSocket !== null && this.ioSocket.readyState === WebSocket.OPEN;
+	}
+
+	get isControlOpen(): boolean {
+		return this.controlSocket?.readyState === WebSocket.OPEN;
 	}
 
 	get requiresReconnect(): boolean {
@@ -137,6 +143,7 @@ export class SlotSocketManager {
 			if (this.restoreInProgress) {
 				log.warn(`slot ${this.slotId} IO socket closed while restore was pending`);
 			}
+			this.callbacks.onIoClose();
 			this.callbacks.onLastError("Terminal stream closed. Close and reopen to reconnect.");
 		};
 	}
@@ -228,6 +235,7 @@ export class SlotSocketManager {
 			this.clearRestoreWatchdog();
 			this.restoreInProgress = false;
 			this.pendingRestoreRequest = false;
+			this.callbacks.onControlClose();
 			this.callbacks.onLastError("Terminal control connection closed. Close and reopen to reconnect.");
 		};
 	}

@@ -287,18 +287,25 @@ export async function cleanupNpmUpdateDirectory(directory: string): Promise<void
 		"cancelled",
 	]);
 	if (names.some((name) => !recognized.has(name))) throw new Error("Unrecognized handoff files were retained.");
+	const paths: string[] = [];
 	for (const name of names) {
 		const path = join(directory, name);
-		const info = await lstat(path);
+		const info = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+			// Closing the app's Unix socket server can remove this entry after readdir.
+			if (name !== "control.sock" || error.code !== "ENOENT") throw error;
+			return undefined;
+		});
+		if (!info) continue;
 		if (
 			info.isSymbolicLink() ||
 			(process.platform !== "win32" && info.uid !== process.getuid?.()) ||
 			(!info.isFile() && !(name === "control.sock" && info.isSocket()))
 		)
 			throw new Error("Changed handoff files were retained.");
+		paths.push(path);
 	}
-	for (const name of names)
-		await unlink(join(directory, name)).catch((error: NodeJS.ErrnoException) => {
+	for (const path of paths)
+		await unlink(path).catch((error: NodeJS.ErrnoException) => {
 			if (error.code !== "ENOENT") throw error;
 		});
 	await rmdir(directory);

@@ -1,10 +1,12 @@
 # Native Windows Validation
 
-Quarterdeck's reusable test workflow contains a non-optional `Windows native` job. Pull-request CI and publishing both call that workflow, so a Windows failure fails the caller rather than being treated as an allowed experiment. The automated lane uses only isolated synthetic data and deterministic fake commands; the separate manual matrix is the final real-provider release gate.
+Quarterdeck’s reusable Test workflow splits the full Windows runtime test suite across parallel runners. Every test file belongs to one shard. Static source checks run once, and a separate Windows job builds the app, checks the packed npm artifact, and runs the renderer tests. Pull-request CI and publishing require all of these checks. The automated lane uses only isolated synthetic data and deterministic fake commands; the separate manual matrix is the final real-provider release gate.
 
 ## Clean validation
 
-Run these commands from a fresh Windows checkout with Git, Node.js 22.23.2, and npm 11.19.1. Do not run the focused smoke as well as this full sequence on the same unchanged tree; `npm run check` already includes its integration specs.
+Run these commands from a fresh Windows checkout in a non-elevated shell with Git, Node.js 22.23.2, and npm 11.19.1. Do not run the focused smoke as well as this full sequence on the same unchanged tree; `npm run check` already includes its integration specs.
+
+Desktop admission requires newly created metadata to be owned by the current user, as in a normal per-user install. The hosted full check matches Desktop CI by using Git Bash, whose [Windows runtime sets the process token's default owner to the current user](https://github.com/git-for-windows/msys2-runtime/blob/main/winsup/cygwin/uinfo.cc#L73-L85). This avoids Administrators-owned fixtures without changing system policy or relaxing admission.
 
 ```powershell
 npm ci
