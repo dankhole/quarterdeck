@@ -13,7 +13,7 @@ import {
 import { type DesktopLabDriver, withDesktopDeadline } from "./desktop-driver";
 import type { DesktopEvaluationModule } from "./desktop-evaluation-types";
 import { listDesktopProcesses, sameDesktopProcess } from "./desktop-processes";
-import { desktopSettingsButton, dismissDesktopOnboarding, openDesktopSettings } from "./desktop-settings";
+import { desktopSettingsButton, openDesktopSettings, withDesktopOnboardingDismissal } from "./desktop-settings";
 import { type DesktopLabProcess, type DesktopProcessEvidence, DesktopProcessEvidenceSchema } from "./desktop-types";
 import { writeJsonAtomic } from "./paths";
 
@@ -564,9 +564,11 @@ async function waitFor(condition: () => Promise<boolean>, label: string, timeout
 
 /** Select the fixture through the same SPA project command as a person. */
 export async function openDesktopPrimaryProject(page: Page): Promise<void> {
-	await page.getByRole("button", { name: "Home", exact: true }).click();
-	await page.getByRole("button", { name: "Open project", exact: true }).click();
-	await page.locator("section.kb-board").waitFor({ state: "visible" });
+	await withDesktopOnboardingDismissal(page, async () => {
+		await page.getByRole("button", { name: "Home", exact: true }).click();
+		await page.getByRole("button", { name: "Open project", exact: true }).click();
+		await page.locator("section.kb-board").waitFor({ state: "visible" });
+	});
 }
 
 async function checkpoint(driver: DesktopLabDriver): Promise<DesktopRendererCheckpoint> {
@@ -713,7 +715,6 @@ export async function exerciseDesktopRendererRecovery(page: Page, driver: Deskto
 	);
 	await closeDesktopRecoveredDraftReview(reviewPage, draft, () => sourceMustRemainUnchanged(sourcePath, original));
 	const recoveredPage = await productPage(driver, "Settings");
-	await dismissDesktopOnboarding(recoveredPage);
 	await openDesktopPrimaryProject(recoveredPage);
 	assertDesktopRendererRecovery(before, await checkpoint(driver));
 	// Enable the existing delay policy before restoring: recovered text must still

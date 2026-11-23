@@ -1,5 +1,6 @@
 import type { Locator, Page } from "playwright-core";
 import { describe, expect, it, vi } from "vitest";
+import { openDesktopPrimaryProject } from "../../../scripts/agent-lab/desktop-renderer-recovery";
 import { dismissDesktopOnboarding, openDesktopSettings } from "../../../scripts/agent-lab/desktop-settings";
 
 function fixture(onboardingVisible = false) {
@@ -25,9 +26,33 @@ function fixture(onboardingVisible = false) {
 			events.push("settings clicked");
 		}),
 	};
+	const home = {
+		click: vi.fn(async () => {
+			events.push("home clicked");
+			onboardingVisible = true;
+		}),
+	};
+	const project = {
+		click: vi.fn(async () => {
+			if (onboardingVisible && handler) await handler(onboarding as unknown as Locator);
+			if (onboardingVisible) throw new Error("Get started intercepts pointer events");
+			events.push("project clicked");
+		}),
+	};
+	const board = {
+		waitFor: vi.fn(async () => {
+			events.push("board visible");
+		}),
+	};
 	const page = {
 		getByTestId: vi.fn(() => button),
-		getByRole: vi.fn((_role: string, { name }: { name: string }) => (name === "Get started" ? onboarding : settings)),
+		getByRole: vi.fn((_role: string, { name }: { name: string }) => {
+			if (name === "Get started") return onboarding;
+			if (name === "Home") return home;
+			if (name === "Open project") return project;
+			return settings;
+		}),
+		locator: vi.fn(() => board),
 		addLocatorHandler: vi.fn(async (_locator: Locator, callback: typeof handler) => {
 			handler = callback;
 		}),
@@ -35,7 +60,7 @@ function fixture(onboardingVisible = false) {
 			handler = undefined;
 		}),
 	};
-	return { page: page as unknown as Page, calls: page, onboarding, button, settings, close, events };
+	return { page: page as unknown as Page, calls: page, onboarding, button, settings, close, events, project, board };
 }
 
 describe("packaged Settings navigation", () => {
@@ -70,4 +95,18 @@ describe("packaged Settings navigation", () => {
 		expect(f.close).toHaveBeenCalledTimes(1);
 		expect(f.onboarding.waitFor).toHaveBeenCalledExactlyOnceWith({ state: "hidden" });
 	});
+});
+
+it("closes late onboarding between Home and Open project without bypassing either click", async () => {
+	const f = fixture();
+	await openDesktopPrimaryProject(f.page);
+	expect(f.events).toEqual(["home clicked", "onboarding closed", "project clicked", "board visible"]);
+	expect(f.calls.getByRole.mock.calls).toEqual([
+		["dialog", { name: "Get started", exact: true }],
+		["button", { name: "Home", exact: true }],
+		["button", { name: "Open project", exact: true }],
+	]);
+	expect(f.project.click).toHaveBeenCalledExactlyOnceWith();
+	expect(f.board.waitFor).toHaveBeenCalledExactlyOnceWith({ state: "visible" });
+	expect(f.calls.removeLocatorHandler).toHaveBeenCalledExactlyOnceWith(f.onboarding);
 });

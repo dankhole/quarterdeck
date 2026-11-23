@@ -19,16 +19,22 @@ export async function dismissDesktopOnboarding(page: Page): Promise<void> {
 	if (await onboarding.isVisible()) await closeOnboarding(onboarding);
 }
 
-/** Open Settings normally, allowing late startup onboarding to close without dismissing other dialogs. */
-export async function openDesktopSettings(page: Page): Promise<Locator> {
+/** Project hydration and agent probes can open onboarding between two normal toolbar actions. */
+export async function withDesktopOnboardingDismissal<T>(page: Page, action: () => Promise<T>): Promise<T> {
 	const onboarding = desktopOnboarding(page);
 	await page.addLocatorHandler(onboarding, closeOnboarding);
 	try {
+		return await action();
+	} finally {
+		await page.removeLocatorHandler(onboarding);
+	}
+}
+
+export async function openDesktopSettings(page: Page): Promise<Locator> {
+	return await withDesktopOnboardingDismissal(page, async () => {
 		await desktopSettingsButton(page).click();
 		const settings = page.getByRole("dialog", { name: "Settings", exact: true });
 		await settings.waitFor({ state: "visible" });
 		return settings;
-	} finally {
-		await page.removeLocatorHandler(onboarding);
-	}
+	});
 }

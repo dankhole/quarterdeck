@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ensurePrivateDirectory } from "../../src/core/private-directory.js";
 import { resolveWindowsPowerShellPath } from "../../src/core/windows-system-paths.js";
 import type { DesktopInstallation } from "../../src/desktop-install/index.js";
@@ -17,6 +17,7 @@ import {
 	type PreparedNpmUpdate,
 	prepareNpmUpdate,
 } from "../src/npm-update-runner.js";
+import * as updateWorker from "../src/npm-update-worker.js";
 import {
 	cleanupNpmUpdateDirectory,
 	identifyUpdateFile,
@@ -428,7 +429,14 @@ describe("private npm update handoff", { timeout: process.platform === "win32" ?
 		await handoff.launch();
 		await handoff.authorize();
 		if (committed) handoff.commit();
-		await handoff.cancel();
+		// The separately bundled worker must clean up; the app must not race it.
+		const appCleanup = vi.spyOn(updateWorker, "cleanupNpmUpdateDirectory");
+		try {
+			await handoff.cancel();
+			expect(appCleanup).not.toHaveBeenCalled();
+		} finally {
+			appCleanup.mockRestore();
+		}
 		await stop(f.parent);
 		expect((await f.finished()).code).toBe(0);
 		expect(await exists(f.tracePath)).toBe(false);
